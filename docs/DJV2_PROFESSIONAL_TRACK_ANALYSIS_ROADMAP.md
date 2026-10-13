@@ -1,11 +1,13 @@
 # DJv2 Professional Track Analysis & Harmonic Mixing Roadmap
 
+> Scope update — 2026-10-12: Local scanning, estimator improvements, calibration, corpus expansion and further professional-quality qualification are deferred to a future branch. Delivered behavior remains available; unchecked accuracy gates are not release claims for this Spotify metadata PR. See [current branch scope](SPOTIFY_BRANCH_REMAINING_WORK.md) and [future local-analysis work](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
+
 **Status:** Phases 0–4b landed and merged (through [#43](https://github.com/ajbergh/ViiB-MediaHub/pull/43)); Phase 1 complete; **Phase 5 is open by explicit project-owner override while the Phase 0 corpus/codec acceptance gate remains open.** Tempo/corpus optimization is deferred, not waived.
-**Scope:** DJv2 / professional DJ workflow only  
-**Research snapshot:** 2026-09-06  
-**Repository verification snapshot:** commit `3359371`, branch `main`  
-**Toolchain baseline:** Go 1.26.8, Wails v2.11.0, `modernc.org/sqlite` (pure-Go SQLite, no CGO)  
-**Target architecture:** Go/Wails, local-first, cross-platform, predominantly pure Go, no CGO unless explicitly justified  
+**Scope:** DJv2 / professional DJ workflow only
+**Research snapshot:** 2026-09-06
+**Repository verification snapshot:** commit `3359371`, branch `main`
+**Toolchain baseline:** Go 1.26.9, Wails v2.11.0, `modernc.org/sqlite` (pure-Go SQLite, no CGO)
+**Target architecture:** Go/Wails, local-first, cross-platform, predominantly pure Go, no CGO unless explicitly justified
 **Repository:** `ajbergh/ViiB-MediaHub`
 
 > This document is a research and implementation plan, not a claim that the described future functionality is already implemented. Sections labeled **Verified current state** describe behavior confirmed in the repository as of the verification snapshot, with `file:line` evidence recorded in §2.0. Sections labeled **Proposed** describe future design.

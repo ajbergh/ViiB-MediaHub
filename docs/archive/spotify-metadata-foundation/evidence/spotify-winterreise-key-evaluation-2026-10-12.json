@@ -1,0 +1,796 @@
+{
+  "capturedAt": "2026-10-12T14:54:53.459911+00:00",
+  "dataset": "https://doi.org/10.5281/zenodo.10839767",
+  "citation": "Christof Weiß, Frank Zalkow, Vlora Arifi-Müller, Meinard Müller, Hendrik Vincent Koops, Anja Volk, Harald G. Grohganz. Schubert Winterreise Dataset: A Multimodal Scenario for Music Analysis. ACM JOCCH, 2021.",
+  "license": "Dataset/annotations CC BY 3.0; selected HU33 audio Public Domain Mark 1.0. No audio redistributed.",
+  "archiveMD5": "591c377c6d3db522fd159b8b70180978",
+  "manifestSHA256": "0b912af328e9862edd71067ca5498a7e16a85139d3f462765bd9ca4fbcfb0fd4",
+  "resultSHA256": "1f97f8b2995203654460cbe966576a9ff373fce4f2d0ba60e9c0bf56fecc3404",
+  "audioUnchangedAfterEvaluation": true,
+  "split": "held_out",
+  "splitDecision": "All 24 HU33 recordings reserved before analysis; no calibration options or tuning performed.",
+  "performanceVariant": "Release main audio/annotations. Song01 includes the release artificial repetition.",
+  "algorithm": "track-v3-spotify-local-artifacts;tempo-v3-multifeature-half-bpm;key-v2-hpcp-ks;energy-level-v1-fixed-reference;itu-r-bs1770-5-annex1-k-weight-gating-v1;itu-r-bs1770-5-annex2-4x-fir-v1",
+  "configuration": {
+    "Tempo": {
+      "Range": "auto",
+      "Method": "multifeature-half-bpm",
+      "MinBPM": 90,
+      "MaxBPM": 180,
+      "MinOnsetCrestFactor": 15
+    },
+    "Key": {
+      "MaxChromaFlatness": 0.98,
+      "MaxFrequency": 3500,
+      "Profile": "krumhansl",
+      "Extraction": "hpcp-peaks"
+    },
+    "SkipTempo": false,
+    "SkipKey": false,
+    "GridBPM": null,
+    "ProviderBeatGrid": null,
+    "SkipThreeBand": false
+  },
+  "comparison": {
+    "algorithm": "track-v3-spotify-local-artifacts;tempo-v3-multifeature-half-bpm;key-v2-hpcp-ks;energy-level-v1-fixed-reference;itu-r-bs1770-5-annex1-k-weight-gating-v1;itu-r-bs1770-5-annex2-4x-fir-v1",
+    "configuration": {
+      "Tempo": {
+        "Range": "auto",
+        "Method": "multifeature-half-bpm",
+        "MinBPM": 90,
+        "MaxBPM": 180,
+        "MinOnsetCrestFactor": 15
+      },
+      "Key": {
+        "MaxChromaFlatness": 0.98,
+        "MaxFrequency": 3500,
+        "Profile": "krumhansl",
+        "Extraction": "hpcp-peaks"
+      },
+      "SkipTempo": false,
+      "SkipKey": false,
+      "GridBPM": null,
+      "ProviderBeatGrid": null,
+      "SkipThreeBand": false
+    },
+    "split": "held_out",
+    "corpus": {
+      "tracks": 24,
+      "tracksInSplit": 24,
+      "heldOutTracks": 24,
+      "tracksNeeded": 176,
+      "heldOutTracksNeededAtTarget": 43,
+      "heldOutStableElectronicTracks": 0,
+      "distinctGenres": [
+        "classical-art-song"
+      ],
+      "evidenceClass": "lawful-real-audio",
+      "missingRequiredCoverage": [
+        "house",
+        "techno",
+        "drum-and-bass",
+        "hip-hop",
+        "breakbeat",
+        "rock-live-drums",
+        "disco",
+        "ambient",
+        "stable-electronic",
+        "meter-3-4-or-6-8",
+        "tempo-ramp-or-switch",
+        "tempo-70-140-ambiguity",
+        "tempo-85-170-ambiguity"
+      ],
+      "phase0Ready": false,
+      "readinessMessage": "needs 176 additional tracks to meet the 200-track Phase 0 minimum; needs 43 additional held-out tracks to meet the 67-track qualification target; needs held-out stable-electronic coverage; missing required Phase 0 coverage: house, techno, drum-and-bass, hip-hop, breakbeat, rock-live-drums, disco, ambient, stable-electronic, meter-3-4-or-6-8, tempo-ramp-or-switch, tempo-70-140-ambiguity, tempo-85-170-ambiguity",
+      "recordingIdentity": {
+        "unidentifiedTracks": 0,
+        "distinctGroups": 24,
+        "crossSplitGroups": 0,
+        "heldOutOnlyGroups": 24
+      }
+    },
+    "tempo": {
+      "labeled": 0,
+      "reported": 0,
+      "strictWithinHalfBpm": 0,
+      "acceptedMetricLevelMatch": 0,
+      "halfDoubleErrors": 0,
+      "unknown": 0
+    },
+    "key": {
+      "labeled": 24,
+      "reported": 24,
+      "exact": 14,
+      "camelotCompatible": 19,
+      "unknown": 0,
+      "exactAccuracy": 0.5833333333333334,
+      "camelotCompatibleRate": 0.7916666666666666,
+      "unknownRate": 0
+    },
+    "unknown": {
+      "labeled": 0,
+      "correct": 0,
+      "incorrect": 0
+    },
+    "calibration": {
+      "tempo": {
+        "buckets": [
+          {
+            "label": "low",
+            "minimum": 0,
+            "maximum": 0.3333333333333333,
+            "labeled": 0,
+            "correct": 0
+          },
+          {
+            "label": "medium",
+            "minimum": 0.3333333333333333,
+            "maximum": 0.6666666666666666,
+            "labeled": 0,
+            "correct": 0
+          },
+          {
+            "label": "high",
+            "minimum": 0.6666666666666666,
+            "maximum": 1,
+            "labeled": 0,
+            "correct": 0
+          }
+        ],
+        "monotonic": false,
+        "verdict": "requires observations in all three confidence buckets"
+      },
+      "key": {
+        "buckets": [
+          {
+            "label": "low",
+            "minimum": 0,
+            "maximum": 0.3333333333333333,
+            "labeled": 23,
+            "correct": 13,
+            "accuracy": 0.5652173913043478
+          },
+          {
+            "label": "medium",
+            "minimum": 0.3333333333333333,
+            "maximum": 0.6666666666666666,
+            "labeled": 1,
+            "correct": 1,
+            "accuracy": 1
+          },
+          {
+            "label": "high",
+            "minimum": 0.6666666666666666,
+            "maximum": 1,
+            "labeled": 0,
+            "correct": 0
+          }
+        ],
+        "monotonic": false,
+        "verdict": "requires observations in all three confidence buckets"
+      }
+    },
+    "throughput": {
+      "environment": {
+        "os": "windows",
+        "architecture": "amd64",
+        "cpuModel": "AMD64 Family 23 Model 113 Stepping 0, AuthenticAMD",
+        "cpuCount": 12,
+        "goVersion": "go1.26.8"
+      },
+      "tracks": [
+        {
+          "id": "Schubert_D911-01_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 311.69306122448825,
+          "wallSeconds": 2.1779456,
+          "decodeAndStreamSeconds": 0.06449349999999665,
+          "dspSeconds": 2.1134521000000035
+        },
+        {
+          "id": "Schubert_D911-02_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 101.146122448979,
+          "wallSeconds": 0.8025958,
+          "decodeAndStreamSeconds": 0.022876499999999633,
+          "dspSeconds": 0.7797193000000003
+        },
+        {
+          "id": "Schubert_D911-03_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 150.3259863945572,
+          "wallSeconds": 1.0253905,
+          "decodeAndStreamSeconds": 0.024022699999999286,
+          "dspSeconds": 1.0013678000000008
+        },
+        {
+          "id": "Schubert_D911-04_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 178.60789115646256,
+          "wallSeconds": 1.2038332999999999,
+          "decodeAndStreamSeconds": 0.026325800000001287,
+          "dspSeconds": 1.1775074999999986
+        },
+        {
+          "id": "Schubert_D911-05_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 274.41342403628175,
+          "wallSeconds": 1.8692014000000001,
+          "decodeAndStreamSeconds": 0.04831020000000086,
+          "dspSeconds": 1.8208911999999993
+        },
+        {
+          "id": "Schubert_D911-06_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 259.5990929705229,
+          "wallSeconds": 1.6921176,
+          "decodeAndStreamSeconds": 0.034373899999997626,
+          "dspSeconds": 1.6577437000000024
+        },
+        {
+          "id": "Schubert_D911-07_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 187.33859410430853,
+          "wallSeconds": 1.2098484,
+          "decodeAndStreamSeconds": 0.02156239999999854,
+          "dspSeconds": 1.1882860000000015
+        },
+        {
+          "id": "Schubert_D911-08_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 123.39083900226659,
+          "wallSeconds": 0.8314676,
+          "decodeAndStreamSeconds": 0.019761499999999876,
+          "dspSeconds": 0.8117061000000001
+        },
+        {
+          "id": "Schubert_D911-09_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 132.58594104308293,
+          "wallSeconds": 0.8875118,
+          "decodeAndStreamSeconds": 0.01959230000000023,
+          "dspSeconds": 0.8679194999999997
+        },
+        {
+          "id": "Schubert_D911-10_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 195.65133786848102,
+          "wallSeconds": 1.3065087,
+          "decodeAndStreamSeconds": 0.03885640000000001,
+          "dspSeconds": 1.2676523
+        },
+        {
+          "id": "Schubert_D911-11_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 254.58358276644142,
+          "wallSeconds": 1.6465434,
+          "decodeAndStreamSeconds": 0.03843640000000037,
+          "dspSeconds": 1.6081069999999997
+        },
+        {
+          "id": "Schubert_D911-12_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 158.33687074829888,
+          "wallSeconds": 1.0460544999999999,
+          "decodeAndStreamSeconds": 0.02510509999999888,
+          "dspSeconds": 1.020949400000001
+        },
+        {
+          "id": "Schubert_D911-13_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 107.46195011337798,
+          "wallSeconds": 0.7307836,
+          "decodeAndStreamSeconds": 0.014524499999999607,
+          "dspSeconds": 0.7162591000000004
+        },
+        {
+          "id": "Schubert_D911-14_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 183.2054421768708,
+          "wallSeconds": 1.2306188,
+          "decodeAndStreamSeconds": 0.01955959999999979,
+          "dspSeconds": 1.2110592000000002
+        },
+        {
+          "id": "Schubert_D911-15_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 124.27319727891057,
+          "wallSeconds": 0.830571,
+          "decodeAndStreamSeconds": 0.019406899999999228,
+          "dspSeconds": 0.8111641000000007
+        },
+        {
+          "id": "Schubert_D911-16_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 138.48380952380867,
+          "wallSeconds": 0.9076868,
+          "decodeAndStreamSeconds": 0.019176400000001093,
+          "dspSeconds": 0.8885103999999989
+        },
+        {
+          "id": "Schubert_D911-17_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 197.74113378684842,
+          "wallSeconds": 1.2740339999999999,
+          "decodeAndStreamSeconds": 0.021113699999998792,
+          "dspSeconds": 1.252920300000001
+        },
+        {
+          "id": "Schubert_D911-18_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 47.64734693877556,
+          "wallSeconds": 0.3161758,
+          "decodeAndStreamSeconds": 0.011992800000000081,
+          "dspSeconds": 0.3041829999999999
+        },
+        {
+          "id": "Schubert_D911-19_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 70.91374149659859,
+          "wallSeconds": 0.4760087,
+          "decodeAndStreamSeconds": 0.015550400000000075,
+          "dspSeconds": 0.46045829999999993
+        },
+        {
+          "id": "Schubert_D911-20_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 242.74140589569288,
+          "wallSeconds": 1.6037115,
+          "decodeAndStreamSeconds": 0.0465900000000008,
+          "dspSeconds": 1.5571214999999992
+        },
+        {
+          "id": "Schubert_D911-21_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 221.19328798186024,
+          "wallSeconds": 1.4224174,
+          "decodeAndStreamSeconds": 0.03970709999999911,
+          "dspSeconds": 1.382710300000001
+        },
+        {
+          "id": "Schubert_D911-22_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 79.6908843537413,
+          "wallSeconds": 0.5263943,
+          "decodeAndStreamSeconds": 0.01208829999999983,
+          "dspSeconds": 0.5143060000000002
+        },
+        {
+          "id": "Schubert_D911-23_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 189.1497505668936,
+          "wallSeconds": 1.2297361,
+          "decodeAndStreamSeconds": 0.02965320000000049,
+          "dspSeconds": 1.2000828999999995
+        },
+        {
+          "id": "Schubert_D911-24_HU33",
+          "codec": "wav",
+          "sampleRate": 22050,
+          "sourceChannels": 1,
+          "audioSeconds": 188.08163265306138,
+          "wallSeconds": 1.2479519,
+          "decodeAndStreamSeconds": 0.03202589999999961,
+          "dspSeconds": 1.2159260000000003
+        }
+      ],
+      "audioSeconds": 4118.256326530611,
+      "wallSeconds": 27.4951085,
+      "decodeAndStreamSeconds": 0.6651054999999917,
+      "dspSeconds": 26.830002999999998,
+      "totalRealtimeMultiple": 149.78141753943655,
+      "decodeRealtimeMultiple": 6191.884334937333,
+      "dspRealtimeMultiple": 153.49444152244826
+    }
+  },
+  "results": [
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 311.69306122448825,
+      "id": "Schubert_D911-01_HU33",
+      "bpm": 109,
+      "alternateBpm": 118.5,
+      "key": "C minor",
+      "tempoConfidence": 0.022082490039501104,
+      "keyConfidence": 0.24526327887827515,
+      "tempoCrestFactor": 36.5042557057585,
+      "tempoStability": 0.05263157894736842,
+      "keyFlatness": 0.9065603651898668,
+      "status": "complete",
+      "expectedKey": "C minor"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 101.146122448979,
+      "id": "Schubert_D911-02_HU33",
+      "bpm": 175.5,
+      "alternateBpm": 147.5,
+      "key": "D minor",
+      "tempoConfidence": 0.01913654560759991,
+      "keyConfidence": 0.2464851952443683,
+      "tempoCrestFactor": 38.8997775228219,
+      "tempoStability": 0.3333333333333333,
+      "keyFlatness": 0.9373606719792889,
+      "status": "complete",
+      "expectedKey": "G minor"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 150.3259863945572,
+      "id": "Schubert_D911-03_HU33",
+      "bpm": 97.5,
+      "alternateBpm": 92,
+      "key": "A minor",
+      "tempoConfidence": 0.0012434370593320228,
+      "keyConfidence": 0.05911647742711422,
+      "tempoCrestFactor": 39.62502457062588,
+      "tempoStability": 0.2222222222222222,
+      "keyFlatness": 0.9373787715951134,
+      "status": "complete",
+      "expectedKey": "D minor"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 178.60789115646256,
+      "id": "Schubert_D911-04_HU33",
+      "bpm": 170.5,
+      "alternateBpm": 163.5,
+      "key": "A minor",
+      "tempoConfidence": 0.007758093922112443,
+      "keyConfidence": 0.04876494390575757,
+      "tempoCrestFactor": 28.29149103737907,
+      "tempoStability": 0,
+      "keyFlatness": 0.928239797301269,
+      "status": "complete",
+      "expectedKey": "A minor"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 274.41342403628175,
+      "id": "Schubert_D911-05_HU33",
+      "key": "B major",
+      "keyConfidence": 0.1687570906360693,
+      "tempoCrestFactor": 48.41383921627259,
+      "tempoStability": 0,
+      "keyFlatness": 0.9065371164048254,
+      "status": "partial",
+      "expectedKey": "E major"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 259.5990929705229,
+      "id": "Schubert_D911-06_HU33",
+      "bpm": 164.5,
+      "alternateBpm": 154,
+      "key": "D minor",
+      "tempoConfidence": 0.029062063687484076,
+      "keyConfidence": 0.12368507548447932,
+      "tempoCrestFactor": 72.63611940687862,
+      "tempoStability": 0.125,
+      "keyFlatness": 0.8932694105797238,
+      "status": "complete",
+      "expectedKey": "D minor"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 187.33859410430853,
+      "id": "Schubert_D911-07_HU33",
+      "bpm": 166,
+      "alternateBpm": 114,
+      "key": "A major",
+      "tempoConfidence": 0.03256616967305529,
+      "keyConfidence": 0.11315044714603999,
+      "tempoCrestFactor": 51.895685749149635,
+      "tempoStability": 0,
+      "keyFlatness": 0.9485795842464583,
+      "status": "complete",
+      "expectedKey": "D minor"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 123.39083900226659,
+      "id": "Schubert_D911-08_HU33",
+      "bpm": 157,
+      "alternateBpm": 127.5,
+      "key": "C major",
+      "tempoConfidence": 0.02791264757468058,
+      "keyConfidence": 0.13739198645468223,
+      "tempoCrestFactor": 33.41102196517924,
+      "tempoStability": 0.125,
+      "keyFlatness": 0.9193686883919849,
+      "status": "complete",
+      "expectedKey": "F minor"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 132.58594104308293,
+      "id": "Schubert_D911-09_HU33",
+      "bpm": 163.5,
+      "alternateBpm": 147.5,
+      "key": "A minor",
+      "tempoConfidence": 0.3049601417744993,
+      "keyConfidence": 0.11366670321232654,
+      "tempoCrestFactor": 40.79119450956176,
+      "tempoStability": 0.25,
+      "keyFlatness": 0.915869542209071,
+      "status": "complete",
+      "expectedKey": "A minor"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 195.65133786848102,
+      "id": "Schubert_D911-10_HU33",
+      "key": "B minor",
+      "keyConfidence": 0.2233263404114404,
+      "tempoCrestFactor": 53.227825352202395,
+      "tempoStability": 0,
+      "keyFlatness": 0.8955392486595692,
+      "status": "partial",
+      "expectedKey": "B minor"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 254.58358276644142,
+      "id": "Schubert_D911-11_HU33",
+      "bpm": 175.5,
+      "alternateBpm": 164,
+      "key": "G major",
+      "tempoConfidence": 0.017056411318310663,
+      "keyConfidence": 0.2847767617784514,
+      "tempoCrestFactor": 63.48417147623551,
+      "tempoStability": 0.06666666666666667,
+      "keyFlatness": 0.9143007732878453,
+      "status": "complete",
+      "expectedKey": "G major"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 158.33687074829888,
+      "id": "Schubert_D911-12_HU33",
+      "bpm": 167,
+      "alternateBpm": 176,
+      "key": "B minor",
+      "tempoConfidence": 0.27196407759749225,
+      "keyConfidence": 0.1896930102548133,
+      "tempoCrestFactor": 52.46521894923769,
+      "tempoStability": 0.3,
+      "keyFlatness": 0.9256165318673194,
+      "status": "complete",
+      "expectedKey": "B minor"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 107.46195011337798,
+      "id": "Schubert_D911-13_HU33",
+      "bpm": 112.5,
+      "alternateBpm": 115.5,
+      "key": "C major",
+      "tempoConfidence": 0.008104729529989842,
+      "keyConfidence": 0.1436020518139713,
+      "tempoCrestFactor": 34.77846922687775,
+      "tempoStability": 0.14285714285714285,
+      "keyFlatness": 0.9185452779946726,
+      "status": "complete",
+      "expectedKey": "C major"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 183.2054421768708,
+      "id": "Schubert_D911-14_HU33",
+      "bpm": 164,
+      "alternateBpm": 150.5,
+      "key": "B major",
+      "tempoConfidence": 0.28990378246415105,
+      "keyConfidence": 0.05904077840779322,
+      "tempoCrestFactor": 55.90716464344096,
+      "tempoStability": 0.36363636363636365,
+      "keyFlatness": 0.9335644584326512,
+      "status": "complete",
+      "expectedKey": "B minor"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 124.27319727891057,
+      "id": "Schubert_D911-15_HU33",
+      "bpm": 98.5,
+      "alternateBpm": 171.5,
+      "key": "B minor",
+      "tempoConfidence": 0.24439860478346795,
+      "keyConfidence": 0.09355941281144821,
+      "tempoCrestFactor": 37.661525533913604,
+      "tempoStability": 0.125,
+      "keyFlatness": 0.9320961985948676,
+      "status": "complete",
+      "expectedKey": "B minor"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 138.48380952380867,
+      "id": "Schubert_D911-16_HU33",
+      "bpm": 175.5,
+      "alternateBpm": 168.5,
+      "key": "A major",
+      "tempoConfidence": 0.007454303197759697,
+      "keyConfidence": 0.14621332675009807,
+      "tempoCrestFactor": 65.21761686485377,
+      "tempoStability": 0.2222222222222222,
+      "keyFlatness": 0.96657149893779,
+      "status": "complete",
+      "expectedKey": "D major"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 197.74113378684842,
+      "id": "Schubert_D911-17_HU33",
+      "bpm": 167,
+      "alternateBpm": 157,
+      "key": "D major",
+      "tempoConfidence": 0.025176719467895448,
+      "keyConfidence": 0.042315659381192514,
+      "tempoCrestFactor": 38.99492504976493,
+      "tempoStability": 0.2727272727272727,
+      "keyFlatness": 0.922200528551477,
+      "status": "complete",
+      "expectedKey": "D major"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 47.64734693877556,
+      "id": "Schubert_D911-18_HU33",
+      "bpm": 174.5,
+      "alternateBpm": 168,
+      "key": "D minor",
+      "tempoConfidence": 0.04391884680550043,
+      "keyConfidence": 0.33873218450219644,
+      "tempoCrestFactor": 27.569021209195423,
+      "tempoStability": 0.3333333333333333,
+      "keyFlatness": 0.9535138060865368,
+      "status": "complete",
+      "expectedKey": "D minor"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 70.91374149659859,
+      "id": "Schubert_D911-19_HU33",
+      "bpm": 124,
+      "alternateBpm": 150.5,
+      "key": "A major",
+      "tempoConfidence": 0.2380683567733197,
+      "keyConfidence": 0.05218178646787429,
+      "tempoCrestFactor": 25.587829785246434,
+      "tempoStability": 0,
+      "keyFlatness": 0.9041452362595798,
+      "status": "complete",
+      "expectedKey": "A major"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 242.74140589569288,
+      "id": "Schubert_D911-20_HU33",
+      "bpm": 92.5,
+      "alternateBpm": 174.5,
+      "key": "F minor",
+      "tempoConfidence": 0.3059799700544789,
+      "keyConfidence": 0.12549948140227032,
+      "tempoCrestFactor": 44.79412559040813,
+      "tempoStability": 0.3333333333333333,
+      "keyFlatness": 0.914034163908939,
+      "status": "complete",
+      "expectedKey": "F minor"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 221.19328798186024,
+      "id": "Schubert_D911-21_HU33",
+      "bpm": 175.5,
+      "alternateBpm": 167,
+      "key": "F major",
+      "tempoConfidence": 0.022141477330092186,
+      "keyConfidence": 0.08981478678364313,
+      "tempoCrestFactor": 44.293689895684096,
+      "tempoStability": 0.35714285714285715,
+      "keyFlatness": 0.8973611222600992,
+      "status": "complete",
+      "expectedKey": "F major"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 79.6908843537413,
+      "id": "Schubert_D911-22_HU33",
+      "bpm": 106,
+      "alternateBpm": 110,
+      "key": "C# major",
+      "tempoConfidence": 0.2700728497591318,
+      "keyConfidence": 0.14870960712290704,
+      "tempoCrestFactor": 24.400616869131053,
+      "tempoStability": 0,
+      "keyFlatness": 0.9137072515269921,
+      "status": "complete",
+      "expectedKey": "F# minor"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 189.1497505668936,
+      "id": "Schubert_D911-23_HU33",
+      "bpm": 118,
+      "alternateBpm": 174.5,
+      "key": "D major",
+      "tempoConfidence": 0.21878051424883194,
+      "keyConfidence": 0.0514455961281706,
+      "tempoCrestFactor": 46.761009784075654,
+      "tempoStability": 0,
+      "keyFlatness": 0.9032217670213278,
+      "status": "complete",
+      "expectedKey": "G major"
+    },
+    {
+      "structureAvailable": true,
+      "audioDurationSeconds": 188.08163265306138,
+      "id": "Schubert_D911-24_HU33",
+      "bpm": 165,
+      "alternateBpm": 146.5,
+      "key": "D major",
+      "tempoConfidence": 0.03594877944345441,
+      "keyConfidence": 0.1251837685671941,
+      "tempoCrestFactor": 38.40020019451673,
+      "tempoStability": 0.16666666666666666,
+      "keyFlatness": 0.8329203343148076,
+      "status": "complete",
+      "expectedKey": "G minor"
+    }
+  ],
+  "limitations": [
+    "One composer, singer/pianist performance and classical art-song domain; not the required stratified 200-track corpus.",
+    "Published performance-specific global keys are scored; local modulation labels are not reduced into global labels.",
+    "No stable global BPM labels are supplied; BPM accuracy remains unscored.",
+    "Analyzer-only throughput excludes API/DB artifact publication and GUI preparation; it is not comparable to full preparation timings.",
+    "No browser baseline, supported-platform determinism, reviewed go/no-go decision or broad accuracy gate closure.",
+    "These 24 recordings must not be used for subsequent tuning while retaining their held-out designation."
+  ]
+}

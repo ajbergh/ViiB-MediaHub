@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, type TrackAnalysisFeature } from '../../../services/api';
+import { withTransientReadRetry } from '../../../services/audioReadDiagnostics';
 import { djTrackSourceIdentity, formatManualBpm, tapTempoBpm } from '../../../lib/djBpmCorrection';
 import type { Song } from '../../../types';
 import type { DeckId } from '../../../slices/djMixerSlice';
@@ -34,6 +35,7 @@ function parseBpm(value: string): number | undefined {
 export function DJBpmEditor({ track, deck, embedded = false }: DJBpmEditorProps) {
   const deckKey = deck === 'A' ? 'djDeckA' : 'djDeckB';
   const setDeckAnalysis = useStore(state => state.setDeckAnalysis);
+  const spotifySession = useStore(state => state.spotifySessionGeneration);
   const sourceIdentity = useMemo(() => djTrackSourceIdentity(track), [track?.id, track?.source, track?.sourceName, track?.path, track?.fileHash, track?.fileHandle?.name]);
   const [feature, setFeature] = useState<TrackAnalysisFeature | null>(null);
   const [bpmInput, setBpmInput] = useState('');
@@ -51,7 +53,7 @@ export function DJBpmEditor({ track, deck, embedded = false }: DJBpmEditorProps)
     setBusy(false);
     setStatus('');
     if (track?.id) {
-      api.getTrackBPM(track.id).then(value => {
+      withTransientReadRetry(() => api.getTrackBPM(track.id), () => current).then(value => {
         if (!current) return;
         setFeature(value);
         setBpmInput(value.bpm == null ? '' : formatManualBpm(value.bpm));
@@ -65,7 +67,7 @@ export function DJBpmEditor({ track, deck, embedded = false }: DJBpmEditorProps)
       current = false;
       actionGeneration.current += 1;
     };
-  }, [track?.id, sourceIdentity]);
+  }, [track?.id, sourceIdentity, spotifySession]);
 
   const isCurrentSourceLoaded = useCallback(() => {
     const current = useStore.getState()[deckKey];

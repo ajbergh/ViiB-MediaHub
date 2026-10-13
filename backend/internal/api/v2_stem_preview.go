@@ -3,8 +3,12 @@
 package api
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -111,6 +115,21 @@ func (a *API) getStemPreviewV2(w http.ResponseWriter, r *http.Request) {
 		stemError(w, r, http.StatusConflict, "stem_package_changed", "Stem artifact changed during lookup", false)
 		return
 	}
+	snapshot, snapshotInfo, err := snapshotStemArtifact(f, path, artifact)
+	if err != nil {
+		stemError(w, r, http.StatusConflict, "stem_package_changed", "Stem artifact changed or could not be verified", false)
+		return
+	}
+	defer func() {
+		name := snapshot.Name()
+		_ = snapshot.Close()
+		_ = os.Remove(name)
+	}()
+	sourceMatches, err := stemSourceMatchesFreshContext(r.Context(), song, validated.Manifest)
+	if err != nil || !sourceMatches {
+		stemError(w, r, http.StatusConflict, "stem_source_stale", "Stem package no longer matches the current local source audio", false)
+		return
+	}
 	w.Header().Set("Content-Type", "audio/wav")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -118,7 +137,64 @@ func (a *API) getStemPreviewV2(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Sample-Rate", strconv.Itoa(artifact.SampleRate))
 	w.Header().Set("X-Channel-Count", strconv.Itoa(artifact.Channels))
 	w.Header().Set("X-Frame-Count", strconv.FormatInt(artifact.Frames, 10))
-	http.ServeContent(w, r, "stem.wav", fileInfo.ModTime(), f)
+	http.ServeContent(w, r, "stem.wav", snapshotInfo.ModTime(), snapshot)
+}
+
+// snapshotStemArtifact copies a verified artifact into a private temporary
+// file before range serving. The response therefore remains bound to the exact
+// bytes whose digest was checked, even if the package is replaced mid-stream.
+func snapshotStemArtifact(source *os.File, sourcePath string, artifact stems.Artifact) (*os.File, os.FileInfo, error) {
+	before, err := source.Stat()
+	if err != nil {
+		return nil, nil, err
+	}
+	if !before.Mode().IsRegular() || before.Size() != artifact.SizeBytes {
+		return nil, nil, fmt.Errorf("stem artifact size or file type changed")
+	}
+	pathBefore, err := os.Lstat(sourcePath)
+	if err != nil || pathBefore.Mode()&os.ModeSymlink != 0 || !os.SameFile(before, pathBefore) {
+		return nil, nil, fmt.Errorf("stem artifact path changed before snapshot")
+	}
+	temp, err := os.CreateTemp("", "viib-stem-preview-*.wav")
+	if err != nil {
+		return nil, nil, err
+	}
+	ok := false
+	defer func() {
+		if !ok {
+			name := temp.Name()
+			_ = temp.Close()
+			_ = os.Remove(name)
+		}
+	}()
+	if _, err = source.Seek(0, io.SeekStart); err != nil {
+		return nil, nil, err
+	}
+	h := sha256.New()
+	written, err := io.Copy(io.MultiWriter(temp, h), source)
+	if err != nil {
+		return nil, nil, err
+	}
+	after, err := source.Stat()
+	if err != nil {
+		return nil, nil, err
+	}
+	pathAfter, pathErr := os.Lstat(sourcePath)
+	if pathErr != nil || pathAfter.Mode()&os.ModeSymlink != 0 || !os.SameFile(after, pathAfter) || !os.SameFile(before, after) || after.Size() != before.Size() || !after.ModTime().Equal(before.ModTime()) {
+		return nil, nil, fmt.Errorf("stem artifact changed while taking snapshot")
+	}
+	if written != artifact.SizeBytes || !strings.EqualFold(hex.EncodeToString(h.Sum(nil)), artifact.SHA256) {
+		return nil, nil, fmt.Errorf("stem artifact checksum mismatch")
+	}
+	if _, err = temp.Seek(0, io.SeekStart); err != nil {
+		return nil, nil, err
+	}
+	info, err := temp.Stat()
+	if err != nil {
+		return nil, nil, err
+	}
+	ok = true
+	return temp, info, nil
 }
 
 func isAllowedStemName(name stems.StemName) bool {

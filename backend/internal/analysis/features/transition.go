@@ -9,7 +9,7 @@ import (
 	analysiskey "github.com/ajbergh/viib-mediahub/internal/analysis/key"
 )
 
-const TransitionAlgorithmVersion = "transition-v3-structure-boundary-v1"
+const TransitionAlgorithmVersion = "transition-v4-manual-energy-v1"
 
 type TransitionIntent string
 
@@ -30,6 +30,7 @@ type TransitionMetadata struct {
 	CamelotKey            *string  `json:"camelotKey,omitempty"`
 	KeySource             string   `json:"keySource,omitempty"`
 	KeyConfidence         *float64 `json:"keyConfidence,omitempty"`
+	EnergyLevelSource     string   `json:"energyLevelSource,omitempty"`
 	EnergyLevel           *int     `json:"energyLevel,omitempty"`
 	EnergyLevelConfidence *float64 `json:"energyLevelConfidence,omitempty"`
 }
@@ -136,7 +137,7 @@ func ScoreTransitionWithMetadata(outgoing, incoming Result, outgoingMeta, incomi
 		weights = append(weights, weight*confidence)
 	}
 	if validEnergyLevel(outgoingMeta) && validEnergyLevel(incomingMeta) {
-		confidence := math.Min(*outgoingMeta.EnergyLevelConfidence, *incomingMeta.EnergyLevelConfidence)
+		confidence := math.Min(energyLevelWeight(outgoingMeta), energyLevelWeight(incomingMeta))
 		if confidence >= .5 {
 			delta := *incomingMeta.EnergyLevel - *outgoingMeta.EnergyLevel
 			vector.EnergyLevelDelta = &delta
@@ -270,7 +271,22 @@ func harmonicScore(relation string) float64 {
 	}
 }
 
+// A locked manual value is an explicit user choice with full ranking weight,
+// not an estimated confidence. Keep its public confidence absent.
+func energyLevelWeight(meta TransitionMetadata) float64 {
+	if meta.EnergyLevelSource == "manual" {
+		return 1
+	}
+	if meta.EnergyLevelConfidence != nil {
+		return *meta.EnergyLevelConfidence
+	}
+	return 0
+}
+
 func validEnergyLevel(meta TransitionMetadata) bool {
+	if meta.EnergyLevelSource == "manual" {
+		return meta.EnergyLevel != nil && *meta.EnergyLevel >= 1 && *meta.EnergyLevel <= 10
+	}
 	return meta.EnergyLevel != nil && *meta.EnergyLevel >= 1 && *meta.EnergyLevel <= 10 && meta.EnergyLevelConfidence != nil && finiteNumber(*meta.EnergyLevelConfidence) && *meta.EnergyLevelConfidence >= 0 && *meta.EnergyLevelConfidence <= 1
 }
 

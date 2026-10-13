@@ -47,6 +47,16 @@ func NewSourceAudioHashCache() *SourceAudioHashCache {
 // therefore refuses geometry conversion instead of choosing undocumented
 // resampling or up/down-mix behavior.
 func (c *SourceAudioHashCache) SHA256(ctx context.Context, registry *DecoderRegistry, source ResolvedSource, sampleRate, channels int) (string, error) {
+	return c.sha256(ctx, registry, source, sampleRate, channels, true)
+}
+
+// SHA256Fresh decodes the complete source even if its path/size/mtime entry
+// is cached. It is intended for source-identity checks at publication edges.
+func (c *SourceAudioHashCache) SHA256Fresh(ctx context.Context, registry *DecoderRegistry, source ResolvedSource, sampleRate, channels int) (string, error) {
+	return c.sha256(ctx, registry, source, sampleRate, channels, false)
+}
+
+func (c *SourceAudioHashCache) sha256(ctx context.Context, registry *DecoderRegistry, source ResolvedSource, sampleRate, channels int, allowCache bool) (string, error) {
 	if c == nil {
 		return "", errors.New("nil source audio hash cache")
 	}
@@ -77,7 +87,7 @@ func (c *SourceAudioHashCache) SHA256(ctx context.Context, registry *DecoderRegi
 	}
 	key := sourceAudioHashKey{path: absolutePath, size: before.Size(), mtimeNanos: before.ModTime().UnixNano(), rate: sampleRate, channels: channels}
 	c.mu.Lock()
-	if cached, ok := c.entries[key]; ok {
+	if cached, ok := c.entries[key]; allowCache && ok {
 		c.mu.Unlock()
 		return cached, nil
 	}

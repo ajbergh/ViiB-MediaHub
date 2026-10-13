@@ -103,7 +103,7 @@ func (d *DB) ResumePausedJobs() (int64, error) {
 }
 
 // RequeueJob returns a running job to the durable queue without recording a
-// failure. It exists so a job that must yield — to DJ playback, for example —
+// failure. It exists so a job that must yield -- to DJ playback, for example --
 // releases its worker instead of occupying one while it waits. The work list is
 // re-derived when it is claimed again, so nothing is lost.
 func (d *DB) RequeueJob(id, message string, notBefore time.Duration) (bool, error) {
@@ -318,4 +318,22 @@ func (d *DB) ListJobs(limit int, status string) ([]Job, error) {
 		jobs = append(jobs, job)
 	}
 	return jobs, rows.Err()
+}
+
+// QueueMissingAnalysisIfNeeded atomically coalesces scan triggers behind an
+// unstarted local missing run. Running jobs cannot cover later catalog additions.
+func (d *DB) QueueMissingAnalysisIfNeeded(job Job) (bool, error) {
+	if err := d.EnsureJobSchema(); err != nil {
+		return false, err
+	}
+	now := time.Now().UnixMilli()
+	result, err := d.conn.Exec(`INSERT INTO operation_jobs(id,type,status,message,parameters,priority,created_at,updated_at)
+ SELECT ?,?,?,?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM operation_jobs WHERE type=? AND status IN (?,?)
+ AND json_valid(parameters) AND json_extract(parameters,'$.mode')='missing'
+ AND COALESCE(json_extract(parameters,'$.source'),'local') IN ('','local'))`, job.ID, job.Type, JobStatusQueued, job.Message, nullableJSON(job.Parameters), job.Priority, now, now, job.Type, JobStatusQueued, JobStatusPaused)
+	if err != nil {
+		return false, err
+	}
+	n, err := result.RowsAffected()
+	return n == 1, err
 }

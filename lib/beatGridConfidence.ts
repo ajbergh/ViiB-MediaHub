@@ -3,7 +3,7 @@
 import type { DeckAnalysisPatch, DeckState } from '../slices/djMixerSlice';
 import type { TrackAnalysisFeature, TrackBeatGrid } from '../services/api';
 
-export type BeatGridSource = 'unknown' | 'generated' | 'measured' | 'inferred-from-meter' | 'manual';
+export type BeatGridSource = 'unknown' | 'generated' | 'measured' | 'spotify' | 'inferred-from-meter' | 'manual';
 export function validBeatGrid(beats: number[] | null | undefined): boolean {
   return !!beats && beats.length >= 2 && beats.every((beat, i) => Number.isFinite(beat) && beat >= 0 && (i === 0 || beat > beats[i - 1]));
 }
@@ -16,7 +16,10 @@ export function resolvedGridPatch(feature: TrackAnalysisFeature | null, grid: Tr
   const patch: DeckAnalysisPatch = { automatic: true, bpm, bpmConfidence: feature?.bpmConfidence ?? null };
   patch.tempoEvidence = feature?.bpmSource === 'measured' ? { source: 'server', bpm: bpm ?? undefined, score: feature.bpmConfidence, alternateBpm: feature.bpmAltCandidate ?? null, stability: feature.tempoStability ?? null } : null;
   if (feature?.key) patch.key = feature.key;
-  if (grid && validBeatGrid(grid.beats)) {
+  patch.beatGridUnavailable = grid?.resolution === 'unavailable';
+  if (grid) patch.beatGridSourceFingerprint = grid.sourceFingerprint ?? feature?.sourceFingerprint ?? null;
+  else if (feature?.sourceFingerprint) patch.beatGridSourceFingerprint = feature.sourceFingerprint;
+  if (grid && grid.resolution !== 'unavailable' && validBeatGrid(grid.beats)) {
     patch.beatGrid = grid.beats;
     patch.downbeatIndices = grid.downbeatIndices;
     patch.beatGridLocked = grid.locked;
@@ -27,7 +30,7 @@ export function resolvedGridPatch(feature: TrackAnalysisFeature | null, grid: Tr
     // browser. The backend analyzer persists phase-aligned grids atomically.
     patch.beatGrid = null;
     patch.beatGridSource = 'unknown';
-    patch.beatGridLocked = false;
+    patch.beatGridLocked = grid?.locked ?? false;
     patch.downbeatIndices = null;
   }
   return patch;

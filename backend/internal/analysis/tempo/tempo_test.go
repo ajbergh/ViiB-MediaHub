@@ -100,6 +100,21 @@ func TestOnsetAccumulatorMatchesOneShotAcrossChunkBoundaries(t *testing.T) {
 		t.Fatalf("chunked = %#v, one-shot = %#v", got, want)
 	}
 }
+func TestOnsetCrestFactorDoesNotDependOnTempoSelection(t *testing.T) {
+	fixture, err := analysisbench.NewClickTrack("crest-factor", 124, 8, 44100, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accumulator := NewOnsetAccumulator(fixture.SampleRate)
+	accumulator.Feed(fixture.Samples)
+	want := accumulator.Estimate().OnsetCrestFactor
+	if want <= 0 {
+		t.Fatal("fixture did not produce onset evidence")
+	}
+	if got := accumulator.OnsetCrestFactor(); math.Abs(got-want) > 1e-12 {
+		t.Fatalf("standalone crest factor = %v, full estimator crest factor = %v", got, want)
+	}
+}
 func min(a, b int) int {
 	if a < b {
 		return a

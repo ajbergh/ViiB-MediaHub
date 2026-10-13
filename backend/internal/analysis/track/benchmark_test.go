@@ -89,10 +89,41 @@ func TestProduceBenchmarkResultsRunsProductionPathForMP3AndOgg(t *testing.T) {
 
 func TestProduceBenchmarkResultsRejectsDeferredCodecBeforeRunning(t *testing.T) {
 	manifest := analysisbench.CorpusManifest{Version: "phase0-v1", EvidenceClass: analysisbench.EvidenceSyntheticCI, Tracks: []analysisbench.CorpusTrack{{
-		ID: "wav", Path: "local.wav", License: "private-local", LabelSource: "test fixture", Genre: "house", Split: analysisbench.SplitHeldOut, ExpectedBPM: benchmarkPointer(128),
+		ID: "flac", Path: "local.flac", License: "private-local", LabelSource: "test fixture", Genre: "house", Split: analysisbench.SplitHeldOut, ExpectedBPM: benchmarkPointer(128),
 	}}}
 	if _, err := ProduceBenchmarkResults(context.Background(), manifest); err == nil {
-		t.Fatal("WAV was accepted despite the .mp3/.ogg-only Phase 0 scope")
+		t.Fatal("unregistered FLAC decoder was accepted")
+	}
+}
+
+func TestProduceBenchmarkResultsUsesProductionWAVDecoder(t *testing.T) {
+	fixture, err := analysisbench.NewClickTrack("public-corpus-wav-path", 128, 12, 22050, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := analysisbench.WriteFixturesWAV(t.TempDir(), []analysisbench.PCMFixture{fixture})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := analysisbench.CorpusManifest{Version: "wav-decoder-regression", EvidenceClass: analysisbench.EvidenceSyntheticCI, Tracks: []analysisbench.CorpusTrack{{
+		ID: "wav", Path: paths[0], License: "generated fixture", LabelSource: "click generator", Genre: "synthetic", Split: analysisbench.SplitHeldOut, ExpectedBPM: benchmarkPointer(128),
+	}}}
+	results, err := ProduceBenchmarkResults(context.Background(), manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results.Results) != 1 || results.Results[0].Error != "" || results.Results[0].BPM == nil || results.Throughput.Tracks[0].Codec != "wav" || results.Throughput.AudioSeconds < 11.9 {
+		t.Fatalf("WAV did not run through production analysis: %+v", results)
+	}
+	if !results.Results[0].StructureAvailable || results.Results[0].AudioDurationSeconds < 11.9 {
+		t.Fatal("production section evidence was not exported")
+	}
+	if err := results.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	probe, err := ProbeBenchmarkFile(context.Background(), paths[0])
+	if err != nil || probe.Error != "" || probe.BPM == nil || probe.Timing.AudioSeconds < 11.9 {
+		t.Fatalf("WAV probe=%+v error=%v", probe, err)
 	}
 }
 
@@ -117,7 +148,7 @@ func TestProbeBenchmarkFileReportsDecoderEvidenceWithoutCorpusLabels(t *testing.
 		t.Fatalf("probe = %#v, want decoder and analyzer evidence without a label claim", probe)
 	}
 	if _, err := ProbeBenchmarkFileWithRegistry(context.Background(), "unsupported.wav", registry); err == nil {
-		t.Fatal("probe accepted deferred WAV scope")
+		t.Fatal("probe accepted a format absent from its supplied registry")
 	}
 }
 

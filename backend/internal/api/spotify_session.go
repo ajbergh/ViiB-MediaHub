@@ -3,8 +3,11 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/google/uuid"
 	"net/http"
 	"strconv"
 	"sync"
@@ -19,6 +22,8 @@ import (
 const spotifyCookieSetting = "spotify_webplayer_session"
 
 var errSpotifyAccountChanged = errors.New("spotify account changed")
+var errSpotifySessionRead = errors.New("could not read Spotify session")
+var errSpotifySessionStore = errors.New("could not store Spotify session")
 
 type spotifyTokenSource interface {
 	Token(context.Context, spotifyauth.Purpose) (spotifyauth.Token, error)
@@ -37,6 +42,21 @@ type spotifySessionStatus struct {
 	TokenIssueCount uint64 `json:"tokenIssueCount,omitempty"`
 }
 type spotifyAuthRuntime struct {
+	ownerMu               sync.Mutex
+	ownerFlight           *spotifyOwnerFlight
+	ownerVerifier         func(context.Context) error
+	ownerRetryLifetime    context.Context
+	ownerRetryKey         string
+	ownerRetryProvider    string
+	ownerRetryAt          time.Time
+	ownerRetryErr         error
+	ownerFailures         int
+	ownerNow              func() time.Time
+	ownerRetryDelay       func(time.Duration) time.Duration
+	playlistMu            sync.Mutex
+	playlistLeases        map[playlistLeaseKey]*playlistLease
+	waveformMu            sync.Mutex
+	waveformFlights       map[waveformFlightKey]*waveformFlight
 	storeSession          func(string) error
 	login                 spotifyBrowserLoginOwner
 	mu                    sync.RWMutex
@@ -59,6 +79,9 @@ type spotifyAuthRuntime struct {
 	webAPIUntil           time.Time
 	webAPINow             func() time.Time
 	options               spotifyauth.WebPlayerOptions
+	metadataContext       string
+	metadataEpoch         string
+	pendingOwner          *db.SpotifyMetadataOwner
 	lifetime              context.Context
 	endLifetime           context.CancelFunc
 }
@@ -78,7 +101,19 @@ func newSpotifyAuthRuntime(database *db.DB, options spotifyauth.WebPlayerOptions
 			}
 		}
 	}
-	s.lifetime, s.endLifetime = context.WithCancel(context.Background())
+	s.lifetime, s.endLifetime = newSpotifyAccountLifetime()
+	s.metadataContext = uuid.NewString()
+	s.metadataEpoch = uuid.NewString()
+	if s.database != nil {
+		if owner, err := s.database.ReserveSpotifyMetadataRuntime(s.metadataEpoch); err != nil {
+			s.invalid.Store(true)
+		} else if owner != nil {
+			s.pendingOwner = owner
+			s.metadataContext = owner.ContextKey
+		} else if err := s.database.ActivateSpotifyMetadataContext(s.metadataContext); err != nil {
+			s.invalid.Store(true)
+		}
+	}
 	if database == nil {
 		s.cookieMode = true
 		s.manager = spotifyauth.NewWebPlayerManager(nil)
@@ -102,7 +137,69 @@ func newSpotifyAuthRuntime(database *db.DB, options spotifyauth.WebPlayerOptions
 			}
 		}
 	}
+	// Credentials without a persisted verified owner must be confirmed through
+	// /v1/me before any provider work is admitted. A provisional context keeps
+	// the DB's active context empty until that confirmation succeeds.
+	if s.pendingOwner == nil {
+		provider := ""
+		if s.cookieMode {
+			if s.provider != nil {
+				provider = "webplayer"
+			}
+		} else if credentials, err := database.GetSetting("spotify_credentials"); err == nil && credentials != "" {
+			provider = "oauth"
+		}
+		if provider != "" {
+			s.pendingOwner = &db.SpotifyMetadataOwner{Provider: provider, ContextKey: s.metadataContext}
+			if err := database.ActivateSpotifyMetadataContext(""); err != nil {
+				s.invalid.Store(true)
+			}
+		}
+	}
+	if s.pendingOwner != nil {
+		s.ownerRetryProvider = s.pendingOwner.Provider
+		s.ownerRetryKey = s.pendingOwner.ContextKey
+		if s.pendingOwner.AccountID == "" {
+			material := ""
+			if s.pendingOwner.Provider == "webplayer" {
+				var record spotifyCookieRecord
+				if json.Unmarshal([]byte(raw), &record) == nil {
+					material = record.Cookie
+				}
+			} else if credentials, err := database.GetSetting("spotify_credentials"); err == nil {
+				material = credentials
+			}
+			if material != "" {
+				s.ownerRetryKey = spotifyOwnerRetryDigest(s.pendingOwner.Provider, material)
+			}
+		}
+		if s.ownerRetryKey != "" {
+			if retry, err := database.GetSpotifyOwnerValidationRetry(s.pendingOwner.Provider, s.ownerRetryKey); err == nil && retry != nil {
+				s.ownerRetryLifetime = s.lifetime
+				s.ownerRetryAt = retry.RetryAt
+				s.ownerFailures = retry.Failures
+				s.ownerRetryErr = ownerRetryErrorFromRecord(*retry)
+			}
+		}
+	}
 	return s
+}
+
+func spotifyOwnerRetryDigest(provider, material string) string {
+	sum := sha256.Sum256([]byte(provider + "\x00" + material))
+	return fmt.Sprintf("sha256:%x", sum[:])
+}
+
+// Caller may hold s.mu; owner validation never takes s.mu while holding ownerMu.
+func (s *spotifyAuthRuntime) setOwnerRetryIdentity(provider, key string) {
+	s.ownerMu.Lock()
+	s.ownerRetryProvider = provider
+	s.ownerRetryKey = key
+	s.ownerRetryLifetime = nil
+	s.ownerRetryAt = time.Time{}
+	s.ownerRetryErr = nil
+	s.ownerFailures = 0
+	s.ownerMu.Unlock()
 }
 
 type spotifyAccountContextKey struct{}
@@ -116,12 +213,20 @@ func (s *spotifyAuthRuntime) requestContext(parent context.Context) (context.Con
 	s.mu.RUnlock()
 	ctx, cancel := context.WithCancelCause(parent)
 	ctx = context.WithValue(ctx, spotifyAccountContextKey{}, lifetime)
-	stop := context.AfterFunc(lifetime, func() { cancel(errSpotifyAccountChanged) })
+	unregister := registerSpotifyAccountRequest(lifetime, cancel)
+	// Compatibility for explicitly supplied external lifetimes.
+	var stop func() bool
+	if _, ok := lifetime.Value(spotifyLifetimeRegistryKey{}).(*spotifyLifetimeRegistry); !ok {
+		stop = context.AfterFunc(lifetime, func() { cancel(errSpotifyAccountChanged) })
+	}
 	if lifetime.Err() != nil {
 		cancel(errSpotifyAccountChanged)
 	}
 	return ctx, func() {
-		stop()
+		unregister()
+		if stop != nil {
+			stop()
+		}
 		if lifetime.Err() != nil {
 			cancel(errSpotifyAccountChanged)
 		} else {
@@ -142,9 +247,18 @@ func (s *spotifyAuthRuntime) Refresh(ctx context.Context, p spotifyauth.Purpose,
 func (s *spotifyAuthRuntime) accountToken(ctx context.Context, p spotifyauth.Purpose, rejected *spotifyauth.Token) (spotifyauth.Token, error) {
 	ctx, cancel := s.requestContext(ctx)
 	defer cancel()
+	if ctx.Value(spotifyOwnerBootstrapKey{}) != true {
+		if err := s.ensureMetadataOwner(ctx); err != nil {
+			return spotifyauth.Token{}, err
+		}
+	}
 	s.mu.RLock()
 	lifetime := s.lifetime
 	manager := s.manager
+	if s.pendingOwner != nil && ctx.Value(spotifyOwnerBootstrapKey{}) != true {
+		s.mu.RUnlock()
+		return spotifyauth.Token{}, spotifyauth.ErrDisabled
+	}
 	if ctx.Err() != nil || ctx.Value(spotifyAccountContextKey{}) != lifetime || s.closed || lifetime.Err() != nil || (s.cookieMode && (s.provider == nil || s.invalid.Load())) {
 		s.mu.RUnlock()
 		return spotifyauth.Token{}, spotifyauth.ErrAuthenticationRequired
@@ -187,7 +301,7 @@ func (s *spotifyAuthRuntime) status() spotifySessionStatus {
 		return status
 	}
 	connected := false
-	if !s.closed {
+	if !s.closed && !s.invalid.Load() && s.lifetime.Err() == nil {
 		if creds, err := readSpotifyCredentials(s.database); err == nil {
 			connected = creds.AccessToken != ""
 		}
@@ -266,6 +380,7 @@ func (s *spotifyAuthRuntime) connectGuarded(ctx context.Context, cookie string, 
 		}
 		defer func() { finish(committed) }()
 	}
+	retryKey := spotifyOwnerRetryDigest("webplayer", cookie)
 	raw, err := json.Marshal(spotifyCookieRecord{Provider: "webplayer", Cookie: cookie})
 	cookie = ""
 	if err != nil {
@@ -275,17 +390,22 @@ func (s *spotifyAuthRuntime) connectGuarded(ctx context.Context, cookie string, 
 	// Storage failure must leave the current account and media usable.
 	previous, err := s.database.GetSetting(spotifyCookieSetting)
 	if err != nil {
-		return errors.New("could not read Spotify session")
+		return errSpotifySessionRead
 	}
 	if err := s.storeSession(string(raw)); err != nil {
-		return errors.New("could not store Spotify session")
+		return errSpotifySessionStore
 	}
 	defer func() {
 		if !committed {
 			_ = s.storeSession(previous)
 			s.mu.Lock()
 			if !s.closed {
-				s.lifetime, s.endLifetime = context.WithCancel(context.Background())
+				s.lifetime, s.endLifetime = newSpotifyAccountLifetime()
+				s.metadataContext = uuid.NewString()
+				s.pendingOwner = nil
+				if s.database != nil {
+					_ = s.database.ActivateSpotifyMetadataContext(s.metadataContext)
+				}
 			}
 			s.mu.Unlock()
 		}
@@ -311,12 +431,21 @@ func (s *spotifyAuthRuntime) connectGuarded(ctx context.Context, cookie string, 
 	if s.provider != nil {
 		s.provider.Disconnect()
 	}
-	s.lifetime, s.endLifetime = context.WithCancel(context.Background())
+	s.lifetime, s.endLifetime = newSpotifyAccountLifetime()
+	s.metadataContext = uuid.NewString()
+	s.pendingOwner = nil
+	s.setOwnerRetryIdentity("webplayer", retryKey)
+	if s.database != nil {
+		_ = s.database.ActivateSpotifyMetadataContext(s.metadataContext)
+	}
 	s.invalid.Store(false)
 	s.provider = p
 	s.manager = spotifyauth.NewWebPlayerManager(p)
 	s.cookieMode = true
 	committed = true
+	if s.database != nil {
+		_ = s.database.ClearSpotifyOwnerValidationRetry(s.metadataEpoch)
+	}
 	return nil
 }
 func (s *spotifyAuthRuntime) disconnect() error {
@@ -326,6 +455,8 @@ func (s *spotifyAuthRuntime) disconnect() error {
 	s.beginRetirement()
 	s.mediaMu.Lock()
 	defer s.mediaMu.Unlock()
+	spotifyTokenRefreshMu.Lock()
+	defer spotifyTokenRefreshMu.Unlock()
 	if s.onRetire != nil {
 		if err := s.onRetire(); err != nil {
 			return err
@@ -334,13 +465,22 @@ func (s *spotifyAuthRuntime) disconnect() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	raw, _ := json.Marshal(spotifyCookieRecord{Provider: "webplayer"})
-	if err := s.database.SetSetting(spotifyCookieSetting, string(raw)); err != nil {
+	nextContext := uuid.NewString()
+	if err := s.database.SetSettingsBatch(map[string]string{
+		spotifyCookieSetting:              string(raw),
+		"spotify_credentials":             "",
+		"spotify_metadata_active_context": "",
+	}); err != nil {
 		return errors.New("could not remove Spotify session")
 	}
+	_ = s.database.ClearSpotifyOwnerValidationRetry(s.metadataEpoch)
 	if s.provider != nil {
 		s.provider.Disconnect()
 	}
-	s.lifetime, s.endLifetime = context.WithCancel(context.Background())
+	s.lifetime, s.endLifetime = newSpotifyAccountLifetime()
+	s.metadataContext = nextContext
+	s.pendingOwner = nil
+	s.setOwnerRetryIdentity("", "")
 	s.provider = nil
 	s.cookieMode = true
 	s.manager = spotifyauth.NewWebPlayerManager(nil)
@@ -369,6 +509,12 @@ func (a *API) spotifyTokens() *spotifyAuthRuntime {
 	if a.spotifyAuth == nil {
 		a.spotifyAuth = newSpotifyAuthRuntime(a.db, spotifyauth.WebPlayerOptions{})
 	}
+	runtime := a.spotifyAuth
+	runtime.mu.Lock()
+	if runtime.ownerVerifier == nil {
+		runtime.ownerVerifier = func(ctx context.Context) error { return a.revalidateSpotifyOwner(ctx, runtime) }
+	}
+	runtime.mu.Unlock()
 	a.spotifyHooksOnce.Do(func() {
 		a.spotifyAuth.setRetirementHooks(a.cancelSpotifyMedia, a.retireSpotifyAccount, func() {
 			a.initSpotifyAnalysis()
@@ -440,7 +586,19 @@ func (a *API) retireSpotifyAccount() error {
 	if service != nil {
 		service.Close()
 	}
-	return a.db.PurgeExternalAnalysis()
+	if err := a.db.ClearProviderThreeBandCapabilityStatuses("", ""); err != nil {
+		return err
+	}
+	if err := a.db.ActivateSpotifyMetadataContext(""); err != nil {
+		return err
+	}
+	if err := a.db.RetirePrivateSpotifyScalarBindings(); err != nil {
+		return err
+	}
+	if err := a.db.PurgeExternalAnalysis(); err != nil {
+		return err
+	}
+	return a.db.PurgeSpotifyMetadata()
 }
 func respondSpotifySessionError(w http.ResponseWriter, err error) {
 	status := http.StatusServiceUnavailable
@@ -462,8 +620,57 @@ func respondSpotifySessionError(w http.ResponseWriter, err error) {
 func (s *spotifyAuthRuntime) withAccount(ctx context.Context, commit func() error) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if ctx.Err() != nil || s.closed || s.lifetime.Err() != nil || ctx.Value(spotifyAccountContextKey{}) != s.lifetime || s.invalid.Load() {
+	if ctx.Err() != nil || s.closed || s.lifetime.Err() != nil || ctx.Value(spotifyAccountContextKey{}) != s.lifetime || s.invalid.Load() || s.pendingOwner != nil {
 		return spotifyauth.ErrAuthenticationRequired
 	}
 	return commit()
+}
+
+// Explicit OAuth saves represent a new login selection. Automatic token renewal
+// uses its separate persistence path and keeps the current metadata lifetime.
+func (s *spotifyAuthRuntime) replaceOAuthCredentials(raw string) error {
+	s.changeMu.Lock()
+	defer s.changeMu.Unlock()
+	s.beginRetirement()
+	s.mediaMu.Lock()
+	defer s.mediaMu.Unlock()
+	// Drain canceled media before taking the refresh mutex: an old media
+	// operation may itself be waiting for token renewal.
+	spotifyTokenRefreshMu.Lock()
+	defer spotifyTokenRefreshMu.Unlock()
+	if s.onRetire != nil {
+		if err := s.onRetire(); err != nil {
+			return err
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return errors.New("spotify runtime closed")
+	}
+	nextContext := uuid.NewString()
+	retryKey := spotifyOwnerRetryDigest("oauth", raw)
+	if err := s.database.SetSettingsBatch(map[string]string{
+		"spotify_credentials":             raw,
+		spotifyCookieSetting:              "",
+		"spotify_metadata_active_context": "",
+	}); err != nil {
+		return err
+	}
+	if err := s.database.ClearProviderThreeBandCapabilityStatuses("", ""); err != nil {
+		return err
+	}
+	_ = s.database.ClearSpotifyOwnerValidationRetry(s.metadataEpoch)
+	if s.provider != nil {
+		s.provider.Disconnect()
+	}
+	s.lifetime, s.endLifetime = newSpotifyAccountLifetime()
+	s.metadataContext = nextContext
+	s.pendingOwner = &db.SpotifyMetadataOwner{Provider: "oauth", ContextKey: nextContext}
+	s.setOwnerRetryIdentity("oauth", retryKey)
+	s.provider = nil
+	s.cookieMode = false
+	s.invalid.Store(false)
+	s.manager = spotifyOAuthManager(s.database)
+	return nil
 }

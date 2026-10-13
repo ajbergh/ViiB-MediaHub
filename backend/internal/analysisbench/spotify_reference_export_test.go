@@ -55,7 +55,10 @@ func newExportFixture(t *testing.T) exportFixture {
 		t.Fatalf("confirm: %v %v", ok, err)
 	}
 	now := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
-	observation := spotifyanalysis.Observation{TrackID: recordingID, Source: "spotify_internal", SourceEndpoint: "audio_features", RetrievedAt: now.Add(-time.Hour), BPM: float64Ptr(120)}
+	observation := spotifyanalysis.Observation{AccountContext: "export-fixture", TrackID: recordingID, Source: "spotify_internal", SourceEndpoint: "audio_features", RetrievedAt: now.Add(-time.Hour), BPM: float64Ptr(120)}
+	if err := database.ActivateSpotifyMetadataContext("export-fixture"); err != nil {
+		t.Fatal(err)
+	}
 	if err := database.PutExternalAnalysis(observation, "fixture-adapter-v1", now.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +240,7 @@ func TestReferenceExportRejectsMixedProvenance(t *testing.T) {
 			secondTrack.Path = secondAudio
 			secondTrack.SpotifyRecording = &SpotifyRecordingIdentity{RecordingID: id, RecordingVersion: "synthetic-v1", AudioSHA256: hash, Confirmed: true}
 			f.manifest.Tracks = append(f.manifest.Tracks, secondTrack)
-			observation := spotifyanalysis.Observation{TrackID: id, Source: "spotify_internal", SourceEndpoint: "audio_features", RetrievedAt: f.options.Now.Add(-time.Hour), BPM: float64Ptr(120)}
+			observation := spotifyanalysis.Observation{AccountContext: "export-fixture", TrackID: id, Source: "spotify_internal", SourceEndpoint: "audio_features", RetrievedAt: f.options.Now.Add(-time.Hour), BPM: float64Ptr(120)}
 			revision := "fixture-adapter-v1"
 			if kind == "adapter" {
 				revision = "fixture-adapter-v2"
@@ -257,7 +260,7 @@ func TestReferenceExportRejectsMixedProvenance(t *testing.T) {
 func TestReferenceExportPreservesPartialNullableKeyMode(t *testing.T) {
 	f := newExportFixture(t)
 	mode := 1
-	observation := spotifyanalysis.Observation{TrackID: f.recordingID, Source: "spotify_internal", SourceEndpoint: "audio_features", RetrievedAt: f.options.Now.Add(-time.Minute), BPM: float64Ptr(120), Mode: &mode}
+	observation := spotifyanalysis.Observation{AccountContext: "export-fixture", TrackID: f.recordingID, Source: "spotify_internal", SourceEndpoint: "audio_features", RetrievedAt: f.options.Now.Add(-time.Minute), BPM: float64Ptr(120), Mode: &mode}
 	if err := f.database.PutExternalAnalysis(observation, "fixture-adapter-v1", f.options.Now.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}

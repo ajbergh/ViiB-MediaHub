@@ -1,6 +1,6 @@
 # Documentation archive
 
-Archived on 2026-10-04. These documents preserve completed implementation work, dated reviews, and research checkpoints. Their branch names, proposed behavior, and validation results describe the time they were written. Archiving a record does not close any unresolved quality or native-runtime gate.
+Archive index updated on 2026-10-12. These documents preserve completed implementation work, dated reviews, superseded plans and research checkpoints. Their branch names, proposed behavior, and validation results describe the time they were written. Archiving a record does not close any unresolved quality or native-runtime gate.
 
 Start with the [current documentation index](../index.md) for user guides and active plans/contracts. Active roadmaps, benchmark workflows, and Spotify parity/validation logs remain outside this archive because they still track open work.
 
@@ -30,7 +30,8 @@ Start with the [current documentation index](../index.md) for user guides and ac
 |---|---|
 | [DJ tempo evidence](research/DJ_TEMPO_EVIDENCE.md) | Earlier measurement checkpoint; current gates are in the [analysis roadmap](../DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md) |
 | [Spotify Web Player research plan](research/SPOTIFY_WEBPLAYER_AUTH_AUDIO_ANALYSIS_PLAN.md) | Superseded by the [implementation plan](../SPOTIFY_WEBPLAYER_AUTH_AUDIO_ANALYSIS_IMPLEMENTATION_PLAN.md) and [parity audit](../SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md) |
-| [Spotify waveform research](research/SPOTIFY_WAVEFORM_RESEARCH.md) | Dated two-recording probe informing the [proposed metadata/fallback plan](../SPOTIFY_METADATA_AND_LOCAL_FALLBACK_IMPLEMENTATION_PLAN.md); production integration remains proposed |
+| [Spotify waveform research](research/SPOTIFY_WAVEFORM_RESEARCH.md) | Earlier two-recording probe; implemented provider/local selection and remaining qualification limits are in [current scope](../SPOTIFY_BRANCH_REMAINING_WORK.md) |
+| [Spotify metadata foundation records](spotify-metadata-foundation/README.md) | Superseded broad plan, milestone handoffs, public-corpus/Beat This research and dated evidence; further local scanning/DSP improvements deferred to a future branch |
 | [Legacy download rules](research/DOWNLOAD_RULES.md) | Supersonic-era design note; current behavior is in [Downloads](../downloads.md) and [Spotify](../spotify.md) |
 
 ## Maintenance

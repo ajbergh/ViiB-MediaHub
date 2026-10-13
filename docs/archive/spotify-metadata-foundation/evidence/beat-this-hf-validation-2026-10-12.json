@@ -1,0 +1,134 @@
+{
+  "spaceCommit": "74ffbcb6ce5fbbe82412192a57523a886879a843",
+  "weightsCommit": "4afbe376535aaab71b76ae2ca2d7c16b08877321",
+  "checkpointSHA256": "8c328b45f59d8dd3dff219253ff6a8d6482be57d0133a29140e2febbf8eb8331",
+  "sourceFileSHA256": {
+    "inference.py": "ccccff4665399b931ebf181b73d264a6ad64fc1fe8acb4d3b950df825c47ce2d",
+    "preprocessing.py": "5aaeefa811c2fd1340c8a45233af4c2e814720b65c2124e59e78538fed03b3bc",
+    "utils.py": "779d6102ea28bdf94c8227157790191f5abbbb4564d0c36ce5ce0859e067cfab",
+    "model/beat_tracker.py": "bfa2fd212b4d6bf00b007eb0e606a6b11f1f7fc44c95bd1121ef5d2a934a923f",
+    "model/postprocessor.py": "431d6aeef41a8e9e9e63ee2577e895a5e214e0dbbcd2d505458cdfec02a611ee",
+    "model/roformer.py": "c83fa0047fe726bbfdb33658f40a0f9e721c5796067bfda560092e5969d50722"
+  },
+  "runtime": {
+    "torch": "2.5.1+cpu",
+    "torchaudio": "2.5.1+cpu",
+    "numpy": "2.4.6",
+    "soxr": "1.1.0",
+    "beat-this": "1.1.0"
+  },
+  "device": "cpu",
+  "dbn": false,
+  "wallSeconds": 13.5389491,
+  "checks": [
+    {
+      "id": "fsld-113625",
+      "durationSeconds": 0.48383219954648526,
+      "beatCount": 0,
+      "downbeatCount": 0,
+      "beatsExactlyMatch": true,
+      "downbeatsExactlyMatch": true,
+      "downbeatsSubsetOfBeats": true
+    },
+    {
+      "id": "fsld-113623",
+      "durationSeconds": 0.96578231292517,
+      "beatCount": 0,
+      "downbeatCount": 0,
+      "beatsExactlyMatch": true,
+      "downbeatsExactlyMatch": true,
+      "downbeatsSubsetOfBeats": true
+    },
+    {
+      "id": "fsld-245757",
+      "durationSeconds": 2,
+      "beatCount": 5,
+      "downbeatCount": 3,
+      "beatsExactlyMatch": true,
+      "downbeatsExactlyMatch": true,
+      "downbeatsSubsetOfBeats": true
+    },
+    {
+      "id": "fsld-222403",
+      "durationSeconds": 4,
+      "beatCount": 10,
+      "downbeatCount": 5,
+      "beatsExactlyMatch": true,
+      "downbeatsExactlyMatch": true,
+      "downbeatsSubsetOfBeats": true
+    },
+    {
+      "id": "fsld-32256",
+      "durationSeconds": 6.857142857142857,
+      "beatCount": 29,
+      "downbeatCount": 7,
+      "beatsExactlyMatch": true,
+      "downbeatsExactlyMatch": true,
+      "downbeatsSubsetOfBeats": true
+    },
+    {
+      "id": "fsld-212924",
+      "durationSeconds": 8.13560090702948,
+      "beatCount": 16,
+      "downbeatCount": 11,
+      "beatsExactlyMatch": true,
+      "downbeatsExactlyMatch": true,
+      "downbeatsSubsetOfBeats": true
+    },
+    {
+      "id": "fsld-455097",
+      "durationSeconds": 13.714285714285714,
+      "beatCount": 32,
+      "downbeatCount": 9,
+      "beatsExactlyMatch": true,
+      "downbeatsExactlyMatch": true,
+      "downbeatsSubsetOfBeats": true
+    },
+    {
+      "id": "fsld-467335",
+      "durationSeconds": 16,
+      "beatCount": 39,
+      "downbeatCount": 10,
+      "beatsExactlyMatch": true,
+      "downbeatsExactlyMatch": true,
+      "downbeatsSubsetOfBeats": true
+    },
+    {
+      "id": "fsld-463559",
+      "durationSeconds": 28.130975056689344,
+      "beatCount": 62,
+      "downbeatCount": 17,
+      "beatsExactlyMatch": true,
+      "downbeatsExactlyMatch": true,
+      "downbeatsSubsetOfBeats": true
+    },
+    {
+      "id": "fsld-427026",
+      "durationSeconds": 58.285714285714285,
+      "beatCount": 140,
+      "downbeatCount": 46,
+      "beatsExactlyMatch": true,
+      "downbeatsExactlyMatch": true,
+      "downbeatsSubsetOfBeats": true
+    },
+    {
+      "id": "fsld-78742",
+      "durationSeconds": 80,
+      "beatCount": 116,
+      "downbeatCount": 49,
+      "beatsExactlyMatch": true,
+      "downbeatsExactlyMatch": true,
+      "downbeatsSubsetOfBeats": true
+    },
+    {
+      "id": "fsld-78757",
+      "durationSeconds": 80,
+      "beatCount": 142,
+      "downbeatCount": 54,
+      "beatsExactlyMatch": true,
+      "downbeatsExactlyMatch": true,
+      "downbeatsSubsetOfBeats": true
+    }
+  ],
+  "scope": "Downloaded Space inference code and downloaded HF weights in existing pinned CPU environment; Gradio/pyharp hosted UI and Torch 2.11 runtime not executed."
+}

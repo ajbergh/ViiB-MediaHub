@@ -1,3 +1,4 @@
+import { savedLibraryDownloadState } from '../lib/spotifyDownloadOrigins';
 /**
  * ViiB MediaHub - Spotify Page
  * 
@@ -1313,7 +1314,7 @@ export const Spotify: React.FC = () => {
                             {savedAlbums.items.filter((item: any) => item?.album?.id).map((item: any, index: number) => (
                                 <div
                                     key={`${item.album.id}:${index}`}
-                                    onClick={() => navigate(`/spotify/album/${item.album.id}`)}
+                                    onClick={() => navigate(`/spotify/album/${item.album.id}`, { state: savedLibraryDownloadState('saved_albums', item.album.id, spotifySessionGeneration) })}
                                     className="bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-all duration-200 group cursor-pointer"
                                     role="link"
                                     tabIndex={0}
@@ -1321,7 +1322,7 @@ export const Spotify: React.FC = () => {
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' || e.key === ' ') {
                                             e.preventDefault();
-                                            navigate(`/spotify/album/${item.album.id}`);
+                                            navigate(`/spotify/album/${item.album.id}`, { state: savedLibraryDownloadState('saved_albums', item.album.id, spotifySessionGeneration) });
                                         }
                                     }}
                                 >
@@ -1364,7 +1365,7 @@ export const Spotify: React.FC = () => {
                             {savedPlaylists.items.filter((playlist: any) => playlist?.id).map((playlist: any, index: number) => (
                                 <div
                                     key={`${playlist.id}:${index}`}
-                                    onClick={() => navigate(`/spotify/playlist/${playlist.id}`)}
+                                    onClick={() => navigate(`/spotify/playlist/${playlist.id}`, { state: savedLibraryDownloadState('saved_playlists', playlist.id, spotifySessionGeneration) })}
                                     className="bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-all duration-200 group cursor-pointer"
                                     role="link"
                                     tabIndex={0}
@@ -1372,7 +1373,7 @@ export const Spotify: React.FC = () => {
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' || e.key === ' ') {
                                             e.preventDefault();
-                                            navigate(`/spotify/playlist/${playlist.id}`);
+                                            navigate(`/spotify/playlist/${playlist.id}`, { state: savedLibraryDownloadState('saved_playlists', playlist.id, spotifySessionGeneration) });
                                         }
                                     }}
                                 >

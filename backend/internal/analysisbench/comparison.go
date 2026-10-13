@@ -53,7 +53,11 @@ type CorpusTrack struct {
 	AcceptedMetricBPM []float64 `json:"acceptedMetricBpm,omitempty"`
 	ExpectedKey       string    `json:"expectedKey,omitempty"`
 	ExpectedUnknown   bool      `json:"expectedUnknown,omitempty"`
-	Notes             string    `json:"notes,omitempty"`
+	// Dimension-specific refusals support rhythmic, unpitched material without
+	// falsely requiring its valid BPM to be absent (and the converse).
+	ExpectedBPMUnknown bool   `json:"expectedBpmUnknown,omitempty"`
+	ExpectedKeyUnknown bool   `json:"expectedKeyUnknown,omitempty"`
+	Notes              string `json:"notes,omitempty"`
 }
 
 // ManifestForSplit returns a validated, label-preserving subset for Phase 0
@@ -93,10 +97,15 @@ type ResultSet struct {
 // DetectorResult intentionally permits unknown BPM/key values. A missing
 // result must be counted, not converted into a plausible default.
 type DetectorResult struct {
-	ID           string   `json:"id"`
-	BPM          *float64 `json:"bpm,omitempty"`
-	AlternateBPM *float64 `json:"alternateBpm,omitempty"`
-	Key          string   `json:"key,omitempty"`
+	// Structure is independent of beat ticks and musical-form labels. A true
+	// availability flag with no interior boundaries represents one region.
+	StructureAvailable   bool      `json:"structureAvailable,omitempty"`
+	StructureBoundaries  []float64 `json:"structureBoundaries,omitempty"`
+	AudioDurationSeconds float64   `json:"audioDurationSeconds,omitempty"`
+	ID                   string    `json:"id"`
+	BPM                  *float64  `json:"bpm,omitempty"`
+	AlternateBPM         *float64  `json:"alternateBpm,omitempty"`
+	Key                  string    `json:"key,omitempty"`
 	// Confidence remains the legacy/browser confidence field. New producers
 	// should use the dimension-specific fields so tempo and key calibration
 	// cannot accidentally share an unrelated score.
@@ -123,6 +132,8 @@ type ComparisonReport struct {
 	Tempo         TempoMetrics          `json:"tempo"`
 	Key           KeyMetrics            `json:"key"`
 	Unknown       UnknownMetrics        `json:"unknown"`
+	TempoRefusal  UnknownMetrics        `json:"tempoRefusal"`
+	KeyRefusal    UnknownMetrics        `json:"keyRefusal"`
 	Calibration   ConfidenceCalibration `json:"calibration"`
 	Throughput    *ThroughputMetrics    `json:"throughput,omitempty"`
 }
@@ -286,10 +297,13 @@ func (manifest CorpusManifest) Validate() error {
 				return fmt.Errorf("%s has invalid accepted metric BPM", context)
 			}
 		}
-		if track.ExpectedUnknown && (track.ExpectedBPM != nil || strings.TrimSpace(track.ExpectedKey) != "") {
+		if track.ExpectedUnknown && (track.ExpectedBPM != nil || strings.TrimSpace(track.ExpectedKey) != "" || track.ExpectedBPMUnknown || track.ExpectedKeyUnknown) {
 			return fmt.Errorf("%s cannot combine expected unknown with BPM or key labels", context)
 		}
-		if !track.ExpectedUnknown && track.ExpectedBPM == nil && strings.TrimSpace(track.ExpectedKey) == "" {
+		if (track.ExpectedBPMUnknown && track.ExpectedBPM != nil) || (track.ExpectedKeyUnknown && strings.TrimSpace(track.ExpectedKey) != "") {
+			return fmt.Errorf("%s cannot combine a dimension's value and expected refusal", context)
+		}
+		if !track.ExpectedUnknown && !track.ExpectedBPMUnknown && !track.ExpectedKeyUnknown && track.ExpectedBPM == nil && strings.TrimSpace(track.ExpectedKey) == "" {
 			return fmt.Errorf("%s requires an expected BPM, key, or unknown label", context)
 		}
 		if strings.TrimSpace(track.ExpectedKey) != "" {
@@ -351,6 +365,19 @@ func (resultSet ResultSet) Validate() error {
 				return fmt.Errorf("result %q has non-ascending beat positions", result.ID)
 			}
 		}
+		if math.IsNaN(result.AudioDurationSeconds) || math.IsInf(result.AudioDurationSeconds, 0) || result.AudioDurationSeconds < 0 {
+			return fmt.Errorf("result %q has invalid audio duration", result.ID)
+		}
+		if result.StructureAvailable || len(result.StructureBoundaries) > 0 {
+			if !result.StructureAvailable || result.AudioDurationSeconds <= 0 || math.IsNaN(result.AudioDurationSeconds) || math.IsInf(result.AudioDurationSeconds, 0) {
+				return fmt.Errorf("result %q has invalid structure availability or duration", result.ID)
+			}
+			for index, boundary := range result.StructureBoundaries {
+				if math.IsNaN(boundary) || math.IsInf(boundary, 0) || boundary <= 0 || boundary >= result.AudioDurationSeconds || (index > 0 && boundary <= result.StructureBoundaries[index-1]) {
+					return fmt.Errorf("result %q has invalid interior structure boundary", result.ID)
+				}
+			}
+		}
 		if strings.TrimSpace(result.Key) != "" && !strings.EqualFold(strings.TrimSpace(result.Key), "unknown") {
 			if _, err := parseKey(result.Key); err != nil {
 				return fmt.Errorf("result %q key: %w", result.ID, err)
@@ -382,6 +409,17 @@ func Compare(manifest CorpusManifest, resultSet ResultSet, split string) (Compar
 			continue
 		}
 		result, present := results[track.ID]
+		scalarEvidence := present && hasScalarEvidence(result)
+		// New per-dimension labels require an explicit observed status. Legacy
+		// browser exports omit status even when a detector threw and was caught.
+		observed := scalarEvidence && (result.Status == "complete" || result.Status == "partial" || result.Status == "unknown")
+		if track.ExpectedBPMUnknown {
+			recordExpectedRefusal(&report.TempoRefusal, observed && result.BPM == nil)
+		}
+		if track.ExpectedKeyUnknown {
+			keyAbsent := strings.TrimSpace(result.Key) == "" || strings.EqualFold(strings.TrimSpace(result.Key), "unknown")
+			recordExpectedRefusal(&report.KeyRefusal, observed && keyAbsent)
+		}
 		if track.ExpectedUnknown {
 			report.Unknown.Labeled++
 			// Only an observed refusal is correct. Missing/failed analysis is
@@ -394,7 +432,7 @@ func Compare(manifest CorpusManifest, resultSet ResultSet, split string) (Compar
 		}
 		if track.ExpectedBPM != nil {
 			report.Tempo.Labeled++
-			if !present || result.BPM == nil {
+			if !scalarEvidence || result.BPM == nil {
 				report.Tempo.Unknown++
 			} else {
 				report.Tempo.Reported++
@@ -410,7 +448,7 @@ func Compare(manifest CorpusManifest, resultSet ResultSet, split string) (Compar
 		}
 		if strings.TrimSpace(track.ExpectedKey) != "" {
 			report.Key.Labeled++
-			if !present || strings.TrimSpace(result.Key) == "" || strings.EqualFold(strings.TrimSpace(result.Key), "unknown") {
+			if !scalarEvidence || strings.TrimSpace(result.Key) == "" || strings.EqualFold(strings.TrimSpace(result.Key), "unknown") {
 				report.Key.Unknown++
 				continue
 			}
@@ -433,9 +471,32 @@ func Compare(manifest CorpusManifest, resultSet ResultSet, split string) (Compar
 	report.Key.CompatibleRate = percentage(report.Key.CamelotCompatible, report.Key.Labeled)
 	report.Key.UnknownRate = percentage(report.Key.Unknown, report.Key.Labeled)
 	report.Unknown.Accuracy = percentage(report.Unknown.Correct, report.Unknown.Labeled)
+	report.TempoRefusal.Accuracy = percentage(report.TempoRefusal.Correct, report.TempoRefusal.Labeled)
+	report.KeyRefusal.Accuracy = percentage(report.KeyRefusal.Correct, report.KeyRefusal.Labeled)
 	report.Calibration.Tempo = calibrateConfidence(manifest, results, split, false)
 	report.Calibration.Key = calibrateConfidence(manifest, results, split, true)
 	return report, nil
+}
+
+func recordExpectedRefusal(metric *UnknownMetrics, correct bool) {
+	metric.Labeled++
+	if correct {
+		metric.Correct++
+	} else {
+		metric.Incorrect++
+	}
+}
+
+func hasScalarEvidence(result DetectorResult) bool {
+	if result.Error != "" || result.ErrorMessage != "" {
+		return false
+	}
+	switch result.Status {
+	case "failed", "unsupported", "canceled", "source_unavailable":
+		return false
+	default:
+		return true
+	}
 }
 
 func calibrateConfidence(manifest CorpusManifest, results map[string]DetectorResult, split string, keyDimension bool) ConfidenceCalibrationDimension {
@@ -449,7 +510,7 @@ func calibrateConfidence(manifest CorpusManifest, results map[string]DetectorRes
 			continue
 		}
 		result, present := results[track.ID]
-		if !present {
+		if !present || !hasScalarEvidence(result) {
 			continue
 		}
 		confidence := result.TempoConfidence

@@ -1,0 +1,48 @@
+{
+  "capturedAt": "2026-10-12T06:09:31.5390400Z",
+  "method": "Read-only HTTP status/list and SQLite aggregate audit after restarting the tested provider-band fallback build",
+  "priorHistoricalProviderClaims": 275,
+  "job": {
+    "id": "82cdb622-edf2-484c-960a-01ea1f87c67b",
+    "status": "running",
+    "progressCurrent": 49,
+    "progressTotal": 275,
+    "message": "Analyzed 49 of 275 tracks (0 skipped, 0 failed)"
+  },
+  "bpmSources": [
+    {
+      "source": "manual",
+      "Count": 1
+    },
+    {
+      "source": "measured",
+      "Count": 331
+    },
+    {
+      "source": "unknown",
+      "Count": 54
+    }
+  ],
+  "bandStatuses": [
+    {
+      "state": "available",
+      "reason": "",
+      "tracks": 149
+    },
+    {
+      "state": "available",
+      "reason": "provider_three_band",
+      "tracks": 225
+    },
+    {
+      "state": "failed",
+      "reason": "decode_failed",
+      "tracks": 12
+    }
+  ],
+  "limitations": [
+    "Repair is ongoing; counts are a point-in-time snapshot.",
+    "No provider account requests or raw account payloads.",
+    "No independently reviewed accuracy, browser, supported-platform or performance qualification."
+  ]
+}

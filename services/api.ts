@@ -1,3 +1,11 @@
+export interface SpotifyDownloadOrigin {
+  kind: 'playlist' | 'album' | 'library';
+  id: string;
+  revision?: string;
+  entityId?: string;
+  position: number;
+}
+
 /**
  * API Client for ViiB MediaHub Backend
  * 
@@ -75,6 +83,8 @@ async function handleResponse<T>(response: Response): Promise<T> {
 
 // Song types matching backend
 export interface ApiSong {
+  /** Transient resolved metadata attached to a generated DJ queue. */
+  analysis?: TrackAnalysisFeature;
   id: string;
   title: string;
   artist: string;
@@ -668,11 +678,11 @@ export const api = {
    * @param duration - Track duration in seconds
    * @returns Promise with download ID and confirmation message
    */
-  async downloadTrack(spotifyId: string, title: string, artist: string, album: string, duration: number) {
+  async downloadTrack(spotifyId: string, title: string, artist: string, album: string, duration: number, origins?: SpotifyDownloadOrigin[]) {
     const response = await fetch(`${API_BASE}/spotify/download/track`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ spotifyId, title, artist, album, duration }),
+      body: JSON.stringify({ spotifyId, title, artist, album, duration, origins }),
     });
     return handleResponse<{ id: string; message: string }>(response);
   },
@@ -686,11 +696,11 @@ export const api = {
    * @param artist - Primary artist name
    * @returns Promise with confirmation message
    */
-  async downloadAlbum(spotifyId: string, title: string, artist: string) {
+  async downloadAlbum(spotifyId: string, title: string, artist: string, origins?: SpotifyDownloadOrigin[]) {
     const response = await fetch(`${API_BASE}/spotify/download/album`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ spotifyId, title, artist }),
+      body: JSON.stringify({ spotifyId, title, artist, origins }),
     });
     return handleResponse<{ id: string; message: string }>(response);
   },
@@ -704,11 +714,11 @@ export const api = {
    * @param owner - Playlist owner name
    * @returns Promise with confirmation message
    */
-  async downloadPlaylist(spotifyId: string, name: string, owner: string) {
+  async downloadPlaylist(spotifyId: string, name: string, owner: string, origins?: SpotifyDownloadOrigin[]) {
     const response = await fetch(`${API_BASE}/spotify/download/playlist`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ spotifyId, name, owner }),
+      body: JSON.stringify({ spotifyId, name, owner, origins }),
     });
     return handleResponse<{ id: string; message: string }>(response);
   },
@@ -1476,18 +1486,34 @@ export const api = {
     return handleResponse<TrackAnalysisFeature>(response);
   },
 
-  async updateTrackKey(trackId: string, key: { tonic: number; mode: 'major' | 'minor' }): Promise<TrackAnalysisFeature> {
+  async updateTrackKey(trackId: string, key: { tonic: number; mode: 'major' | 'minor' }, sourceFingerprint: string): Promise<TrackAnalysisFeature> {
     const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/key`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'If-Match': JSON.stringify(sourceFingerprint) },
       body: JSON.stringify(key),
     });
     return handleResponse<TrackAnalysisFeature>(response);
   },
 
-  async resetTrackKey(trackId: string): Promise<TrackAnalysisFeature> {
-    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/key`, { method: 'DELETE' });
+  async resetTrackKey(trackId: string, sourceFingerprint: string): Promise<TrackAnalysisFeature> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/key`, { method: 'DELETE', headers: { 'If-Match': JSON.stringify(sourceFingerprint) } });
     return handleResponse<TrackAnalysisFeature>(response);
+  },
+
+  async updateTrackMetadataField(trackId: string, field: 'time_signature' | 'local_energy_level', value: number, sourceFingerprint: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/fields/${field}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'If-Match': JSON.stringify(sourceFingerprint) },
+      body: JSON.stringify({ value }),
+    });
+    if (!response.ok) await handleResponse<void>(response);
+  },
+
+  async resetTrackMetadataField(trackId: string, field: 'time_signature' | 'local_energy_level', sourceFingerprint: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/fields/${field}`, {
+      method: 'DELETE', headers: { 'If-Match': JSON.stringify(sourceFingerprint) },
+    });
+    if (!response.ok) await handleResponse<void>(response);
   },
 
   async getTrackAnalysisFeatures(): Promise<TrackAnalysisFeature[]> {
@@ -1500,17 +1526,17 @@ export const api = {
     return handleResponse<TrackBeatGrid>(response);
   },
 
-  async updateTrackBeatGrid(trackId: string, update: TrackBeatGridUpdate): Promise<TrackBeatGrid> {
+  async updateTrackBeatGrid(trackId: string, update: TrackBeatGridUpdate, sourceFingerprint: string): Promise<TrackBeatGrid> {
     const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/beatgrid`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'If-Match': JSON.stringify(sourceFingerprint) },
       body: JSON.stringify(update),
     });
     return handleResponse<TrackBeatGrid>(response);
   },
 
-  async resetTrackBeatGrid(trackId: string): Promise<void> {
-    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/beatgrid`, { method: 'DELETE' });
+  async resetTrackBeatGrid(trackId: string, sourceFingerprint: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/beatgrid`, { method: 'DELETE', headers: { 'If-Match': JSON.stringify(sourceFingerprint) } });
     if (!response.ok) await handleResponse(response);
   },
 
@@ -1541,10 +1567,11 @@ export const api = {
 
   async getTrackTransitionRecommendations(trackId: string, limit = 3, intent: TransitionIntent = 'hold', filters: TransitionRecommendationFilters = {}): Promise<TrackTransitionRecommendations> {
     const query = new URLSearchParams({ limit: String(Math.max(1, Math.min(50, limit))), intent });
-    for (const key of ['minBpm', 'maxBpm', 'minEnergyLevel', 'maxEnergyLevel'] as const) {
+    for (const key of ['minBpm', 'maxBpm', 'minEnergyLevel', 'maxEnergyLevel', 'minSpotifyScore', 'maxSpotifyScore'] as const) {
       const value = filters[key];
       if (value !== undefined) query.set(key, String(value));
     }
+    if (filters.spotifyScoreMetric) query.set('spotifyScoreMetric', filters.spotifyScoreMetric);
     if (filters.stemsAvailable !== undefined) query.set('stemsAvailable', String(filters.stemsAvailable));
     if (filters.camelotCompatible !== undefined) query.set('camelotCompatible', String(filters.camelotCompatible));
     if (filters.playlistIds?.length) {

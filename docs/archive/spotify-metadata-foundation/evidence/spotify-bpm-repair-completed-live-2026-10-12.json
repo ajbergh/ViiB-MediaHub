@@ -1,0 +1,184 @@
+{
+  "capturedAt": "2026-10-12T07:05:56.048Z",
+  "runningBuild": "spotify-claim-fix: atomic provider publication and claim snapshot re-planning",
+  "librarySongs": 386,
+  "analysisRows": 386,
+  "bpmSources": {
+    "measured": 365,
+    "unknown": 20,
+    "manual": 1
+  },
+  "statuses": {
+    "complete": 335,
+    "partial": 39,
+    "failed": 12
+  },
+  "fileDiscoveryScanning": false,
+  "activeJobs": 0,
+  "startupPreparation": [
+    {
+      "id": "933f8add-726c-4188-9068-414ce32daeb4",
+      "status": "succeeded",
+      "processed": 0,
+      "total": 0,
+      "result": {
+        "analyzed": 0,
+        "failed": 0,
+        "mode": "missing",
+        "skipped": 0,
+        "total": 0
+      }
+    }
+  ],
+  "provider": {
+    "provider": "webplayer",
+    "connected": false,
+    "authRequired": true
+  },
+  "comparisons": [
+    {
+      "songId": "000e8e1e00ca9fd6",
+      "status": "complete",
+      "bpmSource": "measured",
+      "bpmPresent": true,
+      "matches": {
+        "bpm": true,
+        "bpmSource": true,
+        "key": true,
+        "keySource": true,
+        "structureAvailable": true
+      }
+    },
+    {
+      "songId": "01c24e05e69c53f2",
+      "status": "complete",
+      "bpmSource": "measured",
+      "bpmPresent": true,
+      "matches": {
+        "bpm": true,
+        "bpmSource": true,
+        "key": true,
+        "keySource": true,
+        "structureAvailable": true
+      }
+    },
+    {
+      "songId": "01fa6ff216ea0c9c",
+      "status": "complete",
+      "bpmSource": "measured",
+      "bpmPresent": true,
+      "matches": {
+        "bpm": true,
+        "bpmSource": true,
+        "key": true,
+        "keySource": true,
+        "structureAvailable": true
+      }
+    },
+    {
+      "songId": "cdc5ac000fb94428",
+      "status": "complete",
+      "bpmSource": "manual",
+      "bpmPresent": true,
+      "matches": {
+        "bpm": true,
+        "bpmSource": true,
+        "key": true,
+        "keySource": true,
+        "structureAvailable": true
+      }
+    },
+    {
+      "songId": "1a69b63aeba1d3a0",
+      "status": "failed",
+      "bpmSource": "unknown",
+      "bpmPresent": false,
+      "matches": {
+        "bpm": true,
+        "bpmSource": true,
+        "key": true,
+        "keySource": true,
+        "structureAvailable": true
+      }
+    },
+    {
+      "songId": "1ec2575c6a4fd7c4",
+      "status": "failed",
+      "bpmSource": "unknown",
+      "bpmPresent": false,
+      "matches": {
+        "bpm": true,
+        "bpmSource": true,
+        "key": true,
+        "keySource": true,
+        "structureAvailable": true
+      }
+    },
+    {
+      "songId": "1ee70f0dcc2cd572",
+      "status": "partial",
+      "bpmSource": "unknown",
+      "bpmPresent": false,
+      "matches": {
+        "bpm": true,
+        "bpmSource": true,
+        "key": true,
+        "keySource": true,
+        "structureAvailable": true
+      }
+    },
+    {
+      "songId": "3b4f07f68188997f",
+      "status": "partial",
+      "bpmSource": "unknown",
+      "bpmPresent": false,
+      "matches": {
+        "bpm": true,
+        "bpmSource": true,
+        "key": true,
+        "keySource": true,
+        "structureAvailable": true
+      }
+    }
+  ],
+  "unknownBpmReasons": [
+    {
+      "status": "failed",
+      "reason": "decode_failed",
+      "count": 12
+    },
+    {
+      "status": "partial",
+      "reason": "no_reliable_tempo",
+      "count": 8
+    }
+  ],
+  "localBandCapabilities": [
+    {
+      "state": "available",
+      "reason": "",
+      "count": 374
+    },
+    {
+      "state": "failed",
+      "reason": "decode_failed",
+      "count": 12
+    }
+  ],
+  "oggIntegrityInvestigation": {
+    "filesInspectedReadOnly": 12,
+    "filesWithChecksumMismatch": 12,
+    "invalidPageOccurrences": 24,
+    "allFilesHaveEndOfStream": true,
+    "mismatchLocation": "interior audio pages; bounded trailing padding does not explain the failures",
+    "currentSpotifyDownloadLineageFound": false,
+    "sourceProvenanceUnconfirmed": true
+  },
+  "limitations": [
+    "Sequential GET/SQL snapshots; not one database transaction.",
+    "No accuracy ground truth; explicit unknowns are preserved.",
+    "Read-only CRC inspection cannot establish how or when the files became malformed.",
+    "No connected-provider, browser, native rendering, accessibility or cross-platform qualification."
+  ],
+  "allSampledListDetailFieldsMatch": true
+}

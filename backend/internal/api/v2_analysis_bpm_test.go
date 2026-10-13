@@ -17,6 +17,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	spotifyauth "github.com/ajbergh/viib-mediahub/internal/spotify/auth"
 )
 
 func newBPMRouteTestAPI(t *testing.T, includeAnalysis bool) (*API, string) {
@@ -70,6 +71,69 @@ func getBPMSourceFingerprint(t *testing.T, handler http.Handler) string {
 	return response.SourceFingerprint
 }
 
+func TestAnalysisAndBPMRemainAvailableDuringSpotifySessionRestore(t *testing.T) {
+	api, _ := newBPMRouteTestAPI(t, true)
+	api.spotifyAuth = newSpotifyAuthRuntime(api.db, spotifyauth.WebPlayerOptions{})
+	api.spotifyAuth.invalid.Store(true)
+	handler := api.V2Routes()
+
+	for _, path := range []string{"/analysis/song", "/analysis/song/bpm"} {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("GET %s during Spotify restore = %d: %s", path, recorder.Code, recorder.Body.String())
+		}
+		var response TrackAnalysisFeatureResponse
+		if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+			t.Fatal(err)
+		}
+		if response.BPM == nil || *response.BPM != 128.375 || response.BPMSource != db.EffectiveBPMMeasured {
+			t.Fatalf("GET %s lost local BPM during Spotify restore: %+v", path, response)
+		}
+		if response.ProviderScalars != nil {
+			t.Fatalf("GET %s exposed provider candidates while session is invalid: %+v", path, response.ProviderScalars)
+		}
+	}
+}
+
+func TestAnalysisAndBPMRemainAvailableWhenSpotifyFenceChanges(t *testing.T) {
+	api, _ := newBPMRouteTestAPI(t, true)
+	source, err := analysis.ResolveLocalSource(api.db, "song")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := api.db.ActivateSpotifyMetadataContext("initial-owner"); err != nil {
+		t.Fatal(err)
+	}
+	if err := api.db.RefreshTrackAnalysisSourceRevision("song", source.Fingerprint); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := api.db.ConfirmSpotifyRecording("song", cachedSpotifyID, source.Fingerprint, true); err != nil || !ok {
+		t.Fatalf("confirm source recording: %v %v", ok, err)
+	}
+	api.spotifyAuth = newSpotifyAuthRuntime(api.db, spotifyauth.WebPlayerOptions{})
+	if err := api.db.SetSetting("spotify_metadata_active_context", "replacement-owner"); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{"/analysis/song", "/analysis/song/bpm"} {
+		recorder := httptest.NewRecorder()
+		api.V2Routes().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("GET %s after provider fence changed = %d: %s", path, recorder.Code, recorder.Body.String())
+		}
+		var response TrackAnalysisFeatureResponse
+		if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+			t.Fatal(err)
+		}
+		if response.BPM == nil || *response.BPM != 128.375 || response.BPMSource != db.EffectiveBPMMeasured {
+			t.Fatalf("GET %s lost local BPM after provider fence changed: %+v", path, response)
+		}
+		if response.ProviderScalars != nil {
+			t.Fatalf("GET %s exposed provider candidates after fence failure: %+v", path, response.ProviderScalars)
+		}
+	}
+}
 func TestV2TrackBPMOverrideAndResetPreserveOtherOverrides(t *testing.T) {
 	api, _ := newBPMRouteTestAPI(t, true)
 	manualBPM := 127.625
@@ -291,5 +355,52 @@ func TestV2TrackBPMConditionalWriteRejectsConcurrentSourceRevision(t *testing.T)
 	}
 	if reset, err := api.db.ResetTrackAnalysisBPMOverrideIfSourceCurrent("song", fingerprint); err != nil || reset {
 		t.Fatalf("conditional reset after concurrent source revision = %t, %v; want false", reset, err)
+	}
+}
+
+func TestAnalysisListRemainsAvailableDuringSpotifySessionRestore(t *testing.T) {
+	api, _ := newBPMRouteTestAPI(t, true)
+	source, err := analysis.ResolveLocalSource(api.db, "song")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := api.db.RefreshTrackAnalysisSourceRevision("song", source.Fingerprint); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := api.db.SetTrackMetadataOverrideIfSourceCurrent("song", "local_energy_level", source.Fingerprint, json.RawMessage("7"), false); err != nil || !ok {
+		t.Fatalf("set manual energy override: ok=%v err=%v", ok, err)
+	}
+	api.spotifyAuth = newSpotifyAuthRuntime(api.db, spotifyauth.WebPlayerOptions{})
+	api.spotifyAuth.invalid.Store(true)
+
+	recorder := httptest.NewRecorder()
+	api.V2Routes().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/analysis", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET /analysis during Spotify restore = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var rows []TrackAnalysisFeatureResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("GET /analysis returned %d rows, want one: %+v", len(rows), rows)
+	}
+	row := rows[0]
+	if row.BPM == nil || *row.BPM != 128.375 || row.BPMSource != db.EffectiveBPMMeasured {
+		t.Fatalf("list lost local BPM during Spotify restore: %+v", row)
+	}
+	if len(row.ProviderScores) != 0 || row.ProviderScoresUnverified || row.ProviderScalars != nil {
+		t.Fatalf("list exposed provider evidence with an invalid session: %+v", row)
+	}
+	var localEnergy *db.EffectiveScalar
+	for index := range row.EffectiveFields {
+		field := &row.EffectiveFields[index]
+		if field.Key == "local_energy_level" {
+			localEnergy = field
+			break
+		}
+	}
+	if localEnergy == nil || localEnergy.Selected == nil || localEnergy.Selected.Source != "manual" {
+		t.Fatalf("list lost the manual scalar during Spotify restore: %+v", row.EffectiveFields)
 	}
 }

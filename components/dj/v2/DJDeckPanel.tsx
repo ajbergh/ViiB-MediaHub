@@ -15,9 +15,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
 import { useStore } from '../../../store';
-import { describeKey } from '../../../lib/keyDetection';
 import type { DeckId, DeckEQ } from '../../../slices/djMixerSlice';
 import { DeckTimeDisplay, DeckHasTrack } from './DJDeckComponents';
+import { DeckFacts } from './DJDeckFacts';
 import { DJDeckStatusBar } from './DJDeckStatusBar';
 import { DJDeckInspector, type DJDeckInspectorTab } from './DJDeckInspector';
 import { DJDeckToolbar } from './DJDeckToolbar';
@@ -44,28 +44,6 @@ export interface DJDeckPanelProps {
 }
 
 const formatClock = (seconds: number) => `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
-
-/** BPM · Camelot · key secondary line. Isolated so tempo drags only re-render it. */
-const DeckFacts = React.memo(function DeckFacts({ deck }: { deck: DeckId }) {
-  const bpm = useStore(s => (deck === 'A' ? s.djDeckA : s.djDeckB).effectiveBpm);
-  const key = useStore(s => (deck === 'A' ? s.djDeckA : s.djDeckB).key);
-  const analysisStatus = useStore(s => (deck === 'A' ? s.djDeckA : s.djDeckB).analysisStatus);
-  const described = describeKey(key);
-  if (!bpm && (analysisStatus === 'not_analyzed' || analysisStatus === 'error')) {
-    return (
-      <div className='dj-deck-facts dj-deck-facts-warn' title='Analyze this track to enable measured BPM and beat-grid features'>
-        {analysisStatus === 'error' ? 'Analysis unavailable' : 'Not analysed'}
-      </div>
-    );
-  }
-  return (
-    <div className='dj-deck-facts'>
-      <span>{bpm ? `${bpm.toFixed(1)} BPM` : analysisStatus === 'loading' ? 'Analysing…' : '--.- BPM'}</span>
-      {described?.camelot && <span>{described.camelot}</span>}
-      {described && <span>{described.label}</span>}
-    </div>
-  );
-});
 
 /** Thin deck-colored position bar driven by its own timer, never React state. */
 const DeckProgress = React.memo(function DeckProgress({ deck }: { deck: DeckId }) {
@@ -121,7 +99,7 @@ const DeckHeader = React.memo(function DeckHeader({ deck }: { deck: DeckId }) {
             <button ref={triggerRef} type='button' className='dj-btn dj-btn-icon dj-deck-inspector-trigger' data-deck-accent={deck}
               aria-expanded={inspectorOpen} aria-pressed={inspectorOpen}
               aria-label={`Deck ${deck} analysis and editing${needsAttention ? ' (track not analysed)' : ''}`}
-              title='Analysis, key, BPM, cue and grid editing' onClick={() => setInspectorOpen(open => !open)}>
+              title='Analysis, audio waveforms, key, BPM, cue and grid editing' onClick={() => setInspectorOpen(open => !open)}>
               <SlidersHorizontal size={15} aria-hidden='true' />
               {needsAttention && <span className='dj-status-dot dj-trigger-dot' data-state='warn' aria-hidden='true' />}
             </button>

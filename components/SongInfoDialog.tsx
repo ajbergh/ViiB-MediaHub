@@ -1,3 +1,4 @@
+import { SongAudioMetadata } from './SongAudioMetadata';
 /**
  * ViiB MediaHub - Song Info / Properties Dialog
  * 
@@ -590,6 +591,7 @@ const SongInfoEditor: React.FC = () => {
           )}
 
           {/* TAB 2: AI & VIBE PROFILE */}
+          {activeTab === 'vibe' && <SongAudioMetadata songId={song.id} />}
           {activeTab === 'vibe' && (
             <div className="space-y-4">
               <div className="p-4 rounded-xl bg-surface-2/60 border border-surface-border/60">

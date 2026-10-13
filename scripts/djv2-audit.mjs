@@ -12,17 +12,38 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from '@playwright/test';
 
-const output = 'output/playwright/djv2-audit';
+const bandsAudit = process.env.DJ_AUDIT_LOCAL_BANDS === '1';
+const output = bandsAudit ? 'output/playwright/djv2-local-bands-audit' : 'output/playwright/djv2-audit';
 await mkdir(output, { recursive: true });
 const url = process.env.DJ_AUDIT_URL || 'http://localhost:3000/dj';
 const geometries = [[1470, 825], [1920, 1080], [2560, 1440], [3840, 2160]];
 
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+// Optional offline mode keeps blocked remote font hosts from hanging capture.
+// This verifies fallback typography; online font qualification remains separate.
+if (process.env.DJ_AUDIT_OFFLINE_FONTS === '1') {
+  await page.route('https://fonts.googleapis.com/**', route => route.abort());
+  await page.route('https://fonts.gstatic.com/**', route => route.abort());
+}
 const report = [];
 try {
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   await page.locator('[data-dj-workspace]').waitFor({ timeout: 30000 });
+  if (bandsAudit) {
+    const toggles = page.getByRole('button', { name: /^Local bands$/i });
+    assert.equal(await toggles.count(), 2, 'Both decks expose local bands');
+    for (let index = 0; index < 2; index++) {
+      await toggles.nth(index).click();
+      assert.equal(await toggles.nth(index).getAttribute('aria-pressed'), 'true');
+    }
+    assert.equal(await page.getByText('Amplitude overview - Local bands unavailable or duration differs', { exact: true }).count(), 2);
+    await page.getByRole('button', { name: /^Deck A analysis and editing/ }).click();
+    const inspector = page.locator('[data-dj-deck-inspector="A"]');
+    await inspector.getByRole('tab', { name: 'Audio', exact: true }).click();
+    await inspector.getByText('Load a track to inspect its waveforms and audio metadata.', { exact: true }).waitFor();
+  }
+
 
   for (const [width, height] of geometries) {
     await page.setViewportSize({ width, height });

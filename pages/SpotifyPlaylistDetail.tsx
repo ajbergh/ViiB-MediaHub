@@ -1,3 +1,4 @@
+import { savedLibraryDownloadOrigins } from '../lib/spotifyDownloadOrigins';
 /**
  * ViiB MediaHub - Spotify Playlist Detail Page
  * 
@@ -20,7 +21,7 @@ import {fetchSpotifyPlaylist} from '../services/spotifyPlaylist';
 import { backendSpotifyFetch } from '../services/spotifyBackend';
 import { SpotifyArtistLinks } from '../components/SpotifyArtistLinks';
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router';
+import { useParams, useNavigate, useLocation } from 'react-router';
 import { ArrowLeft, Play, MoreHorizontal, Loader2, Clock, ExternalLink, Download } from 'lucide-react';
 import { SpotifyService } from '../services/spotifyService';
 import { useStore } from '../store';
@@ -62,6 +63,9 @@ interface SpotifyPlaylistFull {
 export const SpotifyPlaylistDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const sessionGeneration = useStore(s => s.spotifySessionGeneration);
+  const downloadOrigins = savedLibraryDownloadOrigins(location.state, id, sessionGeneration);
   const { addLog, playSong, addToQueue, showToast } = useStore();
   
   const [playlist, setPlaylist] = useState<SpotifyPlaylistFull | null>(null);
@@ -103,7 +107,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
     
     setIsDownloading(true);
     try {
-      await api.downloadPlaylist(playlist.id, playlist.name, playlist.owner.display_name);
+      await api.downloadPlaylist(playlist.id, playlist.name, playlist.owner.display_name, downloadOrigins);
       addLog('success', `Started download for playlist: ${playlist.name}`);
     } catch (err) {
       console.error('Download failed:', err);
@@ -262,7 +266,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
             Back
           </Button>
 
-          <div className="flex gap-8 items-end">
+          <div className="flex flex-col gap-6 sm:flex-row sm:gap-8 sm:items-end">
             <div className="w-64 h-64 flex-shrink-0 shadow-2xl rounded-lg overflow-hidden">
               <img 
                 src={playlist.images[0]?.url} 
@@ -271,13 +275,13 @@ export const SpotifyPlaylistDetail: React.FC = () => {
               />
             </div>
 
-            <div className="flex-1 pb-4">
+            <div className="min-w-0 w-full flex-1 pb-4">
               <p className="text-sm font-bold uppercase tracking-wider text-text-secondary mb-2">Playlist</p>
-              <h1 className="text-display font-bold mb-4 leading-tight">{playlist.name}</h1>
+              <h1 className="text-display font-bold mb-4 leading-tight break-words">{playlist.name}</h1>
               {playlist.description && (
                 <p className="text-text-secondary mb-4">{playlist.description.replace(/<[^>]*>?/gm, '')}</p>
               )}
-              <div className="flex items-center gap-2 text-text-secondary">
+              <div className="flex flex-wrap items-center gap-2 text-text-secondary">
                 <span className="font-bold text-text-main">
                   {playlist.owner.display_name}
                 </span>
@@ -294,7 +298,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
       </div>
 
       {/* Actions */}
-      <div className="px-8 py-6 flex items-center gap-4 bg-gradient-to-b from-transparent to-surface-0">
+      <div className="px-8 py-6 flex flex-wrap items-center gap-4 bg-gradient-to-b from-transparent to-surface-0">
         <Button
           variant="primary"
           accent="brand"

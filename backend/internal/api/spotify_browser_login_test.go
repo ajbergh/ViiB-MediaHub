@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	spotifyauth "github.com/ajbergh/viib-mediahub/internal/spotify/auth"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -153,12 +154,42 @@ func TestBrowserLoginStorageFailurePreservesConnectedAccount(t *testing.T) {
 	s.storeSession = func(string) error { return errors.New("storage unavailable") }
 	s.login.capture = func(context.Context) (string, error) { return "fixture-cookie", nil }
 	op, _ := s.startBrowserLogin()
-	waitBrowserLogin(t, s, op.ID, "failed")
+	result := waitBrowserLogin(t, s, op.ID, "failed")
+	if !strings.Contains(result.Message, "saved Spotify session") || strings.Contains(result.Message, "rate limit") {
+		t.Fatalf("storage failure has misleading message: %q", result.Message)
+	}
 	if !s.status().Connected || s.lifetime != lifetime || lifetime.Err() != nil {
 		t.Fatal("storage failure retired prior account")
 	}
 	if _, err := s.Token(context.Background(), spotifyauth.Playback); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestBrowserLoginRateLimitMessageRequiresProvider429(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		err         error
+		rateLimited bool
+	}{
+		{"internal", errors.New("private diagnostic detail"), false},
+		{"session_read", errSpotifySessionRead, false},
+		{"provider_429", &spotifyauth.WebPlayerHTTPError{Status: http.StatusTooManyRequests}, true},
+		{"provider_403", &spotifyauth.WebPlayerHTTPError{Status: http.StatusForbidden}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, _, _ := fixtureCookieRuntime(t)
+			s := a.spotifyAuth
+			s.login.capture = func(context.Context) (string, error) { return "", tc.err }
+			op, err := s.startBrowserLogin()
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := waitBrowserLogin(t, s, op.ID, "failed")
+			if strings.Contains(result.Message, "rate limit") != tc.rateLimited || strings.Contains(result.Message, "private diagnostic") {
+				t.Fatalf("incorrect or unsafe message: %q", result.Message)
+			}
+		})
 	}
 }
 

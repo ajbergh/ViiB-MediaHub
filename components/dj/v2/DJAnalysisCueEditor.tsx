@@ -7,6 +7,7 @@ import { DEFAULT_HOT_CUE_COLOR, type DeckId, type HotCue } from '../../../slices
 import { quantizeHotCuePosition, type HotCueQuantizeMode } from '../../../lib/hotCueQuantization';
 import { convertHotCueToManual, moveHotCueToPosition, recolorHotCue, renameHotCue } from '../../../lib/hotCueEditor';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
+import { canSyncBeatGrid } from '../../../lib/beatGridConfidence';
 
 interface DJAnalysisCueEditorProps {
   trackID?: string;
@@ -16,7 +17,7 @@ interface DJAnalysisCueEditorProps {
 }
 
 export function DJAnalysisCueEditor({ trackID, deck, embedded = false }: DJAnalysisCueEditorProps) {
-  const beatGrid = useStore(state => deck === 'A' ? state.djDeckA.beatGrid : state.djDeckB.beatGrid);
+  const canQuantize = useStore(state => canSyncBeatGrid(deck === 'A' ? state.djDeckA : state.djDeckB));
   const hotCues = useStore(state => deck === 'A' ? state.djDeckA.hotCues : state.djDeckB.hotCues);
   const loadHotCues = useStore(state => state.loadHotCues);
   const { seek } = useDJAudioEngineActions();
@@ -107,14 +108,17 @@ export function DJAnalysisCueEditor({ trackID, deck, embedded = false }: DJAnaly
 
   const moveToPlayhead = (cue: HotCue) => {
     if (cue.locked) return;
-    const playhead = useStore.getState()[deckKey].position;
-    const position = quantizeHotCuePosition({ position: playhead }, beatGrid, quantizeMode) ?? playhead;
+    const currentDeck = useStore.getState()[deckKey];
+    const playhead = currentDeck.position;
+    const position = quantizeHotCuePosition({ position: playhead }, canSyncBeatGrid(currentDeck) ? currentDeck.beatGrid : null, quantizeMode) ?? playhead;
     updateCue(cue.slot, current => moveHotCueToPosition(current, position));
   };
 
   const snapCue = (cue: HotCue) => {
+    const currentDeck = useStore.getState()[deckKey];
+    if (!canSyncBeatGrid(currentDeck)) return;
     updateCue(cue.slot, current => {
-      const position = quantizeHotCuePosition(current, beatGrid, quantizeMode);
+      const position = quantizeHotCuePosition(current, currentDeck.beatGrid, quantizeMode);
       return position === null ? current : moveHotCueToPosition(current, position);
     });
   };
@@ -142,8 +146,8 @@ export function DJAnalysisCueEditor({ trackID, deck, embedded = false }: DJAnaly
           <button type="button" disabled={isApplying} onClick={() => jumpToCue(cue.slot)} title="Seek this deck to the cue position"
             className="rounded border border-[color-mix(in_srgb,var(--dj-info)_40%,transparent)] px-1 py-0.5 hover:border-[var(--dj-info)] disabled:cursor-not-allowed disabled:opacity-40">Jump</button>
           <button type="button" disabled={!!cue.locked || isApplying} onClick={() => moveToPlayhead(cue)} className="rounded border border-[var(--dj-border-light)] px-1 py-0.5 hover:border-[var(--dj-info)] disabled:cursor-not-allowed disabled:opacity-40">Move</button>
-          <button type="button" disabled={!!cue.locked || isApplying || quantizeMode === 'off' || !beatGrid?.length}
-            title="Snap to the nearest beat subdivision in the stored beat grid; this does not correct downbeats."
+          <button type="button" disabled={!!cue.locked || isApplying || quantizeMode === 'off' || !canQuantize}
+            title="Snap to the nearest subdivision in a reviewed, locked manual grid; this does not correct downbeats."
             onClick={() => snapCue(cue)} className="rounded border border-[var(--dj-border-light)] px-1 py-0.5 hover:border-[var(--dj-info)] disabled:cursor-not-allowed disabled:opacity-40">Snap</button>
           <label className="flex items-center gap-1 text-[var(--dj-text-secondary)]">
             <input type="checkbox" aria-label={`Lock cue ${cue.slot}`} checked={!!cue.locked} disabled={isApplying} onChange={event => setLock(cue.slot, event.target.checked)} /> Lock
@@ -172,9 +176,9 @@ export function DJAnalysisCueEditor({ trackID, deck, embedded = false }: DJAnaly
             <option value="replace-generated">Refresh generated</option>
           </select>
         </label>
-        <label className="flex items-center gap-1" title="Nearest stored beat-grid subdivision; this does not correct downbeats.">
+        <label className="flex items-center gap-1" title="Review and lock a manual beat grid to enable cue snapping; this does not correct downbeats.">
           Quantize
-          <select aria-label="Cue quantize mode" value={quantizeMode} onChange={event => setQuantizeMode(event.target.value as HotCueQuantizeMode)}
+          <select aria-label="Cue quantize mode" disabled={!canQuantize} value={quantizeMode} onChange={event => setQuantizeMode(event.target.value as HotCueQuantizeMode)}
             className="rounded border border-[var(--dj-border-light)] bg-[var(--dj-surface-1)] px-1 py-0.5">
             <option value="off">Off</option>
             <option value="beat">Whole beat</option>

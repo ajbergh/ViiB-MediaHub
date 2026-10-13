@@ -4,6 +4,7 @@ package db
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -46,11 +47,15 @@ type TrackAnalysisArtifactPayload struct {
 	Data              []byte
 }
 
+var ErrTrackAnalysisArtifactTooLarge = errors.New("track analysis artifact exceeds payload limit")
+
 // TrackAnalysisOverride records explicit user choices independently of
 // measured facts, so re-analysis never overwrites a locked value.
 type TrackAnalysisOverride struct {
+	Fields               []ScalarCandidate
 	SongID               string
 	BPM                  *float64
+	KeySourceFingerprint string
 	BPMSourceFingerprint string
 	KeyTonic             *int
 	KeyMode              *string
@@ -128,6 +133,9 @@ func ResolveEffectiveBPM(inputs EffectiveBPMInputs) EffectiveBPM {
 	if measured := measuredBPM(inputs.Analysis); measured != nil {
 		return EffectiveBPM{Value: measured, Source: *inputs.Analysis.BPMSource, SyncAllowed: *inputs.Analysis.BPMSource == EffectiveBPMMeasured}
 	}
+	if local := CurrentLocalScalars(inputs.Analysis); local != nil && local.BPM != nil {
+		return EffectiveBPM{Value: local.BPM, Source: EffectiveBPMMeasured, SyncAllowed: true}
+	}
 	return EffectiveBPM{Source: EffectiveBPMUnknown}
 }
 
@@ -156,7 +164,25 @@ func ResolveEffectiveKey(inputs EffectiveKeyInputs) EffectiveKey {
 	if tonic, mode := measuredKey(inputs.Analysis); tonic != nil && mode != nil {
 		return EffectiveKey{Tonic: tonic, Mode: mode, Source: *inputs.Analysis.KeySource}
 	}
+	if local := CurrentLocalScalars(inputs.Analysis); local != nil && local.KeyTonic != nil {
+		return EffectiveKey{Tonic: local.KeyTonic, Mode: local.KeyMode, Source: EffectiveKeyMeasured}
+	}
 	return EffectiveKey{Source: EffectiveKeyUnknown}
+}
+
+// ResolveEffectiveKeyForSource excludes unbound legacy overrides and values
+// measured or applied to a different media revision.
+func ResolveEffectiveKeyForSource(inputs EffectiveKeyInputs, currentFingerprint string) EffectiveKey {
+	if currentFingerprint == "" {
+		return EffectiveKey{Source: EffectiveKeyUnknown}
+	}
+	if o := inputs.Override; o != nil && o.KeyLocked && o.KeyTonic != nil && o.KeyMode != nil && o.KeySourceFingerprint == currentFingerprint {
+		return EffectiveKey{Tonic: o.KeyTonic, Mode: o.KeyMode, Source: EffectiveKeyManual}
+	}
+	if inputs.Analysis == nil || inputs.Analysis.SourceFingerprint != currentFingerprint {
+		return EffectiveKey{Source: EffectiveKeyUnknown}
+	}
+	return ResolveEffectiveKey(EffectiveKeyInputs{Analysis: inputs.Analysis})
 }
 
 // measuredBPM returns an audio-derived or Spotify tempo only when the record actually
@@ -164,7 +190,7 @@ func ResolveEffectiveKey(inputs EffectiveKeyInputs) EffectiveKey {
 //
 // A `partial` record is as authoritative for tempo as a `complete` one: partial
 // means one dimension was not measured, and a track whose key could not be
-// determined — a drum loop, a percussion tool — still has a perfectly good
+// determined â€” a drum loop, a percussion tool â€” still has a perfectly good
 // measured BPM.
 //
 // `pending` and `running` are excluded because a claimed row keeps the previous
@@ -180,7 +206,12 @@ func measuredBPM(analysis *TrackAnalysis) *float64 {
 		return nil
 	}
 	switch *analysis.BPMSource {
-	case "measured", "spotify":
+	case "spotify":
+		if analysis.SpotifyBindings == nil || analysis.SpotifyBindings.BPM == nil || !analysis.SpotifyBindings.BPM.Eligible {
+			return nil
+		}
+		return analysis.BPM
+	case "measured":
 		return analysis.BPM
 	default:
 		return nil
@@ -197,7 +228,12 @@ func measuredKey(analysis *TrackAnalysis) (*int, *string) {
 		return nil, nil
 	}
 	switch *analysis.KeySource {
-	case "measured", "spotify":
+	case "spotify":
+		if analysis.SpotifyBindings == nil || analysis.SpotifyBindings.Key == nil || !analysis.SpotifyBindings.Key.Eligible {
+			return nil, nil
+		}
+		return analysis.KeyTonic, analysis.KeyMode
+	case "measured":
 		return analysis.KeyTonic, analysis.KeyMode
 	default:
 		return nil, nil
@@ -207,6 +243,12 @@ func measuredKey(analysis *TrackAnalysis) (*int, *string) {
 // TrackAnalysis is the durable scalar result for one canonical song. Nullable
 // measured values use pointers so zero is never confused with unknown.
 type TrackAnalysis struct {
+	// Read-side distinction: explicit empty/corrupt observations must never
+	// reconstruct energy from compatibility columns. Not a persisted column.
+	LocalScalarEnvelopePresent bool
+
+	SpotifyBindings        *SpotifyScalarBindings
+	Local                  *LocalScalarObservation
 	SongID                 string
 	Status                 string
 	AnalysisVersion        int
@@ -240,21 +282,44 @@ type TrackAnalysis struct {
 // Callers must supply the source fingerprint they decoded so stale results can
 // be identified without re-decoding the media.
 func (d *DB) UpsertTrackAnalysis(analysis TrackAnalysis) error {
+	return d.PublishTrackPreparation(TrackPreparationPublication{Analysis: analysis})
+}
+
+func upsertTrackAnalysis(executor preparationExecutor, analysis TrackAnalysis) error {
 	if err := validateTrackAnalysis(analysis); err != nil {
 		return err
 	}
-	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+	if err := checkSpotifyBindings(executor, analysis); err != nil {
 		return err
 	}
-	_, err := d.conn.Exec(`
+	var bindingsJSON any
+	if analysis.SpotifyBindings != nil {
+		payload, err := json.Marshal(analysis.SpotifyBindings)
+		if err != nil {
+			return err
+		}
+		if len(payload) > 4096 {
+			return errors.New("provider binding too large")
+		}
+		bindingsJSON = string(payload)
+	}
+	var localJSON any
+	if analysis.Local != nil {
+		payload, err := json.Marshal(analysis.Local)
+		if err != nil {
+			return err
+		}
+		localJSON = string(payload)
+	}
+	_, err := executor.Exec(`
 		INSERT INTO track_analysis(
 			song_id, status, analysis_version, algorithm_version, decoder_id,
 			source_fingerprint, source_size, source_mtime, source_revision,
 			bpm, bpm_confidence, bpm_alt_candidate, tempo_stability, tempo_kind, bpm_source,
 			key_tonic, key_mode, key_confidence, key_source, camelot_key, open_key,
 			energy_level, energy_level_confidence, energy_algorithm_version,
-			analyzed_at, error_code, error_message
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			analyzed_at, error_code, error_message, local_scalar_json, spotify_bindings_json
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(song_id) DO UPDATE SET
 			status=excluded.status, analysis_version=excluded.analysis_version,
 			algorithm_version=excluded.algorithm_version, decoder_id=excluded.decoder_id,
@@ -269,14 +334,14 @@ func (d *DB) UpsertTrackAnalysis(analysis TrackAnalysis) error {
 			energy_level=excluded.energy_level, energy_level_confidence=excluded.energy_level_confidence,
 			energy_algorithm_version=excluded.energy_algorithm_version,
 			analyzed_at=excluded.analyzed_at, error_code=excluded.error_code,
-			error_message=excluded.error_message`,
+			error_message=excluded.error_message, local_scalar_json=excluded.local_scalar_json, spotify_bindings_json=excluded.spotify_bindings_json`,
 		analysis.SongID, analysis.Status, analysis.AnalysisVersion, analysis.AlgorithmVersion,
 		analysis.DecoderID, analysis.SourceFingerprint, analysis.SourceSize, analysis.SourceMtime,
 		analysis.SourceRevision, analysis.BPM, analysis.BPMConfidence, analysis.BPMAltCandidate,
 		analysis.TempoStability, analysis.TempoKind, analysis.BPMSource, analysis.KeyTonic,
 		analysis.KeyMode, analysis.KeyConfidence, analysis.KeySource, analysis.CamelotKey,
 		analysis.OpenKey, analysis.EnergyLevel, analysis.EnergyLevelConfidence, analysis.EnergyAlgorithmVersion,
-		analysis.AnalyzedAt, analysis.ErrorCode, analysis.ErrorMessage)
+		analysis.AnalyzedAt, analysis.ErrorCode, analysis.ErrorMessage, localJSON, bindingsJSON)
 	return err
 }
 
@@ -285,12 +350,16 @@ func (d *DB) GetTrackAnalysis(songID string) (TrackAnalysis, error) {
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return TrackAnalysis{}, err
 	}
-	row := d.conn.QueryRow(`SELECT song_id, status, analysis_version, algorithm_version, decoder_id,
+	return getTrackAnalysis(d.conn, songID)
+}
+
+func getTrackAnalysis(executor preparationExecutor, songID string) (TrackAnalysis, error) {
+	row := executor.QueryRow(`SELECT song_id, status, analysis_version, algorithm_version, decoder_id,
 		source_fingerprint, source_size, source_mtime, source_revision,
 		bpm, bpm_confidence, bpm_alt_candidate, tempo_stability, tempo_kind, bpm_source,
 		key_tonic, key_mode, key_confidence, key_source, camelot_key, open_key,
 		energy_level, energy_level_confidence, energy_algorithm_version,
-		analyzed_at, error_code, error_message FROM track_analysis WHERE song_id = ?`, songID)
+		analyzed_at, error_code, error_message, local_scalar_json, spotify_bindings_json, COALESCE((SELECT value FROM settings WHERE key='spotify_metadata_active_context'),'') FROM track_analysis WHERE song_id = ?`, songID)
 	return scanTrackAnalysis(row)
 }
 
@@ -306,7 +375,7 @@ func (d *DB) ListTrackAnalysis() ([]TrackAnalysis, error) {
 		bpm, bpm_confidence, bpm_alt_candidate, tempo_stability, tempo_kind, bpm_source,
 		key_tonic, key_mode, key_confidence, key_source, camelot_key, open_key,
 		energy_level, energy_level_confidence, energy_algorithm_version,
-		analyzed_at, error_code, error_message FROM track_analysis ORDER BY song_id`)
+		analyzed_at, error_code, error_message, local_scalar_json, spotify_bindings_json, COALESCE((SELECT value FROM settings WHERE key='spotify_metadata_active_context'),'') FROM track_analysis ORDER BY song_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -338,24 +407,32 @@ func (d *DB) TrackAnalysisStale(songID, sourceFingerprint string) (bool, error) 
 // UpsertTrackAnalysisArtifact stores a compact versioned artifact. Its unique
 // key replaces only the same kind/format/algorithm representation.
 func (d *DB) UpsertTrackAnalysisArtifact(artifact TrackAnalysisArtifact) error {
-	if artifact.ID == "" || artifact.SongID == "" || artifact.Kind == "" || artifact.FormatVersion <= 0 || artifact.AlgorithmVersion == "" || artifact.Encoding == "" || len(artifact.Data) == 0 {
-		return errors.New("track analysis artifact requires identity, version, encoding, and data")
-	}
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return err
+	}
+	return upsertTrackAnalysisArtifact(d.conn, artifact)
+}
+
+func upsertTrackAnalysisArtifact(executor preparationExecutor, artifact TrackAnalysisArtifact) error {
+	if artifact.ID == "" || artifact.SongID == "" || artifact.Kind == "" || artifact.FormatVersion <= 0 || artifact.AlgorithmVersion == "" || artifact.Encoding == "" || len(artifact.Data) == 0 {
+		return errors.New("track analysis artifact requires identity, version, encoding, and data")
 	}
 	if artifact.Provenance == "" {
 		artifact.Provenance = "unknown"
 	}
 	switch artifact.Provenance {
 	case "measured", "inferred-from-meter", "manual", "unknown":
+	case "spotify":
+		if artifact.Kind != "beatgrid" {
+			return errors.New("spotify provenance is only valid for beat-grid artifacts")
+		}
 	default:
 		return errors.New("invalid track analysis artifact provenance")
 	}
 	if artifact.CreatedAt == 0 {
 		artifact.CreatedAt = time.Now().UnixMilli()
 	}
-	_, err := d.conn.Exec(`INSERT INTO track_analysis_artifacts(id, song_id, kind, format_version, algorithm_version, encoding, provenance, source_fingerprint, data, created_at)
+	_, err := executor.Exec(`INSERT INTO track_analysis_artifacts(id, song_id, kind, format_version, algorithm_version, encoding, provenance, source_fingerprint, data, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(song_id, kind, format_version, algorithm_version) DO UPDATE SET
 			id=excluded.id, encoding=excluded.encoding, provenance=excluded.provenance, source_fingerprint=excluded.source_fingerprint, data=excluded.data, created_at=excluded.created_at`,
@@ -373,6 +450,31 @@ func (d *DB) GetTrackAnalysisArtifact(songID, kind string, formatVersion int, al
 		FROM track_analysis_artifacts WHERE song_id = ? AND kind = ? AND format_version = ? AND algorithm_version = ?`, songID, kind, formatVersion, algorithmVersion).
 		Scan(&artifact.ID, &artifact.SongID, &artifact.Kind, &artifact.FormatVersion, &artifact.AlgorithmVersion, &artifact.Encoding, &artifact.Provenance, &artifact.SourceFingerprint, &artifact.Data, &artifact.CreatedAt)
 	return artifact, err
+}
+
+// GetTrackAnalysisArtifactBounded avoids materializing an oversized BLOB from
+// SQLite. The size check and conditional payload projection happen in one
+// query, so a concurrent artifact replacement cannot bypass the limit.
+func (d *DB) GetTrackAnalysisArtifactBounded(songID, kind string, formatVersion int, algorithmVersion string, maxPayloadBytes int64) (TrackAnalysisArtifact, error) {
+	if maxPayloadBytes <= 0 {
+		return TrackAnalysisArtifact{}, errors.New("artifact payload limit must be positive")
+	}
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return TrackAnalysisArtifact{}, err
+	}
+	var artifact TrackAnalysisArtifact
+	var payloadBytes int64
+	err := d.conn.QueryRow(`SELECT id, song_id, kind, format_version, algorithm_version, encoding, provenance, source_fingerprint,
+		CASE WHEN LENGTH(data)<=? THEN data ELSE NULL END, created_at, LENGTH(data)
+		FROM track_analysis_artifacts WHERE song_id=? AND kind=? AND format_version=? AND algorithm_version=?`, maxPayloadBytes, songID, kind, formatVersion, algorithmVersion).
+		Scan(&artifact.ID, &artifact.SongID, &artifact.Kind, &artifact.FormatVersion, &artifact.AlgorithmVersion, &artifact.Encoding, &artifact.Provenance, &artifact.SourceFingerprint, &artifact.Data, &artifact.CreatedAt, &payloadBytes)
+	if err != nil {
+		return TrackAnalysisArtifact{}, err
+	}
+	if payloadBytes > maxPayloadBytes {
+		return TrackAnalysisArtifact{}, ErrTrackAnalysisArtifactTooLarge
+	}
+	return artifact, nil
 }
 
 // ListTrackAnalysisArtifacts returns one representation per song for a
@@ -426,6 +528,19 @@ func (d *DB) ListTrackAnalysisArtifactMetadata(kind string, formatVersion int, a
 // batches and lets the caller validate each BLOB before the next is scanned.
 // The callback must not issue another query on this DB connection.
 func (d *DB) VisitTrackAnalysisArtifactPayloads(songIDs []string, kind string, formatVersion int, algorithmVersion string, visit func(songID, sourceFingerprint string, data []byte) error) error {
+	return d.visitTrackAnalysisArtifactPayloads(songIDs, kind, formatVersion, algorithmVersion, 0, visit)
+}
+
+// VisitTrackAnalysisArtifactPayloadsBounded visits only non-oversized payloads
+// and keeps each bounded SQL batch alive only while its callbacks run.
+func (d *DB) VisitTrackAnalysisArtifactPayloadsBounded(songIDs []string, kind string, formatVersion int, algorithmVersion string, maxPayloadBytes int64, visit func(songID, sourceFingerprint string, data []byte) error) error {
+	if maxPayloadBytes <= 0 {
+		return errors.New("artifact payload limit must be positive")
+	}
+	return d.visitTrackAnalysisArtifactPayloads(songIDs, kind, formatVersion, algorithmVersion, maxPayloadBytes, visit)
+}
+
+func (d *DB) visitTrackAnalysisArtifactPayloads(songIDs []string, kind string, formatVersion int, algorithmVersion string, maxPayloadBytes int64, visit func(songID, sourceFingerprint string, data []byte) error) error {
 	if len(songIDs) == 0 {
 		return nil
 	}
@@ -460,8 +575,13 @@ func (d *DB) VisitTrackAnalysisArtifactPayloads(songIDs []string, kind string, f
 		for _, songID := range chunk {
 			args = append(args, songID)
 		}
-		rows, err := d.conn.Query(`SELECT song_id, source_fingerprint, data FROM track_analysis_artifacts
-			WHERE kind = ? AND format_version = ? AND algorithm_version = ? AND song_id IN (`+placeholders+`)`, args...)
+		query := `SELECT song_id, source_fingerprint, data FROM track_analysis_artifacts
+			WHERE kind = ? AND format_version = ? AND algorithm_version = ? AND song_id IN (` + placeholders + `)`
+		if maxPayloadBytes > 0 {
+			query += ` AND LENGTH(data)<=?`
+			args = append(args, maxPayloadBytes)
+		}
+		rows, err := d.conn.Query(query, args...)
 		if err != nil {
 			return err
 		}
@@ -499,6 +619,20 @@ func (d *DB) DeleteTrackAnalysisArtifact(songID, kind string, formatVersion int,
 	return err
 }
 
+// DeleteTrackAnalysisArtifactForSource removes only a versioned artifact
+// still bound to the expected source revision. Provider-backed replacements use
+// this to retire the local waveform without touching a newer file's artifact.
+func (d *DB) DeleteTrackAnalysisArtifactForSource(songID, sourceFingerprint, kind string, formatVersion int, algorithmVersion string) error {
+	if songID == "" || sourceFingerprint == "" || kind == "" || algorithmVersion == "" {
+		return errors.New("source-bound artifact deletion requires song, source and artifact identity")
+	}
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return err
+	}
+	_, err := d.conn.Exec(`DELETE FROM track_analysis_artifacts WHERE song_id=? AND source_fingerprint=? AND kind=? AND format_version=? AND algorithm_version=?`, songID, sourceFingerprint, kind, formatVersion, algorithmVersion)
+	return err
+}
+
 // UpsertTrackAnalysisOverride persists manual values and their independent
 // locks. Supplying a zero UpdatedAt assigns the write time.
 func (d *DB) UpsertTrackAnalysisOverride(override TrackAnalysisOverride) error {
@@ -511,13 +645,13 @@ func (d *DB) UpsertTrackAnalysisOverride(override TrackAnalysisOverride) error {
 	if override.UpdatedAt == 0 {
 		override.UpdatedAt = time.Now().UnixMilli()
 	}
-	_, err := d.conn.Exec(`INSERT INTO track_analysis_overrides(song_id, bpm, bpm_source_fingerprint, key_tonic, key_mode, beatgrid_artifact_id, bpm_locked, key_locked, beatgrid_locked, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(song_id) DO UPDATE SET bpm=excluded.bpm, bpm_source_fingerprint=excluded.bpm_source_fingerprint, key_tonic=excluded.key_tonic,
+	_, err := d.conn.Exec(`INSERT INTO track_analysis_overrides(song_id, bpm, bpm_source_fingerprint, key_source_fingerprint, key_tonic, key_mode, beatgrid_artifact_id, bpm_locked, key_locked, beatgrid_locked, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(song_id) DO UPDATE SET bpm=excluded.bpm, bpm_source_fingerprint=excluded.bpm_source_fingerprint, key_source_fingerprint=excluded.key_source_fingerprint, key_tonic=excluded.key_tonic,
 			key_mode=excluded.key_mode, beatgrid_artifact_id=excluded.beatgrid_artifact_id,
 			bpm_locked=excluded.bpm_locked, key_locked=excluded.key_locked,
 			beatgrid_locked=excluded.beatgrid_locked, updated_at=excluded.updated_at`,
-		override.SongID, override.BPM, override.BPMSourceFingerprint, override.KeyTonic, override.KeyMode, override.BeatgridArtifactID,
+		override.SongID, override.BPM, override.BPMSourceFingerprint, override.KeySourceFingerprint, override.KeyTonic, override.KeyMode, override.BeatgridArtifactID,
 		boolToInt(override.BPMLocked), boolToInt(override.KeyLocked), boolToInt(override.BeatgridLocked), override.UpdatedAt)
 	return err
 }
@@ -531,11 +665,23 @@ func (d *DB) RefreshTrackAnalysisSourceRevision(songID, fingerprint string) erro
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return err
 	}
-	_, err := d.conn.Exec(`INSERT INTO track_analysis_source_revisions(song_id, source_fingerprint, updated_at)
-		VALUES (?, ?, ?)
-		ON CONFLICT(song_id) DO UPDATE SET source_fingerprint=excluded.source_fingerprint, updated_at=excluded.updated_at`,
-		songID, fingerprint, time.Now().UnixMilli())
-	return err
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(`INSERT INTO track_analysis_source_revisions(song_id,source_fingerprint,updated_at) VALUES(?,?,?) ON CONFLICT(song_id) DO UPDATE SET source_fingerprint=excluded.source_fingerprint,updated_at=excluded.updated_at`, songID, fingerprint, time.Now().UnixMilli()); err != nil {
+		return err
+	}
+	// Observing replacement bytes revokes the previous preparation generation.
+	// Retain its measurements, but do not let its worker settle the new source.
+	if _, err = tx.Exec(`UPDATE track_analysis SET status=?,analyzed_at=NULL,claim_token=NULL WHERE song_id=? AND status=? AND source_fingerprint<>?`, TrackAnalysisPending, songID, TrackAnalysisRunning, fingerprint); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`DELETE FROM track_waveform_leases WHERE song_id=? AND source_fingerprint<>?`, songID, fingerprint); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // SetTrackAnalysisBPMOverrideIfSourceCurrent atomically compares the request's
@@ -590,6 +736,40 @@ func (d *DB) ResetTrackAnalysisBPMOverrideIfSourceCurrent(songID, fingerprint st
 	return rows > 0, nil
 }
 
+// Key edits compare the same live source revision and touch only key columns.
+func (d *DB) SetTrackAnalysisKeyOverrideIfSourceCurrent(songID string, tonic int, mode, fingerprint string) (bool, error) {
+	if songID == "" || fingerprint == "" || tonic < 0 || tonic > 11 || (mode != "major" && mode != "minor") {
+		return false, errors.New("invalid source-bound key override")
+	}
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return false, err
+	}
+	result, err := d.conn.Exec(`INSERT INTO track_analysis_overrides(song_id,key_tonic,key_mode,key_source_fingerprint,key_locked,updated_at)
+ SELECT ?,?,?,?,1,? WHERE EXISTS(SELECT 1 FROM track_analysis_source_revisions WHERE song_id=? AND source_fingerprint=?)
+ ON CONFLICT(song_id) DO UPDATE SET key_tonic=excluded.key_tonic,key_mode=excluded.key_mode,key_source_fingerprint=excluded.key_source_fingerprint,key_locked=1,updated_at=excluded.updated_at`, songID, tonic, mode, fingerprint, time.Now().UnixMilli(), songID, fingerprint)
+	if err != nil {
+		return false, err
+	}
+	rows, err := result.RowsAffected()
+	return rows > 0, err
+}
+func (d *DB) ResetTrackAnalysisKeyOverrideIfSourceCurrent(songID, fingerprint string) (bool, error) {
+	if songID == "" || fingerprint == "" {
+		return false, errors.New("key reset requires source fingerprint")
+	}
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return false, err
+	}
+	result, err := d.conn.Exec(`INSERT INTO track_analysis_overrides(song_id,key_source_fingerprint,key_locked,updated_at)
+ SELECT ?,'',0,? WHERE EXISTS(SELECT 1 FROM track_analysis_source_revisions WHERE song_id=? AND source_fingerprint=?)
+ ON CONFLICT(song_id) DO UPDATE SET key_tonic=NULL,key_mode=NULL,key_source_fingerprint='',key_locked=0,updated_at=excluded.updated_at`, songID, time.Now().UnixMilli(), songID, fingerprint)
+	if err != nil {
+		return false, err
+	}
+	rows, err := result.RowsAffected()
+	return rows > 0, err
+}
+
 // GetTrackAnalysisOverride returns a song's manual analysis choices.
 func (d *DB) GetTrackAnalysisOverride(songID string) (TrackAnalysisOverride, error) {
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
@@ -600,9 +780,9 @@ func (d *DB) GetTrackAnalysisOverride(songID string) (TrackAnalysisOverride, err
 	var keyTonic sql.NullInt64
 	var keyMode, artifactID sql.NullString
 	var bpmLocked, keyLocked, gridLocked int
-	err := d.conn.QueryRow(`SELECT song_id, bpm, bpm_source_fingerprint, key_tonic, key_mode, beatgrid_artifact_id, bpm_locked, key_locked, beatgrid_locked, updated_at
+	err := d.conn.QueryRow(`SELECT song_id, bpm, bpm_source_fingerprint, key_source_fingerprint, key_tonic, key_mode, beatgrid_artifact_id, bpm_locked, key_locked, beatgrid_locked, updated_at
 		FROM track_analysis_overrides WHERE song_id = ?`, songID).
-		Scan(&result.SongID, &bpm, &result.BPMSourceFingerprint, &keyTonic, &keyMode, &artifactID, &bpmLocked, &keyLocked, &gridLocked, &result.UpdatedAt)
+		Scan(&result.SongID, &bpm, &result.BPMSourceFingerprint, &result.KeySourceFingerprint, &keyTonic, &keyMode, &artifactID, &bpmLocked, &keyLocked, &gridLocked, &result.UpdatedAt)
 	if err != nil {
 		return TrackAnalysisOverride{}, err
 	}
@@ -625,7 +805,7 @@ func (d *DB) ListTrackAnalysisOverrides() (map[string]TrackAnalysisOverride, err
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return nil, err
 	}
-	rows, err := d.conn.Query(`SELECT song_id, bpm, bpm_source_fingerprint, key_tonic, key_mode, beatgrid_artifact_id, bpm_locked, key_locked, beatgrid_locked, updated_at
+	rows, err := d.conn.Query(`SELECT song_id, bpm, bpm_source_fingerprint, key_source_fingerprint, key_tonic, key_mode, beatgrid_artifact_id, bpm_locked, key_locked, beatgrid_locked, updated_at
 		FROM track_analysis_overrides`)
 	if err != nil {
 		return nil, err
@@ -638,7 +818,7 @@ func (d *DB) ListTrackAnalysisOverrides() (map[string]TrackAnalysisOverride, err
 		var keyTonic sql.NullInt64
 		var keyMode, artifactID sql.NullString
 		var bpmLocked, keyLocked, gridLocked int
-		if err := rows.Scan(&result.SongID, &bpm, &result.BPMSourceFingerprint, &keyTonic, &keyMode, &artifactID, &bpmLocked, &keyLocked, &gridLocked, &result.UpdatedAt); err != nil {
+		if err := rows.Scan(&result.SongID, &bpm, &result.BPMSourceFingerprint, &result.KeySourceFingerprint, &keyTonic, &keyMode, &artifactID, &bpmLocked, &keyLocked, &gridLocked, &result.UpdatedAt); err != nil {
 			return nil, err
 		}
 		result.BPM = optionalFloat64(bpm)
@@ -659,6 +839,13 @@ func (d *DB) ListTrackAnalysisOverrides() (map[string]TrackAnalysisOverride, err
 // ListEffectiveBPM returns only manual or locally measured tempo rounded for
 // AI-DJ scoring. A missing entry deliberately remains unknown.
 func (d *DB) ListEffectiveBPM(currentFingerprints map[string]string) (map[string]int, error) {
+	return d.ListEffectiveBPMWithProvider(currentFingerprints, nil)
+}
+
+// ListEffectiveBPMWithProvider resolves DJ-scoring tempo with shared manual >
+// current provider > local precedence. Spotify values remain scoring metadata,
+// not sync-safe beat-grid instructions.
+func (d *DB) ListEffectiveBPMWithProvider(currentFingerprints map[string]string, providerFields map[string][]SpotifyScalarField) (map[string]int, error) {
 	analyses, err := d.ListTrackAnalysis()
 	if err != nil {
 		return nil, err
@@ -667,28 +854,34 @@ func (d *DB) ListEffectiveBPM(currentFingerprints map[string]string) (map[string
 	if err != nil {
 		return nil, err
 	}
-	results := make(map[string]int, len(analyses))
+	analysisBySong := make(map[string]TrackAnalysis, len(analyses))
 	for _, analysis := range analyses {
-		effective := ResolveEffectiveBPMForSource(EffectiveBPMInputs{Override: ptrTrackAnalysisOverride(overrides, analysis.SongID), Analysis: &analysis}, currentFingerprints[analysis.SongID])
-		if effective.Value != nil && effective.SyncAllowed {
-			results[analysis.SongID] = int(math.Round(*effective.Value))
+		analysisBySong[analysis.SongID] = analysis
+	}
+	results := make(map[string]int, len(currentFingerprints))
+	for songID, fingerprint := range currentFingerprints {
+		analysis := analysisBySong[songID]
+		effective := ResolveAnalysisScalarFields(analysis, overrides[songID], fingerprint, providerFields[songID])
+		for _, field := range effective {
+			if field.Key != "tempo_bpm" || field.Selected == nil {
+				continue
+			}
+			var bpm float64
+			if json.Unmarshal(field.Selected.Value, &bpm) == nil && bpm > 0 && !math.IsNaN(bpm) && !math.IsInf(bpm, 0) {
+				results[songID] = int(math.Round(bpm))
+			}
+			break
 		}
 	}
 	return results, nil
-}
-
-func ptrTrackAnalysisOverride(overrides map[string]TrackAnalysisOverride, songID string) *TrackAnalysisOverride {
-	override, ok := overrides[songID]
-	if !ok {
-		return nil
-	}
-	return &override
 }
 
 type trackAnalysisScanner interface{ Scan(dest ...any) error }
 
 func scanTrackAnalysis(row trackAnalysisScanner) (TrackAnalysis, error) {
 	var analysis TrackAnalysis
+	var localJSON, bindingsJSON sql.NullString
+	var activeContext string
 	var decoderID, sourceRevision, tempoKind, bpmSource, keyMode, keySource, camelotKey, openKey, energyAlgorithmVersion, errorCode, errorMessage sql.NullString
 	var sourceSize, sourceMtime, analyzedAt sql.NullInt64
 	var bpm, bpmConfidence, bpmAltCandidate, tempoStability, keyConfidence, energyLevelConfidence sql.NullFloat64
@@ -698,9 +891,20 @@ func scanTrackAnalysis(row trackAnalysisScanner) (TrackAnalysis, error) {
 		&bpm, &bpmConfidence, &bpmAltCandidate, &tempoStability, &tempoKind, &bpmSource,
 		&keyTonic, &keyMode, &keyConfidence, &keySource, &camelotKey, &openKey,
 		&energyLevel, &energyLevelConfidence, &energyAlgorithmVersion,
-		&analyzedAt, &errorCode, &errorMessage)
+		&analyzedAt, &errorCode, &errorMessage, &localJSON, &bindingsJSON, &activeContext)
 	if err != nil {
 		return TrackAnalysis{}, err
+	}
+	if bindingsJSON.Valid {
+		var b SpotifyScalarBindings
+		if len(bindingsJSON.String) > 4096 {
+			return TrackAnalysis{}, errors.New("provider binding too large")
+		}
+		if err := json.Unmarshal([]byte(bindingsJSON.String), &b); err != nil {
+			return TrackAnalysis{}, err
+		}
+		b.evaluate(analysis.SourceFingerprint, activeContext)
+		analysis.SpotifyBindings = &b
 	}
 	analysis.DecoderID = optionalString(decoderID)
 	analysis.SourceSize = optionalInt64(sourceSize)
@@ -730,6 +934,22 @@ func scanTrackAnalysis(row trackAnalysisScanner) (TrackAnalysis, error) {
 	analysis.AnalyzedAt = optionalInt64(analyzedAt)
 	analysis.ErrorCode = optionalString(errorCode)
 	analysis.ErrorMessage = optionalString(errorMessage)
+	analysis.LocalScalarEnvelopePresent = localJSON.Valid
+	if localJSON.Valid {
+		var local LocalScalarObservation
+		// An invalid optional observation must not make the library row unreadable.
+		// Keep an empty envelope on failure to avoid reconstructing evidence from
+		// a compatibility projection when explicit local storage is corrupt.
+		analysis.Local = &LocalScalarObservation{}
+		if len(localJSON.String) <= 4096 && json.Unmarshal([]byte(localJSON.String), &local) == nil {
+			local = qualifyLocalScalarFields(local)
+			if validateLocalScalars(&local) == nil {
+				analysis.Local = &local
+			}
+		}
+	} else {
+		analysis.Local = legacyLocalScalars(analysis)
+	}
 	return analysis, nil
 }
 
@@ -763,6 +983,9 @@ func boolToInt(value bool) int {
 }
 
 func validateTrackAnalysis(analysis TrackAnalysis) error {
+	if err := validateLocalScalars(analysis.Local); err != nil {
+		return err
+	}
 	if analysis.SongID == "" || analysis.SourceFingerprint == "" || analysis.AlgorithmVersion == "" || analysis.AnalysisVersion <= 0 {
 		return errors.New("track analysis requires song ID, source fingerprint, and versions")
 	}

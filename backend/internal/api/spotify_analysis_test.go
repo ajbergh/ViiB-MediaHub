@@ -40,7 +40,10 @@ func TestSpotifyCacheRoutesReadStoredDataOnly(t *testing.T) {
 	}
 	now := time.Now().UTC()
 	bpm := 108.022
-	o := spotifyanalysis.Observation{TrackID: cachedSpotifyID, Source: "spotify_internal", SourceEndpoint: "audio_features", RetrievedAt: now.Add(-2 * time.Hour), BPM: &bpm}
+	o := spotifyanalysis.Observation{AccountContext: "api-fixture", TrackID: cachedSpotifyID, Source: "spotify_internal", SourceEndpoint: "audio_features", RetrievedAt: now.Add(-2 * time.Hour), BPM: &bpm}
+	if err := a.db.ActivateSpotifyMetadataContext(o.AccountContext); err != nil {
+		t.Fatal(err)
+	}
 	if err := a.db.PutExternalAnalysis(o, "fixture", now.Add(-time.Hour)); err != nil {
 		t.Fatal(err)
 	}
@@ -136,15 +139,18 @@ func TestSpotifyRefreshAPIIsExplicitAndDisconnectPurgesCache(t *testing.T) {
 	var disconnects atomic.Int32
 	provider := &spotifyRefreshFixtureProvider{fn: func(ctx context.Context, id, endpoint string) (spotifyanalysis.Observation, error) {
 		bpm := 108.022
-		return spotifyanalysis.Observation{TrackID: id, SourceEndpoint: endpoint, Source: "spotify_internal", RetrievedAt: time.Now().UTC(), BPM: &bpm}, nil
+		return spotifyanalysis.Observation{AccountContext: "api-fixture", TrackID: id, SourceEndpoint: endpoint, Source: "spotify_internal", RetrievedAt: time.Now().UTC(), BPM: &bpm}, nil
 	}}
+	if err := a.db.ActivateSpotifyMetadataContext("api-fixture"); err != nil {
+		t.Fatal(err)
+	}
 	service, err := spotifyrefresh.New(a.db, provider, spotifyrefresh.Options{Enabled: true, AdapterRevision: "fixture-api", Disconnect: func() { disconnects.Add(1) }})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer service.Close()
 	// Installation must discard a previous account's successful/failure cache.
-	old := spotifyanalysis.Observation{TrackID: cachedSpotifyID, SourceEndpoint: "audio_analysis", Source: "spotify_internal", RetrievedAt: time.Now().Add(-time.Hour)}
+	old := spotifyanalysis.Observation{AccountContext: "api-fixture", TrackID: cachedSpotifyID, SourceEndpoint: "audio_analysis", Source: "spotify_internal", RetrievedAt: time.Now().Add(-time.Hour)}
 	bpm := 99.0
 	old.BPM = &bpm
 	if err = a.db.PutExternalAnalysis(old, "prior-account", time.Now().Add(time.Hour)); err != nil {
@@ -192,6 +198,9 @@ func TestSpotifyRefreshAPIRateLimitAndSafeErrors(t *testing.T) {
 				}
 				return spotifyanalysis.Observation{}, errors.New("upstream cookie token secret")
 			}}
+			if err := a.db.ActivateSpotifyMetadataContext("api-fixture"); err != nil {
+				t.Fatal(err)
+			}
 			service, err := spotifyrefresh.New(a.db, provider, spotifyrefresh.Options{Enabled: true, AdapterRevision: "fixture"})
 			if err != nil {
 				t.Fatal(err)
@@ -222,6 +231,9 @@ func TestSpotifyRefreshAPIShutdownRejectsNewInstallation(t *testing.T) {
 		return spotifyanalysis.Observation{}, errors.New("unused")
 	}}
 	var disconnects atomic.Int32
+	if err := a.db.ActivateSpotifyMetadataContext("api-fixture"); err != nil {
+		t.Fatal(err)
+	}
 	service, err := spotifyrefresh.New(a.db, provider, spotifyrefresh.Options{Enabled: true, AdapterRevision: "fixture", Disconnect: func() { disconnects.Add(1) }})
 	if err != nil {
 		t.Fatal(err)
@@ -249,24 +261,26 @@ func TestProductionReferenceCompositionFollowsCookieLifetime(t *testing.T) {
 	if err := runtime.connect(context.Background(), "fixture-cookie"); err != nil {
 		t.Fatal(err)
 	}
+	confirmTestSpotifyMetadataOwner(t, runtime, "cookie-owner")
 	original := a.spotifyAnalysis
 	if original == nil || !original.Status().Configured || calls.Load() != 1 {
 		t.Fatal("connection did not install inert service")
 	}
 	now := time.Now().UTC()
 	bpm := 108.022
-	observation := spotifyanalysis.Observation{TrackID: cachedSpotifyID, Source: "spotify_internal", SourceEndpoint: "audio_features", RetrievedAt: now, BPM: &bpm}
+	observation := spotifyanalysis.Observation{AccountContext: runtime.metadataContext, TrackID: cachedSpotifyID, Source: "spotify_internal", SourceEndpoint: "audio_features", RetrievedAt: now, BPM: &bpm}
 	if err := a.db.PutExternalAnalysis(observation, "fixture", now.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	restoredRuntime := newSpotifyAuthRuntime(a.db, spotifyauth.WebPlayerOptions{})
+	confirmTestSpotifyMetadataOwner(t, restoredRuntime, "cookie-owner")
 	restored := &API{db: a.db, spotifyAuth: restoredRuntime}
 	restored.initSpotifyAnalysis()
 	if restored.spotifyAnalysis == nil || calls.Load() != 1 {
 		t.Fatal("restore performed auth I/O or did not compose service")
 	}
 	if cache, err := a.db.GetExternalAnalysis(cachedSpotifyID, "audio_features"); err != nil || cache == nil {
-		t.Fatal("same-account startup purged reference")
+		t.Fatal("verified same-owner restore did not reuse its reference", err)
 	}
 	restored.spotifyAnalysis.Close()
 	restoredRuntime.close()

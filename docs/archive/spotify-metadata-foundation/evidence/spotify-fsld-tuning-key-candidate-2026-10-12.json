@@ -1,0 +1,4119 @@
+{
+  "dataset": "https://doi.org/10.5281/zenodo.3967852",
+  "split": "tuning",
+  "resultsSHA256": "92d48ec19a8267d05b90ae471978797b4d8038ed7ade136385e6e0d6c947b7aa",
+  "comparison": {
+    "algorithm": "track-v3-spotify-local-artifacts;tempo-v3-multifeature-half-bpm;key-v2-hpcp-ks;energy-level-v1-fixed-reference;itu-r-bs1770-5-annex1-k-weight-gating-v1;itu-r-bs1770-5-annex2-4x-fir-v1",
+    "configuration": {
+      "Tempo": {
+        "Range": "auto",
+        "Method": "multifeature-half-bpm",
+        "MinBPM": 90,
+        "MaxBPM": 180,
+        "MinOnsetCrestFactor": 15
+      },
+      "Key": {
+        "MaxChromaFlatness": 0.95,
+        "MaxFrequency": 2500,
+        "Profile": "krumhansl",
+        "Extraction": "hpcp-peaks"
+      },
+      "SkipTempo": false,
+      "SkipKey": false,
+      "GridBPM": null,
+      "ProviderBeatGrid": null,
+      "SkipThreeBand": false
+    },
+    "split": "tuning",
+    "corpus": {
+      "tracks": 487,
+      "tracksInSplit": 308,
+      "heldOutTracks": 179,
+      "tracksNeeded": 0,
+      "heldOutTracksNeededAtTarget": 0,
+      "heldOutStableElectronicTracks": 0,
+      "distinctGenres": [
+        "freesound-loop"
+      ],
+      "evidenceClass": "lawful-real-audio",
+      "missingRequiredCoverage": [
+        "house",
+        "techno",
+        "drum-and-bass",
+        "hip-hop",
+        "breakbeat",
+        "rock-live-drums",
+        "disco",
+        "ambient",
+        "acoustic",
+        "sparse-no-percussion",
+        "stable-electronic",
+        "meter-3-4-or-6-8",
+        "tempo-ramp-or-switch",
+        "tempo-70-140-ambiguity",
+        "tempo-85-170-ambiguity"
+      ],
+      "phase0Ready": false,
+      "readinessMessage": "64 repeated recording groups require deduplication or identity review (0 cross the tuning/held-out boundary); needs held-out stable-electronic coverage; missing required Phase 0 coverage: house, techno, drum-and-bass, hip-hop, breakbeat, rock-live-drums, disco, ambient, acoustic, sparse-no-percussion, stable-electronic, meter-3-4-or-6-8, tempo-ramp-or-switch, tempo-70-140-ambiguity, tempo-85-170-ambiguity",
+      "recordingIdentity": {
+        "unidentifiedTracks": 0,
+        "distinctGroups": 212,
+        "crossSplitGroups": 0,
+        "heldOutOnlyGroups": 72,
+        "repeatedGroups": [
+          {
+            "group": "fsld-uploader-020161220506f57eddaf348d35df476a173eafd585a27bcb73aba1d2edebdd22",
+            "trackIds": [
+              "fsld-40768",
+              "fsld-41305"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-0c25372c585795f8df589244f33b0da32897e50f657da27bc2415feb1f15a3f1",
+            "trackIds": [
+              "fsld-179527",
+              "fsld-179540",
+              "fsld-179541",
+              "fsld-179542",
+              "fsld-179544",
+              "fsld-179545",
+              "fsld-179547"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-0d9ad7fd7414a07d57cc089dde04fbf897df7925c0e0166caac5d22a6fe25f3d",
+            "trackIds": [
+              "fsld-447129",
+              "fsld-447735",
+              "fsld-448983"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-0e729e8d1408559ced128e8ebb7d12865f2390ca1deb9033dfd2f0ac678cd4a2",
+            "trackIds": [
+              "fsld-271146",
+              "fsld-332728"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-0ef1881ea38c066903d856ffce25bed736007ac4accfa3c278ec44bceb14d3d2",
+            "trackIds": [
+              "fsld-413081",
+              "fsld-413083"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-20858ea5c726633e275d9da2d50627d5267e1289cd570aa524a769c2fb5d4636",
+            "trackIds": [
+              "fsld-390879",
+              "fsld-427026",
+              "fsld-454703",
+              "fsld-474984"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-232a2da599f060434e6cfc79712a746356a59f6f0a706cc75c08945937596189",
+            "trackIds": [
+              "fsld-244338",
+              "fsld-244350",
+              "fsld-245099"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-2485e7e9b2febf511e3189a9db038a44f4063bddd9e969b7f678c6722f8a320d",
+            "trackIds": [
+              "fsld-220536",
+              "fsld-220540"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-25a1d581d4ca5eb01671c1a0010f6de5aed099f80d9e18b616d1881fc55a497e",
+            "trackIds": [
+              "fsld-200847",
+              "fsld-200858",
+              "fsld-200864",
+              "fsld-200897",
+              "fsld-200956",
+              "fsld-201010"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-262819eae4d9802ec251461980f10594908c77959cd3384f040bdbd8bb266b32",
+            "trackIds": [
+              "fsld-25570",
+              "fsld-25764",
+              "fsld-25766",
+              "fsld-25769"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-29052ddb95499b94277668aee7c01a96c23bade12becc89a0112258b7135f925",
+            "trackIds": [
+              "fsld-52742",
+              "fsld-99554"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-2a995aac5ffb25c4f80b22c6771a1b4d6bf18430c3a14f02855cbfcc80813365",
+            "trackIds": [
+              "fsld-138201",
+              "fsld-141690",
+              "fsld-1969",
+              "fsld-221837",
+              "fsld-222383",
+              "fsld-222403",
+              "fsld-222407",
+              "fsld-222425",
+              "fsld-222426",
+              "fsld-238660",
+              "fsld-249449",
+              "fsld-2629",
+              "fsld-2715",
+              "fsld-31727",
+              "fsld-333218",
+              "fsld-4549",
+              "fsld-4563",
+              "fsld-4604",
+              "fsld-4636",
+              "fsld-5095",
+              "fsld-5138",
+              "fsld-5142",
+              "fsld-5770",
+              "fsld-5773",
+              "fsld-5834",
+              "fsld-5883",
+              "fsld-6043",
+              "fsld-6833",
+              "fsld-6841",
+              "fsld-78622",
+              "fsld-78742",
+              "fsld-78757",
+              "fsld-86596"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-2c570bdc62bfdb237f013136e6f1577681d642afe70bc4856be612af1692baac",
+            "trackIds": [
+              "fsld-483130",
+              "fsld-493117"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-3101551416f994da2d0475fe52d60704ffb290f3d3a3465958a6cdc0bae1efb8",
+            "trackIds": [
+              "fsld-264428",
+              "fsld-268201"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-31c5f3051d0f13f9452f6609ae69f70ed0ba43465640f35a7fa97f4a93bc2334",
+            "trackIds": [
+              "fsld-192346",
+              "fsld-192348",
+              "fsld-192349"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-38d5f83b0437bdf070b0bfc14de25ff0ba631879ab4d8f7680c2e10bcb45a6aa",
+            "trackIds": [
+              "fsld-213523",
+              "fsld-213905"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-3c0c2193fd550aeb88e76a4d6908df0a193c6c8ce87422c58184e834935a961a",
+            "trackIds": [
+              "fsld-431874",
+              "fsld-431875",
+              "fsld-431876"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-413f4b5bc7493521439cdbdf94b3453b8f2eb77d83e0da8f36c833fb03be8a9a",
+            "trackIds": [
+              "fsld-132910",
+              "fsld-209814",
+              "fsld-269545",
+              "fsld-269546",
+              "fsld-269548",
+              "fsld-269549",
+              "fsld-269550",
+              "fsld-269551",
+              "fsld-269553",
+              "fsld-269554",
+              "fsld-269555",
+              "fsld-269560"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-548270e08f998cc8ac7f6a1b7856457886a02bdba52bc22cfbe28b50dc445904",
+            "trackIds": [
+              "fsld-49746",
+              "fsld-55393"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-5666ae34e7b2a6b3bd85945c7d62972a9972edd7bb6481f5bf39d8c19bbe8059",
+            "trackIds": [
+              "fsld-183640",
+              "fsld-183661",
+              "fsld-183663"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-5b5686694cb924db73139e696d23f930c7ed1d10c84cbb72617935119ebf37ed",
+            "trackIds": [
+              "fsld-122298",
+              "fsld-122302",
+              "fsld-122303"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-5b6af37367a1649128cfce260daaee00ad5bb42cac8bc020b46483d661828c72",
+            "trackIds": [
+              "fsld-189588",
+              "fsld-189589",
+              "fsld-189590",
+              "fsld-189591",
+              "fsld-189592",
+              "fsld-189593",
+              "fsld-189594",
+              "fsld-189595"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-672a0846a21a39ed39bdff6ab2d2d5b01010006788619178c0bb18c7ae9a052a",
+            "trackIds": [
+              "fsld-203088",
+              "fsld-203089",
+              "fsld-203090",
+              "fsld-203091",
+              "fsld-203093",
+              "fsld-203094",
+              "fsld-214862"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-69b74f1b0de06e220ddf5a699b2a85a5901a0864982e6f71e6624e5f203e285d",
+            "trackIds": [
+              "fsld-137054",
+              "fsld-237363",
+              "fsld-53658"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-6aa907ce8fcfc83b6400bea61d1081acb5ecc1900c9e1ee00b4c4cae64d7a3ad",
+            "trackIds": [
+              "fsld-423474",
+              "fsld-477242",
+              "fsld-477265",
+              "fsld-477275",
+              "fsld-477309"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-6bdf30da005bd645868835473456bdaa7c865aaab1edb1dfa06789618c0be171",
+            "trackIds": [
+              "fsld-245757",
+              "fsld-249182",
+              "fsld-252040"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-71012c4c7575e57cd22595dacea8c8a62dd9eb3ede51be907cd6229af8965101",
+            "trackIds": [
+              "fsld-270709",
+              "fsld-270711",
+              "fsld-270722",
+              "fsld-270724",
+              "fsld-270727",
+              "fsld-270735"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-74acd9b98f41afe34a82f4d8008513d036a3272a656e3c947349e37ec44aab77",
+            "trackIds": [
+              "fsld-330574",
+              "fsld-331295",
+              "fsld-368124"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-75aaca0f083ee95eb9a0d224fd3bb64843355e674083270902eb6b0fe278ad29",
+            "trackIds": [
+              "fsld-123900",
+              "fsld-125365",
+              "fsld-125366",
+              "fsld-125367",
+              "fsld-125368",
+              "fsld-125369",
+              "fsld-125370",
+              "fsld-125371",
+              "fsld-125372"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-7c44fef45ff35a73c9706b5165a36e748fa665ccf23adeb0223a74f5d67698ba",
+            "trackIds": [
+              "fsld-485390",
+              "fsld-485391",
+              "fsld-485392",
+              "fsld-485394",
+              "fsld-485395",
+              "fsld-485396",
+              "fsld-485397",
+              "fsld-485398",
+              "fsld-485399",
+              "fsld-485470",
+              "fsld-485471",
+              "fsld-485472",
+              "fsld-485475",
+              "fsld-485476",
+              "fsld-485477",
+              "fsld-485478",
+              "fsld-485479"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-83f3852d33a4cefef0c8f97540321e8822f3ebb1510d634d3c17c537785e93c2",
+            "trackIds": [
+              "fsld-205806",
+              "fsld-205893"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-858c15cc01ba8b2f87345b1dd8c8b4ed26adaf8b6b9b78cb96dafe0b44a1765b",
+            "trackIds": [
+              "fsld-25921",
+              "fsld-57940",
+              "fsld-59209",
+              "fsld-59312"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-87e1b80593a4b16329751ac471a6726ee7083574753a4584df84fd25a38b3fba",
+            "trackIds": [
+              "fsld-32873",
+              "fsld-47099"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-900d88e063aa17f993d3ee592f685fb5f449b328d4e3251874b60876d67374ef",
+            "trackIds": [
+              "fsld-156867",
+              "fsld-183406"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-97c1fe7a447e408056d33bb1fcf203df01f28753398012085d634cb0aa977308",
+            "trackIds": [
+              "fsld-157656",
+              "fsld-157660",
+              "fsld-157661",
+              "fsld-159520"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-9897b907d1c7c7f907d0b5a9f1a7dfa03765e67b348a7ad770ac0e7936041a7f",
+            "trackIds": [
+              "fsld-93632",
+              "fsld-93633",
+              "fsld-93635",
+              "fsld-93636",
+              "fsld-93637"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-9b218e7e07128ffbfbb2fc84e83c1daa22f0b3e288fbb490007bc785c4a8e230",
+            "trackIds": [
+              "fsld-102338",
+              "fsld-102342",
+              "fsld-102375",
+              "fsld-102481",
+              "fsld-102518",
+              "fsld-86662"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-9c6d5d3278a20c87413cea490f1d4a679ef5399c4a8a9d1ca781e0fc71c0085e",
+            "trackIds": [
+              "fsld-199860",
+              "fsld-239076",
+              "fsld-239077"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-9d4e70cedf91dd1aece0a5e1d3d3319febf93687e15dd0477721f66281f2c3ed",
+            "trackIds": [
+              "fsld-166069",
+              "fsld-166177",
+              "fsld-166183",
+              "fsld-248147"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-9da35802e44ed121d45309199ec1e2313d11645ca9f052c0f1eb544e15d5a336",
+            "trackIds": [
+              "fsld-466688",
+              "fsld-85264",
+              "fsld-85268"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-9f000f876093bcb1ec38445060fc6a2ef44d091521257398d7ec0c465053f280",
+            "trackIds": [
+              "fsld-9360",
+              "fsld-9538"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-a0c1b2195ab98aaea78f15f35b27509978680aab612c1e85d740d09e558b3bf3",
+            "trackIds": [
+              "fsld-437413",
+              "fsld-437414"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-a686e7f325fa17046fcac0761b71127a9a674b0d04b801c06c7b05b5876a06a2",
+            "trackIds": [
+              "fsld-418404",
+              "fsld-418596",
+              "fsld-418749",
+              "fsld-418991",
+              "fsld-418993",
+              "fsld-418998",
+              "fsld-419013",
+              "fsld-419016",
+              "fsld-419026",
+              "fsld-419035",
+              "fsld-419044",
+              "fsld-423722",
+              "fsld-423746",
+              "fsld-424124",
+              "fsld-424396",
+              "fsld-432398",
+              "fsld-433544"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-a73bb005fc2da69c0c610878a510fdf1b7e36c22855bac02fd0a9275f985e238",
+            "trackIds": [
+              "fsld-43200",
+              "fsld-43204",
+              "fsld-43242",
+              "fsld-43265",
+              "fsld-43266"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-b53955d842afad7b4d100299ffdf79af846c45afdc7ebf7b7176b653794bba9a",
+            "trackIds": [
+              "fsld-177791",
+              "fsld-177797",
+              "fsld-177804",
+              "fsld-177809",
+              "fsld-177813"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-b6a1bedf2c628170e27580dc661adbc8fa463504142be6a491e1eb2806e19f8f",
+            "trackIds": [
+              "fsld-219113",
+              "fsld-223457",
+              "fsld-223508",
+              "fsld-231538",
+              "fsld-248257"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-b6f56e5f685275175043023077ad19824da37b5f5128dc8fc5c5d83076a99caa",
+            "trackIds": [
+              "fsld-102011",
+              "fsld-102021"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-ba9856f1dcced51941942490edacf51062922aba0ad91212cc9de9349520adb8",
+            "trackIds": [
+              "fsld-127338",
+              "fsld-98707"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-bb4013b82221f5d316170a67a8fb1a3f50e9cdfecff8dd7940d79836f2a3b048",
+            "trackIds": [
+              "fsld-77706",
+              "fsld-77710",
+              "fsld-77714"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-be2940670612630ffe86b698999554076b711622767279d42f93d40ed0964de9",
+            "trackIds": [
+              "fsld-261318",
+              "fsld-261324",
+              "fsld-261328",
+              "fsld-261420",
+              "fsld-261421",
+              "fsld-261422",
+              "fsld-261423",
+              "fsld-261424",
+              "fsld-261561",
+              "fsld-261562",
+              "fsld-261563",
+              "fsld-261564",
+              "fsld-262441",
+              "fsld-262442",
+              "fsld-262443",
+              "fsld-262444",
+              "fsld-262445",
+              "fsld-262446",
+              "fsld-262447",
+              "fsld-346217",
+              "fsld-346218",
+              "fsld-346219",
+              "fsld-396158",
+              "fsld-434116",
+              "fsld-434117",
+              "fsld-434118",
+              "fsld-434121",
+              "fsld-434122",
+              "fsld-455095",
+              "fsld-455096",
+              "fsld-455097",
+              "fsld-455099",
+              "fsld-491273",
+              "fsld-491277",
+              "fsld-491278",
+              "fsld-491279",
+              "fsld-491281",
+              "fsld-491282",
+              "fsld-491283",
+              "fsld-491284",
+              "fsld-491285",
+              "fsld-493723",
+              "fsld-493724",
+              "fsld-493725",
+              "fsld-493726"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-bf9145029b8440ab16cc61ec4391be8c5b0c4f4fee5f6ed36bde37baa1aa3938",
+            "trackIds": [
+              "fsld-194818",
+              "fsld-211955"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-c41fab949a28ee2b41f9ac1da166e22eab3ccaae9b8f9656290004f607417622",
+            "trackIds": [
+              "fsld-242770",
+              "fsld-245421"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-c6a66971e9199e0b0231db5440a140dcc0f4e9db8556afbb2d503d37a6e3f507",
+            "trackIds": [
+              "fsld-169869",
+              "fsld-169879"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-c965cd540165cfa8c731fe34fe757e9b3099915911a5cae021a022e505dbae77",
+            "trackIds": [
+              "fsld-402330",
+              "fsld-402332",
+              "fsld-426034"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-d414d04c6dbc563c120d3456db0a5642c5683df43a61d09ab260e476bc2547e3",
+            "trackIds": [
+              "fsld-177422",
+              "fsld-178176"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-d87e4a3cef8b01167c4aac628975a93e57d556b72a7423e6fe74a564af1ce08f",
+            "trackIds": [
+              "fsld-19071",
+              "fsld-199021",
+              "fsld-199057",
+              "fsld-199080",
+              "fsld-199088",
+              "fsld-199114",
+              "fsld-199117",
+              "fsld-199227",
+              "fsld-199255"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-dec4d411762705bf702340de23102c30f3efd070296c93f9d92dfe88846e224e",
+            "trackIds": [
+              "fsld-72150",
+              "fsld-72154"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-e01a26712323a4b0eecefbb116b7cc5e66c9e9afac18ef7f76eaf8269fd88e36",
+            "trackIds": [
+              "fsld-463559",
+              "fsld-465684"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-e095fdddaec3f690aeb9b5d457aaf01340ffc871b82e1d282ae34967924a73f7",
+            "trackIds": [
+              "fsld-112810",
+              "fsld-113622",
+              "fsld-113623",
+              "fsld-113624",
+              "fsld-113625",
+              "fsld-124454",
+              "fsld-124577"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-e2260d5316bfd7eb6c53be561048d961986bc875b0f191828575f7ae15b38c49",
+            "trackIds": [
+              "fsld-427272",
+              "fsld-427273"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-e93b8a3db7eb7290dc3867de7f6e5af0777f82d373c129b33aeb51d63a4f9e6f",
+            "trackIds": [
+              "fsld-183890",
+              "fsld-187855",
+              "fsld-198469",
+              "fsld-198495",
+              "fsld-202337",
+              "fsld-202384",
+              "fsld-210769",
+              "fsld-211555",
+              "fsld-212924",
+              "fsld-213868",
+              "fsld-222461",
+              "fsld-235416",
+              "fsld-235417",
+              "fsld-235833"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-f25c81301f433614e5836b8d86b3ca2f4d1997d371d094de2014dc12dd778b7d",
+            "trackIds": [
+              "fsld-68128",
+              "fsld-68132"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "fsld-uploader-f5eaa9baa638c16ddf61fc2736e8c036da6a5b9d01782c6f066310cdba3e009c",
+            "trackIds": [
+              "fsld-330873",
+              "fsld-330889"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "fsld-uploader-fc52c169acc408efa5577cd83b688a3a34d12799432e0751880f670ad4465225",
+            "trackIds": [
+              "fsld-150114",
+              "fsld-86761"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          }
+        ]
+      }
+    },
+    "tempo": {
+      "labeled": 308,
+      "reported": 220,
+      "strictWithinHalfBpm": 87,
+      "acceptedMetricLevelMatch": 87,
+      "halfDoubleErrors": 14,
+      "unknown": 88,
+      "strictAccuracy": 0.2824675324675325,
+      "acceptedMetricLevelAccuracy": 0.2824675324675325,
+      "halfDoubleErrorRate": 0.045454545454545456,
+      "unknownRate": 0.2857142857142857
+    },
+    "key": {
+      "labeled": 62,
+      "reported": 57,
+      "exact": 33,
+      "camelotCompatible": 43,
+      "unknown": 5,
+      "exactAccuracy": 0.532258064516129,
+      "camelotCompatibleRate": 0.6935483870967742,
+      "unknownRate": 0.08064516129032258
+    },
+    "unknown": {
+      "labeled": 0,
+      "correct": 0,
+      "incorrect": 0
+    },
+    "tempoRefusal": {
+      "labeled": 0,
+      "correct": 0,
+      "incorrect": 0
+    },
+    "keyRefusal": {
+      "labeled": 124,
+      "correct": 74,
+      "incorrect": 50,
+      "accuracy": 0.5967741935483871
+    },
+    "calibration": {
+      "tempo": {
+        "buckets": [
+          {
+            "label": "low",
+            "minimum": 0,
+            "maximum": 0.3333333333333333,
+            "labeled": 204,
+            "correct": 80,
+            "accuracy": 0.39215686274509803
+          },
+          {
+            "label": "medium",
+            "minimum": 0.3333333333333333,
+            "maximum": 0.6666666666666666,
+            "labeled": 12,
+            "correct": 3,
+            "accuracy": 0.25
+          },
+          {
+            "label": "high",
+            "minimum": 0.6666666666666666,
+            "maximum": 1,
+            "labeled": 4,
+            "correct": 4,
+            "accuracy": 1
+          }
+        ],
+        "monotonic": false,
+        "verdict": "confidence decreases between one or more buckets"
+      },
+      "key": {
+        "buckets": [
+          {
+            "label": "low",
+            "minimum": 0,
+            "maximum": 0.3333333333333333,
+            "labeled": 57,
+            "correct": 33,
+            "accuracy": 0.5789473684210527
+          },
+          {
+            "label": "medium",
+            "minimum": 0.3333333333333333,
+            "maximum": 0.6666666666666666,
+            "labeled": 0,
+            "correct": 0
+          },
+          {
+            "label": "high",
+            "minimum": 0.6666666666666666,
+            "maximum": 1,
+            "labeled": 0,
+            "correct": 0
+          }
+        ],
+        "monotonic": false,
+        "verdict": "requires observations in all three confidence buckets"
+      }
+    },
+    "throughput": {
+      "environment": {
+        "os": "windows",
+        "architecture": "amd64",
+        "cpuModel": "AMD64 Family 23 Model 113 Stepping 0, AuthenticAMD",
+        "cpuCount": 12,
+        "goVersion": "go1.26.8"
+      },
+      "tracks": [
+        {
+          "id": "fsld-101264",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 7.680000000000003,
+          "wallSeconds": 0.1067144,
+          "decodeAndStreamSeconds": 0.0009984999999999855,
+          "dspSeconds": 0.10571590000000002
+        },
+        {
+          "id": "fsld-102011",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 4.363628117913831,
+          "wallSeconds": 0.0580893,
+          "decodeAndStreamSeconds": 0.001998800000000002,
+          "dspSeconds": 0.0560905
+        },
+        {
+          "id": "fsld-102021",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 4.363650793650792,
+          "wallSeconds": 0.0547631,
+          "decodeAndStreamSeconds": 0.000542800000000003,
+          "dspSeconds": 0.0542203
+        },
+        {
+          "id": "fsld-107165",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.4286167800453504,
+          "wallSeconds": 0.0430362,
+          "decodeAndStreamSeconds": 0.001000899999999999,
+          "dspSeconds": 0.0420353
+        },
+        {
+          "id": "fsld-112810",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.506394557823153,
+          "wallSeconds": 0.2859298,
+          "decodeAndStreamSeconds": 0.007526300000000097,
+          "dspSeconds": 0.2784034999999999
+        },
+        {
+          "id": "fsld-113622",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1,
+          "wallSeconds": 0.0160335,
+          "decodeAndStreamSeconds": 0,
+          "dspSeconds": 0.0160335
+        },
+        {
+          "id": "fsld-113623",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 0.9657823129251701,
+          "wallSeconds": 0.0120416,
+          "decodeAndStreamSeconds": 0.0010004999999999997,
+          "dspSeconds": 0.0110411
+        },
+        {
+          "id": "fsld-113624",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 0.9657823129251701,
+          "wallSeconds": 0.0116409,
+          "decodeAndStreamSeconds": 0.0009975999999999995,
+          "dspSeconds": 0.0106433
+        },
+        {
+          "id": "fsld-113625",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 0.48383219954648526,
+          "wallSeconds": 0.0060526,
+          "decodeAndStreamSeconds": 0.0010876000000000002,
+          "dspSeconds": 0.004965
+        },
+        {
+          "id": "fsld-119565",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 5.1473242630385485,
+          "wallSeconds": 0.0622932,
+          "decodeAndStreamSeconds": 0.0009996000000000033,
+          "dspSeconds": 0.0612936
+        },
+        {
+          "id": "fsld-122298",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 7.3846258503401385,
+          "wallSeconds": 0.1029348,
+          "decodeAndStreamSeconds": 0.0005508000000000041,
+          "dspSeconds": 0.102384
+        },
+        {
+          "id": "fsld-122302",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 7.3846258503401385,
+          "wallSeconds": 0.1007199,
+          "decodeAndStreamSeconds": 0.00400269999999997,
+          "dspSeconds": 0.09671720000000003
+        },
+        {
+          "id": "fsld-122303",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 7.3846258503401385,
+          "wallSeconds": 0.0916903,
+          "decodeAndStreamSeconds": 0.002027100000000004,
+          "dspSeconds": 0.0896632
+        },
+        {
+          "id": "fsld-124454",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 5.151791383219955,
+          "wallSeconds": 0.0666175,
+          "decodeAndStreamSeconds": 0.001992599999999997,
+          "dspSeconds": 0.0646249
+        },
+        {
+          "id": "fsld-124577",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 5.151791383219955,
+          "wallSeconds": 0.0646745,
+          "decodeAndStreamSeconds": 0.0009976999999999903,
+          "dspSeconds": 0.0636768
+        },
+        {
+          "id": "fsld-127338",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.857142857142859,
+          "wallSeconds": 0.0837906,
+          "decodeAndStreamSeconds": 0,
+          "dspSeconds": 0.0837906
+        },
+        {
+          "id": "fsld-128493",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.400022675736963,
+          "wallSeconds": 0.0779567,
+          "decodeAndStreamSeconds": 0.0019992000000000204,
+          "dspSeconds": 0.07595749999999998
+        },
+        {
+          "id": "fsld-128674",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.7499999999999982,
+          "wallSeconds": 0.0485091,
+          "decodeAndStreamSeconds": 0.000999900000000005,
+          "dspSeconds": 0.047509199999999994
+        },
+        {
+          "id": "fsld-132052",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 13.09326530612246,
+          "wallSeconds": 0.1668226,
+          "decodeAndStreamSeconds": 0.0032871999999999624,
+          "dspSeconds": 0.16353540000000003
+        },
+        {
+          "id": "fsld-132860",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 48.01340136054397,
+          "wallSeconds": 0.5871297,
+          "decodeAndStreamSeconds": 0.016512400000000094,
+          "dspSeconds": 0.5706172999999999
+        },
+        {
+          "id": "fsld-137054",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.8095464852607694,
+          "wallSeconds": 0.0469644,
+          "decodeAndStreamSeconds": 0,
+          "dspSeconds": 0.0469644
+        },
+        {
+          "id": "fsld-138201",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2,
+          "wallSeconds": 0.0245021,
+          "decodeAndStreamSeconds": 0.0009991999999999987,
+          "dspSeconds": 0.0235029
+        },
+        {
+          "id": "fsld-140397",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.9661904761904763,
+          "wallSeconds": 0.0230259,
+          "decodeAndStreamSeconds": 0,
+          "dspSeconds": 0.023025900000000002
+        },
+        {
+          "id": "fsld-141690",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2,
+          "wallSeconds": 0.0238926,
+          "decodeAndStreamSeconds": 0.0010007000000000002,
+          "dspSeconds": 0.0228919
+        },
+        {
+          "id": "fsld-144865",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 4.799999999999999,
+          "wallSeconds": 0.0585581,
+          "decodeAndStreamSeconds": 0.002000800000000004,
+          "dspSeconds": 0.0565573
+        },
+        {
+          "id": "fsld-146687",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.2005805,
+          "decodeAndStreamSeconds": 0.002001500000000045,
+          "dspSeconds": 0.19857899999999995
+        },
+        {
+          "id": "fsld-148825",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.7486621315192727,
+          "wallSeconds": 0.0445502,
+          "decodeAndStreamSeconds": 0.001995899999999995,
+          "dspSeconds": 0.0425543
+        },
+        {
+          "id": "fsld-150114",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.7142857142857144,
+          "wallSeconds": 0.0196024,
+          "decodeAndStreamSeconds": 1.6999999999999654e-05,
+          "dspSeconds": 0.0195854
+        },
+        {
+          "id": "fsld-150362",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 7.563968253968257,
+          "wallSeconds": 0.092136,
+          "decodeAndStreamSeconds": 0.0010009999999999741,
+          "dspSeconds": 0.09113500000000002
+        },
+        {
+          "id": "fsld-151008",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 20.210521541950133,
+          "wallSeconds": 0.2521801,
+          "decodeAndStreamSeconds": 0.010346600000000011,
+          "dspSeconds": 0.2418335
+        },
+        {
+          "id": "fsld-151330",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.200592,
+          "decodeAndStreamSeconds": 0.007812199999999991,
+          "dspSeconds": 0.1927798
+        },
+        {
+          "id": "fsld-151762",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 9.896916099773248,
+          "wallSeconds": 0.1250888,
+          "decodeAndStreamSeconds": 0.0040494000000000085,
+          "dspSeconds": 0.12103939999999999
+        },
+        {
+          "id": "fsld-152467",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.9834693877551022,
+          "wallSeconds": 0.0247107,
+          "decodeAndStreamSeconds": 0.0015940999999999976,
+          "dspSeconds": 0.0231166
+        },
+        {
+          "id": "fsld-152606",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.993854875283445,
+          "wallSeconds": 0.0482784,
+          "decodeAndStreamSeconds": 0.0005218999999999918,
+          "dspSeconds": 0.04775650000000001
+        },
+        {
+          "id": "fsld-152645",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.9999999999999982,
+          "wallSeconds": 0.0516055,
+          "decodeAndStreamSeconds": 0.0010003000000000026,
+          "dspSeconds": 0.050605199999999996
+        },
+        {
+          "id": "fsld-152670",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 17.419342403628136,
+          "wallSeconds": 0.2210699,
+          "decodeAndStreamSeconds": 0.004634999999999917,
+          "dspSeconds": 0.2164349000000001
+        },
+        {
+          "id": "fsld-156867",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.2000877,
+          "decodeAndStreamSeconds": 0.008001299999999961,
+          "dspSeconds": 0.19208640000000005
+        },
+        {
+          "id": "fsld-166069",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 24.000000000000025,
+          "wallSeconds": 0.300102,
+          "decodeAndStreamSeconds": 0.006512800000000096,
+          "dspSeconds": 0.2935891999999999
+        },
+        {
+          "id": "fsld-166177",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.58825396825399,
+          "wallSeconds": 0.289016,
+          "decodeAndStreamSeconds": 0.008508100000000018,
+          "dspSeconds": 0.2805079
+        },
+        {
+          "id": "fsld-166183",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 73.99999999999967,
+          "wallSeconds": 0.9442398,
+          "decodeAndStreamSeconds": 0.025575700000000534,
+          "dspSeconds": 0.9186640999999994
+        },
+        {
+          "id": "fsld-167180",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 10.56362811791384,
+          "wallSeconds": 0.1384137,
+          "decodeAndStreamSeconds": 0.009232199999999996,
+          "dspSeconds": 0.1291815
+        },
+        {
+          "id": "fsld-168672",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.193537414965988,
+          "wallSeconds": 0.0770716,
+          "decodeAndStreamSeconds": 0.00352120000000003,
+          "dspSeconds": 0.07355039999999997
+        },
+        {
+          "id": "fsld-170453",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 13.714285714285726,
+          "wallSeconds": 0.1690093,
+          "decodeAndStreamSeconds": 0.0019982999999999806,
+          "dspSeconds": 0.16701100000000002
+        },
+        {
+          "id": "fsld-174867",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 15.238095238095251,
+          "wallSeconds": 0.1899327,
+          "decodeAndStreamSeconds": 0.004218499999999931,
+          "dspSeconds": 0.18571420000000008
+        },
+        {
+          "id": "fsld-175551",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000000000000004,
+          "wallSeconds": 0.0988249,
+          "decodeAndStreamSeconds": 0.005001599999999981,
+          "dspSeconds": 0.09382330000000001
+        },
+        {
+          "id": "fsld-177791",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.8399999999999985,
+          "wallSeconds": 0.0481056,
+          "decodeAndStreamSeconds": 0.001994899999999987,
+          "dspSeconds": 0.04611070000000001
+        },
+        {
+          "id": "fsld-177797",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.7142857142857144,
+          "wallSeconds": 0.0215205,
+          "decodeAndStreamSeconds": 0.0009995000000000004,
+          "dspSeconds": 0.020521
+        },
+        {
+          "id": "fsld-177804",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.7142857142857144,
+          "wallSeconds": 0.0455184,
+          "decodeAndStreamSeconds": 0.0029990999999999976,
+          "dspSeconds": 0.0425193
+        },
+        {
+          "id": "fsld-177809",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.857142857142859,
+          "wallSeconds": 0.0885553,
+          "decodeAndStreamSeconds": 0.0019991999999999926,
+          "dspSeconds": 0.08655610000000001
+        },
+        {
+          "id": "fsld-177813",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.857142857142859,
+          "wallSeconds": 0.0836238,
+          "decodeAndStreamSeconds": 0.003999599999999978,
+          "dspSeconds": 0.07962420000000002
+        },
+        {
+          "id": "fsld-179527",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.857142857142859,
+          "wallSeconds": 0.0826243,
+          "decodeAndStreamSeconds": 0.0019972999999999935,
+          "dspSeconds": 0.080627
+        },
+        {
+          "id": "fsld-179540",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.857142857142859,
+          "wallSeconds": 0.0875972,
+          "decodeAndStreamSeconds": 1.3877787807814457e-17,
+          "dspSeconds": 0.08759719999999999
+        },
+        {
+          "id": "fsld-179541",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.857142857142859,
+          "wallSeconds": 0.0869371,
+          "decodeAndStreamSeconds": 0.0010006000000000181,
+          "dspSeconds": 0.08593649999999999
+        },
+        {
+          "id": "fsld-179542",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.857142857142859,
+          "wallSeconds": 0.0811094,
+          "decodeAndStreamSeconds": 0.0009994000000000114,
+          "dspSeconds": 0.08010999999999999
+        },
+        {
+          "id": "fsld-179544",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.857142857142859,
+          "wallSeconds": 0.0815933,
+          "decodeAndStreamSeconds": 0.0009979999999999989,
+          "dspSeconds": 0.0805953
+        },
+        {
+          "id": "fsld-179545",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.857142857142859,
+          "wallSeconds": 0.0814975,
+          "decodeAndStreamSeconds": 0.0010000999999999899,
+          "dspSeconds": 0.08049740000000001
+        },
+        {
+          "id": "fsld-179547",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.857142857142859,
+          "wallSeconds": 0.0813516,
+          "decodeAndStreamSeconds": 0.0029920999999999975,
+          "dspSeconds": 0.0783595
+        },
+        {
+          "id": "fsld-180657",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 27.42843537414969,
+          "wallSeconds": 0.3347277,
+          "decodeAndStreamSeconds": 0.006696800000000225,
+          "dspSeconds": 0.3280308999999998
+        },
+        {
+          "id": "fsld-183406",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000000000000004,
+          "wallSeconds": 0.0991286,
+          "decodeAndStreamSeconds": 0.004508499999999999,
+          "dspSeconds": 0.0946201
+        },
+        {
+          "id": "fsld-183890",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2.0000226757369615,
+          "wallSeconds": 0.0250016,
+          "decodeAndStreamSeconds": 0.0030014000000000013,
+          "dspSeconds": 0.022000199999999998
+        },
+        {
+          "id": "fsld-185489",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 7.407891156462588,
+          "wallSeconds": 0.0916638,
+          "decodeAndStreamSeconds": 0.0009989000000000109,
+          "dspSeconds": 0.09066489999999999
+        },
+        {
+          "id": "fsld-187855",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.8461451247165535,
+          "wallSeconds": 0.0225588,
+          "decodeAndStreamSeconds": 0.0010007000000000002,
+          "dspSeconds": 0.0215581
+        },
+        {
+          "id": "fsld-188553",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000000000000004,
+          "wallSeconds": 0.0980923,
+          "decodeAndStreamSeconds": 0.0029989000000000265,
+          "dspSeconds": 0.09509339999999997
+        },
+        {
+          "id": "fsld-189944",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 4.010045351473921,
+          "wallSeconds": 0.0481012,
+          "decodeAndStreamSeconds": 0.0010015999999999914,
+          "dspSeconds": 0.047099600000000005
+        },
+        {
+          "id": "fsld-19071",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.727256235827669,
+          "wallSeconds": 0.105955,
+          "decodeAndStreamSeconds": 0.0019966999999999763,
+          "dspSeconds": 0.10395830000000002
+        },
+        {
+          "id": "fsld-192346",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 13.714761904761916,
+          "wallSeconds": 0.1689973,
+          "decodeAndStreamSeconds": 0.005523599999999934,
+          "dspSeconds": 0.16347370000000006
+        },
+        {
+          "id": "fsld-192348",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 13.714761904761916,
+          "wallSeconds": 0.17164,
+          "decodeAndStreamSeconds": 0.006175499999999945,
+          "dspSeconds": 0.16546450000000004
+        },
+        {
+          "id": "fsld-192349",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 13.714761904761916,
+          "wallSeconds": 0.1765881,
+          "decodeAndStreamSeconds": 0.00457170000000004,
+          "dspSeconds": 0.17201639999999996
+        },
+        {
+          "id": "fsld-192443",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000000000000004,
+          "wallSeconds": 0.1112336,
+          "decodeAndStreamSeconds": 0.0029975999999999753,
+          "dspSeconds": 0.10823600000000003
+        },
+        {
+          "id": "fsld-194818",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.9999546485260753,
+          "wallSeconds": 0.0536015,
+          "decodeAndStreamSeconds": 0.000999899999999998,
+          "dspSeconds": 0.052601600000000005
+        },
+        {
+          "id": "fsld-1969",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 13.714308390022687,
+          "wallSeconds": 0.1849665,
+          "decodeAndStreamSeconds": 0.003990599999999955,
+          "dspSeconds": 0.18097590000000005
+        },
+        {
+          "id": "fsld-198469",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 62.13877551020359,
+          "wallSeconds": 0.8153653,
+          "decodeAndStreamSeconds": 0.02424469999999923,
+          "dspSeconds": 0.7911206000000007
+        },
+        {
+          "id": "fsld-198495",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.857142857142859,
+          "wallSeconds": 0.0950023,
+          "decodeAndStreamSeconds": 0.004998699999999981,
+          "dspSeconds": 0.09000360000000002
+        },
+        {
+          "id": "fsld-199021",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.8399999999999985,
+          "wallSeconds": 0.0479989,
+          "decodeAndStreamSeconds": 0.0010004000000000055,
+          "dspSeconds": 0.04699849999999999
+        },
+        {
+          "id": "fsld-199057",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.9999999999999982,
+          "wallSeconds": 0.0505545,
+          "decodeAndStreamSeconds": 0.0010212000000000068,
+          "dspSeconds": 0.049533299999999995
+        },
+        {
+          "id": "fsld-199080",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.8399999999999985,
+          "wallSeconds": 0.0501569,
+          "decodeAndStreamSeconds": 0.0003106999999999971,
+          "dspSeconds": 0.0498462
+        },
+        {
+          "id": "fsld-199088",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.8399999999999985,
+          "wallSeconds": 0.0476916,
+          "decodeAndStreamSeconds": 0.0006916999999999965,
+          "dspSeconds": 0.046999900000000004
+        },
+        {
+          "id": "fsld-199114",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.8399999999999985,
+          "wallSeconds": 0.0461233,
+          "decodeAndStreamSeconds": 0.0025290999999999994,
+          "dspSeconds": 0.0435942
+        },
+        {
+          "id": "fsld-199117",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.9999999999999982,
+          "wallSeconds": 0.0635529,
+          "decodeAndStreamSeconds": 0.0010014999999999885,
+          "dspSeconds": 0.06255140000000001
+        },
+        {
+          "id": "fsld-199227",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.9999999999999982,
+          "wallSeconds": 0.0526225,
+          "decodeAndStreamSeconds": 0.0010010999999999978,
+          "dspSeconds": 0.051621400000000005
+        },
+        {
+          "id": "fsld-199255",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.8399999999999985,
+          "wallSeconds": 0.0484859,
+          "decodeAndStreamSeconds": 0.00202709999999999,
+          "dspSeconds": 0.04645880000000001
+        },
+        {
+          "id": "fsld-200406",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 15.360000000000014,
+          "wallSeconds": 0.2162532,
+          "decodeAndStreamSeconds": 0.007976100000000014,
+          "dspSeconds": 0.2082771
+        },
+        {
+          "id": "fsld-202337",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.2034393,
+          "decodeAndStreamSeconds": 0.006531899999999896,
+          "dspSeconds": 0.1969074000000001
+        },
+        {
+          "id": "fsld-202384",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.1961597,
+          "decodeAndStreamSeconds": 0.003995299999999979,
+          "dspSeconds": 0.1921644
+        },
+        {
+          "id": "fsld-202537",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.857142857142859,
+          "wallSeconds": 0.0864347,
+          "decodeAndStreamSeconds": 0.0024125000000000396,
+          "dspSeconds": 0.08402219999999996
+        },
+        {
+          "id": "fsld-203088",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.1977243,
+          "decodeAndStreamSeconds": 0.005075700000000044,
+          "dspSeconds": 0.19264859999999995
+        },
+        {
+          "id": "fsld-203089",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.2054437,
+          "decodeAndStreamSeconds": 0.007141500000000051,
+          "dspSeconds": 0.19830219999999996
+        },
+        {
+          "id": "fsld-203090",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.2204335,
+          "decodeAndStreamSeconds": 0.009004199999999934,
+          "dspSeconds": 0.21142930000000007
+        },
+        {
+          "id": "fsld-203091",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.2164094,
+          "decodeAndStreamSeconds": 0.006627299999999947,
+          "dspSeconds": 0.20978210000000005
+        },
+        {
+          "id": "fsld-203093",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.1977852,
+          "decodeAndStreamSeconds": 0.004003799999999974,
+          "dspSeconds": 0.19378140000000002
+        },
+        {
+          "id": "fsld-203094",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.1943559,
+          "decodeAndStreamSeconds": 0.003319799999999956,
+          "dspSeconds": 0.19103610000000004
+        },
+        {
+          "id": "fsld-203522",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 4.760498866213151,
+          "wallSeconds": 0.0579209,
+          "decodeAndStreamSeconds": 0.0009979000000000099,
+          "dspSeconds": 0.05692299999999999
+        },
+        {
+          "id": "fsld-206174",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 36.57142857142853,
+          "wallSeconds": 0.4607477,
+          "decodeAndStreamSeconds": 0.007528999999999897,
+          "dspSeconds": 0.4532187000000001
+        },
+        {
+          "id": "fsld-209348",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 17.454535147392306,
+          "wallSeconds": 0.236879,
+          "decodeAndStreamSeconds": 0.005148700000000089,
+          "dspSeconds": 0.23173029999999992
+        },
+        {
+          "id": "fsld-210769",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.8750113378684807,
+          "wallSeconds": 0.0220014,
+          "decodeAndStreamSeconds": 0.0020003,
+          "dspSeconds": 0.0200011
+        },
+        {
+          "id": "fsld-211555",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 30.000000000000032,
+          "wallSeconds": 0.370674,
+          "decodeAndStreamSeconds": 0.005534100000000042,
+          "dspSeconds": 0.36513989999999996
+        },
+        {
+          "id": "fsld-211955",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.1998866,
+          "decodeAndStreamSeconds": 0.004533400000000104,
+          "dspSeconds": 0.1953531999999999
+        },
+        {
+          "id": "fsld-212924",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.135600907029483,
+          "wallSeconds": 0.1011392,
+          "decodeAndStreamSeconds": 0.0020121000000000167,
+          "dspSeconds": 0.09912709999999998
+        },
+        {
+          "id": "fsld-213503",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 14.783650793650807,
+          "wallSeconds": 0.1848884,
+          "decodeAndStreamSeconds": 0.005623500000000031,
+          "dspSeconds": 0.17926489999999998
+        },
+        {
+          "id": "fsld-213868",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.857142857142859,
+          "wallSeconds": 0.0870494,
+          "decodeAndStreamSeconds": 0.0010015000000000163,
+          "dspSeconds": 0.08604789999999998
+        },
+        {
+          "id": "fsld-214514",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.142857142857174,
+          "wallSeconds": 0.4118003,
+          "decodeAndStreamSeconds": 0.01264549999999992,
+          "dspSeconds": 0.3991548000000001
+        },
+        {
+          "id": "fsld-214862",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000000000000004,
+          "wallSeconds": 0.1041305,
+          "decodeAndStreamSeconds": 0.002527100000000032,
+          "dspSeconds": 0.10160339999999997
+        },
+        {
+          "id": "fsld-218058",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.9675056689342405,
+          "wallSeconds": 0.0251247,
+          "decodeAndStreamSeconds": 0.0009997999999999986,
+          "dspSeconds": 0.0241249
+        },
+        {
+          "id": "fsld-220060",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.1993898,
+          "decodeAndStreamSeconds": 0.005709699999999984,
+          "dspSeconds": 0.19368010000000002
+        },
+        {
+          "id": "fsld-221837",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.9999999999999982,
+          "wallSeconds": 0.047245,
+          "decodeAndStreamSeconds": 0.0025884999999999936,
+          "dspSeconds": 0.04465650000000001
+        },
+        {
+          "id": "fsld-222383",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.9999999999999982,
+          "wallSeconds": 0.0501718,
+          "decodeAndStreamSeconds": 0.0010171000000000069,
+          "dspSeconds": 0.049154699999999996
+        },
+        {
+          "id": "fsld-222403",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.9999999999999982,
+          "wallSeconds": 0.0520348,
+          "decodeAndStreamSeconds": 0.0035220999999999933,
+          "dspSeconds": 0.048512700000000006
+        },
+        {
+          "id": "fsld-222407",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.9999999999999982,
+          "wallSeconds": 0.0599181,
+          "decodeAndStreamSeconds": 0.003527200000000008,
+          "dspSeconds": 0.056390899999999994
+        },
+        {
+          "id": "fsld-222425",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.9999999999999982,
+          "wallSeconds": 0.0516079,
+          "decodeAndStreamSeconds": 0.003530599999999995,
+          "dspSeconds": 0.0480773
+        },
+        {
+          "id": "fsld-222426",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.9999999999999982,
+          "wallSeconds": 0.0521498,
+          "decodeAndStreamSeconds": 0.002000700000000008,
+          "dspSeconds": 0.050149099999999995
+        },
+        {
+          "id": "fsld-222461",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 65.9999999999995,
+          "wallSeconds": 0.8090578,
+          "decodeAndStreamSeconds": 0.021767300000000045,
+          "dspSeconds": 0.7872905
+        },
+        {
+          "id": "fsld-23042",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 23.997823129251728,
+          "wallSeconds": 0.3003069,
+          "decodeAndStreamSeconds": 0.005989700000000042,
+          "dspSeconds": 0.29431719999999995
+        },
+        {
+          "id": "fsld-233709",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 14.783650793650807,
+          "wallSeconds": 0.1837541,
+          "decodeAndStreamSeconds": 0.0010014000000000411,
+          "dspSeconds": 0.18275269999999996
+        },
+        {
+          "id": "fsld-235416",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2,
+          "wallSeconds": 0.02452,
+          "decodeAndStreamSeconds": 0.0009966999999999962,
+          "dspSeconds": 0.023523300000000004
+        },
+        {
+          "id": "fsld-235417",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.7142857142857144,
+          "wallSeconds": 0.0205187,
+          "decodeAndStreamSeconds": 0.0019973000000000005,
+          "dspSeconds": 0.0185214
+        },
+        {
+          "id": "fsld-235833",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 13.718752834467132,
+          "wallSeconds": 0.1706569,
+          "decodeAndStreamSeconds": 0.003006700000000029,
+          "dspSeconds": 0.16765019999999997
+        },
+        {
+          "id": "fsld-237363",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.857188208616805,
+          "wallSeconds": 0.2853266,
+          "decodeAndStreamSeconds": 0.008292700000000042,
+          "dspSeconds": 0.27703389999999994
+        },
+        {
+          "id": "fsld-237514",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000000000000004,
+          "wallSeconds": 0.0971716,
+          "decodeAndStreamSeconds": 0.003522400000000009,
+          "dspSeconds": 0.09364919999999999
+        },
+        {
+          "id": "fsld-238660",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 12.307709750566904,
+          "wallSeconds": 0.153864,
+          "decodeAndStreamSeconds": 0.0020018000000000258,
+          "dspSeconds": 0.15186219999999997
+        },
+        {
+          "id": "fsld-241210",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000000000000004,
+          "wallSeconds": 0.0961057,
+          "decodeAndStreamSeconds": 0.0040020000000000056,
+          "dspSeconds": 0.0921037
+        },
+        {
+          "id": "fsld-241309",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 7.682562358276647,
+          "wallSeconds": 0.093997,
+          "decodeAndStreamSeconds": 0.0029993999999999993,
+          "dspSeconds": 0.0909976
+        },
+        {
+          "id": "fsld-241958",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 13.714285714285726,
+          "wallSeconds": 0.1686594,
+          "decodeAndStreamSeconds": 0.0025276000000000187,
+          "dspSeconds": 0.16613179999999997
+        },
+        {
+          "id": "fsld-242717",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.2765986394557822,
+          "wallSeconds": 0.0145073,
+          "decodeAndStreamSeconds": 0.000991500000000001,
+          "dspSeconds": 0.0135158
+        },
+        {
+          "id": "fsld-243415",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.5555328798185926,
+          "wallSeconds": 0.0430401,
+          "decodeAndStreamSeconds": 0.001997600000000002,
+          "dspSeconds": 0.041042499999999996
+        },
+        {
+          "id": "fsld-244105",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 13.714308390022687,
+          "wallSeconds": 0.1728526,
+          "decodeAndStreamSeconds": 0.0029981000000000313,
+          "dspSeconds": 0.16985449999999996
+        },
+        {
+          "id": "fsld-244338",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 30.510113378684842,
+          "wallSeconds": 0.3849239,
+          "decodeAndStreamSeconds": 0.0060398999999999314,
+          "dspSeconds": 0.37888400000000005
+        },
+        {
+          "id": "fsld-244350",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.5,
+          "wallSeconds": 0.0180357,
+          "decodeAndStreamSeconds": 0.0009989999999999999,
+          "dspSeconds": 0.017036700000000002
+        },
+        {
+          "id": "fsld-245099",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 5.217392290249433,
+          "wallSeconds": 0.0645896,
+          "decodeAndStreamSeconds": 0.0029810999999999935,
+          "dspSeconds": 0.061608500000000004
+        },
+        {
+          "id": "fsld-245757",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2,
+          "wallSeconds": 0.0240377,
+          "decodeAndStreamSeconds": 0.0010011999999999972,
+          "dspSeconds": 0.0230365
+        },
+        {
+          "id": "fsld-246087",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.333333333333335,
+          "wallSeconds": 0.0765498,
+          "decodeAndStreamSeconds": 0.003992700000000002,
+          "dspSeconds": 0.0725571
+        },
+        {
+          "id": "fsld-248147",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 40.851065759637066,
+          "wallSeconds": 0.5130005,
+          "decodeAndStreamSeconds": 0.012373300000000365,
+          "dspSeconds": 0.5006271999999996
+        },
+        {
+          "id": "fsld-249182",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2.0000226757369615,
+          "wallSeconds": 0.0249978,
+          "decodeAndStreamSeconds": 0.001999600000000004,
+          "dspSeconds": 0.022998199999999996
+        },
+        {
+          "id": "fsld-249449",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 12.000000000000009,
+          "wallSeconds": 0.1461438,
+          "decodeAndStreamSeconds": 0.0019997999999999683,
+          "dspSeconds": 0.14414400000000002
+        },
+        {
+          "id": "fsld-249545",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2.666666666666666,
+          "wallSeconds": 0.0340375,
+          "decodeAndStreamSeconds": 0.001998699999999999,
+          "dspSeconds": 0.0320388
+        },
+        {
+          "id": "fsld-250497",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2.8915646258503394,
+          "wallSeconds": 0.0360305,
+          "decodeAndStreamSeconds": 0,
+          "dspSeconds": 0.0360305
+        },
+        {
+          "id": "fsld-252040",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 5.78467120181406,
+          "wallSeconds": 0.0716464,
+          "decodeAndStreamSeconds": 0.001999600000000004,
+          "dspSeconds": 0.0696468
+        },
+        {
+          "id": "fsld-25570",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 38.39999999999993,
+          "wallSeconds": 0.4838643,
+          "decodeAndStreamSeconds": 0.011001200000000155,
+          "dspSeconds": 0.47286309999999987
+        },
+        {
+          "id": "fsld-25764",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 5.333333333333333,
+          "wallSeconds": 0.0660803,
+          "decodeAndStreamSeconds": 0.0029940999999999857,
+          "dspSeconds": 0.06308620000000001
+        },
+        {
+          "id": "fsld-25766",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.000000000000036,
+          "wallSeconds": 0.4119767,
+          "decodeAndStreamSeconds": 0.008991000000000027,
+          "dspSeconds": 0.40298569999999995
+        },
+        {
+          "id": "fsld-25769",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.00072562358277,
+          "wallSeconds": 0.1063873,
+          "decodeAndStreamSeconds": 0.00499930000000004,
+          "dspSeconds": 0.10138799999999996
+        },
+        {
+          "id": "fsld-261318",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 24.000000000000025,
+          "wallSeconds": 0.2995865,
+          "decodeAndStreamSeconds": 0.006997699999999885,
+          "dspSeconds": 0.2925888000000001
+        },
+        {
+          "id": "fsld-261324",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 15.973945578231307,
+          "wallSeconds": 0.2132656,
+          "decodeAndStreamSeconds": 0.006001600000000079,
+          "dspSeconds": 0.20726399999999992
+        },
+        {
+          "id": "fsld-261328",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 18.000000000000018,
+          "wallSeconds": 0.2331636,
+          "decodeAndStreamSeconds": 0.005998999999999949,
+          "dspSeconds": 0.22716460000000005
+        },
+        {
+          "id": "fsld-261420",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.207757,
+          "decodeAndStreamSeconds": 0.0061530000000000196,
+          "dspSeconds": 0.20160399999999998
+        },
+        {
+          "id": "fsld-261421",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000000000000004,
+          "wallSeconds": 0.1043635,
+          "decodeAndStreamSeconds": 0.001528500000000016,
+          "dspSeconds": 0.10283499999999998
+        },
+        {
+          "id": "fsld-261422",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 11.29410430839003,
+          "wallSeconds": 0.1426297,
+          "decodeAndStreamSeconds": 0.0060080999999999884,
+          "dspSeconds": 0.1366216
+        },
+        {
+          "id": "fsld-261423",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 11.29410430839003,
+          "wallSeconds": 0.1379322,
+          "decodeAndStreamSeconds": 0.003995000000000026,
+          "dspSeconds": 0.13393719999999998
+        },
+        {
+          "id": "fsld-261424",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 11.29410430839003,
+          "wallSeconds": 0.1422719,
+          "decodeAndStreamSeconds": 0.0024443000000000104,
+          "dspSeconds": 0.1398276
+        },
+        {
+          "id": "fsld-261561",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000000000000004,
+          "wallSeconds": 0.1092398,
+          "decodeAndStreamSeconds": 0.0017005000000000076,
+          "dspSeconds": 0.10753929999999999
+        },
+        {
+          "id": "fsld-261562",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000000000000004,
+          "wallSeconds": 0.1025899,
+          "decodeAndStreamSeconds": 0.004998700000000009,
+          "dspSeconds": 0.09759119999999999
+        },
+        {
+          "id": "fsld-261563",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.000000000000036,
+          "wallSeconds": 0.3993858,
+          "decodeAndStreamSeconds": 0.007515400000000005,
+          "dspSeconds": 0.3918704
+        },
+        {
+          "id": "fsld-261564",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.000000000000036,
+          "wallSeconds": 0.3986405,
+          "decodeAndStreamSeconds": 0.010761799999999877,
+          "dspSeconds": 0.38787870000000013
+        },
+        {
+          "id": "fsld-262441",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.2160438,
+          "decodeAndStreamSeconds": 0.004999699999999996,
+          "dspSeconds": 0.2110441
+        },
+        {
+          "id": "fsld-262442",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.2161653,
+          "decodeAndStreamSeconds": 0.003000900000000084,
+          "dspSeconds": 0.21316439999999992
+        },
+        {
+          "id": "fsld-262443",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.211602,
+          "decodeAndStreamSeconds": 0.007734200000000024,
+          "dspSeconds": 0.2038678
+        },
+        {
+          "id": "fsld-262444",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.000000000000036,
+          "wallSeconds": 0.4202566,
+          "decodeAndStreamSeconds": 0.012542900000000079,
+          "dspSeconds": 0.4077136999999999
+        },
+        {
+          "id": "fsld-262445",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000000000000004,
+          "wallSeconds": 0.1152929,
+          "decodeAndStreamSeconds": 0.004401299999999997,
+          "dspSeconds": 0.1108916
+        },
+        {
+          "id": "fsld-262446",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.2182674,
+          "decodeAndStreamSeconds": 0.003997000000000028,
+          "dspSeconds": 0.21427039999999997
+        },
+        {
+          "id": "fsld-262447",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 5.647052154195012,
+          "wallSeconds": 0.0736055,
+          "decodeAndStreamSeconds": 0.004529199999999983,
+          "dspSeconds": 0.06907630000000002
+        },
+        {
+          "id": "fsld-2629",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 14.436099773242642,
+          "wallSeconds": 0.1872486,
+          "decodeAndStreamSeconds": 0.002997400000000011,
+          "dspSeconds": 0.18425119999999998
+        },
+        {
+          "id": "fsld-264428",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 7.360408163265309,
+          "wallSeconds": 0.0982213,
+          "decodeAndStreamSeconds": 0.002998799999999968,
+          "dspSeconds": 0.09522250000000003
+        },
+        {
+          "id": "fsld-265152",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 5.333356009070295,
+          "wallSeconds": 0.0666021,
+          "decodeAndStreamSeconds": 0.003000900000000001,
+          "dspSeconds": 0.0636012
+        },
+        {
+          "id": "fsld-268201",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.857142857142859,
+          "wallSeconds": 0.0891411,
+          "decodeAndStreamSeconds": 0.0019979000000000108,
+          "dspSeconds": 0.08714319999999999
+        },
+        {
+          "id": "fsld-271070",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.858639455782315,
+          "wallSeconds": 0.0890916,
+          "decodeAndStreamSeconds": 0.005054000000000017,
+          "dspSeconds": 0.08403759999999999
+        },
+        {
+          "id": "fsld-271146",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 10.82707482993198,
+          "wallSeconds": 0.137259,
+          "decodeAndStreamSeconds": 0.0015209999999999946,
+          "dspSeconds": 0.135738
+        },
+        {
+          "id": "fsld-2715",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.347823129251704,
+          "wallSeconds": 0.1120473,
+          "decodeAndStreamSeconds": 0.0005669999999999981,
+          "dspSeconds": 0.1114803
+        },
+        {
+          "id": "fsld-274961",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 21.00000000000002,
+          "wallSeconds": 0.2843114,
+          "decodeAndStreamSeconds": 0.006070400000000087,
+          "dspSeconds": 0.2782409999999999
+        },
+        {
+          "id": "fsld-276804",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 31.93709750566897,
+          "wallSeconds": 0.5543725,
+          "decodeAndStreamSeconds": 0.012525400000000131,
+          "dspSeconds": 0.5418470999999999
+        },
+        {
+          "id": "fsld-294465",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.6923129251700666,
+          "wallSeconds": 0.0469183,
+          "decodeAndStreamSeconds": 0,
+          "dspSeconds": 0.0469183
+        },
+        {
+          "id": "fsld-30217",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.011791383219958,
+          "wallSeconds": 0.1072044,
+          "decodeAndStreamSeconds": 0.003063000000000024,
+          "dspSeconds": 0.10414139999999998
+        },
+        {
+          "id": "fsld-31727",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000000000000004,
+          "wallSeconds": 0.1054293,
+          "decodeAndStreamSeconds": 0.0029962999999999934,
+          "dspSeconds": 0.10243300000000001
+        },
+        {
+          "id": "fsld-317507",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 37.090929705215366,
+          "wallSeconds": 0.6427489,
+          "decodeAndStreamSeconds": 0.01751629999999993,
+          "dspSeconds": 0.6252326
+        },
+        {
+          "id": "fsld-32256",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.857142857142859,
+          "wallSeconds": 0.1000678,
+          "decodeAndStreamSeconds": 0.002000400000000027,
+          "dspSeconds": 0.09806739999999997
+        },
+        {
+          "id": "fsld-331230",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 21.573038548752855,
+          "wallSeconds": 0.2928028,
+          "decodeAndStreamSeconds": 0.01549740000000005,
+          "dspSeconds": 0.2773053999999999
+        },
+        {
+          "id": "fsld-332728",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 13.714285714285726,
+          "wallSeconds": 0.186418,
+          "decodeAndStreamSeconds": 0.0031157000000000545,
+          "dspSeconds": 0.18330229999999995
+        },
+        {
+          "id": "fsld-333218",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 63.99999999999947,
+          "wallSeconds": 0.8311232,
+          "decodeAndStreamSeconds": 0.015084099999999934,
+          "dspSeconds": 0.8160391
+        },
+        {
+          "id": "fsld-33359",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.9938321995464836,
+          "wallSeconds": 0.0515254,
+          "decodeAndStreamSeconds": 0.00300050000000001,
+          "dspSeconds": 0.04852489999999999
+        },
+        {
+          "id": "fsld-336306",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 14.76934240362813,
+          "wallSeconds": 0.2081462,
+          "decodeAndStreamSeconds": 0.009000299999999961,
+          "dspSeconds": 0.19914590000000004
+        },
+        {
+          "id": "fsld-338957",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.857142857142859,
+          "wallSeconds": 0.098001,
+          "decodeAndStreamSeconds": 0,
+          "dspSeconds": 0.098001
+        },
+        {
+          "id": "fsld-346217",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 17.454557823129267,
+          "wallSeconds": 0.2353261,
+          "decodeAndStreamSeconds": 0.010564999999999908,
+          "dspSeconds": 0.2247611000000001
+        },
+        {
+          "id": "fsld-346218",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 17.454557823129267,
+          "wallSeconds": 0.2348681,
+          "decodeAndStreamSeconds": 0.006000999999999979,
+          "dspSeconds": 0.22886710000000002
+        },
+        {
+          "id": "fsld-346219",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 17.454557823129267,
+          "wallSeconds": 0.2227502,
+          "decodeAndStreamSeconds": 0.006521499999999902,
+          "dspSeconds": 0.2162287000000001
+        },
+        {
+          "id": "fsld-346374",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.2053314,
+          "decodeAndStreamSeconds": 0.013326699999999941,
+          "dspSeconds": 0.19200470000000006
+        },
+        {
+          "id": "fsld-347181",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 15.364988662131532,
+          "wallSeconds": 0.199994,
+          "decodeAndStreamSeconds": 0.0015214000000000338,
+          "dspSeconds": 0.19847259999999997
+        },
+        {
+          "id": "fsld-348381",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 11.060000000000008,
+          "wallSeconds": 0.1437945,
+          "decodeAndStreamSeconds": 0.004997799999999969,
+          "dspSeconds": 0.13879670000000002
+        },
+        {
+          "id": "fsld-350766",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 23.414648526077123,
+          "wallSeconds": 0.3291645,
+          "decodeAndStreamSeconds": 0.011702200000000051,
+          "dspSeconds": 0.3174623
+        },
+        {
+          "id": "fsld-353272",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 14.769229024943323,
+          "wallSeconds": 0.1952402,
+          "decodeAndStreamSeconds": 0.00999979999999992,
+          "dspSeconds": 0.18524040000000008
+        },
+        {
+          "id": "fsld-35478",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 4.1389569160997715,
+          "wallSeconds": 0.0517105,
+          "decodeAndStreamSeconds": 0.0009996000000000033,
+          "dspSeconds": 0.050710899999999996
+        },
+        {
+          "id": "fsld-365795",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 9.600000000000005,
+          "wallSeconds": 0.1229353,
+          "decodeAndStreamSeconds": 0.003999599999999992,
+          "dspSeconds": 0.1189357
+        },
+        {
+          "id": "fsld-368774",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.94117913832201,
+          "wallSeconds": 0.2107194,
+          "decodeAndStreamSeconds": 0.00452380000000005,
+          "dspSeconds": 0.20619559999999995
+        },
+        {
+          "id": "fsld-370758",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.6923129251700666,
+          "wallSeconds": 0.0455999,
+          "decodeAndStreamSeconds": 0.0017124999999999918,
+          "dspSeconds": 0.04388740000000001
+        },
+        {
+          "id": "fsld-38104",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000000000000004,
+          "wallSeconds": 0.0985545,
+          "decodeAndStreamSeconds": 0.003997400000000012,
+          "dspSeconds": 0.09455709999999999
+        },
+        {
+          "id": "fsld-384553",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 19.20000000000002,
+          "wallSeconds": 0.250839,
+          "decodeAndStreamSeconds": 0.01251909999999995,
+          "dspSeconds": 0.23831990000000003
+        },
+        {
+          "id": "fsld-390132",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 5.106417233560091,
+          "wallSeconds": 0.0630764,
+          "decodeAndStreamSeconds": 0.002998599999999997,
+          "dspSeconds": 0.06007780000000001
+        },
+        {
+          "id": "fsld-390879",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 24.000000000000025,
+          "wallSeconds": 0.3043891,
+          "decodeAndStreamSeconds": 0.006160500000000069,
+          "dspSeconds": 0.29822859999999995
+        },
+        {
+          "id": "fsld-393330",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 51.200022675736655,
+          "wallSeconds": 0.749345,
+          "decodeAndStreamSeconds": 0.01501359999999996,
+          "dspSeconds": 0.7343314000000001
+        },
+        {
+          "id": "fsld-396158",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 17.454557823129267,
+          "wallSeconds": 0.2541601,
+          "decodeAndStreamSeconds": 0.00909560000000001,
+          "dspSeconds": 0.2450645
+        },
+        {
+          "id": "fsld-399325",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 9.600000000000005,
+          "wallSeconds": 0.1396163,
+          "decodeAndStreamSeconds": 0.0045298000000000005,
+          "dspSeconds": 0.1350865
+        },
+        {
+          "id": "fsld-404053",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000000000000004,
+          "wallSeconds": 0.1098979,
+          "decodeAndStreamSeconds": 0.005003799999999989,
+          "dspSeconds": 0.10489410000000002
+        },
+        {
+          "id": "fsld-40768",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2,
+          "wallSeconds": 0.0267827,
+          "decodeAndStreamSeconds": 0.0010002999999999956,
+          "dspSeconds": 0.025782400000000004
+        },
+        {
+          "id": "fsld-40962",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 11.541201814058965,
+          "wallSeconds": 0.16359,
+          "decodeAndStreamSeconds": 0.0031154999999999655,
+          "dspSeconds": 0.16047450000000005
+        },
+        {
+          "id": "fsld-41281",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.6950566893424037,
+          "wallSeconds": 0.0229986,
+          "decodeAndStreamSeconds": 0.001001399999999996,
+          "dspSeconds": 0.021997200000000005
+        },
+        {
+          "id": "fsld-41305",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.529410430839001,
+          "wallSeconds": 0.0490016,
+          "decodeAndStreamSeconds": 0.003997100000000003,
+          "dspSeconds": 0.045004499999999996
+        },
+        {
+          "id": "fsld-413081",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.421065759637193,
+          "wallSeconds": 0.1101336,
+          "decodeAndStreamSeconds": 0.0010156000000000054,
+          "dspSeconds": 0.10911799999999999
+        },
+        {
+          "id": "fsld-413083",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 9.411768707482999,
+          "wallSeconds": 0.1217393,
+          "decodeAndStreamSeconds": 0.004004599999999997,
+          "dspSeconds": 0.1177347
+        },
+        {
+          "id": "fsld-417755",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 10.105260770975063,
+          "wallSeconds": 0.1332187,
+          "decodeAndStreamSeconds": 0.005999899999999975,
+          "dspSeconds": 0.12721880000000002
+        },
+        {
+          "id": "fsld-423385",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 20.00000000000002,
+          "wallSeconds": 0.2557522,
+          "decodeAndStreamSeconds": 0.007529000000000063,
+          "dspSeconds": 0.24822319999999992
+        },
+        {
+          "id": "fsld-423474",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.857142857142859,
+          "wallSeconds": 0.0856206,
+          "decodeAndStreamSeconds": 0.002516399999999988,
+          "dspSeconds": 0.08310420000000002
+        },
+        {
+          "id": "fsld-424083",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 11.428594104308399,
+          "wallSeconds": 0.1475259,
+          "decodeAndStreamSeconds": 0.0056618999999999975,
+          "dspSeconds": 0.141864
+        },
+        {
+          "id": "fsld-427026",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 58.28571428571386,
+          "wallSeconds": 0.7488338,
+          "decodeAndStreamSeconds": 0.03231589999999995,
+          "dspSeconds": 0.7165179
+        },
+        {
+          "id": "fsld-431182",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 17.454557823129267,
+          "wallSeconds": 0.2230099,
+          "decodeAndStreamSeconds": 0.008691700000000052,
+          "dspSeconds": 0.21431819999999996
+        },
+        {
+          "id": "fsld-431435",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 5.1473242630385485,
+          "wallSeconds": 0.0626643,
+          "decodeAndStreamSeconds": 0.002524600000000002,
+          "dspSeconds": 0.060139700000000004
+        },
+        {
+          "id": "fsld-43200",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2.9975510204081623,
+          "wallSeconds": 0.0358419,
+          "decodeAndStreamSeconds": 0.0009984000000000035,
+          "dspSeconds": 0.0348435
+        },
+        {
+          "id": "fsld-43204",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.001179138321995,
+          "wallSeconds": 0.0431747,
+          "decodeAndStreamSeconds": 6.938893903907228e-18,
+          "dspSeconds": 0.043174699999999996
+        },
+        {
+          "id": "fsld-43242",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2.6363718820861672,
+          "wallSeconds": 0.0705925,
+          "decodeAndStreamSeconds": 0.0030003000000000113,
+          "dspSeconds": 0.06759219999999999
+        },
+        {
+          "id": "fsld-43265",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2.6363718820861672,
+          "wallSeconds": 0.0400005,
+          "decodeAndStreamSeconds": 0.0010006000000000043,
+          "dspSeconds": 0.0389999
+        },
+        {
+          "id": "fsld-43266",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2.6363718820861672,
+          "wallSeconds": 0.0375649,
+          "decodeAndStreamSeconds": 0.0010005999999999973,
+          "dspSeconds": 0.0365643
+        },
+        {
+          "id": "fsld-434116",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000000000000004,
+          "wallSeconds": 0.1242952,
+          "decodeAndStreamSeconds": 0.004038099999999989,
+          "dspSeconds": 0.1202571
+        },
+        {
+          "id": "fsld-434117",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000000000000004,
+          "wallSeconds": 0.1221625,
+          "decodeAndStreamSeconds": 0.0050000000000000044,
+          "dspSeconds": 0.11716249999999999
+        },
+        {
+          "id": "fsld-434118",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 14.769229024943323,
+          "wallSeconds": 0.196326,
+          "decodeAndStreamSeconds": 0.007999299999999987,
+          "dspSeconds": 0.1883267
+        },
+        {
+          "id": "fsld-434121",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 17.454557823129267,
+          "wallSeconds": 0.2175479,
+          "decodeAndStreamSeconds": 0.005524299999999982,
+          "dspSeconds": 0.2120236
+        },
+        {
+          "id": "fsld-434122",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000000000000004,
+          "wallSeconds": 0.1007311,
+          "decodeAndStreamSeconds": 0.00167189999999999,
+          "dspSeconds": 0.09905920000000001
+        },
+        {
+          "id": "fsld-437413",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 26.06333333333336,
+          "wallSeconds": 0.32812,
+          "decodeAndStreamSeconds": 0.009631400000000068,
+          "dspSeconds": 0.31848859999999996
+        },
+        {
+          "id": "fsld-437414",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.436235827664376,
+          "wallSeconds": 0.4490958,
+          "decodeAndStreamSeconds": 0.012314199999999997,
+          "dspSeconds": 0.4367816
+        },
+        {
+          "id": "fsld-44706",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 4.403696145124715,
+          "wallSeconds": 0.0540331,
+          "decodeAndStreamSeconds": 0.0022563999999999987,
+          "dspSeconds": 0.0517767
+        },
+        {
+          "id": "fsld-447129",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 19.20000000000002,
+          "wallSeconds": 0.2372306,
+          "decodeAndStreamSeconds": 0.007650400000000002,
+          "dspSeconds": 0.2295802
+        },
+        {
+          "id": "fsld-447735",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 9.600000000000005,
+          "wallSeconds": 0.1243161,
+          "decodeAndStreamSeconds": 0.0015362999999999766,
+          "dspSeconds": 0.12277980000000002
+        },
+        {
+          "id": "fsld-448983",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 28.000000000000032,
+          "wallSeconds": 0.3735145,
+          "decodeAndStreamSeconds": 0.009136100000000147,
+          "dspSeconds": 0.3643783999999999
+        },
+        {
+          "id": "fsld-454703",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2.4,
+          "wallSeconds": 0.0286701,
+          "decodeAndStreamSeconds": 0,
+          "dspSeconds": 0.0286701
+        },
+        {
+          "id": "fsld-4549",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.999342403628118,
+          "wallSeconds": 0.0246833,
+          "decodeAndStreamSeconds": 2.2200000000003467e-05,
+          "dspSeconds": 0.024661099999999995
+        },
+        {
+          "id": "fsld-455095",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 30.857142857142893,
+          "wallSeconds": 0.4030137,
+          "decodeAndStreamSeconds": 0.010720500000000244,
+          "dspSeconds": 0.39229319999999973
+        },
+        {
+          "id": "fsld-455096",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 27.42857142857146,
+          "wallSeconds": 0.3482841,
+          "decodeAndStreamSeconds": 0.014883699999999889,
+          "dspSeconds": 0.3334004000000001
+        },
+        {
+          "id": "fsld-455097",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 13.714285714285726,
+          "wallSeconds": 0.1750519,
+          "decodeAndStreamSeconds": 0.0035328000000000304,
+          "dspSeconds": 0.17151909999999998
+        },
+        {
+          "id": "fsld-455099",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 13.714285714285726,
+          "wallSeconds": 0.1768974,
+          "decodeAndStreamSeconds": 0.0035209000000001045,
+          "dspSeconds": 0.1733764999999999
+        },
+        {
+          "id": "fsld-45527",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.2053347,
+          "decodeAndStreamSeconds": 0.009713599999999933,
+          "dspSeconds": 0.19562110000000008
+        },
+        {
+          "id": "fsld-4563",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.9997505668934241,
+          "wallSeconds": 0.0290006,
+          "decodeAndStreamSeconds": 0,
+          "dspSeconds": 0.0290006
+        },
+        {
+          "id": "fsld-45741",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 21.818163265306143,
+          "wallSeconds": 0.2862237,
+          "decodeAndStreamSeconds": 0.007994700000000188,
+          "dspSeconds": 0.27822899999999984
+        },
+        {
+          "id": "fsld-4604",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2.000566893424036,
+          "wallSeconds": 0.0239967,
+          "decodeAndStreamSeconds": 0,
+          "dspSeconds": 0.0239967
+        },
+        {
+          "id": "fsld-462026",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000000000000004,
+          "wallSeconds": 0.1030012,
+          "decodeAndStreamSeconds": 0.0029982999999999954,
+          "dspSeconds": 0.1000029
+        },
+        {
+          "id": "fsld-463559",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 28.130975056689373,
+          "wallSeconds": 0.3672769,
+          "decodeAndStreamSeconds": 0.009033199999999852,
+          "dspSeconds": 0.35824370000000016
+        },
+        {
+          "id": "fsld-4636",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.9999773242630385,
+          "wallSeconds": 0.0249234,
+          "decodeAndStreamSeconds": 0.0009462000000000047,
+          "dspSeconds": 0.023977199999999994
+        },
+        {
+          "id": "fsld-465684",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 41.74947845804975,
+          "wallSeconds": 0.5536682,
+          "decodeAndStreamSeconds": 0.013543700000000491,
+          "dspSeconds": 0.5401244999999996
+        },
+        {
+          "id": "fsld-466688",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 15.483877551020422,
+          "wallSeconds": 0.2131388,
+          "decodeAndStreamSeconds": 0.007529999999999926,
+          "dspSeconds": 0.20560880000000006
+        },
+        {
+          "id": "fsld-467335",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.2087062,
+          "decodeAndStreamSeconds": 0.0030012999999999013,
+          "dspSeconds": 0.2057049000000001
+        },
+        {
+          "id": "fsld-468507",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000000000000004,
+          "wallSeconds": 0.1017387,
+          "decodeAndStreamSeconds": 0.004048399999999994,
+          "dspSeconds": 0.09769030000000001
+        },
+        {
+          "id": "fsld-471043",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 27.750000000000032,
+          "wallSeconds": 0.3797643,
+          "decodeAndStreamSeconds": 0.013356799999999946,
+          "dspSeconds": 0.36640750000000005
+        },
+        {
+          "id": "fsld-474943",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 7.8688435374149694,
+          "wallSeconds": 0.1064068,
+          "decodeAndStreamSeconds": 0.0030021000000000075,
+          "dspSeconds": 0.10340469999999999
+        },
+        {
+          "id": "fsld-474984",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 20.00000000000002,
+          "wallSeconds": 0.2779886,
+          "decodeAndStreamSeconds": 0.005600999999999967,
+          "dspSeconds": 0.2723876
+        },
+        {
+          "id": "fsld-477242",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2.666666666666666,
+          "wallSeconds": 0.033522,
+          "decodeAndStreamSeconds": 0.0009987000000000051,
+          "dspSeconds": 0.0325233
+        },
+        {
+          "id": "fsld-477265",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 5.332040816326531,
+          "wallSeconds": 0.0704485,
+          "decodeAndStreamSeconds": 0.0029972999999999805,
+          "dspSeconds": 0.06745120000000002
+        },
+        {
+          "id": "fsld-477275",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 13.714285714285726,
+          "wallSeconds": 0.1774333,
+          "decodeAndStreamSeconds": 0.0035192,
+          "dspSeconds": 0.1739141
+        },
+        {
+          "id": "fsld-477309",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 5.517278911564626,
+          "wallSeconds": 0.0697616,
+          "decodeAndStreamSeconds": 0.003300200000000003,
+          "dspSeconds": 0.0664614
+        },
+        {
+          "id": "fsld-483130",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.72727891156463,
+          "wallSeconds": 0.1100915,
+          "decodeAndStreamSeconds": 0.0018024999999999847,
+          "dspSeconds": 0.10828900000000001
+        },
+        {
+          "id": "fsld-486302",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 7.3846258503401385,
+          "wallSeconds": 0.0966694,
+          "decodeAndStreamSeconds": 0.0033299999999999996,
+          "dspSeconds": 0.0933394
+        },
+        {
+          "id": "fsld-491273",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.1992802,
+          "decodeAndStreamSeconds": 0.003280799999999945,
+          "dspSeconds": 0.19599940000000005
+        },
+        {
+          "id": "fsld-491277",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000000000000004,
+          "wallSeconds": 0.1039001,
+          "decodeAndStreamSeconds": 0.0025025000000000047,
+          "dspSeconds": 0.10139759999999999
+        },
+        {
+          "id": "fsld-491278",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 10.000000000000007,
+          "wallSeconds": 0.1457057,
+          "decodeAndStreamSeconds": 0.005575799999999964,
+          "dspSeconds": 0.14012990000000003
+        },
+        {
+          "id": "fsld-491279",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 10.000000000000007,
+          "wallSeconds": 0.1280599,
+          "decodeAndStreamSeconds": 0.0040030999999999956,
+          "dspSeconds": 0.12405680000000001
+        },
+        {
+          "id": "fsld-491281",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 12.000000000000009,
+          "wallSeconds": 0.1490694,
+          "decodeAndStreamSeconds": 0.0020019000000000287,
+          "dspSeconds": 0.14706749999999996
+        },
+        {
+          "id": "fsld-491282",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 12.000000000000009,
+          "wallSeconds": 0.1484433,
+          "decodeAndStreamSeconds": 0.008705099999999993,
+          "dspSeconds": 0.1397382
+        },
+        {
+          "id": "fsld-491283",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 12.000000000000009,
+          "wallSeconds": 0.1544543,
+          "decodeAndStreamSeconds": 0.005234299999999942,
+          "dspSeconds": 0.14922000000000005
+        },
+        {
+          "id": "fsld-491284",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 21.333333333333353,
+          "wallSeconds": 0.2794416,
+          "decodeAndStreamSeconds": 0.0046043999999998975,
+          "dspSeconds": 0.2748372000000001
+        },
+        {
+          "id": "fsld-491285",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 12.000000000000009,
+          "wallSeconds": 0.1692986,
+          "decodeAndStreamSeconds": 0.005514599999999981,
+          "dspSeconds": 0.163784
+        },
+        {
+          "id": "fsld-493117",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.72727891156463,
+          "wallSeconds": 0.1168263,
+          "decodeAndStreamSeconds": 0,
+          "dspSeconds": 0.1168263
+        },
+        {
+          "id": "fsld-493723",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 9.600000000000005,
+          "wallSeconds": 0.1298753,
+          "decodeAndStreamSeconds": 0.004531500000000022,
+          "dspSeconds": 0.12534379999999998
+        },
+        {
+          "id": "fsld-493724",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 9.600000000000005,
+          "wallSeconds": 0.1284025,
+          "decodeAndStreamSeconds": 0.006005200000000016,
+          "dspSeconds": 0.12239729999999999
+        },
+        {
+          "id": "fsld-493725",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 9.600000000000005,
+          "wallSeconds": 0.1383921,
+          "decodeAndStreamSeconds": 0.002000199999999952,
+          "dspSeconds": 0.13639190000000004
+        },
+        {
+          "id": "fsld-493726",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 9.600000000000005,
+          "wallSeconds": 0.1287467,
+          "decodeAndStreamSeconds": 0.00400049999999999,
+          "dspSeconds": 0.1247462
+        },
+        {
+          "id": "fsld-494504",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 61.49999999999951,
+          "wallSeconds": 0.816533,
+          "decodeAndStreamSeconds": 0.019712299999999683,
+          "dspSeconds": 0.7968207000000003
+        },
+        {
+          "id": "fsld-49746",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 24.000000000000025,
+          "wallSeconds": 0.332113,
+          "decodeAndStreamSeconds": 0.008577500000000016,
+          "dspSeconds": 0.3235355
+        },
+        {
+          "id": "fsld-5095",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 4.210544217687073,
+          "wallSeconds": 0.0620399,
+          "decodeAndStreamSeconds": 0.002999800000000004,
+          "dspSeconds": 0.0590401
+        },
+        {
+          "id": "fsld-51201",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.4241269841269841,
+          "wallSeconds": 0.0180033,
+          "decodeAndStreamSeconds": 0.0010013,
+          "dspSeconds": 0.017002
+        },
+        {
+          "id": "fsld-5138",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.7143310657596373,
+          "wallSeconds": 0.0229986,
+          "decodeAndStreamSeconds": 0.0009979999999999954,
+          "dspSeconds": 0.022000600000000006
+        },
+        {
+          "id": "fsld-5142",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.7143310657596373,
+          "wallSeconds": 0.0205749,
+          "decodeAndStreamSeconds": 0.0010005000000000014,
+          "dspSeconds": 0.0195744
+        },
+        {
+          "id": "fsld-52742",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.4786394557823117,
+          "wallSeconds": 0.0471378,
+          "decodeAndStreamSeconds": 0.0015288999999999997,
+          "dspSeconds": 0.0456089
+        },
+        {
+          "id": "fsld-53658",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000022675736965,
+          "wallSeconds": 0.1120181,
+          "decodeAndStreamSeconds": 0.0009993999999999975,
+          "dspSeconds": 0.1110187
+        },
+        {
+          "id": "fsld-55393",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 26.181814058956945,
+          "wallSeconds": 0.3516473,
+          "decodeAndStreamSeconds": 0.009518799999999938,
+          "dspSeconds": 0.34212850000000006
+        },
+        {
+          "id": "fsld-56158",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 3.0005895691609967,
+          "wallSeconds": 0.0395173,
+          "decodeAndStreamSeconds": 0,
+          "dspSeconds": 0.0395173
+        },
+        {
+          "id": "fsld-5770",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2,
+          "wallSeconds": 0.02556,
+          "decodeAndStreamSeconds": 0.0020018999999999974,
+          "dspSeconds": 0.023558100000000002
+        },
+        {
+          "id": "fsld-5773",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2,
+          "wallSeconds": 0.0255192,
+          "decodeAndStreamSeconds": 0,
+          "dspSeconds": 0.0255192
+        },
+        {
+          "id": "fsld-5834",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.9992517006802721,
+          "wallSeconds": 0.0249979,
+          "decodeAndStreamSeconds": 0.0010000000000000009,
+          "dspSeconds": 0.0239979
+        },
+        {
+          "id": "fsld-5883",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.9999773242630385,
+          "wallSeconds": 0.0250903,
+          "decodeAndStreamSeconds": 3.469446951953614e-18,
+          "dspSeconds": 0.025090299999999996
+        },
+        {
+          "id": "fsld-6043",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.7143083900226759,
+          "wallSeconds": 0.0210163,
+          "decodeAndStreamSeconds": 0.000998900000000004,
+          "dspSeconds": 0.020017399999999998
+        },
+        {
+          "id": "fsld-60718",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 33.391315192743775,
+          "wallSeconds": 0.4212347,
+          "decodeAndStreamSeconds": 0.009060899999999983,
+          "dspSeconds": 0.41217380000000003
+        },
+        {
+          "id": "fsld-62039",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.3333560090702947,
+          "wallSeconds": 0.0161009,
+          "decodeAndStreamSeconds": 0.0010571999999999995,
+          "dspSeconds": 0.015043700000000002
+        },
+        {
+          "id": "fsld-68128",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 6.540068027210886,
+          "wallSeconds": 0.0817175,
+          "decodeAndStreamSeconds": 0.0025797999999999793,
+          "dspSeconds": 0.07913770000000002
+        },
+        {
+          "id": "fsld-68132",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.571428571428577,
+          "wallSeconds": 0.1073182,
+          "decodeAndStreamSeconds": 0.002999999999999989,
+          "dspSeconds": 0.10431820000000001
+        },
+        {
+          "id": "fsld-6833",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2.181836734693878,
+          "wallSeconds": 0.0250377,
+          "decodeAndStreamSeconds": 0,
+          "dspSeconds": 0.0250377
+        },
+        {
+          "id": "fsld-6841",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2.181836734693878,
+          "wallSeconds": 0.0255193,
+          "decodeAndStreamSeconds": 0.001000299999999999,
+          "dspSeconds": 0.024519000000000003
+        },
+        {
+          "id": "fsld-69606",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 11.162789115646266,
+          "wallSeconds": 0.1367063,
+          "decodeAndStreamSeconds": 0.003001100000000062,
+          "dspSeconds": 0.13370519999999994
+        },
+        {
+          "id": "fsld-70073",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 1.7187528344671203,
+          "wallSeconds": 0.0205237,
+          "decodeAndStreamSeconds": 0.0010006000000000008,
+          "dspSeconds": 0.019523099999999998
+        },
+        {
+          "id": "fsld-72150",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 7.741950113378688,
+          "wallSeconds": 0.0955492,
+          "decodeAndStreamSeconds": 0.002998300000000023,
+          "dspSeconds": 0.09255089999999998
+        },
+        {
+          "id": "fsld-72154",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 7.741950113378688,
+          "wallSeconds": 0.094708,
+          "decodeAndStreamSeconds": 0.0030104999999999993,
+          "dspSeconds": 0.0916975
+        },
+        {
+          "id": "fsld-77706",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 5.333356009070295,
+          "wallSeconds": 0.0673074,
+          "decodeAndStreamSeconds": 0.001997800000000008,
+          "dspSeconds": 0.0653096
+        },
+        {
+          "id": "fsld-77710",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 5.333356009070295,
+          "wallSeconds": 0.0653528,
+          "decodeAndStreamSeconds": 0.0009960999999999998,
+          "dspSeconds": 0.0643567
+        },
+        {
+          "id": "fsld-77714",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2.6666893424036275,
+          "wallSeconds": 0.0324894,
+          "decodeAndStreamSeconds": 0.0016036999999999996,
+          "dspSeconds": 0.030885700000000002
+        },
+        {
+          "id": "fsld-78622",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 39.99999999999989,
+          "wallSeconds": 0.5012693,
+          "decodeAndStreamSeconds": 0.01063679999999989,
+          "dspSeconds": 0.49063250000000014
+        },
+        {
+          "id": "fsld-78742",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 79.99999999999979,
+          "wallSeconds": 0.9839715,
+          "decodeAndStreamSeconds": 0.017342800000000214,
+          "dspSeconds": 0.9666286999999998
+        },
+        {
+          "id": "fsld-78757",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 79.99999999999979,
+          "wallSeconds": 1.019803,
+          "decodeAndStreamSeconds": 0.0413481,
+          "dspSeconds": 0.9784549
+        },
+        {
+          "id": "fsld-82237",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 27.42857142857146,
+          "wallSeconds": 0.3570191,
+          "decodeAndStreamSeconds": 0.007751500000000022,
+          "dspSeconds": 0.34926759999999996
+        },
+        {
+          "id": "fsld-85264",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 16.000000000000014,
+          "wallSeconds": 0.2096633,
+          "decodeAndStreamSeconds": 0.0036021000000000247,
+          "dspSeconds": 0.20606119999999997
+        },
+        {
+          "id": "fsld-85268",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 20.64517006802723,
+          "wallSeconds": 0.2849323,
+          "decodeAndStreamSeconds": 0.00958150000000002,
+          "dspSeconds": 0.2753508
+        },
+        {
+          "id": "fsld-86596",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 24.000000000000025,
+          "wallSeconds": 0.3553709,
+          "decodeAndStreamSeconds": 0.012001800000000062,
+          "dspSeconds": 0.3433690999999999
+        },
+        {
+          "id": "fsld-86761",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.986598639455787,
+          "wallSeconds": 0.1267173,
+          "decodeAndStreamSeconds": 0.004004400000000019,
+          "dspSeconds": 0.12271289999999999
+        },
+        {
+          "id": "fsld-872",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 13.658526077097518,
+          "wallSeconds": 0.1766516,
+          "decodeAndStreamSeconds": 0.0059973000000000665,
+          "dspSeconds": 0.17065429999999993
+        },
+        {
+          "id": "fsld-89608",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 4.816757369614511,
+          "wallSeconds": 0.0655894,
+          "decodeAndStreamSeconds": 0.0021125999999999923,
+          "dspSeconds": 0.06347680000000001
+        },
+        {
+          "id": "fsld-98707",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 8.000000000000004,
+          "wallSeconds": 0.1014167,
+          "decodeAndStreamSeconds": 0.003728099999999998,
+          "dspSeconds": 0.0976886
+        },
+        {
+          "id": "fsld-99554",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 2.0012698412698415,
+          "wallSeconds": 0.0249993,
+          "decodeAndStreamSeconds": 0,
+          "dspSeconds": 0.024999300000000002
+        }
+      ],
+      "audioSeconds": 3902.645260770972,
+      "wallSeconds": 50.7779563,
+      "decodeAndStreamSeconds": 1.4100804000000013,
+      "dspSeconds": 49.36787589999997,
+      "totalRealtimeMultiple": 76.857076281563,
+      "decodeRealtimeMultiple": 2767.6757018755584,
+      "dspRealtimeMultiple": 79.0523227832651
+    }
+  },
+  "decision": "Not promoted; refusal and positive-key accuracy remain below acceptance requirements. No production defaults changed.",
+  "reservedRecordingsUnanalyzed": 179,
+  "postAnalysisInputHashesVerified": 487,
+  "acquisitionReportSHA256": "387401e824fa15bc73475b443955377172cbe38907659c011aa86af58524c2c8"
+}

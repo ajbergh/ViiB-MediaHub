@@ -22,11 +22,13 @@ import { DJBpmEditor } from './DJBpmEditor';
 import { DJAnalysisCueEditor } from './DJAnalysisCueEditor';
 import { DJBeatGridEdit } from './DJBeatGridEdit';
 import { DJBeatGridStatus } from './DJBeatGridStatus';
+import { SongAudioMetadata } from '../../SongAudioMetadata';
 
-export type DJDeckInspectorTab = 'analysis' | 'key' | 'bpm' | 'cues' | 'grid';
+export type DJDeckInspectorTab = 'analysis' | 'audio' | 'key' | 'bpm' | 'cues' | 'grid';
 
 const TABS: ReadonlyArray<{ id: DJDeckInspectorTab; label: string }> = [
   { id: 'analysis', label: 'Analysis' },
+  { id: 'audio', label: 'Audio' },
   { id: 'key', label: 'Key' },
   { id: 'bpm', label: 'BPM' },
   { id: 'cues', label: 'Cues' },
@@ -103,6 +105,12 @@ export const DJDeckInspector = React.memo(function DJDeckInspector({ deck, open,
                 because its empty-deck state reads as "not analysed". */}
             <div hidden={!track}><DJEnergyInsights trackID={track?.id} deck={deck} /></div>
             {!track && <p className='dj-inspector-empty'>Load a track to see energy insights and Mix Next recommendations.</p>}
+          </div>
+          <div role='tabpanel' id={`${baseId}-panel-audio`} aria-labelledby={`${baseId}-tab-audio`} hidden={tab !== 'audio'}>
+            {track ? <>
+              <p className='dj-inspector-empty'>Compare local and Spotify band overviews and inspect metadata for this deck. Overview duration compatibility does not establish beat alignment; use the deck waveform and Grid tools for timing.</p>
+              {open && tab === 'audio' && <SongAudioMetadata key={track.id} songId={track.id} />}
+            </> : <p className='dj-inspector-empty'>Load a track to inspect its waveforms and audio metadata.</p>}
           </div>
           <div role='tabpanel' id={`${baseId}-panel-key`} aria-labelledby={`${baseId}-tab-key`} hidden={tab !== 'key'}>
             <DJKeyVerificationKeyboard trackID={track?.id} deck={deck} embedded />

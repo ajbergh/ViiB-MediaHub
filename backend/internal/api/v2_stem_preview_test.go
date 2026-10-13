@@ -3,7 +3,9 @@
 package api
 
 import (
+	"bytes"
 	"encoding/binary"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -84,8 +86,15 @@ func TestV2StemPreviewRejectsCurrentPackageChecksumAndTraversalFailures(t *testi
 		if err != nil {
 			t.Fatal(err)
 		}
+		before, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
 		data[len(data)-1] ^= 1
 		if err = os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err = os.Chtimes(path, before.ModTime(), before.ModTime()); err != nil {
 			t.Fatal(err)
 		}
 		r := f.request("/song/set/vocals")
@@ -134,5 +143,52 @@ func TestV2StemPreviewAcceptsRetaggedSourceWithMatchingPCM32Identity(t *testing.
 	r := f.request("/song/set/vocals")
 	if r.Code != http.StatusOK {
 		t.Fatalf("retagged source status=%d body=%s", r.Code, r.Body.String())
+	}
+}
+
+func TestSnapshotStemArtifactRemainsBoundToVerifiedBytes(t *testing.T) {
+	f := newStemFrameFixture(t, stems.LayoutFour)
+	path := filepath.Join(f.packagePath, "vocals.wav")
+	validated, err := validatedStemPackage(f.packagePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact := validated.Manifest.Stems[stems.StemVocals]
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, _, err := snapshotStemArtifact(source, path, artifact)
+	_ = source.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		name := snapshot.Name()
+		_ = snapshot.Close()
+		_ = os.Remove(name)
+	}()
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := append([]byte(nil), original...)
+	changed[len(changed)-1] ^= 1
+	if err = os.WriteFile(path, changed, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chtimes(path, before.ModTime(), before.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	got, err := io.ReadAll(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, original) {
+		t.Fatal("preview snapshot changed after source artifact replacement")
 	}
 }

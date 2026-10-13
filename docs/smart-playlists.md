@@ -48,6 +48,8 @@ DJ Mode compiles a set plan with semantic intent for every phase, then retrieves
 
 The resulting set is still built from the ViiB catalog and handed to the normal player/queue. ViiB does not send the full library or local genre taxonomy to the LLM. If a semantic index is unavailable or cannot fill every planned phase with distinct songs, DJ Mode deterministically uses the legacy full-catalog fallback instead.
 
+Generated DJ rows display the fractional BPM and source used to sequence the set: Spotify, Manual, Measured, or Unknown. This analysis snapshot stays in page memory, is cleared when the Spotify session changes, and is omitted from saved song copies. A newer generation supersedes an older pending request. These scalar values do not authorize beat-phase sync or qualify analysis accuracy. Further local scanning/DSP improvements are [deferred to a future branch](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
+
 ---
 
 ## Smart Mixes

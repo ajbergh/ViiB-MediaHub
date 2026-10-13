@@ -212,3 +212,14 @@ func TestScoreTransitionWithMetadataRanksTempoHarmonicAndDirection(t *testing.T)
 func ptrFloat(value float64) *float64 { return &value }
 
 func ptrString(value string) *string { return &value }
+
+func TestManualEnergyRankingUsesExplicitChoiceWithoutInventingConfidence(t *testing.T) {
+	low := 4
+	outgoing := TransitionMetadata{EnergyLevel: &low, EnergyLevelSource: "manual"}
+	if !validEnergyLevel(outgoing) || energyLevelWeight(outgoing) != 1 || outgoing.EnergyLevelConfidence != nil {
+		t.Fatal("manual ranking policy lost")
+	}
+	if validEnergyLevel(TransitionMetadata{EnergyLevel: &low}) {
+		t.Fatal("unqualified estimate accepted as manual")
+	}
+}

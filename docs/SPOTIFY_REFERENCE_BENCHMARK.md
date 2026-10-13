@@ -1,5 +1,7 @@
 # Frozen Spotify reference comparisons
 
+> Scope update — 2026-10-12: This remains the provider-reference comparison contract. Further local-scanning/DSP improvements and independent accuracy qualification are deferred to a future branch. Provider observations are not independent accuracy labels. See [current branch scope](SPOTIFY_BRANCH_REMAINING_WORK.md) and [future local-analysis work](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
+
 **Updated:** 2026-10-04. Implementation checkpoint: `8187104`.
 
 Current status: comparator/exporter fixtures pass; a reviewed real-audio comparison remains open. Overall application gates are tracked in the [parity audit](SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md), with dated proof in the [validation record](SPOTIFY_WEBPLAYER_VALIDATION.md).

@@ -8,6 +8,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/featurecontract"
 	"io"
 	"math"
 	"time"
@@ -16,16 +17,16 @@ import (
 )
 
 const (
-	ArtifactKind                    = "energy-structure"
-	FormatVersion                   = 1
-	AlgorithmVersion                = "energy-structure-v1"
-	EnergyLevelAlgorithmVersion     = "energy-level-v1-fixed-reference"
-	Encoding                        = "gzip-json-v1"
+	ArtifactKind                    = featurecontract.ArtifactKind
+	FormatVersion                   = featurecontract.FormatVersion
+	AlgorithmVersion                = featurecontract.AlgorithmVersion
+	EnergyLevelAlgorithmVersion     = featurecontract.EnergyLevelAlgorithmVersion
+	Encoding                        = featurecontract.Encoding
 	LoudnessKind                    = "unweighted-mono-rms-proxy"
 	PeakKind                        = "sample-plus-midpoint-peak-proxy"
 	ChannelScope                    = "mono"
 	MeasurementStandard             = "none"
-	MaxStructureStatusArtifactBytes = 16 << 20
+	MaxStructureStatusArtifactBytes = featurecontract.MaxStructureStatusArtifactBytes
 )
 
 // EnergyPoint is a fixed-time, normalized intensity sample.  Time is the

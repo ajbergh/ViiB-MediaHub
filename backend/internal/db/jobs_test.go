@@ -213,3 +213,48 @@ func TestJobSchemaCreatesPriorityQueueIndex(t *testing.T) {
 		t.Fatalf("queue index = %q, want priority ordering", sqlText)
 	}
 }
+
+func TestRestartRequeuesAnalysisButPreservesCancellationAndLeases(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "library.db")
+	d, err := New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saveSelectionSong(t, d, "song", 1)
+	token, ok, err := d.ClaimTrackAnalysisLease("song", "fp", 1, "v1")
+	if err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	for _, id := range []string{"resume", "cancel"} {
+		if err := d.CreateJob(Job{ID: id, Type: "analyze_tracks", Status: JobStatusRunning}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if ok, err := d.RequestJobCancellation("cancel"); err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	d.Close()
+	reopened, err := New(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	resumed, err := reopened.GetJob("resume")
+	if err != nil || resumed.Status != JobStatusQueued {
+		t.Fatal(resumed, err)
+	}
+	canceled, err := reopened.GetJob("cancel")
+	if err != nil || canceled.Status != JobStatusCanceled {
+		t.Fatal(canceled, err)
+	}
+	if err := reopened.RenewTrackAnalysisLease("song", "fp", token); err != nil {
+		t.Fatal("restart revoked potentially live worker", err)
+	}
+	claimed, err := reopened.ClaimNextQueuedJob("resume")
+	if err != nil || claimed.ID != "resume" {
+		t.Fatal(claimed, err)
+	}
+	if _, err := reopened.ClaimNextQueuedJob("empty"); err != sql.ErrNoRows {
+		t.Fatal("canceled job resumed", err)
+	}
+}

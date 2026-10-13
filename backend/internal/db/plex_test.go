@@ -6,6 +6,7 @@ import (
 	"context"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"testing"
 )
 
@@ -29,6 +30,33 @@ func plexFixture(sourceID, libraryID, machineID, ratingKey, title string, update
 		ArtworkKey: "/library/metadata/" + ratingKey + "/thumb/1", Container: "flac", AudioCodec: "flac", UpdatedAt: updatedAt,
 		Title: title, Artist: "Artist", Album: "Album", AlbumArtist: "Artist", TrackNumber: 1, DiscNumber: 1,
 		Genres: []string{"rock"}, Year: 2025, Duration: 245, AddedAt: 1000,
+	}
+}
+
+func TestEnsurePlexSchemaConcurrentFirstUse(t *testing.T) {
+	database, err := New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	const readers = 20
+	var wait sync.WaitGroup
+	errs := make(chan error, readers)
+	for range readers {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			_, err := database.ListPlexTrackSources()
+			errs <- err
+		}()
+	}
+	wait.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent first Plex source read: %v", err)
+		}
 	}
 }
 

@@ -53,42 +53,43 @@ import (
 // It contains references to the database, server logger, and other shared
 // components required by handler implementations.
 type API struct {
-	closeOnce             sync.Once
-	enrichmentMu          sync.Mutex
-	enrichmentContext     context.Context
-	enrichmentCancel      context.CancelFunc
-	enrichmentClosed      bool
-	enrichmentWorkers     sync.WaitGroup
-	spotifyHTTPClient     *http.Client
-	spotifyTrackSearch    func(context.Context, string) ([]*catalog.Track, error)
-	spotifyAuthMu         sync.Mutex
-	spotifyHooksOnce      sync.Once
-	spotifyAuth           *spotifyAuthRuntime
-	spotifyAnalysisMu     sync.RWMutex
-	spotifyAnalysis       *spotifyrefresh.Service
-	spotifyAnalysisClosed bool
-	spotifyStreamerMu     sync.Mutex
-	spotifyStreamer       *spotify.Streamer
-	spotifyStreamSession  *spotify.SessionManager
-	db                    *db.DB
-	dataDir               string
-	coverDir              string
-	downloadManager       *DownloadManager
-	scanner               *scanner.Scanner
-	lastfmClient          *lastfm.Client
-	enrichRunning         int32 // atomic: 1 if enrichment goroutine is active
-	semanticMu            sync.RWMutex
-	semanticService       *semantic.Service
-	semanticState         semantic.EmbeddingResolution
-	semanticError         string
-	semanticClosed        bool
-	semanticGeneration    uint64
-	jobSchedulerMu        sync.Mutex
-	jobSchedulerOn        bool
-	jobWake               chan struct{}
-	analysisPressure      playbackPressure
-	plexAnalysisMu        sync.Mutex
-	plexAnalysisGates     map[string]chan struct{}
+	closeOnce              sync.Once
+	enrichmentMu           sync.Mutex
+	enrichmentContext      context.Context
+	enrichmentCancel       context.CancelFunc
+	enrichmentClosed       bool
+	enrichmentWorkers      sync.WaitGroup
+	spotifyHTTPClient      *http.Client
+	spotifyTrackSearch     func(context.Context, string) ([]*catalog.Track, error)
+	spotifyPlaylistScraper func(context.Context, string) (*spotify.ScrapedPlaylist, error)
+	spotifyAuthMu          sync.Mutex
+	spotifyHooksOnce       sync.Once
+	spotifyAuth            *spotifyAuthRuntime
+	spotifyAnalysisMu      sync.RWMutex
+	spotifyAnalysis        *spotifyrefresh.Service
+	spotifyAnalysisClosed  bool
+	spotifyStreamerMu      sync.Mutex
+	spotifyStreamer        *spotify.Streamer
+	spotifyStreamSession   *spotify.SessionManager
+	db                     *db.DB
+	dataDir                string
+	coverDir               string
+	downloadManager        *DownloadManager
+	scanner                *scanner.Scanner
+	lastfmClient           *lastfm.Client
+	enrichRunning          int32 // atomic: 1 if enrichment goroutine is active
+	semanticMu             sync.RWMutex
+	semanticService        *semantic.Service
+	semanticState          semantic.EmbeddingResolution
+	semanticError          string
+	semanticClosed         bool
+	semanticGeneration     uint64
+	jobSchedulerMu         sync.Mutex
+	jobSchedulerOn         bool
+	jobWake                chan struct{}
+	analysisPressure       playbackPressure
+	plexAnalysisMu         sync.Mutex
+	plexAnalysisGates      map[string]chan struct{}
 }
 
 // New constructs a new API instance using the given database and
@@ -144,7 +145,7 @@ func New(database *db.DB, dataDir string) *API {
 
 	api.spotifyTokens()
 	api.initSpotifyAnalysis()
-	dm.spotifyFeatures = api.spotifyTrackFeatures
+	dm.spotifyFeatures = api.spotifyDownloadFeatures
 	dm.Start()
 	// Initialize Last.FM client if configured
 	api.initLastFMClient()
@@ -255,7 +256,9 @@ func (a *API) Routes() chi.Router {
 	r.Post("/spotify/proxy", a.spotifyProxy)
 	r.Get("/spotify/analysis/status", a.getSpotifyAnalysisStatus)
 	r.Get("/spotify/analysis/{trackID}", a.getSpotifyAnalysisCache)
+	r.Get("/spotify/analysis/{trackID}/artifact", a.getSpotifyAnalysisArtifact)
 	r.Post("/spotify/analysis/{trackID}/refresh", a.refreshSpotifyAnalysis)
+	r.Post("/spotify/analysis/{trackID}/waveform/refresh", a.refreshSpotifyWaveform)
 	r.Delete("/spotify/analysis/session", a.disconnectSpotifyAnalysis)
 	r.Get("/spotify/auth/status", a.getSpotifyAuthStatus)
 	r.Post("/spotify/auth/refresh", a.refreshSpotifyAuth)
@@ -751,9 +754,14 @@ func (a *API) getPlaylists(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) createPlaylist(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
 	var p db.Playlist
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		respondError(w, http.StatusBadRequest, "Invalid JSON")
+		return
+	}
+	if message := validateLocalPlaylist(&p); message != "" {
+		respondError(w, http.StatusBadRequest, message)
 		return
 	}
 
@@ -772,6 +780,7 @@ func (a *API) createPlaylist(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) updatePlaylist(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
 	id := chi.URLParam(r, "id")
 
 	var p db.Playlist
@@ -779,7 +788,28 @@ func (a *API) updatePlaylist(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "Invalid JSON")
 		return
 	}
+	if message := validateLocalPlaylist(&p); message != "" {
+		respondError(w, http.StatusBadRequest, message)
+		return
+	}
 	p.ID = id
+	existing, err := a.db.GetAllPlaylists()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	found := false
+	for _, playlist := range existing {
+		if playlist.ID == id {
+			p.CreatedAt = playlist.CreatedAt
+			found = true
+			break
+		}
+	}
+	if !found {
+		respondError(w, http.StatusNotFound, "Playlist not found")
+		return
+	}
 
 	if err := a.db.SavePlaylist(&p); err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
@@ -787,6 +817,19 @@ func (a *API) updatePlaylist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, p)
+}
+
+func validateLocalPlaylist(p *db.Playlist) string {
+	if p == nil || strings.TrimSpace(p.Name) == "" || len(p.Name) > 200 || len(p.SongIDs) > 10000 || len(p.CoverPath) > 2048 {
+		return "Invalid playlist name or track count"
+	}
+	for _, songID := range p.SongIDs {
+		if songID == "" || len(songID) > 256 {
+			return "Invalid playlist track ID"
+		}
+	}
+	p.Name = strings.TrimSpace(p.Name)
+	return ""
 }
 
 func (a *API) deletePlaylist(w http.ResponseWriter, r *http.Request) {

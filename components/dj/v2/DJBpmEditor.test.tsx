@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
   const state = {
     djDeckA: { track, beatGrid: null, originalBpm: null },
     djDeckB: { track: null, beatGrid: null, originalBpm: null },
+    spotifySessionGeneration: 0,
     setDeckAnalysis: vi.fn(),
   };
   return { state, getBpm: vi.fn(), updateBpm: vi.fn(), resetBpm: vi.fn() };
@@ -51,6 +52,7 @@ describe('DJBpmEditor', () => {
     mocks.state.djDeckA.track = { id: 'song', title: 'Song', artist: 'Artist', album: 'Album', duration: 180, url: 'blob:loaded', source: 'local', path: 'crate/song.wav', fileHash: 'hash-a' };
     mocks.state.djDeckA.beatGrid = null;
     mocks.state.djDeckA.originalBpm = null;
+    mocks.state.spotifySessionGeneration = 0;
     mocks.state.setDeckAnalysis = vi.fn();
     mocks.getBpm.mockReset().mockResolvedValue(feature());
     mocks.updateBpm.mockReset().mockImplementation(async (_trackId, bpm, sourceFingerprint) => feature({ bpm, sourceFingerprint }));
@@ -100,6 +102,26 @@ describe('DJBpmEditor', () => {
     expect(mocks.updateBpm).toHaveBeenCalledWith('song', 120, 'current-fingerprint');
     expect(mocks.state.setDeckAnalysis).toHaveBeenCalledWith('A', { bpm: 120, bpmConfidence: null });
     expect(container.textContent).toContain('Existing beat-grid timestamps were not moved.');
+  });
+
+  it('reloads BPM when the Spotify session generation changes', async () => {
+    mocks.getBpm.mockReset()
+      .mockResolvedValueOnce(feature({ bpm: 121, bpmSource: 'measured' }))
+      .mockResolvedValueOnce(feature({ bpm: 134, bpmSource: 'provider' }));
+    const track = mocks.state.djDeckA.track;
+    await act(async () => {
+      root.render(<DJBpmEditor track={track as never} deck="A" />);
+      await Promise.resolve();
+    });
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="Deck A manual BPM"]')?.value).toBe('121');
+
+    mocks.state.spotifySessionGeneration = 1;
+    await act(async () => {
+      root.render(<DJBpmEditor track={track as never} deck="A" />);
+      await Promise.resolve();
+    });
+    expect(mocks.getBpm).toHaveBeenCalledTimes(2);
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="Deck A manual BPM"]')?.value).toBe('134');
   });
 
   it('does not apply an async response after the same song ID changes source', async () => {

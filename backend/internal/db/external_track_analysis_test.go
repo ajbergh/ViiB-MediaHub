@@ -15,7 +15,7 @@ func referenceObservation() spotifyanalysis.Observation {
 	bpm := 108.022
 	zero := 0.0
 	return spotifyanalysis.Observation{TrackID: referenceID, Source: "spotify_internal", SourceEndpoint: "audio_features",
-		RetrievedAt: time.Unix(1700000000, 0).UTC(), BPM: &bpm, BPMConfidence: &zero}
+		RetrievedAt: time.Unix(1700000000, 0).UTC(), BPM: &bpm, BPMConfidence: &zero, Energy: &zero, Valence: &zero}
 }
 func TestExternalAnalysisPersistenceAndIsolation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "library.db")
@@ -50,6 +50,7 @@ func TestExternalAnalysisPersistenceAndIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	o := referenceObservation()
+	o.AccountContext = "storage-fixture"
 	if err = d.PutExternalAnalysis(o, "fixture-v1", o.RetrievedAt.Add(7*24*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
@@ -70,8 +71,15 @@ func TestExternalAnalysisPersistenceAndIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if cache, err := d.GetExternalAnalysis(referenceID, "audio_features"); err != nil || cache != nil {
+		t.Fatalf("restart reused retired private cache: %+v %v", cache, err)
+	}
+	if err := d.ActivateSpotifyMetadataContext(o.AccountContext); err != nil {
+		t.Fatal(err)
+	}
 	cache, err := d.GetExternalAnalysis(referenceID, "audio_features")
 	if err != nil || cache == nil || *cache.Observation.BPM != 108.022 || cache.Observation.Key != nil ||
+		cache.Observation.Energy == nil || *cache.Observation.Energy != 0 || cache.Observation.Valence == nil || *cache.Observation.Valence != 0 ||
 		cache.Observation.BPMConfidence == nil || *cache.Observation.BPMConfidence != 0 || cache.AdapterRevision != "fixture-v1" {
 		t.Fatalf("restart cache: %+v %v", cache, err)
 	}

@@ -1,0 +1,87 @@
+{
+  "dataset": "https://doi.org/10.5281/zenodo.10839767",
+  "recordings": 24,
+  "method": "Windows CGO-enabled producer and Linux CGO-disabled cross-compiled producer executed on installed Debian/WSL, using the same frozen HU33 audio and default configuration. Comparator includes scalar/key/status, beat positions, structure availability, duration and boundaries at 1e-6 tolerance.",
+  "windowsResultsSHA256": "1f97f8b2995203654460cbe966576a9ff373fce4f2d0ba60e9c0bf56fecc3404",
+  "linuxResultsSHA256": "e78b5ed938d201ef5270fe8585b772c1d551b7b9032fea29a87248aab5c02afa",
+  "linuxExecutableSHA256": "a1817d3ea3535c34b8fd2f679e87a7fd0d9aadf2f1aa309a9820c01fa7fcfd5e",
+  "windowsEnvironment": {
+    "os": "windows",
+    "architecture": "amd64",
+    "cpuModel": "AMD64 Family 23 Model 113 Stepping 0, AuthenticAMD",
+    "cpuCount": 12,
+    "goVersion": "go1.26.8"
+  },
+  "linuxEnvironment": {
+    "os": "linux",
+    "architecture": "amd64",
+    "cpuCount": 12,
+    "goVersion": "go1.26.8"
+  },
+  "configuration": {
+    "Tempo": {
+      "Range": "auto",
+      "Method": "multifeature-half-bpm",
+      "MinBPM": 90,
+      "MaxBPM": 180,
+      "MinOnsetCrestFactor": 15
+    },
+    "Key": {
+      "MaxChromaFlatness": 0.98,
+      "MaxFrequency": 3500,
+      "Profile": "krumhansl",
+      "Extraction": "hpcp-peaks"
+    },
+    "SkipTempo": false,
+    "SkipKey": false,
+    "GridBPM": null,
+    "ProviderBeatGrid": null,
+    "SkipThreeBand": false
+  },
+  "sourceErrors": 0,
+  "determinism": {
+    "requiredPlatforms": [
+      "windows",
+      "darwin",
+      "linux"
+    ],
+    "observedPlatforms": [
+      "linux",
+      "windows"
+    ],
+    "status": "unproven",
+    "reason": "observed result sets agree; requires result sets from Windows, macOS (darwin), and Linux"
+  },
+  "limitations": [
+    "Two observed platforms agree, but required macOS results are absent; overall determinism remains unproven.",
+    "Linux run is decoder/DSP-only under WSL with CGO disabled; no SQLite, desktop GUI, native app workflow or Linux installation qualification.",
+    "No accuracy improvement or broad genre qualification follows from determinism."
+  ],
+  "verifiedInputAudioSHA256": {
+    "Schubert_D911-01_HU33": "074adc8f5899d326f10dfb2ff8b1c72312e9755ed41727c3ce7da2def18e7f60",
+    "Schubert_D911-02_HU33": "82df858661d662f162ab3bd3066925dc0faefeb3429584c152bc7b5e91c4e0d2",
+    "Schubert_D911-03_HU33": "c67fef1ed6355a43f2f25c6f3f774f3ad2019f8941c4999c45711b3b497f9ad7",
+    "Schubert_D911-04_HU33": "4194489027aa84a167e84cdb98f8328a9f65c529dbfc070114b4864e9a262fef",
+    "Schubert_D911-05_HU33": "8bf3910a59742e39349fbd9d6002cfea9f94f738ce674de0e0a35e29af83433f",
+    "Schubert_D911-06_HU33": "86cbe1b94f4e38d42435913d23870e1afee22067c8ba50f2661715ba70d8031b",
+    "Schubert_D911-07_HU33": "30adc8b922ceeb782f12a7c9b9728b07d4b4e9eb73be9aa43acc6d83833e8225",
+    "Schubert_D911-08_HU33": "4517c216a0b26924e56db0bebd560e3a3a5b395864b427d91265730d99065b29",
+    "Schubert_D911-09_HU33": "e16b8d12bcbe471a938a214fb8fb51764503e8264423c6b446bdbbf78d48043a",
+    "Schubert_D911-10_HU33": "f78b1a8c292bbeb3e804d40d04a2124d513524597d61f53bb38acce2e0ec9407",
+    "Schubert_D911-11_HU33": "c573658476e203f2513a4d7b30e060e0d27a72f61d56b751e02f7c3c317e33a6",
+    "Schubert_D911-12_HU33": "0b29d02fa23ebed0d6136f03723d588952f9bb78b1b1db2003a06271694c06dd",
+    "Schubert_D911-13_HU33": "ed39e5b5d4a978c9ed3e69205a4bffb263e63f08e08bae9b197c45b232e1190a",
+    "Schubert_D911-14_HU33": "04292b1874a7c16ab14847e7c9c41cd09d9ed84acbbb11b096508f7478bfe120",
+    "Schubert_D911-15_HU33": "f12eb15c77ee658eb2a93c1ef79f1165c96a3dde6d4d6f37b9cfec075b5744a3",
+    "Schubert_D911-16_HU33": "a3e314904d5c694826d85ddf4723b1988d4ef4571df47760c698a22cc094d253",
+    "Schubert_D911-17_HU33": "9b99ac5af401f0081999bb689eb192acec857c01f49b3cfa7a6a6bee3d257017",
+    "Schubert_D911-18_HU33": "9efd3c100535bb423b8e036e617dfb047915adb38b3a1b7fe9ec44dd8ee49c0e",
+    "Schubert_D911-19_HU33": "2e4cb9fd8c22254d25dc9fddb543d063709f326f92ab7691e6013ca652164937",
+    "Schubert_D911-20_HU33": "51e750b72fe4356b427bbb24050ee894c55e697826941f13c0474dd4120b1e7d",
+    "Schubert_D911-21_HU33": "a0069ccb9aa1163f32bdc83f3adc1a956ea6932eba89bf978127515d9dae6bc8",
+    "Schubert_D911-22_HU33": "cb2d7d959980b65f3627b9e15b6f5a92a4fb584e597afcafd3cfbf2803433380",
+    "Schubert_D911-23_HU33": "3b1632a4bf2bb313fd0877277430f007ee1363ba32c5ee6e9b2ed8930ac0b08b",
+    "Schubert_D911-24_HU33": "6819a73b991121dfeb02369f35a3b215586a8c5ac1df0a0ae2a510e2d3ba7e7c"
+  },
+  "inputIntegrity": "All 24 current source hashes match the reference captured before the original Windows evaluation; Linux uses the same files through /mnt/c."
+}

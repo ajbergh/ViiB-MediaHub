@@ -23,6 +23,8 @@ jobs:
           cache: npm
       - name: Validate Unix shell scripts
         run: for script in scripts/*.sh; do bash -n "$script"; done
+      - name: Validate documentation links and evidence JSON
+        run: python3 scripts/check_documentation_links.py
       - run: npm ci
       - name: Run frontend checks
         id: frontend_checks
@@ -62,7 +64,7 @@ jobs:
           show-progress: false
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26.8'
+          go-version: '1.26.9'
           cache-dependency-path: backend/go.sum
       - name: Install native tray dependencies
         run: |
@@ -83,7 +85,7 @@ jobs:
           set -euo pipefail
           {
             go test ./...
-            go test -race ./...
+            go test -race ./... -timeout 25m
             go vet ./...
             go install honnef.co/go/tools/cmd/staticcheck@latest
             staticcheck ./...
@@ -129,7 +131,7 @@ jobs:
           show-progress: false
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26.8'
+          go-version: '1.26.9'
           cache-dependency-path: backend/go.sum
       - name: Validate analysis and generate production fixture results
         run: |
@@ -157,7 +159,7 @@ jobs:
           show-progress: false
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26.8'
+          go-version: '1.26.9'
           cache-dependency-path: backend/go.sum
       - uses: actions/download-artifact@v4
         with:
@@ -202,7 +204,7 @@ jobs:
           show-progress: false
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26.8'
+          go-version: '1.26.9'
           cache-dependency-path: backend/go.sum
       # This package compiles the complete foundation dependency closure,
       # including SQLite persistence, without trying to cross-package a native
@@ -243,7 +245,7 @@ jobs:
           show-progress: false
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26.8'
+          go-version: '1.26.9'
           cache-dependency-path: backend/go.sum
       - name: Install Linux desktop dependencies
         if: startsWith(matrix.target, 'linux-')
@@ -332,7 +334,7 @@ jobs:
           cache: npm
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26.8'
+          go-version: '1.26.9'
           cache-dependency-path: backend/go.sum
       - uses: msys2/setup-msys2@v2
         with:

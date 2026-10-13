@@ -108,8 +108,15 @@ func TestV2StemFramesRejectsChangedPackageAndSymlinkArtifacts(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		before, err := os.Stat(artifact)
+		if err != nil {
+			t.Fatal(err)
+		}
 		original[len(original)-1] ^= 1
 		if err = os.WriteFile(artifact, original, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err = os.Chtimes(artifact, before.ModTime(), before.ModTime()); err != nil {
 			t.Fatal(err)
 		}
 		rec := fixture.request("/song/set/frames?startFrame=0&frameCount=1&layout=dj4&format=f32le")

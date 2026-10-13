@@ -6,6 +6,7 @@ import (
 	"math"
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/localcontract"
 )
 
 // RangePreset constrains tempo candidates to an expected DJ operating range.
@@ -42,6 +43,9 @@ const (
 	// observed onset intervals against periodicity hypotheses; it is never the
 	// production default until separately qualified.
 	MethodBeatIntervalConsistency Method = "beat-interval-consistency"
+	// MethodPhaseSupport is an experimental benchmark candidate. It requires
+	// independently observed amplitude and flux support; it is not a default.
+	MethodPhaseSupport Method = "phase-support"
 )
 
 // Options configure candidate bounds and metrical range priors.
@@ -79,7 +83,7 @@ type Estimate struct {
 	AlgorithmVersion string
 }
 
-const AlgorithmVersion = "tempo-v3-multifeature-half-bpm"
+const AlgorithmVersion = localcontract.TempoAlgorithmVersion
 
 // minOnsetCrestFactor is the least impulsive an onset envelope may be before
 // tempo is refused. A sustained source — a drone, pad, sine tone, or spoken
@@ -188,6 +192,23 @@ func (a *OnsetAccumulator) feedSpectralFlux(samples []float32) {
 	a.fluxPending = a.fluxPending[frames*a.fluxSTFT.HopSize:]
 }
 
+// OnsetCrestFactor returns the envelope's transient-to-average ratio without
+// running tempo candidate selection. Local-only consumers such as DJ energy
+// can keep this input when Spotify supplies BPM without estimating BPM again.
+func (a *OnsetAccumulator) OnsetCrestFactor() float64 {
+	if a == nil || a.sampleRate <= 0 || len(a.envelope) < 3 || maxValue(a.envelope) < 1e-7 {
+		return 0
+	}
+	onsets := make([]float64, len(a.envelope))
+	for i := 1; i < len(a.envelope); i++ {
+		onsets[i] = maxFloat(0, a.envelope[i]-a.envelope[i-1])
+	}
+	mean, _ := meanDeviation(onsets)
+	if mean <= 0 {
+		return 0
+	}
+	return maxValue(onsets) / mean
+}
 func (a *OnsetAccumulator) Estimate() Estimate {
 	if a.sampleRate <= 0 || len(a.envelope) < 3 || maxValue(a.envelope) < 1e-7 {
 		return Estimate{AlgorithmVersion: AlgorithmVersion}
@@ -214,6 +235,9 @@ func (a *OnsetAccumulator) Estimate() Estimate {
 		return Estimate{OnsetCrestFactor: crestFactor, AlgorithmVersion: AlgorithmVersion}
 	}
 	minBPM, maxBPM := resolveBounds(a.options)
+	if a.options.Method == MethodPhaseSupport {
+		return estimatePhaseSupport(onsets, a.fluxEnvelope, float64(a.sampleRate)/float64(a.hop), float64(a.sampleRate)/float64(a.fluxSTFT.HopSize), minBPM, maxBPM, crestFactor)
+	}
 	if a.options.Method == MethodBeatIntervalConsistency {
 		return estimateBeatIntervalConsistency(onsets, a.positions, a.fluxEnvelope, float64(a.sampleRate)/float64(a.hop), float64(a.sampleRate)/float64(a.fluxSTFT.HopSize), float64(a.sampleRate), minBPM, maxBPM, crestFactor)
 	}

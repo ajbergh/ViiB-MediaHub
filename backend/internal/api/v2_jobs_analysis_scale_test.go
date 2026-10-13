@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ajbergh/viib-mediahub/internal/analysis/track"
 	"github.com/ajbergh/viib-mediahub/internal/analysisbench"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 )
@@ -149,20 +150,28 @@ func TestAnalyzeTracksJobHandlesLargeCatalogWithControlledFailures(t *testing.T)
 	api.wakeJobScheduler()
 	rerun := awaitLongJobStatus(t, database, "rerun", db.JobStatusSucceeded, time.Minute)
 	var second struct {
+		Failed   int `json:"failed"`
 		Skipped  int `json:"skipped"`
 		Analyzed int `json:"analyzed"`
 	}
 	if err := json.Unmarshal(rerun.Result, &second); err != nil {
 		t.Fatal(err)
 	}
-	// The missing-source tracks cannot be fingerprinted, so they are retried
-	// rather than skipped. Everything that could be settled must be skipped.
+	// Missing-source attempts honor their retry deadline too; an immediate
+	// rerun must not repeat failures or extend their cooldown.
 	if second.Analyzed != 0 {
 		t.Fatalf("second run analyzed %d tracks, want 0", second.Analyzed)
 	}
-	if second.Skipped != decodable+corrupt+unsupported {
-		t.Fatalf("second run skipped %d, want %d", second.Skipped, decodable+corrupt+unsupported)
+	if second.Skipped != total || second.Failed != 0 {
+		t.Fatalf("second run skipped=%d failed=%d, want skipped=%d failed=0", second.Skipped, second.Failed, total)
 	}
+	discoveryStarted := time.Now()
+	selected, discoveryErr := track.ExpandPreparationSelection(t.Context(), database, db.AnalysisSelection{Mode: db.AnalysisSelectionMissing}, api.resolveAnalysisSource)
+	if discoveryErr != nil || len(selected) != 0 {
+		t.Fatal("settled catalog selected", selected, discoveryErr)
+	}
+	t.Logf("validated missing discovery for %d settled tracks in %s", total, time.Since(discoveryStarted).Round(time.Millisecond))
+
 }
 
 func requireErrorCode(t *testing.T, database *db.DB, songID string) string {

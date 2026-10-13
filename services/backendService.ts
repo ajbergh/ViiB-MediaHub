@@ -54,6 +54,8 @@ export async function isBackendAvailable(): Promise<boolean> {
 }
 
 // Convert API song format to frontend Song format
+// Generated DJ analysis stays in session-scoped page state; copying it onto
+// Song would persist private provider observations with saved generated queues.
 export function apiSongToSong(apiSong: ApiSong): Song {
   return {
     id: apiSong.id,

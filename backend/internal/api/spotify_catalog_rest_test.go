@@ -1,0 +1,634 @@
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"github.com/ajbergh/viib-mediahub/internal/spotify/metadata"
+	"io"
+	"net/http"
+	"net/url"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/spotify/catalog"
+)
+
+func TestOAuthArtistAlbumPageGraphSurvivesReopenAndRetires(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "artist-page.db")
+	database, err := db.New(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if database != nil {
+			database.Close()
+		}
+	}()
+	credentials, _ := json.Marshal(SpotifyCredentials{ClientId: "client", AccessToken: "fixture", RefreshToken: "refresh", Expiry: time.Now().Add(time.Hour).UnixMilli()})
+	if err := database.SetSetting("spotify_credentials", string(credentials)); err != nil {
+		t.Fatal(err)
+	}
+	artistID, albumID := strings.Repeat("R", 22), strings.Repeat("A", 22)
+	requestURL := "https://api.spotify.com/v1/artists/" + artistID + "/albums?offset=5&limit=3&include_groups=appears_on&market=US"
+	artist := map[string]any{"id": artistID, "type": "artist", "uri": "spotify:artist:" + artistID, "name": "Artist"}
+	album := map[string]any{"id": albumID, "type": "album", "uri": "spotify:album:" + albumID, "name": "Album", "album_group": "appears_on", "artists": []any{artist}}
+	raw, _ := json.Marshal(map[string]any{"offset": 5, "limit": 3, "next": nil, "total": 8, "items": []any{album, nil, album}, "token": "private-sentinel"})
+	target, _ := url.Parse(requestURL)
+	entities, err := catalog.CaptureREST(target, raw)
+	if err != nil || len(entities) < 3 || entities[0].EntityType != "artist" {
+		t.Fatalf("fixture projection: %+v %v", entities, err)
+	}
+	a := &API{db: database, spotifyHTTPClient: &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		body := string(raw)
+		if r.URL.Path == "/v1/me" {
+			body = `{"id":"artist-page-owner"}`
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}}
+	response, err := a.doSpotifyRequest(t.Context(), http.MethodGet, requestURL, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(response.Body)
+	response.Body.Close()
+	if err != nil || string(body) != string(raw) {
+		t.Fatal("consumer response changed", err)
+	}
+	owner := a.spotifyTokens().metadataContext
+	key := db.SpotifySnapshotKey{EntityType: "artist", SpotifyID: artistID, Resource: entities[0].Resource, ContextKey: owner}
+	assertGraph := func() {
+		t.Helper()
+		parent, err := database.GetSpotifyEntitySnapshot(key)
+		if err != nil || parent == nil || len(parent.Relations) != 3 || strings.Contains(string(parent.Payload), "private-sentinel") {
+			t.Fatalf("stored artist parent: %+v %v", parent, err)
+		}
+		if parent.Relations[0].Position != 5 || parent.Relations[0].ChildID != albumID || !parent.Relations[1].Unavailable || parent.Relations[2].Position != 7 || parent.Relations[2].ChildID != albumID {
+			t.Fatalf("stored duplicate/unavailable order: %+v", parent.Relations)
+		}
+		child, err := database.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "album", SpotifyID: albumID, Resource: key.Resource + ":related", ContextKey: owner})
+		if err != nil || child == nil || len(child.Relations) != 1 || child.Relations[0].ChildID != artistID {
+			t.Fatalf("stored album-to-artist graph: %+v %v", child, err)
+		}
+	}
+	assertGraph()
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	database, err = db.New(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertGraph()
+	if err := database.RetireSpotifyMetadataContext(owner); err != nil {
+		t.Fatal(err)
+	}
+	for _, retired := range []db.SpotifySnapshotKey{key, {EntityType: "album", SpotifyID: albumID, Resource: key.Resource + ":related", ContextKey: owner}} {
+		snapshot, err := database.GetSpotifyEntitySnapshot(retired)
+		if err != nil || snapshot != nil {
+			t.Fatalf("retired private page remained: %+v %v", snapshot, err)
+		}
+	}
+}
+
+func TestOAuthCatalogResponseCapturedAndReplayed(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	credentials, _ := json.Marshal(SpotifyCredentials{ClientId: "client", AccessToken: "fixture", RefreshToken: "refresh", Expiry: time.Now().Add(time.Hour).UnixMilli()})
+	if err := database.SetSetting("spotify_credentials", string(credentials)); err != nil {
+		t.Fatal(err)
+	}
+	id := strings.Repeat("T", 22)
+	albumID := strings.Repeat("A", 22)
+	artistID := strings.Repeat("B", 22)
+	album := map[string]any{"id": albumID, "type": "album", "uri": "spotify:album:" + albumID, "name": "Album"}
+	artist := map[string]any{"id": artistID, "type": "artist", "uri": "spotify:artist:" + artistID, "name": "Artist"}
+	rawBytes, _ := json.Marshal(map[string]any{"id": id, "type": "track", "uri": "spotify:track:" + id, "name": "Song", "duration_ms": 180000, "future_domain": 0, "token": "secret", "album": album, "artists": []any{artist}})
+	raw := string(rawBytes)
+	a := &API{db: database, spotifyHTTPClient: &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/v1/me" {
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"catalog-owner"}`))}, nil
+		}
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(raw))}, nil
+	})}}
+	response, err := a.doSpotifyRequest(context.Background(), "GET", "https://api.spotify.com/v1/tracks/"+id, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(response.Body)
+	response.Body.Close()
+	if err != nil || string(body) != raw {
+		t.Fatal("consumer response changed", err)
+	}
+	runtime := a.spotifyTokens()
+	snapshot, err := database.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "track", SpotifyID: id, Resource: "rest:/v1/tracks/" + id + ":page::", ContextKey: runtime.metadataContext})
+	if err != nil || snapshot == nil || !strings.Contains(string(snapshot.Payload), "future_domain") || strings.Contains(string(snapshot.Payload), "secret") {
+		t.Fatalf("snapshot: %+v %v", snapshot, err)
+	}
+	foundAlbumEdge := false
+	for _, relation := range snapshot.Relations {
+		if relation.Kind == "album" && relation.ChildType == "album" && relation.ChildID == albumID && !relation.Unavailable {
+			foundAlbumEdge = true
+		}
+	}
+	if !foundAlbumEdge {
+		t.Fatalf("OAuth REST track snapshot lost its album edge: %+v", snapshot.Relations)
+	}
+	albumSnapshot, err := database.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "album", SpotifyID: albumID, Resource: "rest:/v1/tracks/" + id + ":page:::related", ContextKey: runtime.metadataContext})
+	if err != nil || albumSnapshot == nil {
+		t.Fatalf("OAuth REST response did not persist its nested album: %+v %v", albumSnapshot, err)
+	}
+}
+
+func TestOAuthBatchCatalogResponseCapturedAndReplayed(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	credentials, _ := json.Marshal(SpotifyCredentials{ClientId: "client", AccessToken: "fixture", RefreshToken: "refresh", Expiry: time.Now().Add(time.Hour).UnixMilli()})
+	if err := database.SetSetting("spotify_credentials", string(credentials)); err != nil {
+		t.Fatal(err)
+	}
+	trackIDs := []string{strings.Repeat("T", 22), strings.Repeat("S", 22)}
+	albumIDs := []string{strings.Repeat("A", 22), strings.Repeat("B", 22)}
+	tracks := make([]any, 0, len(trackIDs))
+	for i, trackID := range trackIDs {
+		album := map[string]any{"id": albumIDs[i], "type": "album", "uri": "spotify:album:" + albumIDs[i], "name": "Album"}
+		tracks = append(tracks, map[string]any{
+			"id": trackID, "type": "track", "uri": "spotify:track:" + trackID,
+			"name": "Song", "duration_ms": 180000, "token": "secret", "album": album,
+		})
+	}
+	rawBytes, err := json.Marshal(map[string]any{"tracks": tracks})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := string(rawBytes)
+	a := &API{db: database, spotifyHTTPClient: &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/v1/me" {
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"catalog-owner"}`))}, nil
+		}
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(raw))}, nil
+	})}}
+	requestURL := "https://api.spotify.com/v1/tracks?ids=" + url.QueryEscape(strings.Join(trackIDs, ","))
+	response, err := a.doSpotifyRequest(context.Background(), "GET", requestURL, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(response.Body)
+	response.Body.Close()
+	if err != nil || string(body) != raw {
+		t.Fatalf("consumer response changed: err=%v body=%s", err, body)
+	}
+	runtime := a.spotifyTokens()
+	resource := "rest:/v1/tracks:page:::related"
+	for i := range trackIDs {
+		trackSnapshot, err := database.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "track", SpotifyID: trackIDs[i], Resource: resource, ContextKey: runtime.metadataContext})
+		if err != nil || trackSnapshot == nil || strings.Contains(string(trackSnapshot.Payload), "secret") {
+			t.Fatalf("batch track snapshot %s: %+v %v", trackIDs[i], trackSnapshot, err)
+		}
+		foundAlbumEdge := false
+		for _, relation := range trackSnapshot.Relations {
+			if relation.Kind == "album" && relation.ChildType == "album" && relation.ChildID == albumIDs[i] && !relation.Unavailable {
+				foundAlbumEdge = true
+			}
+		}
+		if !foundAlbumEdge {
+			t.Fatalf("batch track %s lost album edge: %+v", trackIDs[i], trackSnapshot.Relations)
+		}
+		albumSnapshot, err := database.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "album", SpotifyID: albumIDs[i], Resource: resource, ContextKey: runtime.metadataContext})
+		if err != nil || albumSnapshot == nil {
+			t.Fatalf("batch nested album %s: %+v %v", albumIDs[i], albumSnapshot, err)
+		}
+	}
+}
+
+func TestOAuthSequentialSparseBatchRetainsEarlierTrackRelations(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	credentials, _ := json.Marshal(SpotifyCredentials{ClientId: "client", AccessToken: "fixture", RefreshToken: "refresh", Expiry: time.Now().Add(time.Hour).UnixMilli()})
+	if err := database.SetSetting("spotify_credentials", string(credentials)); err != nil {
+		t.Fatal(err)
+	}
+	trackID, otherID := strings.Repeat("T", 22), strings.Repeat("S", 22)
+	albumID, artistID := strings.Repeat("A", 22), strings.Repeat("B", 22)
+	album := map[string]any{"id": albumID, "type": "album", "uri": "spotify:album:" + albumID, "name": "Album", "artists": []any{map[string]any{"id": artistID, "type": "artist", "uri": "spotify:artist:" + artistID, "name": "Artist"}}}
+	rich, err := json.Marshal(map[string]any{"tracks": []any{map[string]any{"id": trackID, "type": "track", "uri": "spotify:track:" + trackID, "name": "Track", "album": album, "artists": album["artists"]}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sparse, err := json.Marshal(map[string]any{"tracks": []any{map[string]any{"id": trackID, "type": "track", "uri": "spotify:track:" + trackID, "name": "Track"}, map[string]any{"id": otherID, "type": "track", "uri": "spotify:track:" + otherID, "name": "Other"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	responses := []string{string(rich), string(sparse)}
+	requestIndex := 0
+	a := &API{db: database, spotifyHTTPClient: &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/v1/me" {
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"catalog-owner"}`))}, nil
+		}
+		if requestIndex >= len(responses) {
+			return nil, fmt.Errorf("unexpected request %s", r.URL)
+		}
+		body := responses[requestIndex]
+		requestIndex++
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}}
+	for _, ids := range []string{trackID, trackID + "," + otherID} {
+		response, err := a.doSpotifyRequest(context.Background(), "GET", "https://api.spotify.com/v1/tracks?ids="+url.QueryEscape(ids), nil, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.Copy(io.Discard, response.Body); err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+	}
+	if requestIndex != 2 {
+		t.Fatalf("captured %d responses, want 2", requestIndex)
+	}
+	runtime := a.spotifyTokens()
+	snapshot, err := database.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "track", SpotifyID: trackID, Resource: "rest:/v1/tracks:page:::related", ContextKey: runtime.metadataContext})
+	if err != nil || snapshot == nil {
+		t.Fatalf("track snapshot: %+v %v", snapshot, err)
+	}
+	foundAlbum, foundArtist := false, false
+	for _, relation := range snapshot.Relations {
+		if relation.Kind == "album" && relation.ChildType == "album" && relation.ChildID == albumID && !relation.Unavailable {
+			foundAlbum = true
+		}
+		if relation.Kind == "artists" && relation.ChildType == "artist" && relation.ChildID == artistID && !relation.Unavailable {
+			foundArtist = true
+		}
+	}
+	if !foundAlbum || !foundArtist {
+		t.Fatalf("later sparse batch erased earlier relation coverage: album=%v artist=%v relations=%+v", foundAlbum, foundArtist, snapshot.Relations)
+	}
+}
+
+type captureTestBody struct {
+	io.Reader
+	closed bool
+}
+
+func (r *captureTestBody) Close() error { r.closed = true; return nil }
+
+type captureFailureReader struct {
+	sent bool
+	err  error
+}
+
+func (r *captureFailureReader) Read(p []byte) (int, error) {
+	if r.sent {
+		return 0, io.EOF
+	}
+	r.sent = true
+	return copy(p, "partial"), r.err
+}
+
+func TestOAuthCatalogCaptureBoundsRetirementAndBodyOwnership(t *testing.T) {
+	for _, kind := range []string{"oversized", "retired", "profile", "read_error"} {
+		t.Run(kind, func(t *testing.T) {
+			a, _ := newBPMRouteTestAPI(t, false)
+			runtime := a.spotifyTokens()
+			ctx, cancel := runtime.requestContext(t.Context())
+			defer cancel()
+			id := strings.Repeat("T", 22)
+			target, _ := url.Parse("https://api.spotify.com/v1/tracks/" + id)
+			raw := `{"type":"track","id":"` + id + `","name":"Song"}`
+			if kind == "oversized" {
+				raw += strings.Repeat(" ", metadata.CatalogLimit)
+			}
+			if kind == "retired" {
+				runtime.beginRetirement()
+			}
+			if kind == "profile" {
+				target.Path = "/v1/me"
+			}
+			expectedErr := errors.New("source read failed")
+			original := &captureTestBody{Reader: strings.NewReader(raw)}
+			if kind == "read_error" {
+				original.Reader = &captureFailureReader{err: expectedErr}
+				raw = "partial"
+			}
+			response := &http.Response{Body: original}
+			a.captureOAuthCatalogResponse(ctx, runtime, target, response)
+			if original.closed {
+				t.Fatal("capture closed consumer-owned body")
+			}
+			got, err := io.ReadAll(response.Body)
+			if string(got) != raw {
+				t.Fatal("response replay changed")
+			}
+			if kind == "read_error" && !errors.Is(err, expectedErr) {
+				t.Fatalf("read error lost: %v", err)
+			}
+			if kind != "read_error" && err != nil {
+				t.Fatal(err)
+			}
+			response.Body.Close()
+			if !original.closed {
+				t.Fatal("original body was not closed")
+			}
+			snapshot, err := a.db.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "track", SpotifyID: id, Resource: "rest:/v1/tracks/" + id + ":page::", ContextKey: runtime.metadataContext})
+			if err != nil || snapshot != nil {
+				t.Fatalf("ineligible snapshot persisted: %+v %v", snapshot, err)
+			}
+		})
+	}
+}
+
+func TestOAuthSavedLibraryPageCapturedAndReplayed(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	credentials, _ := json.Marshal(SpotifyCredentials{ClientId: "client", AccessToken: "fixture", RefreshToken: "refresh", Expiry: time.Now().Add(time.Hour).UnixMilli()})
+	if err := database.SetSetting("spotify_credentials", string(credentials)); err != nil {
+		t.Fatal(err)
+	}
+	id := strings.Repeat("T", 22)
+	raw := `{"offset":4,"total":5,"items":[{"track":{"type":"track","id":"` + id + `","future_domain":0,"token":"secret"}}]}`
+	a := &API{db: database, spotifyHTTPClient: &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/v1/me" {
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"library-owner"}`))}, nil
+		}
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(raw))}, nil
+	})}}
+	response, err := a.doSpotifyRequest(context.Background(), "GET", "https://api.spotify.com/v1/me/tracks?offset=4&limit=1", nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(response.Body)
+	response.Body.Close()
+	if err != nil || string(body) != raw {
+		t.Fatal("consumer response changed", err)
+	}
+	runtime := a.spotifyTokens()
+	snapshot, err := database.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "library", SpotifyID: "rest_saved_tracks", Resource: "rest:/v1/me/tracks:page:4:1", ContextKey: runtime.metadataContext})
+	if err != nil || snapshot == nil || !strings.Contains(string(snapshot.Payload), "future_domain") || strings.Contains(string(snapshot.Payload), "secret") {
+		t.Fatalf("snapshot: %+v %v", snapshot, err)
+	}
+
+}
+
+func TestOAuthPlaylistFinalRevisionFence(t *testing.T) {
+	for _, revision := range []string{"version1", "version2", ""} {
+		t.Run("final_"+revision, func(t *testing.T) {
+			a, _ := newBPMRouteTestAPI(t, false)
+			credentials, _ := json.Marshal(SpotifyCredentials{ClientId: "client", AccessToken: "fixture", Expiry: time.Now().Add(time.Hour).UnixMilli()})
+			if err := a.db.SetSetting("spotify_credentials", string(credentials)); err != nil {
+				t.Fatal(err)
+			}
+			id := strings.Repeat("P", 22)
+			rootCalls := 0
+			a.spotifyHTTPClient = &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+				if r.URL.Path == "/v1/me" {
+					return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"playlist-owner"}`))}, nil
+				}
+				raw := `{"offset":1,"limit":1,"items":[null],"next":null}`
+				if !strings.HasSuffix(r.URL.Path, "/tracks") {
+					rootCalls++
+					if rootCalls == 1 {
+						raw = `{"type":"playlist","id":"` + id + `","name":"Playlist","snapshot_id":"version1","tracks":{"offset":0,"items":[null],"next":"https://api.spotify.com/v1/playlists/` + id + `/tracks?offset=1&limit=1"}}`
+					} else {
+						raw = `{"snapshot_id":"` + revision + `"}`
+					}
+				}
+				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(raw))}, nil
+			})}
+			_, _, _, err := a.fetchPlaylistTracks(t.Context(), id, nil)
+			if rootCalls != 2 {
+				t.Fatal("root was not revalidated")
+			}
+			if (err == nil) != (revision == "version1") {
+				t.Fatalf("revision fence: %v", err)
+			}
+			runtime := a.spotifyTokens()
+			snapshot, readErr := a.db.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "playlist", SpotifyID: id, Resource: "rest:/v1/playlists/" + id + ":page::", ContextKey: runtime.metadataContext})
+			if readErr != nil || (snapshot != nil) != (revision == "version1") {
+				t.Fatalf("traversal publication: %+v %v", snapshot, readErr)
+			}
+			if snapshot != nil && snapshot.CaptureRevision != "version1" {
+				t.Fatal("root revision not persisted", snapshot)
+			}
+		})
+	}
+}
+
+func TestOAuthPlaylistRejectsOverlappingOrSkippedPage(t *testing.T) {
+	for _, revision := range []string{"0", "2"} {
+		t.Run("offset_"+revision, func(t *testing.T) {
+			a, _ := newBPMRouteTestAPI(t, false)
+			credentials, _ := json.Marshal(SpotifyCredentials{ClientId: "client", AccessToken: "fixture", Expiry: time.Now().Add(time.Hour).UnixMilli()})
+			if err := a.db.SetSetting("spotify_credentials", string(credentials)); err != nil {
+				t.Fatal(err)
+			}
+			id := strings.Repeat("P", 22)
+			rootCalls := 0
+			a.spotifyHTTPClient = &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+				if r.URL.Path == "/v1/me" {
+					return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"playlist-owner"}`))}, nil
+				}
+				raw := `{"offset":` + revision + `,"limit":1,"items":[null],"next":null}`
+				if !strings.HasSuffix(r.URL.Path, "/tracks") {
+					rootCalls++
+					if rootCalls == 1 {
+						raw = `{"type":"playlist","id":"` + id + `","name":"Playlist","snapshot_id":"version1","tracks":{"offset":0,"items":[null],"next":"https://api.spotify.com/v1/playlists/` + id + `/tracks?offset=1&limit=1"}}`
+					} else {
+						raw = `{"snapshot_id":"` + revision + `"}`
+					}
+				}
+				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(raw))}, nil
+			})}
+			_, _, _, err := a.fetchPlaylistTracks(t.Context(), id, nil)
+			if rootCalls != 1 {
+				t.Fatal("overlap proceeded to final revalidation")
+			}
+			if err == nil {
+				t.Fatalf("revision fence: %v", err)
+			}
+			runtime := a.spotifyTokens()
+			snapshot, readErr := a.db.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "playlist", SpotifyID: id, Resource: "rest:/v1/playlists/" + id + ":page::", ContextKey: runtime.metadataContext})
+			if readErr != nil || snapshot != nil {
+				t.Fatalf("traversal publication: %+v %v", snapshot, readErr)
+			}
+		})
+	}
+}
+
+func TestOAuthPlaylistPartialResumeRevisionFence(t *testing.T) {
+	for _, changed := range []bool{false, true} {
+		t.Run(fmt.Sprint(changed), func(t *testing.T) {
+			a, _ := newBPMRouteTestAPI(t, false)
+			credentials, _ := json.Marshal(SpotifyCredentials{ClientId: "client", AccessToken: "fixture", Expiry: time.Now().Add(time.Hour).UnixMilli()})
+			if err := a.db.SetSetting("spotify_credentials", string(credentials)); err != nil {
+				t.Fatal(err)
+			}
+			id := strings.Repeat("P", 22)
+			revision := "version1"
+			calls := map[string]int{}
+			a.spotifyHTTPClient = &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+				status := 200
+				offset := r.URL.Query().Get("offset")
+				calls[offset]++
+				raw := `{"snapshot_id":"` + revision + `"}`
+				if r.URL.Query().Get("fields") == "" {
+					switch offset {
+					case "":
+						raw = `{"type":"playlist","id":"` + id + `","snapshot_id":"` + revision + `","tracks":{"offset":0,"items":[null],"next":"https://api.spotify.com/v1/playlists/` + id + `/tracks?offset=1&limit=1"}}`
+					case "1":
+						raw = `{"offset":1,"items":[null],"next":"https://api.spotify.com/v1/playlists/` + id + `/tracks?offset=2&limit=1"}`
+					case "2":
+						raw = `{"offset":2,"items":[null],"next":null}`
+						if calls[offset] == 1 {
+							status = 503
+						}
+					}
+				}
+				return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(raw))}, nil
+			})}
+			if _, _, _, err := a.fetchPlaylistTracks(t.Context(), id, nil); err == nil {
+				t.Fatal("interrupted traversal succeeded")
+			}
+			ctx, cancel := a.spotifyTokens().requestContext(t.Context())
+			defer cancel()
+			if partial, ok := a.loadPlaylistPartial(ctx, id, revision); !ok || partial.NextOffset != 2 {
+				t.Fatal("validated prefix missing")
+			}
+			if changed {
+				revision = "version2"
+			}
+			if _, _, _, err := a.fetchPlaylistTracks(t.Context(), id, nil); err != nil {
+				t.Fatal(err)
+			}
+			want := 1
+			if changed {
+				want = 2
+			}
+			if calls["1"] != want || calls["2"] != 2 {
+				t.Fatal("incorrect prefix reuse", calls)
+			}
+			if _, ok := a.loadPlaylistPartial(ctx, id, revision); ok {
+				t.Fatal("completed traversal retained partial")
+			}
+			if rows, ok := a.completedPlaylistRows(ctx, id, revision); !ok || len(rows) != 3 {
+				t.Fatal("completion lost unavailable positions")
+			}
+			page, err := a.db.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "playlist", SpotifyID: id, Resource: "rest:/v1/playlists/" + id + "/tracks:page:1:1", ContextKey: a.spotifyTokens().metadataContext})
+			if err != nil || page == nil || page.CaptureRevision != revision {
+				t.Fatal("resumed page revision not persisted", page, err)
+			}
+		})
+	}
+}
+
+func TestOAuthPlaylistSupersededTraversalDiscardsResult(t *testing.T) {
+	a, _ := newBPMRouteTestAPI(t, false)
+	credentials, _ := json.Marshal(SpotifyCredentials{ClientId: "client", AccessToken: "fixture", Expiry: time.Now().Add(time.Hour).UnixMilli()})
+	if err := a.db.SetSetting("spotify_credentials", string(credentials)); err != nil {
+		t.Fatal(err)
+	}
+	id := strings.Repeat("P", 22)
+	runtime := a.spotifyTokens()
+	a.spotifyHTTPClient = &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/v1/me" {
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"playlist-owner"}`))}, nil
+		}
+		// Simulate another owner starting while the playlist root request is in flight.
+		if _, err := a.db.BeginSpotifyPlaylistTraversal(runtime.metadataContext, id); err != nil {
+			return nil, err
+		}
+		raw := `{"type":"playlist","id":"` + id + `","snapshot_id":"revision","tracks":{"offset":0,"items":[null],"next":null}}`
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(raw))}, nil
+	})}
+	rows, _, _, err := a.fetchPlaylistTracks(t.Context(), id, nil)
+	if !errors.Is(err, db.ErrSpotifyTraversalSuperseded) || rows != nil {
+		t.Fatal("stale application result returned", rows, err)
+	}
+	got, err := a.db.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "playlist", SpotifyID: id, Resource: playlistCompletedResource, ContextKey: runtime.metadataContext})
+	if err != nil || got != nil {
+		t.Fatal("superseded completion published", got, err)
+	}
+}
+
+func TestOAuthPlaylistExpiredTraversalDiscardsLateResponse(t *testing.T) {
+	for _, stage := range []string{"root", "page"} {
+		t.Run(stage, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "lease.db")
+			database, err := db.New(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer database.Close()
+			// Open both handles before runtime owner confirmation: opening a DB
+			// deliberately makes persisted owner data provisional.
+			maintenance, err := db.New(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer maintenance.Close()
+			a := &API{db: database}
+			credentials, _ := json.Marshal(SpotifyCredentials{ClientId: "client", AccessToken: "fixture", Expiry: time.Now().Add(time.Hour).UnixMilli()})
+			if err := database.SetSetting("spotify_credentials", string(credentials)); err != nil {
+				t.Fatal(err)
+			}
+			id := strings.Repeat("P", 22)
+			expired := false
+			a.spotifyHTTPClient = &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+				if r.URL.Path == "/v1/me" {
+					return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"playlist-owner"}`))}, nil
+				}
+				isPage := strings.HasSuffix(r.URL.Path, "/tracks")
+				if !expired && ((stage == "root" && !isPage) || (stage == "page" && isPage)) {
+					// Simulate elapsed inactivity while the response is in flight.
+					got, err := maintenance.MaintainSpotifyPrivateCache(t.Context(), time.Now().Add(db.SpotifyPlaylistTraversalLease+time.Minute), 1)
+					if err != nil || got.TraversalsExpired != 1 {
+						t.Fatalf("independent maintenance failed to expire lease: %+v %v", got, err)
+					}
+					expired = true
+				}
+				raw := `{"type":"playlist","id":"` + id + `","snapshot_id":"revision","tracks":{"offset":0,"items":[null],"next":null}}`
+				if stage == "page" && !isPage {
+					raw = `{"type":"playlist","id":"` + id + `","snapshot_id":"revision","tracks":{"offset":0,"items":[null],"next":"https://api.spotify.com/v1/playlists/` + id + `/tracks?offset=1&limit=100"}}`
+				} else if isPage {
+					raw = `{"offset":1,"items":[null],"next":null}`
+				}
+				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(raw))}, nil
+			})}
+			rows, _, _, err := a.fetchPlaylistTracks(t.Context(), id, nil)
+			if !expired || !errors.Is(err, db.ErrSpotifyTraversalSuperseded) || rows != nil {
+				t.Fatal("late response escaped expiry fence", expired, rows, err)
+			}
+			owner := a.spotifyTokens().metadataContext
+			for _, resource := range []string{playlistCompletedResource, "rest:/v1/playlists/" + id + ":page::"} {
+				got, err := database.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "playlist", SpotifyID: id, Resource: resource, ContextKey: owner})
+				if err != nil || got != nil {
+					t.Fatal("expired response published catalog completion/domain", resource, got, err)
+				}
+			}
+			if stage == "page" {
+				got, err := database.GetSpotifyEntitySnapshot(db.SpotifySnapshotKey{EntityType: "playlist", SpotifyID: id, Resource: playlistPartialResource, ContextKey: owner})
+				var partial struct {
+					Complete   bool `json:"complete"`
+					NextOffset int  `json:"nextOffset"`
+				}
+				if err != nil || got == nil || json.Unmarshal(got.Payload, &partial) != nil || partial.Complete || partial.NextOffset != 1 {
+					t.Fatal("late response changed saved prefix", got, err)
+				}
+			}
+		})
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +21,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	spotifyanalysis "github.com/ajbergh/viib-mediahub/internal/spotify/analysis"
 )
 
 func TestV2TrackTempoEvidenceUsesMeasuredValuesOnly(t *testing.T) {
@@ -36,6 +38,27 @@ func TestV2TrackTempoEvidenceUsesMeasuredValuesOnly(t *testing.T) {
 	}
 }
 
+func TestEffectiveScalarCompatibilityProjectionUsesSelectedProviderValues(t *testing.T) {
+	fingerprint := "source-v1"
+	localBPM, localTonic := 110.0, 2
+	localMode := "major"
+	analysis := db.TrackAnalysis{SongID: "song", Status: db.TrackAnalysisComplete, SourceFingerprint: fingerprint,
+		Local: &db.LocalScalarObservation{SourceFingerprint: fingerprint, AlgorithmVersion: "local-v1", BPM: &localBPM, KeyTonic: &localTonic, KeyMode: &localMode}}
+	confidence := .82
+	provider := []db.SpotifyScalarField{
+		{Key: "tempo_bpm", Metric: "tempo", Units: "bpm", Value: json.RawMessage("132"), Confidence: &confidence, Endpoint: "audio_features", SchemaVersion: 1, AdapterRevision: "fixture", RetrievedAt: time.Now()},
+		{Key: "key_mode", Metric: "tonic_and_mode", Units: "pitch_class_and_mode", Value: json.RawMessage(`{"tonic":0,"mode":0}`), Confidence: &confidence, Endpoint: "audio_features", SchemaVersion: 1, AdapterRevision: "fixture", RetrievedAt: time.Now()},
+	}
+	response := trackAnalysisFeatureResponseWithCurrentSource(analysis, db.TrackAnalysisOverride{}, fingerprint)
+	effective := db.ResolveAnalysisScalarFields(analysis, db.TrackAnalysisOverride{}, fingerprint, provider)
+	applyEffectiveScalarCompatibilityFields(&response, effective)
+	if response.BPM == nil || *response.BPM != 132 || response.BPMSource != db.EffectiveBPMSpotify || response.SyncAllowed || response.BPMConfidence == nil || *response.BPMConfidence != confidence {
+		t.Fatalf("provider tempo projection = %+v", response)
+	}
+	if response.KeyTonic == nil || *response.KeyTonic != 0 || response.KeyMode == nil || *response.KeyMode != "minor" || response.Key == nil || *response.Key != "C minor" || response.CamelotKey == nil || *response.CamelotKey != "5A" || response.KeySource != db.EffectiveBPMSpotify || response.KeyConfidence == nil || *response.KeyConfidence != confidence {
+		t.Fatalf("provider key projection = %+v", response)
+	}
+}
 func saveAnalysisTestSong(t *testing.T, database *db.DB, id, title string, genres []string, addedAt, lastPlayed int64) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), id+".mp3")
@@ -50,6 +73,75 @@ func saveAnalysisTestSong(t *testing.T, database *db.DB, id, title string, genre
 		t.Fatal(err)
 	}
 	return source.Fingerprint
+}
+
+func TestV2SingleTrackAnalysisFeatureIncludesCurrentBS1770Measurements(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	fingerprint := saveAnalysisTestSong(t, database, "song", "Song", nil, 1, 0)
+	if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: "song", Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: fingerprint}); err != nil {
+		t.Fatal(err)
+	}
+	lufs, peak := -14.25, -0.42
+	result := features.BS1770Result{
+		IntegratedLUFS: &lufs, TruePeakDBTP: &peak, Standard: features.BS1770Standard, Algorithm: features.BS1770AlgorithmVersion,
+		LoudnessAlgorithm: features.BS1770LoudnessAlgorithm, TruePeakAlgorithm: features.BS1770TruePeakAlgorithm,
+		Layout: "stereo", Weighting: "L=1;R=1", LoudnessStatus: "available", TruePeakStatus: "available",
+	}
+	payload, err := features.EncodeBS1770(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{
+		ID: "song:bs1770", SongID: "song", Kind: features.BS1770ArtifactKind, FormatVersion: features.BS1770FormatVersion,
+		AlgorithmVersion: features.BS1770AlgorithmVersion, Encoding: features.BS1770Encoding, Provenance: "measured",
+		SourceFingerprint: fingerprint, Data: payload,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := httptest.NewRecorder()
+	(&API{db: database}).V2Routes().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/analysis/song", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET /analysis/song = %d, want %d: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	var response TrackAnalysisFeatureResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	if response.IntegratedLUFSBS1770 == nil || math.Abs(*response.IntegratedLUFSBS1770-lufs) > 1e-9 || response.TruePeakDBTP == nil || math.Abs(*response.TruePeakDBTP-peak) > 1e-9 {
+		t.Fatalf("single-track BS.1770 projection = LUFS %v, true peak %v", response.IntegratedLUFSBS1770, response.TruePeakDBTP)
+	}
+}
+
+func TestSingleTrackAnalysisPublicationRejectsReplacedSource(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	fingerprint := saveAnalysisTestSong(t, database, "song", "Song", nil, 1, 0)
+	song, err := database.GetSongByID("song")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(song.FilePath, []byte("replacement source has a different size"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	oldValue := -14.25
+	response := TrackAnalysisFeatureResponse{SongID: "song", SourceFingerprint: fingerprint, IntegratedLUFSBS1770: &oldValue}
+	recorder := httptest.NewRecorder()
+	(&API{db: database}).respondCurrentTrackAnalysisFeature(recorder, "song", fingerprint, response)
+	if recorder.Code != http.StatusPreconditionFailed {
+		t.Fatalf("publication status = %d, want %d: %s", recorder.Code, http.StatusPreconditionFailed, recorder.Body.String())
+	}
+	if strings.Contains(recorder.Body.String(), `"integratedLufsBs1770":-14.25`) {
+		t.Fatalf("stale local measurement was published: %s", recorder.Body.String())
+	}
 }
 
 func TestV2TrackAnalysisExposesOnlyCurrentSettledEnergyLevel(t *testing.T) {
@@ -89,7 +181,7 @@ func TestV2TrackAnalysisFeatureResolvesManualValues(t *testing.T) {
 	manualBPM, manualTonic := 127.5, 9
 	manualMode := "minor"
 	if err := database.UpsertTrackAnalysisOverride(db.TrackAnalysisOverride{
-		SongID: "song", BPM: &manualBPM, BPMSourceFingerprint: currentFingerprint, BPMLocked: true, KeyTonic: &manualTonic, KeyMode: &manualMode, KeyLocked: true,
+		SongID: "song", BPM: &manualBPM, BPMSourceFingerprint: currentFingerprint, BPMLocked: true, KeyTonic: &manualTonic, KeyMode: &manualMode, KeyLocked: true, KeySourceFingerprint: currentFingerprint,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -131,16 +223,15 @@ func TestV2TrackAnalysisFeaturesListsResolvedRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
+	fingerprints := map[string]string{}
 	for _, id := range []string{"second", "first"} {
-		if err := database.SaveSong(&db.Song{ID: id, Title: id, Artist: "Artist", Album: "Album", FilePath: id + ".mp3", AddedAt: 1}); err != nil {
-			t.Fatal(err)
-		}
+		fingerprints[id] = saveAnalysisTestSong(t, database, id, id, nil, 1, 0)
 	}
 	bpm, tonic := 128.0, 0
 	analyzedAt := int64(1720000000123)
 	mode, source := "major", "measured"
 	for _, id := range []string{"second", "first"} {
-		if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: id, Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: id, AnalyzedAt: &analyzedAt, BPM: &bpm, BPMSource: &source, KeyTonic: &tonic, KeyMode: &mode, KeySource: &source}); err != nil {
+		if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: id, Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "test-v1", SourceFingerprint: fingerprints[id], AnalyzedAt: &analyzedAt, BPM: &bpm, BPMSource: &source, KeyTonic: &tonic, KeyMode: &mode, KeySource: &source}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -155,6 +246,16 @@ func TestV2TrackAnalysisFeaturesListsResolvedRecords(t *testing.T) {
 	}
 	if len(response) != 2 || response[0].SongID != "first" || response[1].SongID != "second" || response[0].CamelotKey == nil || *response[0].CamelotKey != "8B" || response[0].AnalyzedAt == nil || *response[0].AnalyzedAt != analyzedAt {
 		t.Fatalf("feature list = %#v, want sorted resolved records", response)
+	}
+	for _, row := range response {
+		if len(row.EffectiveFields) != 17 {
+			t.Fatalf("list effective fields missing: %+v", row.EffectiveFields)
+		}
+		for _, field := range row.EffectiveFields {
+			if field.Key == "key_mode" && (field.Selected == nil || field.Selected.Source != "local") {
+				t.Fatalf("list local key: %+v", field)
+			}
+		}
 	}
 }
 
@@ -211,6 +312,7 @@ func TestV2TrackAnalysisFeatureListReportsOnlyCurrentSettledStructure(t *testing
 		{id: "unsupported", status: db.TrackAnalysisUnsupported, artifact: base, withArtifact: true, artifactAt: analyzedAt + 1},
 		{id: "missing", status: db.TrackAnalysisComplete},
 		{id: "corrupt", status: db.TrackAnalysisComplete, artifact: []byte("not gzip"), withArtifact: true, artifactAt: analyzedAt + 1},
+		{id: "oversized", status: db.TrackAnalysisComplete, artifact: []byte(strings.Repeat("x", features.MaxStructureStatusArtifactBytes+1)), withArtifact: true, artifactAt: analyzedAt + 1},
 		{id: "stale-source", status: db.TrackAnalysisComplete, artifact: base, artifactFingerprint: "old-source", withArtifact: true, artifactAt: analyzedAt + 1},
 		{id: "source-changed-before-reanalysis", status: db.TrackAnalysisComplete, artifact: base, withArtifact: true, artifactAt: analyzedAt + 1, changeSource: true},
 		{id: "source-unavailable", status: db.TrackAnalysisComplete, artifact: base, withArtifact: true, artifactAt: analyzedAt + 1, removeSource: true},
@@ -285,6 +387,14 @@ func TestV2TrackAnalysisFeatureListReportsOnlyCurrentSettledStructure(t *testing
 		if got[test.id] != test.wantAvailable {
 			t.Errorf("structureAvailable[%s] = %v, want %v", test.id, got[test.id], test.wantAvailable)
 		}
+		for _, suffix := range []string{"", "/bpm"} {
+			detailRecorder := httptest.NewRecorder()
+			(&API{db: database}).V2Routes().ServeHTTP(detailRecorder, httptest.NewRequest(http.MethodGet, "/analysis/"+test.id+suffix, nil))
+			var detail TrackAnalysisFeatureResponse
+			if err := json.Unmarshal(detailRecorder.Body.Bytes(), &detail); err != nil || detailRecorder.Code != http.StatusOK || detail.StructureAvailable != test.wantAvailable {
+				t.Errorf("detail structure[%s%s]: %d %s (%v)", test.id, suffix, detailRecorder.Code, detailRecorder.Body.String(), err)
+			}
+		}
 	}
 }
 
@@ -331,6 +441,7 @@ func TestV2TrackAnalysisFeatureListReportsOnlyCurrentMeasuredBS1770Measurements(
 		result            features.BS1770Result
 		withArtifact      bool
 		corrupt           bool
+		oversized         bool
 		staleFingerprint  bool
 		legacyFingerprint bool
 		formatVersion     int
@@ -353,6 +464,7 @@ func TestV2TrackAnalysisFeatureListReportsOnlyCurrentMeasuredBS1770Measurements(
 		{id: "unsupported-analysis", status: db.TrackAnalysisUnsupported, result: valid, withArtifact: true},
 		{id: "missing", status: db.TrackAnalysisComplete},
 		{id: "corrupt", status: db.TrackAnalysisComplete, withArtifact: true, corrupt: true},
+		{id: "oversized", status: db.TrackAnalysisComplete, result: valid, withArtifact: true, oversized: true},
 		{id: "unsupported-payload-metadata", status: db.TrackAnalysisComplete, result: badMetadata, withArtifact: true},
 		{id: "silent", status: db.TrackAnalysisComplete, result: silent, withArtifact: true},
 		{id: "short", status: db.TrackAnalysisComplete, result: short, withArtifact: true},
@@ -398,6 +510,9 @@ func TestV2TrackAnalysisFeatureListReportsOnlyCurrentMeasuredBS1770Measurements(
 			data := encode(test.result)
 			if test.corrupt {
 				data = []byte("not gzip")
+			}
+			if test.oversized {
+				data = make([]byte, features.MaxBS1770ArtifactBytes+1)
 			}
 			if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{
 				ID: test.id + ":bs1770", SongID: test.id, Kind: features.BS1770ArtifactKind,
@@ -477,12 +592,12 @@ func TestV2BeatGridUpdateRoundTripsAndLocksWithoutLosingManualValues(t *testing.
 	handler := (&API{db: database}).V2Routes()
 	body := `{"beats":[0.125,0.625,1.125,1.625],"downbeatIndices":[0],"locked":true}`
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/analysis/song/beatgrid", strings.NewReader(body)))
+	handler.ServeHTTP(recorder, beatGridTestRequest(t, database, http.MethodPut, "/analysis/song/beatgrid", strings.NewReader(body)))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("PUT beatgrid = %d: %s", recorder.Code, recorder.Body.String())
 	}
 	recorder = httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/analysis/song/beatgrid", nil))
+	handler.ServeHTTP(recorder, beatGridTestRequest(t, database, http.MethodGet, "/analysis/song/beatgrid", nil))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("GET beatgrid = %d: %s", recorder.Code, recorder.Body.String())
 	}
@@ -503,7 +618,7 @@ func TestV2BeatGridUpdateRoundTripsAndLocksWithoutLosingManualValues(t *testing.
 	}
 	// Applying a detected tempo must survive reloading along with its grid.
 	recorder = httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/analysis/song/beatgrid", strings.NewReader(`{"beats":[0.13,0.63,1.13],"downbeatIndices":[],"locked":true,"bpm":120}`)))
+	handler.ServeHTTP(recorder, beatGridTestRequest(t, database, http.MethodPut, "/analysis/song/beatgrid", strings.NewReader(`{"beats":[0.13,0.63,1.13],"downbeatIndices":[],"locked":true,"bpm":120}`)))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("save corrected tempo: %d %s", recorder.Code, recorder.Body.String())
 	}
@@ -512,7 +627,7 @@ func TestV2BeatGridUpdateRoundTripsAndLocksWithoutLosingManualValues(t *testing.
 		t.Fatalf("corrected tempo did not persist: %#v, %v", override, err)
 	}
 	recorder = httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/analysis/song/beatgrid", strings.NewReader(`{"beats":[0,0.5,1],"locked":true,"bpm":-1}`)))
+	handler.ServeHTTP(recorder, beatGridTestRequest(t, database, http.MethodPut, "/analysis/song/beatgrid", strings.NewReader(`{"beats":[0,0.5,1],"locked":true,"bpm":-1}`)))
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("invalid tempo accepted: %d", recorder.Code)
 	}
@@ -524,9 +639,8 @@ func TestV2BeatGridResetClearsOnlyGridOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	if err := database.SaveSong(&db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: "song.mp3", AddedAt: 1}); err != nil {
-		t.Fatal(err)
-	}
+	saveAnalysisTestSong(t, database, "song", "Song", nil, 1, 0)
+
 	manual := 126.0
 	if err := database.UpsertTrackAnalysisOverride(db.TrackAnalysisOverride{SongID: "song", BPM: &manual, BPMLocked: true}); err != nil {
 		t.Fatal(err)
@@ -534,12 +648,12 @@ func TestV2BeatGridResetClearsOnlyGridOverride(t *testing.T) {
 	handler := (&API{db: database}).V2Routes()
 	body := `{"beats":[0.125,0.625,1.125,1.625],"downbeatIndices":[0],"locked":true}`
 	put := httptest.NewRecorder()
-	handler.ServeHTTP(put, httptest.NewRequest(http.MethodPut, "/analysis/song/beatgrid", strings.NewReader(body)))
+	handler.ServeHTTP(put, beatGridTestRequest(t, database, http.MethodPut, "/analysis/song/beatgrid", strings.NewReader(body)))
 	if put.Code != http.StatusOK {
 		t.Fatalf("PUT beatgrid = %d: %s", put.Code, put.Body.String())
 	}
 	reset := httptest.NewRecorder()
-	handler.ServeHTTP(reset, httptest.NewRequest(http.MethodDelete, "/analysis/song/beatgrid", nil))
+	handler.ServeHTTP(reset, beatGridTestRequest(t, database, http.MethodDelete, "/analysis/song/beatgrid", nil))
 	if reset.Code != http.StatusNoContent {
 		t.Fatalf("DELETE beatgrid = %d: %s", reset.Code, reset.Body.String())
 	}
@@ -594,6 +708,23 @@ func TestV2EnergyFeaturesReturnsVersionedMeasurement(t *testing.T) {
 	}
 	if response.LoudnessKind != features.LoudnessKind || response.PeakKind != features.PeakKind || response.ChannelScope != "mono" || response.Standard != "none" {
 		t.Fatalf("energy API did not expose qualified measurement metadata: %#v", response)
+	}
+	// Optional oversized loudness must not hide otherwise usable structure.
+	oversizedArtifact := db.TrackAnalysisArtifact{ID: "song:" + features.BS1770AlgorithmVersion, SongID: "song", Kind: features.BS1770ArtifactKind, FormatVersion: features.BS1770FormatVersion, AlgorithmVersion: features.BS1770AlgorithmVersion, Encoding: features.BS1770Encoding, Provenance: "measured", SourceFingerprint: fingerprint, Data: make([]byte, features.MaxBS1770ArtifactBytes+1)}
+	if err := database.UpsertTrackAnalysisArtifact(oversizedArtifact); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/analysis/song/energy", "/analysis/song"} {
+		w := httptest.NewRecorder()
+		(&API{db: database}).V2Routes().ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		var body map[string]any
+		if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &body) != nil || body["integratedLufsBs1770"] != nil || body["truePeakDbtp"] != nil {
+			t.Fatalf("oversized optional loudness at %s: %d %s", path, w.Code, w.Body.String())
+		}
+	}
+	oversizedArtifact.Data = standardsEncoded
+	if err := database.UpsertTrackAnalysisArtifact(oversizedArtifact); err != nil {
+		t.Fatal(err)
 	}
 	if response.IntegratedLUFSBS1770 == nil || *response.IntegratedLUFSBS1770 != standardsLoudness || response.TruePeakDBTP == nil || *response.TruePeakDBTP != standardsPeak || response.LoudnessStandard == nil || *response.LoudnessStandard != features.BS1770Standard || response.LoudnessAlgorithm == nil || *response.LoudnessAlgorithm != features.BS1770LoudnessAlgorithm || response.TruePeakAlgorithm == nil || *response.TruePeakAlgorithm != features.BS1770TruePeakAlgorithm || response.LoudnessLayout == nil || *response.LoudnessLayout != "stereo" || response.LoudnessWeighting == nil || *response.LoudnessWeighting != "L=1;R=1" || response.LoudnessStatus == nil || *response.LoudnessStatus != "available" || response.TruePeakStatus == nil || *response.TruePeakStatus != "available" {
 		t.Fatalf("energy API did not expose the separately versioned BS.1770 artifact: %#v", response)
@@ -739,6 +870,253 @@ func TestV2EnergyFeaturesNormalizesNilSlices(t *testing.T) {
 	}
 	if response.Energy == nil || response.Sections == nil || response.CueSuggestions == nil {
 		t.Fatalf("nil energy response slices: energy=%#v sections=%#v cues=%#v", response.Energy, response.Sections, response.CueSuggestions)
+	}
+}
+
+func TestProviderPrecedenceMatchesDetailListAndMixNextOffline(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	const owner = "precedence-import-owner"
+	if err := database.ActivateSpotifyMetadataContext(owner); err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]string{"source": "AAAAAAAAAAAAAAAAAAAAAA", "candidate": "BBBBBBBBBBBBBBBBBBBBBB"}
+	fingerprints := map[string]string{}
+	for _, songID := range []string{"source", "candidate"} {
+		fingerprint := saveAnalysisTestSong(t, database, songID, songID, nil, 1, 0)
+		if err := database.RefreshTrackAnalysisSourceRevision(songID, fingerprint); err != nil {
+			t.Fatal(err)
+		}
+		fingerprints[songID] = fingerprint
+		localBPM, localTonic := 128.0, 2
+		if songID == "candidate" {
+			localBPM, localTonic = 130, 2
+		}
+		localMode := "major"
+		local := &db.LocalScalarObservation{SourceFingerprint: fingerprint, AlgorithmVersion: "local-v1", MeasuredAt: time.Now().UnixMilli(), BPM: &localBPM, KeyTonic: &localTonic, KeyMode: &localMode}
+		if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: songID, Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "local-v1", SourceFingerprint: fingerprint, Local: local}); err != nil {
+			t.Fatal(err)
+		}
+		curve, err := (features.Result{Energy: []features.EnergyPoint{{Time: 0, Value: .5}, {Time: 30, Value: .6}}, Sections: []features.Section{{Start: 0, End: 30, Label: features.StructureIntro, Confidence: .8}, {Start: 30, End: 60, Label: features.StructureOutro, Confidence: .8}}}).Encode()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: songID + ":energy", SongID: songID, Kind: features.ArtifactKind, FormatVersion: features.FormatVersion, AlgorithmVersion: features.AlgorithmVersion, Encoding: features.Encoding, Provenance: "measured", SourceFingerprint: fingerprint, Data: curve}); err != nil {
+			t.Fatal(err)
+		}
+		if ok, err := database.ConfirmSpotifyRecording(songID, ids[songID], fingerprint, true); err != nil || !ok {
+			t.Fatalf("confirm %s: %v %v", songID, ok, err)
+		}
+		providerBPM, providerKey, providerMode, energy := 128.0, 0, 1, .7
+		providerCamelot := "8B"
+		if songID == "candidate" {
+			providerBPM, providerKey, providerMode, providerCamelot = 125, 0, 0, "5A"
+		}
+		observation := spotifyanalysis.Observation{TrackID: ids[songID], AccountContext: owner, Source: "spotify_internal", SourceEndpoint: "audio_features", RetrievedAt: time.Now(), BPM: &providerBPM, Key: &providerKey, Mode: &providerMode, Camelot: &providerCamelot, Energy: &energy}
+		if err := database.PutExternalAnalysis(observation, "fixture", time.Now().Add(time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+		jobID := "precedence-" + songID
+		songs, err := database.GetAllSongs()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var filePath string
+		for _, song := range songs {
+			if song.ID == songID {
+				filePath = song.FilePath
+				break
+			}
+		}
+		if filePath == "" {
+			t.Fatalf("missing saved song %s", songID)
+		}
+		if err := database.AddDownload(&db.SpotifyDownload{ID: jobID, SpotifyID: ids[songID], Type: "track", Title: songID, Status: "queued", FilePath: filePath, AddedAt: time.Now().UnixMilli()}); err != nil {
+			t.Fatal(err)
+		}
+		if changed, err := database.MarkDownloadStarted(jobID); err != nil || !changed {
+			t.Fatalf("start %s: %v %v", songID, changed, err)
+		}
+		if changed, err := database.MarkDownloadConverting(jobID, filePath); err != nil || !changed {
+			t.Fatalf("convert %s: %v %v", songID, changed, err)
+		}
+		if changed, err := database.MarkDownloadCompletedWithEvidence(t.Context(), jobID, filePath); err != nil || !changed {
+			t.Fatalf("complete %s: %v %v", songID, changed, err)
+		}
+	}
+	if err := database.SetSetting("spotify_metadata_active_context", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.RetireSpotifyMetadataContext(owner); err != nil {
+		t.Fatal(err)
+	}
+	handler := (&API{db: database}).V2Routes()
+	get := func(path string) *httptest.ResponseRecorder {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("GET %s = %d: %s", path, recorder.Code, recorder.Body.String())
+		}
+		return recorder
+	}
+	var detail TrackAnalysisFeatureResponse
+	if err := json.NewDecoder(get("/analysis/candidate").Body).Decode(&detail); err != nil {
+		t.Fatal(err)
+	}
+	if detail.BPM == nil || *detail.BPM != 125 || detail.BPMSource != db.EffectiveBPMSpotify || detail.SyncAllowed || detail.KeyTonic == nil || *detail.KeyTonic != 0 || detail.KeyMode == nil || *detail.KeyMode != "minor" {
+		t.Fatalf("detail provider precedence = %+v", detail)
+	}
+	var bpmResponse TrackAnalysisFeatureResponse
+	if err := json.NewDecoder(get("/analysis/candidate/bpm").Body).Decode(&bpmResponse); err != nil {
+		t.Fatal(err)
+	}
+	if bpmResponse.BPM == nil || *bpmResponse.BPM != 125 || bpmResponse.BPMSource != db.EffectiveBPMSpotify {
+		t.Fatalf("dedicated BPM read precedence = %+v", bpmResponse)
+	}
+	bpmUpdate := httptest.NewRequest(http.MethodPut, "/analysis/candidate/bpm", strings.NewReader(`{"bpm":131}`))
+	bpmUpdate.Header.Set("If-Match", strconv.Quote(fingerprints["candidate"]))
+	bpmUpdated := httptest.NewRecorder()
+	handler.ServeHTTP(bpmUpdated, bpmUpdate)
+	if bpmUpdated.Code != http.StatusOK {
+		t.Fatalf("manual BPM update = %d: %s", bpmUpdated.Code, bpmUpdated.Body.String())
+	}
+	if err := json.NewDecoder(bpmUpdated.Body).Decode(&bpmResponse); err != nil || bpmResponse.BPM == nil || *bpmResponse.BPM != 131 || bpmResponse.BPMSource != db.EffectiveBPMManual || !bpmResponse.SyncAllowed {
+		t.Fatalf("manual BPM response precedence = %+v err=%v", bpmResponse, err)
+	}
+	bpmReset := httptest.NewRequest(http.MethodDelete, "/analysis/candidate/bpm", nil)
+	bpmReset.Header.Set("If-Match", strconv.Quote(fingerprints["candidate"]))
+	bpmResetResponse := httptest.NewRecorder()
+	handler.ServeHTTP(bpmResetResponse, bpmReset)
+	if bpmResetResponse.Code != http.StatusOK {
+		t.Fatalf("BPM reset = %d: %s", bpmResetResponse.Code, bpmResetResponse.Body.String())
+	}
+	if err := json.NewDecoder(bpmResetResponse.Body).Decode(&bpmResponse); err != nil || bpmResponse.BPM == nil || *bpmResponse.BPM != 125 || bpmResponse.BPMSource != db.EffectiveBPMSpotify {
+		t.Fatalf("BPM reset did not restore provider value: %+v err=%v", bpmResponse, err)
+	}
+	keyUpdate := httptest.NewRequest(http.MethodPut, "/analysis/candidate/key", strings.NewReader(`{"tonic":9,"mode":"minor"}`))
+	keyUpdate.Header.Set("If-Match", strconv.Quote(fingerprints["candidate"]))
+	keyUpdated := httptest.NewRecorder()
+	handler.ServeHTTP(keyUpdated, keyUpdate)
+	if keyUpdated.Code != http.StatusOK {
+		t.Fatalf("manual key update = %d: %s", keyUpdated.Code, keyUpdated.Body.String())
+	}
+	var keyResponse TrackAnalysisFeatureResponse
+	if err := json.NewDecoder(keyUpdated.Body).Decode(&keyResponse); err != nil || keyResponse.Key == nil || *keyResponse.Key != "A minor" || keyResponse.KeySource != db.EffectiveKeyManual || keyResponse.BPM == nil || *keyResponse.BPM != 125 || keyResponse.BPMSource != db.EffectiveBPMSpotify {
+		t.Fatalf("manual key response did not preserve provider tempo: %+v err=%v", keyResponse, err)
+	}
+	var rows []TrackAnalysisFeatureResponse
+	if err := json.NewDecoder(get("/analysis").Body).Decode(&rows); err != nil {
+		t.Fatal(err)
+	}
+	var listed *TrackAnalysisFeatureResponse
+	for index := range rows {
+		if rows[index].SongID == "candidate" {
+			listed = &rows[index]
+			break
+		}
+	}
+	if listed == nil || listed.BPM == nil || *listed.BPM != 125 || listed.BPMSource != db.EffectiveBPMSpotify || listed.KeyTonic == nil || *listed.KeyTonic != 9 || listed.KeyMode == nil || *listed.KeyMode != "minor" || listed.KeySource != db.EffectiveKeyManual {
+		t.Fatalf("list provider precedence = %+v", listed)
+	}
+	var recommendations TransitionRecommendationsResponse
+	if err := json.NewDecoder(get("/analysis/source/recommendations?minBpm=129&maxBpm=131").Body).Decode(&recommendations); err != nil {
+		t.Fatal(err)
+	}
+	if recommendations.CandidatesBeforeFilters != 1 || recommendations.CandidatesAfterFilters != 0 || len(recommendations.Recommendations) != 0 {
+		t.Fatalf("Mix Next did not filter with the same imported tempo: %+v", recommendations)
+	}
+}
+
+func TestMixNextUsesScorelessDownloadedTempoForFilters(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	const owner = "scoreless-mix-next-owner"
+	if err := database.ActivateSpotifyMetadataContext(owner); err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]string{"source": "CCCCCCCCCCCCCCCCCCCCCC", "candidate": "DDDDDDDDDDDDDDDDDDDDDD"}
+	for _, songID := range []string{"source", "candidate"} {
+		fingerprint := saveAnalysisTestSong(t, database, songID, songID, nil, 1, 0)
+		if err := database.RefreshTrackAnalysisSourceRevision(songID, fingerprint); err != nil {
+			t.Fatal(err)
+		}
+		localBPM, localTonic := 128.0, 2
+		providerBPM, providerTonic := 128.0, 0
+		if songID == "candidate" {
+			localBPM, providerBPM = 130, 125
+		}
+		mode := "major"
+		local := &db.LocalScalarObservation{SourceFingerprint: fingerprint, AlgorithmVersion: "local-v1", MeasuredAt: time.Now().UnixMilli(), BPM: &localBPM, KeyTonic: &localTonic, KeyMode: &mode}
+		if err := database.UpsertTrackAnalysis(db.TrackAnalysis{SongID: songID, Status: db.TrackAnalysisComplete, AnalysisVersion: 1, AlgorithmVersion: "local-v1", SourceFingerprint: fingerprint, Local: local}); err != nil {
+			t.Fatal(err)
+		}
+		curve, err := (features.Result{Energy: []features.EnergyPoint{{Time: 0, Value: .5}, {Time: 30, Value: .6}}, Sections: []features.Section{{Start: 0, End: 30, Label: features.StructureIntro, Confidence: .8}, {Start: 30, End: 60, Label: features.StructureOutro, Confidence: .8}}}).Encode()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: songID + ":energy", SongID: songID, Kind: features.ArtifactKind, FormatVersion: features.FormatVersion, AlgorithmVersion: features.AlgorithmVersion, Encoding: features.Encoding, Provenance: "measured", SourceFingerprint: fingerprint, Data: curve}); err != nil {
+			t.Fatal(err)
+		}
+		if ok, err := database.ConfirmSpotifyRecording(songID, ids[songID], fingerprint, true); err != nil || !ok {
+			t.Fatalf("confirm %s: %v %v", songID, ok, err)
+		}
+		providerMode := 0
+		providerCamelot := "5A"
+		observation := spotifyanalysis.Observation{TrackID: ids[songID], AccountContext: owner, Source: "spotify_internal", SourceEndpoint: "audio_features", RetrievedAt: time.Now(), BPM: &providerBPM, Key: &providerTonic, Mode: &providerMode, Camelot: &providerCamelot}
+		if err := database.PutExternalAnalysis(observation, "fixture", time.Now().Add(time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+		songs, err := database.GetAllSongs()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var filePath string
+		for _, song := range songs {
+			if song.ID == songID {
+				filePath = song.FilePath
+				break
+			}
+		}
+		if filePath == "" {
+			t.Fatalf("missing saved song %s", songID)
+		}
+		jobID := "scoreless-" + songID
+		if err := database.AddDownload(&db.SpotifyDownload{ID: jobID, SpotifyID: ids[songID], Type: "track", Title: songID, Status: "queued", FilePath: filePath, AddedAt: time.Now().UnixMilli()}); err != nil {
+			t.Fatal(err)
+		}
+		if changed, err := database.MarkDownloadStarted(jobID); err != nil || !changed {
+			t.Fatalf("start %s: %v %v", songID, changed, err)
+		}
+		if changed, err := database.MarkDownloadConverting(jobID, filePath); err != nil || !changed {
+			t.Fatalf("convert %s: %v %v", songID, changed, err)
+		}
+		if changed, err := database.MarkDownloadCompletedWithEvidence(t.Context(), jobID, filePath); err != nil || !changed {
+			t.Fatalf("complete %s: %v %v", songID, changed, err)
+		}
+	}
+	if err := database.SetSetting("spotify_metadata_active_context", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.RetireSpotifyMetadataContext(owner); err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	(&API{db: database}).V2Routes().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/analysis/source/recommendations?minBpm=124&maxBpm=126", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET Mix Next = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var response TransitionRecommendationsResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	if response.CandidatesAfterFilters != 1 || len(response.Recommendations) != 1 || response.Recommendations[0].SongID != "candidate" || response.Recommendations[0].FilterEvidence.BPM == nil || *response.Recommendations[0].FilterEvidence.BPM != 125 {
+		t.Fatalf("Mix Next did not use verified scoreless durable tempo: %+v", response)
 	}
 }
 
@@ -895,6 +1273,47 @@ func TestV2TransitionRecommendationsExposeMeasuredRationale(t *testing.T) {
 	if unfiltered.CandidatesBeforeFilters != 2 || unfiltered.CandidatesAfterFilters != 2 || unfiltered.Filters.PlaylistID != nil || len(unfiltered.Filters.PlaylistIDs) != 0 || unfiltered.Filters.Genre != nil {
 		t.Fatalf("omitted library filters changed behavior: %#v", unfiltered)
 	}
+	manualRequest := httptest.NewRequest(http.MethodPut, "/analysis/compatible/fields/local_energy_level", strings.NewReader(`{"value":9}`))
+	manualRequest.Header.Set("If-Match", strconv.Quote(fingerprints["compatible"]))
+	manualResponse := httptest.NewRecorder()
+	(&API{db: database}).V2Routes().ServeHTTP(manualResponse, manualRequest)
+	if manualResponse.Code != http.StatusNoContent {
+		t.Fatalf("manual save: %d %s", manualResponse.Code, manualResponse.Body.String())
+	}
+	manualFiltered := getFiltered("?minEnergyLevel=9&maxEnergyLevel=9")
+	if len(manualFiltered.Recommendations) != 1 || manualFiltered.Recommendations[0].SongID != "compatible" || manualFiltered.Recommendations[0].FilterEvidence.EnergyLevel == nil || *manualFiltered.Recommendations[0].FilterEvidence.EnergyLevel != 9 || manualFiltered.Recommendations[0].Vector.EnergyLevelDelta == nil || *manualFiltered.Recommendations[0].Vector.EnergyLevelDelta != 4 {
+		t.Fatalf("manual energy not used for filter/ranking: %+v", manualFiltered)
+	}
+	if old := getFiltered("?minEnergyLevel=6&maxEnergyLevel=6"); len(old.Recommendations) != 0 {
+		t.Fatalf("old measured energy still effective: %+v", old)
+	}
+	resetRequest := httptest.NewRequest(http.MethodDelete, "/analysis/compatible/fields/local_energy_level", nil)
+	resetRequest.Header.Set("If-Match", strconv.Quote(fingerprints["compatible"]))
+	resetResponse := httptest.NewRecorder()
+	(&API{db: database}).V2Routes().ServeHTTP(resetResponse, resetRequest)
+	if resetResponse.Code != http.StatusNoContent {
+		t.Fatal(resetResponse.Code)
+	}
+	if reset := getFiltered("?minEnergyLevel=6&maxEnergyLevel=6"); len(reset.Recommendations) != 1 || reset.Recommendations[0].SongID != "compatible" {
+		t.Fatalf("reset failed to restore measured energy: %+v", reset)
+	}
+
+	explicit, err := database.GetTrackAnalysis("compatible")
+	if err != nil {
+		t.Fatal(err)
+	}
+	explicit.Local = &db.LocalScalarObservation{SourceFingerprint: fingerprints["compatible"], AlgorithmVersion: "v1"}
+	if err := database.UpsertTrackAnalysis(explicit); err != nil {
+		t.Fatal(err)
+	}
+	if missing := getFiltered("?minEnergyLevel=6&maxEnergyLevel=6"); len(missing.Recommendations) != 0 {
+		t.Fatalf("explicit missing energy passed range filter: %+v", missing)
+	}
+	unqualified := getFiltered("?playlistId=mix")
+	if len(unqualified.Recommendations) != 1 || unqualified.Recommendations[0].FilterEvidence.EnergyLevel != nil || unqualified.Recommendations[0].Vector.EnergyLevelDelta != nil {
+		t.Fatalf("explicit missing energy leaked into evidence/ranking: %+v", unqualified)
+	}
+
 }
 
 func TestV2TransitionRecommendationFiltersRejectInvalidQueries(t *testing.T) {
@@ -1137,16 +1556,20 @@ func TestValidTransitionKeyRejectsMalformedEffectiveKey(t *testing.T) {
 	validTonic := db.TrackAnalysis{Status: db.TrackAnalysisComplete, KeyTonic: intPointer(0), KeyMode: &major, KeySource: &measured}
 	inferred := "inferred"
 	untrusted := db.TrackAnalysis{Status: db.TrackAnalysisComplete, KeyTonic: intPointer(0), KeyMode: &major, KeySource: &inferred}
-	if validTransitionKey(invalidTonic, db.TrackAnalysisOverride{}) {
+	invalidTonic.SourceFingerprint = "current-source"
+	invalidMode.SourceFingerprint = "current-source"
+	validTonic.SourceFingerprint = "current-source"
+	untrusted.SourceFingerprint = "current-source"
+	if validTransitionKey(invalidTonic, db.TrackAnalysisOverride{}, "current-source") {
 		t.Fatal("out-of-range effective key was accepted")
 	}
-	if validTransitionKey(invalidMode, db.TrackAnalysisOverride{}) {
+	if validTransitionKey(invalidMode, db.TrackAnalysisOverride{}, "current-source") {
 		t.Fatal("unknown effective key mode was accepted")
 	}
-	if !validTransitionKey(validTonic, db.TrackAnalysisOverride{}) {
+	if !validTransitionKey(validTonic, db.TrackAnalysisOverride{}, "current-source") {
 		t.Fatal("valid measured effective key was rejected")
 	}
-	if validTransitionKey(untrusted, db.TrackAnalysisOverride{}) {
+	if validTransitionKey(untrusted, db.TrackAnalysisOverride{}, "current-source") {
 		t.Fatal("inferred effective key was accepted")
 	}
 }
@@ -1169,16 +1592,14 @@ func TestV2BeatGridProvenance(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer database.Close()
-			if err := database.SaveSong(&db.Song{ID: "song", Title: "Song", Artist: "Artist", Album: "Album", FilePath: "song.mp3", AddedAt: 1}); err != nil {
-				t.Fatal(err)
-			}
+			fp := saveAnalysisTestSong(t, database, "song", "Song", nil, 1, 0)
 			grid := beatgrid.Grid{Beats: []float64{0.1, 0.6, 1.1}, DownbeatIndices: []int{0}}
 			encoded, err := grid.Encode()
 			if err != nil {
 				t.Fatal(err)
 			}
 			id := "song:" + beatgrid.AlgorithmVersion
-			if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: id, SongID: "song", Kind: beatgrid.ArtifactKind, FormatVersion: beatgrid.FormatVersion, AlgorithmVersion: beatgrid.AlgorithmVersion, Encoding: beatgrid.Encoding, Provenance: test.provenance, Data: encoded}); err != nil {
+			if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: id, SongID: "song", Kind: beatgrid.ArtifactKind, FormatVersion: beatgrid.FormatVersion, AlgorithmVersion: beatgrid.AlgorithmVersion, Encoding: beatgrid.Encoding, Provenance: test.provenance, SourceFingerprint: fp, Data: encoded}); err != nil {
 				t.Fatal(err)
 			}
 			if test.override {
@@ -1187,7 +1608,7 @@ func TestV2BeatGridProvenance(t *testing.T) {
 				}
 			}
 			response := httptest.NewRecorder()
-			(&API{db: database}).V2Routes().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/analysis/song/beatgrid", nil))
+			(&API{db: database}).V2Routes().ServeHTTP(response, beatGridTestRequest(t, database, http.MethodGet, "/analysis/song/beatgrid", nil))
 			if response.Code != http.StatusOK {
 				t.Fatalf("GET: %d %s", response.Code, response.Body.String())
 			}
@@ -1199,5 +1620,103 @@ func TestV2BeatGridProvenance(t *testing.T) {
 				t.Fatalf("source=%s provenance=%s, want %s", gridResponse.Source, gridResponse.Provenance, test.provenance)
 			}
 		})
+	}
+}
+
+func beatGridTestRequest(t *testing.T, database *db.DB, method, target string, body io.Reader) *http.Request {
+	t.Helper()
+	r := httptest.NewRequest(method, target, body)
+	if method == http.MethodPut || method == http.MethodDelete {
+		fps, err := (&API{db: database}).currentAnalysisSourceFingerprints([]string{"song"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Header.Set("If-Match", strconv.Quote(fps["song"]))
+	}
+	return r
+}
+
+func TestEffectiveManualEnergyPreservesMeasurementAndInvalidatesWithSource(t *testing.T) {
+	level, confidence, version := 4, .8, features.EnergyLevelAlgorithmVersion
+	record := db.TrackAnalysis{SourceFingerprint: "fp", Status: db.TrackAnalysisComplete, EnergyLevel: &level, EnergyLevelConfidence: &confidence, EnergyAlgorithmVersion: &version}
+	candidate, err := db.ManualScalarCandidate("local_energy_level", "fp", json.RawMessage("9"), time.Now().UnixMilli())
+	if err != nil {
+		t.Fatal(err)
+	}
+	override := db.TrackAnalysisOverride{Fields: []db.ScalarCandidate{candidate}}
+	resolved := trackAnalysisFeatureResponseWithCurrentSource(record, override, "fp")
+	if resolved.EnergyLevel == nil || *resolved.EnergyLevel != 9 || resolved.MeasuredEnergyLevel == nil || *resolved.MeasuredEnergyLevel != 4 || resolved.EnergyLevelConfidence != nil {
+		t.Fatalf("manual/measured conflated: %+v", resolved)
+	}
+	if stale := trackAnalysisFeatureResponseWithCurrentSource(record, override, "replacement"); stale.EnergyLevel != nil || stale.MeasuredEnergyLevel != nil {
+		t.Fatalf("stale energy: %+v", stale)
+	}
+	if reset := trackAnalysisFeatureResponseWithCurrentSource(record, db.TrackAnalysisOverride{}, "fp"); reset.EnergyLevel == nil || *reset.EnergyLevel != 4 || reset.EnergyLevelSource != "local" {
+		t.Fatalf("reset energy: %+v", reset)
+	}
+}
+
+func TestExplicitEnergyEnvelopeCannotFallBackToCompatibility(t *testing.T) {
+	level, confidence, version := 8, .8, features.EnergyLevelAlgorithmVersion
+	valid := db.SpotifyScalarField{Key: "local_energy_level", Metric: "local_energy_level", Units: "level_1_10", Value: json.RawMessage("4"), Confidence: &confidence, AdapterRevision: version, RetrievedAt: time.Now()}
+	old := valid
+	old.AdapterRevision = "obsolete"
+	invalid := valid
+	invalid.Value = json.RawMessage("null")
+	manual, err := db.ManualScalarCandidate("local_energy_level", "fp", json.RawMessage("9"), time.Now().UnixMilli())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name   string
+		local  *db.LocalScalarObservation
+		status string
+		want   int
+	}{
+		{"missing", &db.LocalScalarObservation{SourceFingerprint: "fp", AlgorithmVersion: "v1"}, db.TrackAnalysisComplete, 0},
+		{"corrupt", &db.LocalScalarObservation{}, db.TrackAnalysisComplete, 0},
+		{"obsolete", &db.LocalScalarObservation{SourceFingerprint: "fp", AlgorithmVersion: "v1", Fields: []db.SpotifyScalarField{old}}, db.TrackAnalysisComplete, 0},
+		{"invalid", &db.LocalScalarObservation{SourceFingerprint: "fp", AlgorithmVersion: "v1", Fields: []db.SpotifyScalarField{invalid}}, db.TrackAnalysisComplete, 0},
+		{"duplicate", &db.LocalScalarObservation{SourceFingerprint: "fp", AlgorithmVersion: "v1", Fields: []db.SpotifyScalarField{valid, valid}}, db.TrackAnalysisComplete, 0},
+		{"current", &db.LocalScalarObservation{SourceFingerprint: "fp", AlgorithmVersion: "v1", Fields: []db.SpotifyScalarField{valid}}, db.TrackAnalysisComplete, 4},
+		{"running", &db.LocalScalarObservation{SourceFingerprint: "fp", AlgorithmVersion: "v1", Fields: []db.SpotifyScalarField{valid}}, db.TrackAnalysisRunning, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			record := db.TrackAnalysis{SourceFingerprint: "fp", Status: tc.status, Local: tc.local, LocalScalarEnvelopePresent: true, EnergyLevel: &level, EnergyLevelConfidence: &confidence, EnergyAlgorithmVersion: &version}
+			resolved := trackAnalysisFeatureResponseWithCurrentSource(record, db.TrackAnalysisOverride{}, "fp")
+			transition := resolvedTransitionMetadata(record, db.TrackAnalysisOverride{}, "fp")
+			if tc.want == 0 {
+				if resolved.EnergyLevel != nil || resolved.MeasuredEnergyLevel != nil || transition.EnergyLevel != nil {
+					t.Fatalf("compatibility leaked: %+v %+v", resolved, transition)
+				}
+			} else if resolved.EnergyLevel == nil || *resolved.EnergyLevel != tc.want || resolved.MeasuredEnergyLevel == nil || *resolved.MeasuredEnergyLevel != tc.want || transition.EnergyLevel == nil || *transition.EnergyLevel != tc.want {
+				t.Fatalf("qualified measurement lost: %+v %+v", resolved, transition)
+			}
+			overridden := trackAnalysisFeatureResponseWithCurrentSource(record, db.TrackAnalysisOverride{Fields: []db.ScalarCandidate{manual}}, "fp")
+			if overridden.EnergyLevel == nil || *overridden.EnergyLevel != 9 || overridden.EnergyLevelSource != "manual" {
+				t.Fatalf("manual lost: %+v", overridden)
+			}
+			if tc.want == 0 && overridden.MeasuredEnergyLevel != nil {
+				t.Fatal("manual fabricated measurement")
+			}
+			if tc.want != 0 && (overridden.MeasuredEnergyLevel == nil || *overridden.MeasuredEnergyLevel != tc.want) {
+				t.Fatal("manual hid qualified measurement")
+			}
+		})
+	}
+}
+
+func TestLegacyEnergyFallbackSettledStates(t *testing.T) {
+	level, confidence, version := 6, .8, features.EnergyLevelAlgorithmVersion
+	for _, status := range []string{db.TrackAnalysisComplete, db.TrackAnalysisPartial, db.TrackAnalysisFailed, db.TrackAnalysisRunning} {
+		record := db.TrackAnalysis{Status: status, SourceFingerprint: "fp", EnergyLevel: &level, EnergyLevelConfidence: &confidence, EnergyAlgorithmVersion: &version}
+		got := trackAnalysisFeatureResponseWithCurrentSource(record, db.TrackAnalysisOverride{}, "fp")
+		if status == db.TrackAnalysisRunning {
+			if got.EnergyLevel != nil {
+				t.Fatal("running legacy value applied")
+			}
+		} else if got.EnergyLevel == nil || *got.EnergyLevel != level {
+			t.Fatalf("legacy %s fallback lost: %+v", status, got)
+		}
 	}
 }

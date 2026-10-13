@@ -382,7 +382,13 @@ func (d *DB) migrate() error {
 	if err := d.migrateColumns(); err != nil {
 		return err
 	}
-	return d.EnsureExternalTrackAnalysisSchema()
+	if err := d.EnsureExternalTrackAnalysisSchema(); err != nil {
+		return err
+	}
+	if err := d.EnsureSpotifyMetadataSchema(); err != nil {
+		return err
+	}
+	return d.ActivateSpotifyMetadataContext("")
 }
 
 // migrateColumns adds new columns to existing tables if they don't exist.
@@ -2164,27 +2170,33 @@ func (d *DB) DeletePlaylist(id string) error {
 // in the database. It contains metadata about the requested download and
 // its current progress/status.
 type SpotifyDownload struct {
-	ID          string `json:"id"`
-	SpotifyID   string `json:"spotifyId"`
-	SpotifyURI  string `json:"spotifyUri"`
-	Type        string `json:"type"` // "track", "album", "playlist"
-	Title       string `json:"title"`
-	Artist      string `json:"artist,omitempty"`
-	Album       string `json:"album,omitempty"`
-	Status      string `json:"status"` // "queued", "downloading", "converting", "completed", "failed"
-	Progress    int    `json:"progress"`
-	Error       string `json:"error,omitempty"`
-	FilePath    string `json:"filePath,omitempty"`
-	AddedAt     int64  `json:"addedAt"`
-	StartedAt   int64  `json:"startedAt,omitempty"`
-	CompletedAt int64  `json:"completedAt,omitempty"`
-	Metadata    string `json:"metadata,omitempty"` // JSON string for additional data
+	Origins     []SpotifyDownloadOrigin `json:"-"`
+	ID          string                  `json:"id"`
+	SpotifyID   string                  `json:"spotifyId"`
+	SpotifyURI  string                  `json:"spotifyUri"`
+	Type        string                  `json:"type"` // "track", "album", "playlist"
+	Title       string                  `json:"title"`
+	Artist      string                  `json:"artist,omitempty"`
+	Album       string                  `json:"album,omitempty"`
+	Status      string                  `json:"status"` // "queued", "downloading", "converting", "completed", "failed"
+	Progress    int                     `json:"progress"`
+	Error       string                  `json:"error,omitempty"`
+	FilePath    string                  `json:"filePath,omitempty"`
+	AddedAt     int64                   `json:"addedAt"`
+	StartedAt   int64                   `json:"startedAt,omitempty"`
+	CompletedAt int64                   `json:"completedAt,omitempty"`
+	Metadata    string                  `json:"metadata,omitempty"` // JSON string for additional data
 }
 
 // AddDownload inserts a new SpotifyDownload into the download queue.
 // AddDownload inserts a new SpotifyDownload into the download queue table.
 func (d *DB) AddDownload(download *SpotifyDownload) error {
-	_, err := d.conn.Exec(`
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.Exec(`
 		INSERT INTO spotify_downloads (
 			id, spotify_id, spotify_uri, type, title, artist, album,
 			status, progress, error, file_path, added_at, started_at,
@@ -2194,7 +2206,13 @@ func (d *DB) AddDownload(download *SpotifyDownload) error {
 		download.Title, download.Artist, download.Album, download.Status,
 		download.Progress, download.Error, download.FilePath, download.AddedAt,
 		download.StartedAt, download.CompletedAt, download.Metadata)
-	return err
+	if err != nil {
+		return err
+	}
+	if err = stageDownloadOrigins(tx, download.ID, download.Origins); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // AddDownloads inserts a logical album or playlist as one transaction. Either
@@ -2228,6 +2246,9 @@ func (d *DB) AddDownloads(downloads []*SpotifyDownload) ([]string, error) {
 			ORDER BY added_at ASC LIMIT 1
 		`, download.SpotifyID, download.Metadata).Scan(&existingID)
 		if err == nil {
+			if err := stageDownloadOrigins(tx, existingID, download.Origins); err != nil {
+				return nil, err
+			}
 			ids = append(ids, existingID)
 			continue
 		}
@@ -2238,6 +2259,9 @@ func (d *DB) AddDownloads(downloads []*SpotifyDownload) ([]string, error) {
 			download.Type, download.Title, download.Artist, download.Album, download.Status,
 			download.Progress, download.Error, download.FilePath, download.AddedAt,
 			download.StartedAt, download.CompletedAt, download.Metadata); err != nil {
+			return nil, err
+		}
+		if err := stageDownloadOrigins(tx, download.ID, download.Origins); err != nil {
 			return nil, err
 		}
 		ids = append(ids, download.ID)
@@ -5084,6 +5108,18 @@ func (d *DB) ClearDJHotCueSuppression(songID string, slot int) error {
 // locked rows. Existing analysis rows are only replaced in refresh mode, and
 // matching deletion tombstones always win.
 func (d *DB) ApplyGeneratedDJHotCues(songID string, cues []DJHotCue, mode GeneratedCueMode) error {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := applyGeneratedDJHotCuesTx(tx, songID, cues, mode); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func applyGeneratedDJHotCuesTx(tx *sql.Tx, songID string, cues []DJHotCue, mode GeneratedCueMode) error {
 	if songID == "" || (mode != GeneratedCueFillEmpty && mode != GeneratedCueReplaceGenerated && mode != GeneratedCueSelectedOnly) {
 		return fmt.Errorf("generated cues require a song ID and valid apply mode")
 	}
@@ -5097,11 +5133,6 @@ func (d *DB) ApplyGeneratedDJHotCues(songID string, cues []DJHotCue, mode Genera
 		}
 		seen[cue.Slot] = struct{}{}
 	}
-	tx, err := d.conn.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
 	if mode == GeneratedCueReplaceGenerated {
 		eligible := make(map[int]string, len(cues))
 		for _, cue := range cues {
@@ -5164,14 +5195,14 @@ func (d *DB) ApplyGeneratedDJHotCues(songID string, cues []DJHotCue, mode Genera
 			}
 			continue
 		}
-		_, err = tx.Exec(`INSERT INTO dj_hot_cues(song_id, slot, position, label, color, origin, generator_version, confidence, kind, locked, rationale, source_fingerprint, downbeat_aligned, updated_at, created_at)
+		_, err := tx.Exec(`INSERT INTO dj_hot_cues(song_id, slot, position, label, color, origin, generator_version, confidence, kind, locked, rationale, source_fingerprint, downbeat_aligned, updated_at, created_at)
 			VALUES (?, ?, ?, ?, ?, 'analysis', ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
 			songID, cue.Slot, cue.Position, cue.Label, cue.Color, cue.GeneratorVersion, cue.Confidence, nullableCueText(cue.Kind), nullableCueText(cue.Rationale), nullableCueText(cue.SourceFingerprint), boolToInt(cue.DownbeatAligned), time.Now().UnixMilli(), time.Now().Unix())
 		if err != nil {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 func nullableCueText(value string) any {

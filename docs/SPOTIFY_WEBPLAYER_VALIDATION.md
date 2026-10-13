@@ -1,5 +1,7 @@
 # Spotify WebPlayer Validation and Research Record
 
+> Scope update â€” 2026-10-12: Earlier entries retain their evidence dates and original limits. Further local scanning/DSP improvements are deferred; the current merge scope and final verification are tracked separately. See [current branch scope](SPOTIFY_BRANCH_REMAINING_WORK.md) and [future local-analysis work](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
+
 **Record started:** 2026-10-02
 
 **Evidence through:** 2026-10-04
@@ -32,7 +34,7 @@ Evidence artifacts referenced under `output/playwright` and temporary audio/test
 
 ## Dated validation entries
 
-## First-search responsiveness follow-up — 2026-10-03
+## First-search responsiveness follow-up â€” 2026-10-03
 
 Reviewed the pending cookie-auth request path with emphasis on opening the UI, restoring the session, entering Spotify and searching. This increment removes application-owned head-of-line waits; it does not establish live latency or complete OAuth parity.
 
@@ -55,7 +57,7 @@ Validation for this increment:
 
 Remaining performance evidence: a restored cold session still requires server-time/access-token acquisition and a client token before catalog data; these upstream waits are not removed or claimed instantaneous. Token acquisition coalesces, but cancellation of a flight leader while another consumer needs the same cold token remains a separate review item. Library hydration remains N+1, now isolated from monopolizing search admission. Live cold/warm search timing and native Wails behavior must be measured independently before calling the user-visible performance goal verified. This increment did not access real cookies or live Spotify accounts.
 
-## Live first-search follow-up — 2026-10-03
+## Live first-search follow-up â€” 2026-10-03
 
 Built the current production frontend and browser-mode `cmd/viib` executable. Ran two app lifetimes in a unique temporary root with isolated APPDATA, encrypted database, SDK/download paths and logs, using a separate loopback origin. No normal library or settings were changed. The user-authorized session was submitted directly to the real backend connection endpoint without printing its request body. Connection returned HTTP 200 in 322 ms. This tests the backend connection endpoint, not another cookie-form submission or automatic browser login UX.
 
@@ -63,7 +65,7 @@ Built the current production frontend and browser-mode `cmd/viib` executable. Ra
 |---|---|---|
 | First search after profile had completed | Catalog HTTP 780 ms; first result controls observed at 878 ms from fill/Enter automation | Successful four-category catalog response rendered before fallback completion. This is not a cold-token sample. |
 | Warm second query | Catalog HTTP 779 ms; dispatch 26 ms after the pre-fill timing marker | No 150 ms debounce wait after Enter. Existing results were already visible, so this sample records transport, not a new-result DOM latency. |
-| Restart → Home → Spotify → immediate search | Profile HTTP 560 ms; search dispatched 56 ms after profile started, catalog HTTP 1,381 ms; result controls observed at 1,425 ms from the pre-fill marker | Encrypted session restored with cold in-memory token/client-token caches. Search entered while profile was pending, and results rendered successfully. Shared token acquisition remains part of this duration. |
+| Restart â†’ Home â†’ Spotify â†’ immediate search | Profile HTTP 560 ms; search dispatched 56 ms after profile started, catalog HTTP 1,381 ms; result controls observed at 1,425 ms from the pre-fill marker | Encrypted session restored with cold in-memory token/client-token caches. Search entered while profile was pending, and results rendered successfully. Shared token acquisition remains part of this duration. |
 | Search while saved albums loaded | Saved-album HTTP 4,424 ms; new-query search HTTP 848 ms, dispatched 87 ms after the library request began | Search finished before ongoing 20-item library hydration, demonstrating removal of backend head-of-line blocking in this sample. |
 
 HTTP durations and dispatch timings came from browser Resource Timing, cross-checked against backend request status/timing logs. First-result observations are automation/DOM mutation timings, including fill/Enter scheduling, not high-precision input-to-paint measurements. Playlist scraping took 5,347 ms and 5,632 ms for the first two queries and completed later, updating playlist counts without delaying initial catalog results. Every assessed catalog/profile/library response returned HTTP 200. A superseded query dispatched during the library-to-search switch was cancelled when the input changed; the backend logged HTTP 503/session-unavailable for that cancelled request. The subsequent query and account remained valid; this is not counted as a successful catalog response or an account rejection.
@@ -605,7 +607,7 @@ Final track increment checks passed: complete backend go test ./..., research pr
 
 Built the actual browser-mode cmd/viib executable with the current production frontend bundle. Used a unique temporary viib-cookie-app-* root for APPDATA, the -data database/log/cover directory, default Spotify downloads and SDK cache. The authenticated run used loopback port 34159. The user's original library/configuration was not used. Connected through the production POST /api/spotify/auth/session endpoint; the real cookie was delivered through a one-use memory pipe and stored only by the existing encrypted setting boundary. GET /api/spotify/credentials returned an empty object. Raw isolated database inspection found the encrypted-value marker and no cookie prefix, and subsequent restart successfully restored profile access.
 
-Chrome/Playwright exercised the actual production frontend: startup restored the account page, Saved Albums rendered 20 cards with artwork/year/track counts, Saved Playlists rendered 20 cards, and the fixed public album detail rendered its available track list. Clicked Play album, observed a SPOTIFY/Streaming source, Pause control, advancing seek position (45+ seconds on the first observed track), queue state and subsequent streamed tracks. Playback continued after explicit POST /api/spotify/auth/refresh and Next track; a later seek jumped to about 117 seconds in the new track while playback remained active. This verifies real browser playback controls and explicitly renewed media acquisition for this sample, not elapsed token expiry or all playback engines. Visual evidence: [production album playback](../output/playwright/spotify-cookie-album-playback.png).
+Chrome/Playwright exercised the actual production frontend: startup restored the account page, Saved Albums rendered 20 cards with artwork/year/track counts, Saved Playlists rendered 20 cards, and the fixed public album detail rendered its available track list. Clicked Play album, observed a SPOTIFY/Streaming source, Pause control, advancing seek position (45+ seconds on the first observed track), queue state and subsequent streamed tracks. Playback continued after explicit POST /api/spotify/auth/refresh and Next track; a later seek jumped to about 117 seconds in the new track while playback remained active. This verifies real browser playback controls and explicitly renewed media acquisition for this sample, not elapsed token expiry or all playback engines. Visual evidence was captured locally at `output/playwright/spotify-cookie-album-playback.png`; that ignored screenshot is not distributed in this repository.
 
 The production streaming handler returned HTTP 206, audio/ogg, Content-Range bytes 0-4095/13666697, 4096 bytes and an OggS header for the supplied recording. A direct track-URL download completed through the real automatically started DownloadManager, produced an Ogg file under the isolated download root, and entered the local library. Full read-only PCM verification reported 13,666,755 bytes, 44,100 Hz, two channels, declared/decoded frames 16,863,840 and 382.4 seconds. This is a production worker result, beyond the earlier isolated SDK probe.
 
@@ -699,7 +701,7 @@ A concurrent worker reset exposed another production bug: HTTP playback returned
 
 The isolated app was rebuilt and the remaining five failed rows were requeued with the zero-trailer correction. Final production completion/artifact verification follows below.
 
-Final trailer-corrected live result: all five remaining rows completed. The seven playlist artifacts fully decoded as Ogg, 44.1 kHz stereo; every declared frame count exactly matched its decoded count (durations 138.427–287.387 seconds). Essential title/artist/album/track tags, 001–007 filename numbering and cover.jpg were present. One new raw page-checksum mismatch was observed on the first attempt and the bounded retry produced a valid final recording. This exercises recovery of real corruption rather than merely accepting zero trailers. It proves this seven-track playlist sample, not every account/market/quality variant.
+Final trailer-corrected live result: all five remaining rows completed. The seven playlist artifacts fully decoded as Ogg, 44.1 kHz stereo; every declared frame count exactly matched its decoded count (durations 138.427â€“287.387 seconds). Essential title/artist/album/track tags, 001â€“007 filename numbering and cover.jpg were present. One new raw page-checksum mismatch was observed on the first attempt and the bounded retry produced a valid final recording. This exercises recovery of real corruption rather than merely accepting zero trailers. It proves this seven-track playlist sample, not every account/market/quality variant.
 
 Final checks: complete backend suite, research-build tests/vet, API/Spotify race suites and vet passed. No frontend changes were needed in this step.
 
@@ -926,7 +928,7 @@ Artists search results now link to `/spotify/artist/:id`. Track artists, album a
 
 The cookie adapter intercepts `/artists/:id/albums` and uses the fixed, reviewed `queryArtistDiscographyAll` contract. It flattens release groups, deduplicates release IDs, preserves type/date/artwork, checks supplied identity fields and schema bounds, and retains the shared authentication renewal/cooldown path. This request is bounded at the first 100 release groups. It does not invent a total or continuation cursor; a full response exposes the limit and a Spotify full-discography link.
 
-Validation: 37 targeted frontend tests pass, including artist-result and track-artist navigation, playback context, queue/download actions, partial failure/retry, and stale account responses. Catalog/API Go tests, TypeScript checks, palette/raw-color checks, and the production frontend build pass. Playwright fixture browsing passes Search → Artists → artist page → existing album page; the artist page screenshot was visually checked. The user reported that a tested build looks good. That report does not establish independent market or exhaustive discography coverage.
+Validation: 37 targeted frontend tests pass, including artist-result and track-artist navigation, playback context, queue/download actions, partial failure/retry, and stale account responses. Catalog/API Go tests, TypeScript checks, palette/raw-color checks, and the production frontend build pass. Playwright fixture browsing passes Search â†’ Artists â†’ artist page â†’ existing album page; the artist page screenshot was visually checked. The user reported that a tested build looks good. That report does not establish independent market or exhaustive discography coverage.
 
 An independent live probe could not decrypt the saved session in the temporary test database and stopped before a Spotify request. A live discography response remains unverified here; the fixture and browser evidence above must not be treated as live provider evidence.
 

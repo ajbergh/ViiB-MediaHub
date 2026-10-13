@@ -1,0 +1,66 @@
+{
+  "dataset": "https://doi.org/10.5281/zenodo.3371780",
+  "split": "tuning",
+  "selection": "First in-range near miss, large metrical error and refined regression in deterministic tuning-manifest order. Diagnostic selection uses existing tuning errors; not qualification.",
+  "configuration": {
+    "Tempo": {
+      "Range": "auto",
+      "Method": "multifeature-rescored-refined-half-bpm",
+      "MinBPM": 90,
+      "MaxBPM": 180,
+      "MinOnsetCrestFactor": 15
+    },
+    "Key": {
+      "MaxChromaFlatness": 0.98,
+      "MaxFrequency": 3500,
+      "Profile": "krumhansl",
+      "Extraction": "hpcp-peaks"
+    },
+    "SkipTempo": false,
+    "SkipKey": false,
+    "GridBPM": null,
+    "ProviderBeatGrid": null,
+    "SkipThreeBand": false
+  },
+  "sourceSHA256": {
+    "backend/internal/analysis/tempo/tempo.go": "c2dbf73d8117a5bba34c1630bf4e0f6e41db1670e3b22c04506f3e66a71f0310",
+    "backend/internal/analysis/tempo/multifeature.go": "995feb4f8b854cc8142863ca63d9193ed9589bede1f18d498151eb3bb20975a4",
+    "backend/cmd/analysisbench/main.go": "5b7706c1c448e19dc113e5f1feb4115779010bccfdf1aa528de84f3fd0dd5c8b"
+  },
+  "resultsSHA256": "e819fbf59d113312182939996a53972a823d2445e590d5ce8cb9ddb8b93c2f14",
+  "tracks": [
+    {
+      "id": "guitarset-00_BN1-129-Eb_comp",
+      "expectedBpm": 129.0,
+      "defaultBpm": 127.5,
+      "refinedBpm": 129,
+      "rescoredRefinedBpm": 129,
+      "rescoredAlternateBpm": 126,
+      "rescoredConfidence": 0.0787439722793194
+    },
+    {
+      "id": "guitarset-00_BN1-147-Gb_solo",
+      "expectedBpm": 147.0,
+      "defaultBpm": 98.5,
+      "refinedBpm": 98.5,
+      "rescoredRefinedBpm": 98.5,
+      "rescoredAlternateBpm": 147,
+      "rescoredConfidence": 0.6940237005612113
+    },
+    {
+      "id": "guitarset-01_BN2-166-Ab_solo",
+      "expectedBpm": 166.0,
+      "defaultBpm": 166,
+      "refinedBpm": 110.5,
+      "rescoredRefinedBpm": 110.5,
+      "rescoredAlternateBpm": 165,
+      "rescoredConfidence": 0.023381394035070113
+    }
+  ],
+  "decision": "Recomputed scores did not change any selected BPM in these three diagnostics. Do not expand this ablation into a tuning sweep or promote it. Experimental method removed from branch; source snapshots retained in ignored evaluation storage.",
+  "limitations": [
+    "Three selected cases do not establish equivalence on the full corpus.",
+    "No held-out audio used; production defaults unchanged.",
+    "This diagnostic evaluates the score-period mismatch, not a general solution to metrical ambiguity."
+  ]
+}

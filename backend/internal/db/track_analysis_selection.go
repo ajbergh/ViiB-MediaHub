@@ -9,6 +9,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
+	features "github.com/ajbergh/viib-mediahub/internal/analysis/featurecontract"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/threeband"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/waveformartifact"
+	"github.com/google/uuid"
 	"strings"
 	"time"
 )
@@ -165,7 +170,38 @@ func (d *DB) ExpandAnalysisSelection(selection AnalysisSelection, analysisVersio
 	case AnalysisSelectionMissing:
 		// v2 could settle Spotify scalars without measuring energy or generating
 		// cues. Revisit that generation once, even for an ordinary missing scan.
-		base += ` AND (a.song_id IS NULL OR a.algorithm_version = 'spotify-features-v1' OR a.algorithm_version LIKE 'track-v2-spotify;%')`
+		clauses := []string{
+			"a.song_id IS NULL",
+			"(a.status='pending' AND NOT EXISTS(SELECT 1 FROM track_metadata_capability_status c WHERE c.song_id=s.id AND c.source_fingerprint=a.source_fingerprint AND c.capability='core_preparation' AND c.version=? AND c.state='failed' AND c.retry_at>?))",
+			"(a.status='running' AND (a.analyzed_at IS NULL OR a.analyzed_at<=?))",
+			"EXISTS(SELECT 1 FROM track_analysis_source_revisions r WHERE r.song_id=s.id AND r.source_fingerprint<>a.source_fingerprint)",
+			"((a.algorithm_version = 'spotify-features-v1' OR a.algorithm_version LIKE 'track-v2-spotify;%') AND NOT EXISTS (SELECT 1 FROM track_metadata_capability_status c WHERE c.song_id=s.id AND c.source_fingerprint=a.source_fingerprint AND c.capability='core_preparation' AND c.version=? AND (c.state='unsupported' OR (c.state='failed' AND c.retry_at>?))))",
+			"(a.status IN ('complete','partial') AND NOT EXISTS (SELECT 1 FROM track_metadata_capability_status c WHERE c.song_id=s.id AND c.source_fingerprint=a.source_fingerprint AND c.capability='core_preparation' AND c.version=?))",
+			"EXISTS (SELECT 1 FROM track_metadata_capability_status c WHERE c.song_id=s.id AND c.source_fingerprint=a.source_fingerprint AND c.capability='core_preparation' AND c.version=? AND c.state='failed' AND c.retry_at<=?)",
+		}
+		now := time.Now().UnixMilli()
+		args = append(args, CorePreparationVersion, now, now-TrackAnalysisLeaseMillis, CorePreparationVersion, now, CorePreparationVersion, CorePreparationVersion, now)
+		for _, required := range []struct {
+			capability, kind, algorithm, encoding string
+			format, min, max                      int
+		}{
+			{threeband.Kind, threeband.Kind, threeband.AlgorithmVersion, threeband.Encoding, threeband.FormatVersion, 1, threeband.MaxBytes},
+			{"local_amplitude", waveformartifact.Kind, waveformartifact.AlgorithmVersion, waveformartifact.Encoding, waveformartifact.FormatVersion, waveformartifact.HeaderBytes, waveformartifact.MaxBytes},
+			{"local_features", features.ArtifactKind, features.AlgorithmVersion, features.Encoding, features.FormatVersion, 1, features.MaxStructureStatusArtifactBytes},
+			{"local_loudness", features.BS1770ArtifactKind, features.BS1770AlgorithmVersion, features.BS1770Encoding, features.BS1770FormatVersion, 1, features.MaxBS1770ArtifactBytes},
+			{"local_beatgrid", beatgrid.ArtifactKind, beatgrid.AlgorithmVersion, beatgrid.Encoding, beatgrid.FormatVersion, 1, 16 << 20},
+		} {
+			clauses = append(clauses, `(a.status IN ('complete','partial') AND (?!='local_beatgrid' OR NOT EXISTS (SELECT 1 FROM track_analysis_overrides o WHERE o.song_id=s.id AND o.beatgrid_locked=1)) AND NOT EXISTS (SELECT 1 FROM track_metadata_capability_status c WHERE c.song_id=s.id AND c.source_fingerprint=a.source_fingerprint AND c.capability=? AND c.version=? AND (c.state IN ('unavailable','unsupported') OR (c.state='failed' AND c.retry_at>?))) AND NOT EXISTS (SELECT 1 FROM track_analysis_artifacts w WHERE w.song_id=s.id AND w.kind=? AND w.format_version=? AND w.algorithm_version=? AND w.encoding=? AND w.provenance!='unknown' AND w.source_fingerprint=a.source_fingerprint AND w.source_fingerprint!='' AND length(w.data)>=? AND length(w.data)<=?))`)
+			args = append(args, required.capability, required.capability, required.algorithm, now, required.kind, required.format, required.algorithm, required.encoding, required.min, required.max)
+		}
+		clauses = append(clauses, `(a.status IN ('complete','partial') AND EXISTS (SELECT 1 FROM track_metadata_capability_status c WHERE c.song_id=s.id AND c.source_fingerprint=a.source_fingerprint AND c.capability='local_energy' AND c.version=? AND c.state='available') AND (a.energy_level IS NULL OR a.energy_level_confidence IS NULL OR a.energy_algorithm_version IS NULL OR a.energy_algorithm_version!=?))`)
+		args = append(args, features.EnergyLevelAlgorithmVersion, features.EnergyLevelAlgorithmVersion)
+		clauses = append(clauses, `(a.status IN ('complete','partial') AND a.local_scalar_json IS NOT NULL AND EXISTS (SELECT 1 FROM track_metadata_capability_status c WHERE c.song_id=s.id AND c.source_fingerprint=a.source_fingerprint AND c.capability='local_energy' AND c.version=? AND c.state='available') AND (SELECT COUNT(*) FROM json_each(CASE WHEN json_valid(a.local_scalar_json) THEN a.local_scalar_json ELSE '{}' END, '$.fields') AS f WHERE json_extract(f.value,'$.key')='local_energy_level' AND json_extract(f.value,'$.metric')='local_energy_level' AND json_extract(f.value,'$.units')='level_1_10' AND json_extract(f.value,'$.adapterRevision')=? AND COALESCE(json_extract(f.value,'$.endpoint'),'')='' AND COALESCE(json_extract(f.value,'$.durableImport'),0)=0 AND COALESCE(json_extract(f.value,'$.stale'),0)=0 AND json_type(f.value,'$.value') IN ('integer','real') AND CAST(json_extract(f.value,'$.value') AS REAL) BETWEEN 1 AND 10 AND CAST(json_extract(f.value,'$.value') AS INTEGER)=CAST(json_extract(f.value,'$.value') AS REAL) AND COALESCE(json_extract(f.value,'$.retrievedAt'),'') NOT IN ('','0001-01-01T00:00:00Z') AND (json_type(f.value,'$.confidence') IS NULL OR json_type(f.value,'$.confidence')='null' OR (json_type(f.value,'$.confidence') IN ('integer','real') AND CAST(json_extract(f.value,'$.confidence') AS REAL) BETWEEN 0 AND 1)))!=1)`)
+		args = append(args, features.EnergyLevelAlgorithmVersion, features.EnergyLevelAlgorithmVersion)
+		clauses = append(clauses, `(a.status IN ('complete','partial') AND EXISTS (SELECT 1 FROM track_metadata_capability_status c WHERE c.song_id=s.id AND c.source_fingerprint=a.source_fingerprint AND c.capability='local_scalars' AND c.version=? AND c.state='available') AND (a.local_scalar_json IS NULL OR NOT json_valid(a.local_scalar_json) OR COALESCE(json_extract(a.local_scalar_json,'$.sourceFingerprint'),'')!=a.source_fingerprint OR COALESCE(json_extract(a.local_scalar_json,'$.algorithmVersion'),'')!=?))`)
+		args = append(args, algorithmVersion, algorithmVersion)
+		base += " AND (" + strings.Join(clauses, " OR ") + ")"
+
 	case AnalysisSelectionStale:
 		base += ` AND (a.song_id IS NULL OR a.analysis_version != ? OR a.algorithm_version != ?)`
 		args = append(args, analysisVersion, algorithmVersion)
@@ -235,6 +271,9 @@ func inPlaceholders(values []string) (string, []any) {
 // stay short enough that a crashed run does not park work for long.
 const TrackAnalysisLeaseMillis int64 = 10 * 60 * 1000
 
+// ErrTrackAnalysisLeaseLost means a worker no longer owns the preparation row.
+var ErrTrackAnalysisLeaseLost = errors.New("track analysis lease lost")
+
 // ClaimTrackAnalysis atomically marks one song as being analyzed and reports
 // whether this caller won the claim. It is what single-flights two overlapping
 // jobs that expanded the same selection: without it, both would decode the
@@ -244,44 +283,151 @@ const TrackAnalysisLeaseMillis int64 = 10 * 60 * 1000
 // holder's lease expired, which is how work orphaned by a crash is recovered.
 // Measured columns are untouched, so a lost claim never destroys a result.
 func (d *DB) ClaimTrackAnalysis(songID, sourceFingerprint string, analysisVersion int, algorithmVersion string) (bool, error) {
+	return d.claimTrackAnalysis(songID, sourceFingerprint, analysisVersion, algorithmVersion, "")
+}
+
+// ClaimTrackAnalysisLease returns an opaque generation for renewal/publication.
+// An empty token with claimed=false means another live worker owns the row.
+func (d *DB) ClaimTrackAnalysisLease(songID, fingerprint string, version int, algorithm string) (string, bool, error) {
+	token := uuid.NewString()
+	claimed, err := d.claimTrackAnalysis(songID, fingerprint, version, algorithm, token)
+	if !claimed || err != nil {
+		return "", false, err
+	}
+	return token, true, nil
+}
+
+// ClaimTrackAnalysisLeaseWithSnapshot captures the prior projection under the
+// same writer reservation as the claim. A worker must plan repairs from this
+// snapshot: its earlier selection may predate another worker's publication.
+func (d *DB) ClaimTrackAnalysisLeaseWithSnapshot(songID, fingerprint string, version int, algorithm string) (string, *TrackAnalysis, bool, error) {
+	return d.claimTrackAnalysisLeaseWithSnapshot(songID, fingerprint, version, algorithm, false, nil)
+}
+
+// ClaimTrackAnalysisLeaseIfUnchanged rejects a selection whose observed source
+// row has since been replaced. nil expects no prior row. A requested new source
+// is allowed when the previously observed row still matches, so replacement
+// files can be prepared without trusting a stale worker's source identity.
+func (d *DB) ClaimTrackAnalysisLeaseIfUnchanged(songID, fingerprint string, version int, algorithm string, expectedFingerprint *string) (string, *TrackAnalysis, bool, error) {
+	return d.claimTrackAnalysisLeaseWithSnapshot(songID, fingerprint, version, algorithm, true, expectedFingerprint)
+}
+
+func (d *DB) claimTrackAnalysisLeaseWithSnapshot(songID, fingerprint string, version int, algorithm string, compare bool, expectedFingerprint *string) (string, *TrackAnalysis, bool, error) {
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return "", nil, false, err
+	}
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return "", nil, false, err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE track_analysis SET claim_token=claim_token WHERE song_id=?`, songID); err != nil {
+		return "", nil, false, err
+	}
+	var previous *TrackAnalysis
+	record, err := getTrackAnalysis(tx, songID)
+	if err == nil {
+		previous = &record
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return "", nil, false, err
+	}
+	if compare && ((previous == nil) != (expectedFingerprint == nil) || previous != nil && previous.SourceFingerprint != *expectedFingerprint) {
+		return "", nil, false, nil
+	}
+	token := uuid.NewString()
+	claimed, err := claimTrackAnalysis(tx, songID, fingerprint, version, algorithm, token)
+	if err != nil || !claimed {
+		return "", nil, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return "", nil, false, err
+	}
+	return token, previous, true, nil
+}
+
+func (d *DB) claimTrackAnalysis(songID, sourceFingerprint string, analysisVersion int, algorithmVersion, token string) (bool, error) {
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return false, err
 	}
-	now := time.Now().UnixMilli()
-	result, err := d.conn.Exec(`
-		INSERT INTO track_analysis(song_id, status, analysis_version, algorithm_version, source_fingerprint, analyzed_at)
-		VALUES(?, ?, ?, ?, ?, ?)
-		ON CONFLICT(song_id) DO UPDATE SET
-			status = excluded.status,
-			analysis_version = excluded.analysis_version,
-			algorithm_version = excluded.algorithm_version,
-			source_fingerprint = excluded.source_fingerprint,
-			analyzed_at = excluded.analyzed_at
-		WHERE track_analysis.status != ?
-		   OR track_analysis.analyzed_at IS NULL
-		   OR track_analysis.analyzed_at < ?`,
-		songID, TrackAnalysisRunning, analysisVersion, algorithmVersion, sourceFingerprint, now,
-		TrackAnalysisRunning, now-TrackAnalysisLeaseMillis)
-	if err != nil {
-		return false, err
-	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return false, err
-	}
-	return rows > 0, nil
+	return claimTrackAnalysis(d.conn, songID, sourceFingerprint, analysisVersion, algorithmVersion, token)
 }
 
-// ReleaseTrackAnalysis returns a claimed track to the work list without
-// recording a result. A canceled run must call it, otherwise the track stays
-// leased and an immediate resume would skip it for the whole lease window.
+func claimTrackAnalysis(executor preparationExecutor, songID, sourceFingerprint string, analysisVersion int, algorithmVersion, token string) (bool, error) {
+	now := time.Now().UnixMilli()
+	result, err := executor.Exec(`
+ INSERT INTO track_analysis(song_id,status,analysis_version,algorithm_version,source_fingerprint,analyzed_at,claim_token)
+ SELECT ?,?,?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM track_waveform_leases WHERE song_id=? AND renewed_at>?) ON CONFLICT(song_id) DO UPDATE SET
+ status=excluded.status,analysis_version=excluded.analysis_version,algorithm_version=excluded.algorithm_version,
+ source_fingerprint=excluded.source_fingerprint,analyzed_at=excluded.analyzed_at,claim_token=excluded.claim_token
+ WHERE track_analysis.status!=? OR track_analysis.analyzed_at IS NULL OR track_analysis.analyzed_at<=?`,
+		songID, TrackAnalysisRunning, analysisVersion, algorithmVersion, sourceFingerprint, now, token, songID, now-TrackAnalysisLeaseMillis, TrackAnalysisRunning, now-TrackAnalysisLeaseMillis)
+	if err != nil {
+		return false, err
+	}
+	n, err := result.RowsAffected()
+	if err == nil && n == 0 {
+		var busy bool
+		if e := executor.QueryRow(`SELECT EXISTS(SELECT 1 FROM track_waveform_leases WHERE song_id=? AND renewed_at>?)`, songID, now-TrackAnalysisLeaseMillis).Scan(&busy); e != nil {
+			return false, e
+		} else if busy {
+			return false, ErrWaveformLeaseBusy
+		}
+	}
+	return n > 0, err
+}
+
+// RenewTrackAnalysisLease cannot revive an expired or superseded generation.
+func (d *DB) RenewTrackAnalysisLease(songID, fingerprint, token string) error {
+	if token == "" {
+		return ErrTrackAnalysisLeaseLost
+	}
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return err
+	}
+	now := time.Now().UnixMilli()
+	result, err := d.conn.Exec(`UPDATE track_analysis SET analyzed_at=? WHERE song_id=? AND source_fingerprint=? AND status=? AND claim_token=? AND analyzed_at>?`, now, songID, fingerprint, TrackAnalysisRunning, token, now-TrackAnalysisLeaseMillis)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return ErrTrackAnalysisLeaseLost
+	}
+	return nil
+}
+
+// ReleaseTrackAnalysis only releases legacy unowned claims. Managed workers must
+// supply their generation; a late legacy release cannot cancel a managed worker.
 func (d *DB) ReleaseTrackAnalysis(songID string) error {
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return err
 	}
-	_, err := d.conn.Exec(`UPDATE track_analysis SET status = ?, analyzed_at = NULL WHERE song_id = ? AND status = ?`,
-		TrackAnalysisPending, songID, TrackAnalysisRunning)
+	_, err := d.conn.Exec(`UPDATE track_analysis SET status=?,analyzed_at=NULL,claim_token=NULL WHERE song_id=? AND status=? AND COALESCE(claim_token,'')=''`, TrackAnalysisPending, songID, TrackAnalysisRunning)
 	return err
+}
+
+func (d *DB) ReleaseTrackAnalysisLease(songID, token string) error {
+	if token == "" {
+		return ErrTrackAnalysisLeaseLost
+	}
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return err
+	}
+	result, err := d.conn.Exec(`UPDATE track_analysis SET status=?,analyzed_at=NULL,claim_token=NULL WHERE song_id=? AND status=? AND claim_token=?`, TrackAnalysisPending, songID, TrackAnalysisRunning, token)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return ErrTrackAnalysisLeaseLost
+	}
+	return nil
 }
 
 // TrackAnalysisValid reports whether an existing record was produced by the
@@ -298,19 +444,24 @@ func (d *DB) TrackAnalysisValid(songID, sourceFingerprint string, analysisVersio
 		}
 		return false, err
 	}
+	return analysis.ValidFor(sourceFingerprint, analysisVersion, algorithmVersion), nil
+}
+
+// ValidFor checks a captured projection without reading the mutable claim row.
+func (analysis TrackAnalysis) ValidFor(sourceFingerprint string, analysisVersion int, algorithmVersion string) bool {
 	if analysis.AnalysisVersion != analysisVersion || analysis.AlgorithmVersion != algorithmVersion {
-		return false, nil
+		return false
 	}
 	if analysis.SourceFingerprint != sourceFingerprint {
-		return false, nil
+		return false
 	}
 	if analysis.Status == TrackAnalysisFailed && analysis.ErrorCode != nil && *analysis.ErrorCode == "source_unavailable" {
-		return false, nil
+		return false
 	}
 	switch analysis.Status {
 	case TrackAnalysisComplete, TrackAnalysisPartial, TrackAnalysisFailed, TrackAnalysisUnsupported:
-		return true, nil
+		return true
 	default:
-		return false, nil
+		return false
 	}
 }

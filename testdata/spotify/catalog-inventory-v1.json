@@ -1,0 +1,134 @@
+[
+  {
+    "name": "REST artist",
+    "transport": "rest",
+    "entityType": "artist",
+    "id": "AAAAAAAAAAAAAAAAAAAAAA",
+    "url": "https://api.spotify.com/v1/artists/AAAAAAAAAAAAAAAAAAAAAA",
+    "payload": {
+      "type": "artist",
+      "id": "AAAAAAAAAAAAAAAAAAAAAA",
+      "uri": "spotify:artist:AAAAAAAAAAAAAAAAAAAAAA",
+      "name": "Retained REST artist",
+      "genres": [
+        "house",
+        "ambient"
+      ],
+      "tags": [],
+      "popularity": 0,
+      "future_field": {
+        "value": false
+      },
+      "access_token": "synthetic-must-remove"
+    },
+    "inventory": [
+      [
+        "Genres",
+        "house \u00b7 ambient"
+      ],
+      [
+        "Tags",
+        "(empty list)"
+      ],
+      [
+        "Popularity",
+        "0"
+      ]
+    ]
+  },
+  {
+    "name": "Web Player track",
+    "transport": "web",
+    "entityType": "track",
+    "id": "TTTTTTTTTTTTTTTTTTTTTT",
+    "stage": "track",
+    "request": {
+      "operationName": "getTrack",
+      "variables": {
+        "uri": "spotify:track:TTTTTTTTTTTTTTTTTTTTTT"
+      }
+    },
+    "payload": {
+      "data": {
+        "trackUnion": {
+          "__typename": "Track",
+          "uri": "spotify:track:TTTTTTTTTTTTTTTTTTTTTT",
+          "name": "Retained Web Player track",
+          "duration": {
+            "totalMilliseconds": 0
+          },
+          "contentRating": {
+            "label": "NONE"
+          },
+          "playability": {
+            "playable": false
+          },
+          "genres": null,
+          "tags": [
+            "live",
+            false,
+            0
+          ],
+          "artists": {
+            "items": [
+              {
+                "uri": "spotify:artist:AAAAAAAAAAAAAAAAAAAAAA",
+                "profile": {
+                  "name": "Retained artist"
+                }
+              }
+            ]
+          },
+          "albumOfTrack": {
+            "__typename": "Album",
+            "uri": "spotify:album:BBBBBBBBBBBBBBBBBBBBBB",
+            "name": "Retained album",
+            "date": {
+              "isoString": null,
+              "year": 2020
+            },
+            "genres": []
+          },
+          "future_field": {
+            "value": false,
+            "access_token": "synthetic-must-remove"
+          }
+        }
+      }
+    },
+    "inventory": [
+      [
+        "Genres",
+        "Unknown"
+      ],
+      [
+        "Tags",
+        "live \u00b7 No \u00b7 0"
+      ],
+      [
+        "Artist 1",
+        "Retained artist"
+      ],
+      [
+        "Duration (milliseconds, duration)",
+        "0"
+      ],
+      [
+        "Content rating (Web Player)",
+        "NONE"
+      ],
+      [
+        "Playable when captured (Web Player)",
+        "No"
+      ],
+      [
+        "Album (Web Player) release date",
+        "Unknown"
+      ],
+      [
+        "Album (Web Player) genres",
+        "(empty list)"
+      ]
+    ]
+  }
+]

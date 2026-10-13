@@ -164,7 +164,7 @@ This distinction keeps the canonical catalog focused on media ViiB can identify 
 
 Normal sign-in captures a session from Spotify’s own page in an isolated Chrome/Chromium/Edge window. The backend owns encrypted session persistence, renewal, catalog adapters, and account retirement; public status responses omit cookies and bearer tokens. Legacy OAuth is a compatibility path. [Parity and platform gates](SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md) remain open.
 
-[Spotify BPM/key import](SPOTIFY_BPM_KEY_IMPORT.md) binds downloaded observations to final source identity and preserves manual-lock precedence and local artifact fallback. Expanded provider metadata and three-band waveform support remain [proposed](SPOTIFY_METADATA_AND_LOCAL_FALLBACK_IMPLEMENTATION_PLAN.md).
+[Spotify BPM/key import](SPOTIFY_BPM_KEY_IMPORT.md) binds downloaded observations to final source identity and preserves manual-lock precedence and local artifact fallback. Source-bound provider metadata and three-band waveform selection are implemented; live contract/platform qualification remains limited. [Current branch scope](SPOTIFY_BRANCH_REMAINING_WORK.md) records delivered behavior and limitations. Further local scanning/DSP improvements are [deferred to a future branch](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
 
 ## Stem packages
 

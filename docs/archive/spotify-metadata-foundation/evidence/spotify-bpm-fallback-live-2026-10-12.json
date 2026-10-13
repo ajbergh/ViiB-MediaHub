@@ -1,0 +1,115 @@
+{
+  "capturedAt": "2026-10-12T05:37:05.649Z",
+  "completedAt": "2026-10-12T05:37:06.202Z",
+  "runtime": "Windows development backend rebuilt and restarted from the working tree after the BPM fallback fix; separate Vite frontend retained.",
+  "method": "GET-only post-restart audit following one authorized three-track analysis job. Startup automatically queued library missing-capability repair.",
+  "preFixBpmSources": {
+    "unknown": 290,
+    "measured": 95,
+    "manual": 1
+  },
+  "analysisRows": 386,
+  "bpmSources": {
+    "measured": 134,
+    "unknown": 251,
+    "manual": 1
+  },
+  "canary": {
+    "id": "d2b74a48-03c6-46bf-ab11-0bd26abd5ba9",
+    "status": "succeeded",
+    "current": 3,
+    "total": 3,
+    "result": {
+      "analyzed": 3,
+      "autoCueMode": "fill-empty",
+      "failed": 0,
+      "mode": "ids",
+      "skipped": 0,
+      "source": "local",
+      "total": 3
+    }
+  },
+  "backfill": {
+    "id": "6cbad657-c3f6-470d-8dc2-04a980f3c854",
+    "status": "running",
+    "current": 40,
+    "total": 276
+  },
+  "samples": [
+    {
+      "songId": "000e8e1e00ca9fd6",
+      "list": {
+        "status": "complete",
+        "bpm": 141,
+        "bpmSource": "measured",
+        "key": "Ab minor",
+        "keySource": "measured",
+        "structureAvailable": true,
+        "tempo": 141
+      },
+      "detail": {
+        "status": "complete",
+        "bpm": 141,
+        "bpmSource": "measured",
+        "key": "Ab minor",
+        "keySource": "measured",
+        "structureAvailable": true,
+        "tempo": 141
+      },
+      "timingAgrees": true,
+      "structureAgrees": true
+    },
+    {
+      "songId": "01c24e05e69c53f2",
+      "list": {
+        "status": "complete",
+        "bpm": 103,
+        "bpmSource": "measured",
+        "key": "D# major",
+        "keySource": "measured",
+        "structureAvailable": true,
+        "tempo": 103
+      },
+      "detail": {
+        "status": "complete",
+        "bpm": 103,
+        "bpmSource": "measured",
+        "key": "D# major",
+        "keySource": "measured",
+        "structureAvailable": true,
+        "tempo": 103
+      },
+      "timingAgrees": true,
+      "structureAgrees": true
+    },
+    {
+      "songId": "01fa6ff216ea0c9c",
+      "list": {
+        "status": "complete",
+        "bpm": 99,
+        "bpmSource": "measured",
+        "key": "A minor",
+        "keySource": "measured",
+        "structureAvailable": true,
+        "tempo": 99
+      },
+      "detail": {
+        "status": "complete",
+        "bpm": 99,
+        "bpmSource": "measured",
+        "key": "A minor",
+        "keySource": "measured",
+        "structureAvailable": true,
+        "tempo": 99
+      },
+      "timingAgrees": true,
+      "structureAgrees": true
+    }
+  ],
+  "limitations": [
+    "Library backfill is ongoing; counts are a point-in-time snapshot.",
+    "No independently reviewed BPM/key labels; measured values are not accuracy qualification.",
+    "No browser surfaces were available in computer-use; this is HTTP/runtime evidence.",
+    "No provider-connected, supported-platform, accessibility or one-/105-track performance qualification."
+  ]
+}

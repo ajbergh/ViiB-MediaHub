@@ -1,0 +1,143 @@
+{
+  "capturedAt": "2026-10-12T07:20:57.2092569Z",
+  "completedAt": "2026-10-12T07:33:46.8219928Z",
+  "os": "windows",
+  "architecture": "amd64",
+  "goVersion": "go1.26.8",
+  "cpuCount": 12,
+  "cpuModel": "AMD64 Family 23 Model 113 Stepping 0, AuthenticAMD",
+  "algorithm": "track-v3-spotify-local-artifacts;tempo-v3-multifeature-half-bpm;key-v2-hpcp-ks;energy-level-v1-fixed-reference;itu-r-bs1770-5-annex1-k-weight-gating-v1;itu-r-bs1770-5-annex2-4x-fir-v1",
+  "tracks": 105,
+  "inputBytes": 1106015436,
+  "codecs": {
+    ".mp3": 67,
+    ".ogg": 38
+  },
+  "providerMode": "disabled: no provider callback, client, credentials or cached provider state",
+  "providerRequests": 0,
+  "limitations": [
+    "Unlabeled local preparation baseline; not an accuracy or provider-connected qualification.",
+    "Fresh means an empty scratch analysis DB; warm reruns current preparation in that DB. Both are offline.",
+    "Peak working set is the process lifetime high-water mark, including previous phases; absent on unsupported hosts.",
+    "Memory belongs to the standalone benchmark executable, not the running MediaHub GUI or development server.",
+    "Decoded artifact size is JSON serialization of the validated decoded representation, not a Go heap-size estimate.",
+    "HTTP payload uses the real analysis-list handler in-process; no browser rendering or network transport measurement.",
+    "OS filesystem caches are not flushed; run only when competing analysis work is idle and record host conditions separately."
+  ],
+  "phases": [
+    {
+      "name": "fresh_offline",
+      "selectionSeconds": 0.0479974,
+      "missingCandidates": 105,
+      "preparationSeconds": 759.4563441,
+      "progress": {
+        "Total": 105,
+        "Processed": 105,
+        "Analyzed": 105,
+        "Skipped": 0,
+        "Failed": 0,
+        "SongID": ""
+      },
+      "decoderOpens": 105,
+      "timingAbstentions": 0,
+      "tempoAbstentions": 3,
+      "keyAbstentions": 9,
+      "audioSeconds": 27238.493786847608,
+      "artifacts": {
+        "beatgrid": {
+          "count": 102,
+          "storedBytes": 175520,
+          "decodedJsonBytes": 619490,
+          "maximumStoredBytes": 3843
+        },
+        "energy-structure": {
+          "count": 105,
+          "storedBytes": 715716,
+          "decodedJsonBytes": 2664567,
+          "maximumStoredBytes": 13847
+        },
+        "local_amplitude": {
+          "count": 105,
+          "storedBytes": 18771672,
+          "decodedJsonBytes": 85567120,
+          "maximumStoredBytes": 398332
+        },
+        "local_three_band_estimate": {
+          "count": 105,
+          "storedBytes": 80129498,
+          "decodedJsonBytes": 80129603,
+          "maximumStoredBytes": 1707392
+        },
+        "loudness-bs1770": {
+          "count": 105,
+          "storedBytes": 27026,
+          "decodedJsonBytes": 46629,
+          "maximumStoredBytes": 260
+        }
+      },
+      "listHttpStatus": 200,
+      "listPayloadBytes": 508896,
+      "listReadSeconds": 0.104215,
+      "databaseBytes": 99430400,
+      "walBytes": 5376632,
+      "processPeakWorkingSetBytes": 74858496
+    },
+    {
+      "name": "warm_offline",
+      "selectionSeconds": 1.5526269,
+      "missingCandidates": 0,
+      "preparationSeconds": 1.5174517,
+      "progress": {
+        "Total": 105,
+        "Processed": 105,
+        "Analyzed": 0,
+        "Skipped": 105,
+        "Failed": 0,
+        "SongID": ""
+      },
+      "decoderOpens": 0,
+      "timingAbstentions": 0,
+      "tempoAbstentions": 3,
+      "keyAbstentions": 9,
+      "audioSeconds": 27238.493786847608,
+      "artifacts": {
+        "beatgrid": {
+          "count": 102,
+          "storedBytes": 175520,
+          "decodedJsonBytes": 619490,
+          "maximumStoredBytes": 3843
+        },
+        "energy-structure": {
+          "count": 105,
+          "storedBytes": 715716,
+          "decodedJsonBytes": 2664567,
+          "maximumStoredBytes": 13847
+        },
+        "local_amplitude": {
+          "count": 105,
+          "storedBytes": 18771672,
+          "decodedJsonBytes": 85567120,
+          "maximumStoredBytes": 398332
+        },
+        "local_three_band_estimate": {
+          "count": 105,
+          "storedBytes": 80129498,
+          "decodedJsonBytes": 80129603,
+          "maximumStoredBytes": 1707392
+        },
+        "loudness-bs1770": {
+          "count": 105,
+          "storedBytes": 27026,
+          "decodedJsonBytes": 46629,
+          "maximumStoredBytes": 260
+        }
+      },
+      "listHttpStatus": 200,
+      "listPayloadBytes": 508896,
+      "listReadSeconds": 0.103148,
+      "databaseBytes": 99430400,
+      "walBytes": 5376632,
+      "processPeakWorkingSetBytes": 74858496
+    }
+  ]
+}

@@ -1,0 +1,3073 @@
+{
+  "dataset": "https://doi.org/10.5281/zenodo.3371780",
+  "citation": "Q. Xi, R. Bittner, J. Pauwels, X. Ye, J. P. Bello, GuitarSet: A Dataset for Guitar Transcription, ISMIR 2018.",
+  "license": "CC BY 4.0",
+  "archiveMD5": {
+    "annotation": "b39b78e63d3446f2e54ddb7a54df9b10",
+    "audio": "275966d6610ac34999b58426beb119c3"
+  },
+  "splitPolicy": "Reserve lead-sheet index 3 across all styles/tempi/players/parts; index 1/2 tuning. Declared before analysis.",
+  "splitCounts": {
+    "tuning": 238,
+    "held_out": 119
+  },
+  "excluded": {
+    "04_BN3-154-E_comp": "upstream timing offset +0.409 seconds (issue 5)",
+    "04_Jazz1-200-B_comp": "upstream timing offset +0.309 seconds (issue 5)",
+    "02_Funk2-119-G_comp": "upstream duplicated MIDI note (issue 4)"
+  },
+  "groupSplitIsolationVerified": true,
+  "audioUnchangedAfterAnalysis": true,
+  "manifestSHA256": "71657a93abaed8c74790221b26d87077badd81a27154d2251d3240fe0c7adea1",
+  "resultsSHA256": "d5f210b169cf2e9b9a2a5e9293c9cc1efafde7b4837656489844c60d6927b854",
+  "comparison": {
+    "algorithm": "track-v3-spotify-local-artifacts;tempo-v3-multifeature-half-bpm;key-v2-hpcp-ks;energy-level-v1-fixed-reference;itu-r-bs1770-5-annex1-k-weight-gating-v1;itu-r-bs1770-5-annex2-4x-fir-v1",
+    "configuration": {
+      "Tempo": {
+        "Range": "auto",
+        "Method": "multifeature-half-bpm",
+        "MinBPM": 90,
+        "MaxBPM": 180,
+        "MinOnsetCrestFactor": 15
+      },
+      "Key": {
+        "MaxChromaFlatness": 0.98,
+        "MaxFrequency": 3500,
+        "Profile": "krumhansl",
+        "Extraction": "hpcp-peaks"
+      },
+      "SkipTempo": false,
+      "SkipKey": false,
+      "GridBPM": null,
+      "ProviderBeatGrid": null,
+      "SkipThreeBand": false
+    },
+    "split": "tuning",
+    "corpus": {
+      "tracks": 357,
+      "tracksInSplit": 238,
+      "heldOutTracks": 119,
+      "tracksNeeded": 0,
+      "heldOutTracksNeededAtTarget": 0,
+      "heldOutStableElectronicTracks": 0,
+      "distinctGenres": [
+        "acoustic-guitar-bossa-nova",
+        "acoustic-guitar-funk",
+        "acoustic-guitar-jazz",
+        "acoustic-guitar-rock",
+        "acoustic-guitar-singer-songwriter"
+      ],
+      "evidenceClass": "lawful-real-audio",
+      "missingRequiredCoverage": [
+        "house",
+        "techno",
+        "drum-and-bass",
+        "hip-hop",
+        "breakbeat",
+        "rock-live-drums",
+        "disco",
+        "ambient",
+        "sparse-no-percussion",
+        "stable-electronic",
+        "meter-3-4-or-6-8",
+        "tempo-ramp-or-switch",
+        "tempo-70-140-ambiguity",
+        "tempo-85-170-ambiguity"
+      ],
+      "phase0Ready": false,
+      "readinessMessage": "15 repeated recording groups require deduplication or identity review (0 cross the tuning/held-out boundary); needs held-out stable-electronic coverage; missing required Phase 0 coverage: house, techno, drum-and-bass, hip-hop, breakbeat, rock-live-drums, disco, ambient, sparse-no-percussion, stable-electronic, meter-3-4-or-6-8, tempo-ramp-or-switch, tempo-70-140-ambiguity, tempo-85-170-ambiguity",
+      "recordingIdentity": {
+        "unidentifiedTracks": 0,
+        "distinctGroups": 15,
+        "crossSplitGroups": 0,
+        "heldOutOnlyGroups": 5,
+        "repeatedGroups": [
+          {
+            "group": "guitarset-leadsheet-BN1",
+            "trackIds": [
+              "guitarset-00_BN1-129-Eb_comp",
+              "guitarset-00_BN1-129-Eb_solo",
+              "guitarset-00_BN1-147-Gb_comp",
+              "guitarset-00_BN1-147-Gb_solo",
+              "guitarset-01_BN1-129-Eb_comp",
+              "guitarset-01_BN1-129-Eb_solo",
+              "guitarset-01_BN1-147-Gb_comp",
+              "guitarset-01_BN1-147-Gb_solo",
+              "guitarset-02_BN1-129-Eb_comp",
+              "guitarset-02_BN1-129-Eb_solo",
+              "guitarset-02_BN1-147-Gb_comp",
+              "guitarset-02_BN1-147-Gb_solo",
+              "guitarset-03_BN1-129-Eb_comp",
+              "guitarset-03_BN1-129-Eb_solo",
+              "guitarset-03_BN1-147-Gb_comp",
+              "guitarset-03_BN1-147-Gb_solo",
+              "guitarset-04_BN1-129-Eb_comp",
+              "guitarset-04_BN1-129-Eb_solo",
+              "guitarset-04_BN1-147-Gb_comp",
+              "guitarset-04_BN1-147-Gb_solo",
+              "guitarset-05_BN1-129-Eb_comp",
+              "guitarset-05_BN1-129-Eb_solo",
+              "guitarset-05_BN1-147-Gb_comp",
+              "guitarset-05_BN1-147-Gb_solo"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "guitarset-leadsheet-BN2",
+            "trackIds": [
+              "guitarset-00_BN2-131-B_comp",
+              "guitarset-00_BN2-131-B_solo",
+              "guitarset-00_BN2-166-Ab_comp",
+              "guitarset-00_BN2-166-Ab_solo",
+              "guitarset-01_BN2-131-B_comp",
+              "guitarset-01_BN2-131-B_solo",
+              "guitarset-01_BN2-166-Ab_comp",
+              "guitarset-01_BN2-166-Ab_solo",
+              "guitarset-02_BN2-131-B_comp",
+              "guitarset-02_BN2-131-B_solo",
+              "guitarset-02_BN2-166-Ab_comp",
+              "guitarset-02_BN2-166-Ab_solo",
+              "guitarset-03_BN2-131-B_comp",
+              "guitarset-03_BN2-131-B_solo",
+              "guitarset-03_BN2-166-Ab_comp",
+              "guitarset-03_BN2-166-Ab_solo",
+              "guitarset-04_BN2-131-B_comp",
+              "guitarset-04_BN2-131-B_solo",
+              "guitarset-04_BN2-166-Ab_comp",
+              "guitarset-04_BN2-166-Ab_solo",
+              "guitarset-05_BN2-131-B_comp",
+              "guitarset-05_BN2-131-B_solo",
+              "guitarset-05_BN2-166-Ab_comp",
+              "guitarset-05_BN2-166-Ab_solo"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "guitarset-leadsheet-BN3",
+            "trackIds": [
+              "guitarset-00_BN3-119-G_comp",
+              "guitarset-00_BN3-119-G_solo",
+              "guitarset-00_BN3-154-E_comp",
+              "guitarset-00_BN3-154-E_solo",
+              "guitarset-01_BN3-119-G_comp",
+              "guitarset-01_BN3-119-G_solo",
+              "guitarset-01_BN3-154-E_comp",
+              "guitarset-01_BN3-154-E_solo",
+              "guitarset-02_BN3-119-G_comp",
+              "guitarset-02_BN3-119-G_solo",
+              "guitarset-02_BN3-154-E_comp",
+              "guitarset-02_BN3-154-E_solo",
+              "guitarset-03_BN3-119-G_comp",
+              "guitarset-03_BN3-119-G_solo",
+              "guitarset-03_BN3-154-E_comp",
+              "guitarset-03_BN3-154-E_solo",
+              "guitarset-04_BN3-119-G_comp",
+              "guitarset-04_BN3-119-G_solo",
+              "guitarset-04_BN3-154-E_solo",
+              "guitarset-05_BN3-119-G_comp",
+              "guitarset-05_BN3-119-G_solo",
+              "guitarset-05_BN3-154-E_comp",
+              "guitarset-05_BN3-154-E_solo"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "guitarset-leadsheet-Funk1",
+            "trackIds": [
+              "guitarset-00_Funk1-114-Ab_comp",
+              "guitarset-00_Funk1-114-Ab_solo",
+              "guitarset-00_Funk1-97-C_comp",
+              "guitarset-00_Funk1-97-C_solo",
+              "guitarset-01_Funk1-114-Ab_comp",
+              "guitarset-01_Funk1-114-Ab_solo",
+              "guitarset-01_Funk1-97-C_comp",
+              "guitarset-01_Funk1-97-C_solo",
+              "guitarset-02_Funk1-114-Ab_comp",
+              "guitarset-02_Funk1-114-Ab_solo",
+              "guitarset-02_Funk1-97-C_comp",
+              "guitarset-02_Funk1-97-C_solo",
+              "guitarset-03_Funk1-114-Ab_comp",
+              "guitarset-03_Funk1-114-Ab_solo",
+              "guitarset-03_Funk1-97-C_comp",
+              "guitarset-03_Funk1-97-C_solo",
+              "guitarset-04_Funk1-114-Ab_comp",
+              "guitarset-04_Funk1-114-Ab_solo",
+              "guitarset-04_Funk1-97-C_comp",
+              "guitarset-04_Funk1-97-C_solo",
+              "guitarset-05_Funk1-114-Ab_comp",
+              "guitarset-05_Funk1-114-Ab_solo",
+              "guitarset-05_Funk1-97-C_comp",
+              "guitarset-05_Funk1-97-C_solo"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "guitarset-leadsheet-Funk2",
+            "trackIds": [
+              "guitarset-00_Funk2-108-Eb_comp",
+              "guitarset-00_Funk2-108-Eb_solo",
+              "guitarset-00_Funk2-119-G_comp",
+              "guitarset-00_Funk2-119-G_solo",
+              "guitarset-01_Funk2-108-Eb_comp",
+              "guitarset-01_Funk2-108-Eb_solo",
+              "guitarset-01_Funk2-119-G_comp",
+              "guitarset-01_Funk2-119-G_solo",
+              "guitarset-02_Funk2-108-Eb_comp",
+              "guitarset-02_Funk2-108-Eb_solo",
+              "guitarset-02_Funk2-119-G_solo",
+              "guitarset-03_Funk2-108-Eb_comp",
+              "guitarset-03_Funk2-108-Eb_solo",
+              "guitarset-03_Funk2-119-G_comp",
+              "guitarset-03_Funk2-119-G_solo",
+              "guitarset-04_Funk2-108-Eb_comp",
+              "guitarset-04_Funk2-108-Eb_solo",
+              "guitarset-04_Funk2-119-G_comp",
+              "guitarset-04_Funk2-119-G_solo",
+              "guitarset-05_Funk2-108-Eb_comp",
+              "guitarset-05_Funk2-108-Eb_solo",
+              "guitarset-05_Funk2-119-G_comp",
+              "guitarset-05_Funk2-119-G_solo"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "guitarset-leadsheet-Funk3",
+            "trackIds": [
+              "guitarset-00_Funk3-112-C#_comp",
+              "guitarset-00_Funk3-112-C#_solo",
+              "guitarset-00_Funk3-98-A_comp",
+              "guitarset-00_Funk3-98-A_solo",
+              "guitarset-01_Funk3-112-C#_comp",
+              "guitarset-01_Funk3-112-C#_solo",
+              "guitarset-01_Funk3-98-A_comp",
+              "guitarset-01_Funk3-98-A_solo",
+              "guitarset-02_Funk3-112-C#_comp",
+              "guitarset-02_Funk3-112-C#_solo",
+              "guitarset-02_Funk3-98-A_comp",
+              "guitarset-02_Funk3-98-A_solo",
+              "guitarset-03_Funk3-112-C#_comp",
+              "guitarset-03_Funk3-112-C#_solo",
+              "guitarset-03_Funk3-98-A_comp",
+              "guitarset-03_Funk3-98-A_solo",
+              "guitarset-04_Funk3-112-C#_comp",
+              "guitarset-04_Funk3-112-C#_solo",
+              "guitarset-04_Funk3-98-A_comp",
+              "guitarset-04_Funk3-98-A_solo",
+              "guitarset-05_Funk3-112-C#_comp",
+              "guitarset-05_Funk3-112-C#_solo",
+              "guitarset-05_Funk3-98-A_comp",
+              "guitarset-05_Funk3-98-A_solo"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "guitarset-leadsheet-Jazz1",
+            "trackIds": [
+              "guitarset-00_Jazz1-130-D_comp",
+              "guitarset-00_Jazz1-130-D_solo",
+              "guitarset-00_Jazz1-200-B_comp",
+              "guitarset-00_Jazz1-200-B_solo",
+              "guitarset-01_Jazz1-130-D_comp",
+              "guitarset-01_Jazz1-130-D_solo",
+              "guitarset-01_Jazz1-200-B_comp",
+              "guitarset-01_Jazz1-200-B_solo",
+              "guitarset-02_Jazz1-130-D_comp",
+              "guitarset-02_Jazz1-130-D_solo",
+              "guitarset-02_Jazz1-200-B_comp",
+              "guitarset-02_Jazz1-200-B_solo",
+              "guitarset-03_Jazz1-130-D_comp",
+              "guitarset-03_Jazz1-130-D_solo",
+              "guitarset-03_Jazz1-200-B_comp",
+              "guitarset-03_Jazz1-200-B_solo",
+              "guitarset-04_Jazz1-130-D_comp",
+              "guitarset-04_Jazz1-130-D_solo",
+              "guitarset-04_Jazz1-200-B_solo",
+              "guitarset-05_Jazz1-130-D_comp",
+              "guitarset-05_Jazz1-130-D_solo",
+              "guitarset-05_Jazz1-200-B_comp",
+              "guitarset-05_Jazz1-200-B_solo"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "guitarset-leadsheet-Jazz2",
+            "trackIds": [
+              "guitarset-00_Jazz2-110-Bb_comp",
+              "guitarset-00_Jazz2-110-Bb_solo",
+              "guitarset-00_Jazz2-187-F#_comp",
+              "guitarset-00_Jazz2-187-F#_solo",
+              "guitarset-01_Jazz2-110-Bb_comp",
+              "guitarset-01_Jazz2-110-Bb_solo",
+              "guitarset-01_Jazz2-187-F#_comp",
+              "guitarset-01_Jazz2-187-F#_solo",
+              "guitarset-02_Jazz2-110-Bb_comp",
+              "guitarset-02_Jazz2-110-Bb_solo",
+              "guitarset-02_Jazz2-187-F#_comp",
+              "guitarset-02_Jazz2-187-F#_solo",
+              "guitarset-03_Jazz2-110-Bb_comp",
+              "guitarset-03_Jazz2-110-Bb_solo",
+              "guitarset-03_Jazz2-187-F#_comp",
+              "guitarset-03_Jazz2-187-F#_solo",
+              "guitarset-04_Jazz2-110-Bb_comp",
+              "guitarset-04_Jazz2-110-Bb_solo",
+              "guitarset-04_Jazz2-187-F#_comp",
+              "guitarset-04_Jazz2-187-F#_solo",
+              "guitarset-05_Jazz2-110-Bb_comp",
+              "guitarset-05_Jazz2-110-Bb_solo",
+              "guitarset-05_Jazz2-187-F#_comp",
+              "guitarset-05_Jazz2-187-F#_solo"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "guitarset-leadsheet-Jazz3",
+            "trackIds": [
+              "guitarset-00_Jazz3-137-Eb_comp",
+              "guitarset-00_Jazz3-137-Eb_solo",
+              "guitarset-00_Jazz3-150-C_comp",
+              "guitarset-00_Jazz3-150-C_solo",
+              "guitarset-01_Jazz3-137-Eb_comp",
+              "guitarset-01_Jazz3-137-Eb_solo",
+              "guitarset-01_Jazz3-150-C_comp",
+              "guitarset-01_Jazz3-150-C_solo",
+              "guitarset-02_Jazz3-137-Eb_comp",
+              "guitarset-02_Jazz3-137-Eb_solo",
+              "guitarset-02_Jazz3-150-C_comp",
+              "guitarset-02_Jazz3-150-C_solo",
+              "guitarset-03_Jazz3-137-Eb_comp",
+              "guitarset-03_Jazz3-137-Eb_solo",
+              "guitarset-03_Jazz3-150-C_comp",
+              "guitarset-03_Jazz3-150-C_solo",
+              "guitarset-04_Jazz3-137-Eb_comp",
+              "guitarset-04_Jazz3-137-Eb_solo",
+              "guitarset-04_Jazz3-150-C_comp",
+              "guitarset-04_Jazz3-150-C_solo",
+              "guitarset-05_Jazz3-137-Eb_comp",
+              "guitarset-05_Jazz3-137-Eb_solo",
+              "guitarset-05_Jazz3-150-C_comp",
+              "guitarset-05_Jazz3-150-C_solo"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "guitarset-leadsheet-Rock1",
+            "trackIds": [
+              "guitarset-00_Rock1-130-A_comp",
+              "guitarset-00_Rock1-130-A_solo",
+              "guitarset-00_Rock1-90-C#_comp",
+              "guitarset-00_Rock1-90-C#_solo",
+              "guitarset-01_Rock1-130-A_comp",
+              "guitarset-01_Rock1-130-A_solo",
+              "guitarset-01_Rock1-90-C#_comp",
+              "guitarset-01_Rock1-90-C#_solo",
+              "guitarset-02_Rock1-130-A_comp",
+              "guitarset-02_Rock1-130-A_solo",
+              "guitarset-02_Rock1-90-C#_comp",
+              "guitarset-02_Rock1-90-C#_solo",
+              "guitarset-03_Rock1-130-A_comp",
+              "guitarset-03_Rock1-130-A_solo",
+              "guitarset-03_Rock1-90-C#_comp",
+              "guitarset-03_Rock1-90-C#_solo",
+              "guitarset-04_Rock1-130-A_comp",
+              "guitarset-04_Rock1-130-A_solo",
+              "guitarset-04_Rock1-90-C#_comp",
+              "guitarset-04_Rock1-90-C#_solo",
+              "guitarset-05_Rock1-130-A_comp",
+              "guitarset-05_Rock1-130-A_solo",
+              "guitarset-05_Rock1-90-C#_comp",
+              "guitarset-05_Rock1-90-C#_solo"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "guitarset-leadsheet-Rock2",
+            "trackIds": [
+              "guitarset-00_Rock2-142-D_comp",
+              "guitarset-00_Rock2-142-D_solo",
+              "guitarset-00_Rock2-85-F_comp",
+              "guitarset-00_Rock2-85-F_solo",
+              "guitarset-01_Rock2-142-D_comp",
+              "guitarset-01_Rock2-142-D_solo",
+              "guitarset-01_Rock2-85-F_comp",
+              "guitarset-01_Rock2-85-F_solo",
+              "guitarset-02_Rock2-142-D_comp",
+              "guitarset-02_Rock2-142-D_solo",
+              "guitarset-02_Rock2-85-F_comp",
+              "guitarset-02_Rock2-85-F_solo",
+              "guitarset-03_Rock2-142-D_comp",
+              "guitarset-03_Rock2-142-D_solo",
+              "guitarset-03_Rock2-85-F_comp",
+              "guitarset-03_Rock2-85-F_solo",
+              "guitarset-04_Rock2-142-D_comp",
+              "guitarset-04_Rock2-142-D_solo",
+              "guitarset-04_Rock2-85-F_comp",
+              "guitarset-04_Rock2-85-F_solo",
+              "guitarset-05_Rock2-142-D_comp",
+              "guitarset-05_Rock2-142-D_solo",
+              "guitarset-05_Rock2-85-F_comp",
+              "guitarset-05_Rock2-85-F_solo"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "guitarset-leadsheet-Rock3",
+            "trackIds": [
+              "guitarset-00_Rock3-117-Bb_comp",
+              "guitarset-00_Rock3-117-Bb_solo",
+              "guitarset-00_Rock3-148-C_comp",
+              "guitarset-00_Rock3-148-C_solo",
+              "guitarset-01_Rock3-117-Bb_comp",
+              "guitarset-01_Rock3-117-Bb_solo",
+              "guitarset-01_Rock3-148-C_comp",
+              "guitarset-01_Rock3-148-C_solo",
+              "guitarset-02_Rock3-117-Bb_comp",
+              "guitarset-02_Rock3-117-Bb_solo",
+              "guitarset-02_Rock3-148-C_comp",
+              "guitarset-02_Rock3-148-C_solo",
+              "guitarset-03_Rock3-117-Bb_comp",
+              "guitarset-03_Rock3-117-Bb_solo",
+              "guitarset-03_Rock3-148-C_comp",
+              "guitarset-03_Rock3-148-C_solo",
+              "guitarset-04_Rock3-117-Bb_comp",
+              "guitarset-04_Rock3-117-Bb_solo",
+              "guitarset-04_Rock3-148-C_comp",
+              "guitarset-04_Rock3-148-C_solo",
+              "guitarset-05_Rock3-117-Bb_comp",
+              "guitarset-05_Rock3-117-Bb_solo",
+              "guitarset-05_Rock3-148-C_comp",
+              "guitarset-05_Rock3-148-C_solo"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          },
+          {
+            "group": "guitarset-leadsheet-SS1",
+            "trackIds": [
+              "guitarset-00_SS1-100-C#_comp",
+              "guitarset-00_SS1-100-C#_solo",
+              "guitarset-00_SS1-68-E_comp",
+              "guitarset-00_SS1-68-E_solo",
+              "guitarset-01_SS1-100-C#_comp",
+              "guitarset-01_SS1-100-C#_solo",
+              "guitarset-01_SS1-68-E_comp",
+              "guitarset-01_SS1-68-E_solo",
+              "guitarset-02_SS1-100-C#_comp",
+              "guitarset-02_SS1-100-C#_solo",
+              "guitarset-02_SS1-68-E_comp",
+              "guitarset-02_SS1-68-E_solo",
+              "guitarset-03_SS1-100-C#_comp",
+              "guitarset-03_SS1-100-C#_solo",
+              "guitarset-03_SS1-68-E_comp",
+              "guitarset-03_SS1-68-E_solo",
+              "guitarset-04_SS1-100-C#_comp",
+              "guitarset-04_SS1-100-C#_solo",
+              "guitarset-04_SS1-68-E_comp",
+              "guitarset-04_SS1-68-E_solo",
+              "guitarset-05_SS1-100-C#_comp",
+              "guitarset-05_SS1-100-C#_solo",
+              "guitarset-05_SS1-68-E_comp",
+              "guitarset-05_SS1-68-E_solo"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "guitarset-leadsheet-SS2",
+            "trackIds": [
+              "guitarset-00_SS2-107-Ab_comp",
+              "guitarset-00_SS2-107-Ab_solo",
+              "guitarset-00_SS2-88-F_comp",
+              "guitarset-00_SS2-88-F_solo",
+              "guitarset-01_SS2-107-Ab_comp",
+              "guitarset-01_SS2-107-Ab_solo",
+              "guitarset-01_SS2-88-F_comp",
+              "guitarset-01_SS2-88-F_solo",
+              "guitarset-02_SS2-107-Ab_comp",
+              "guitarset-02_SS2-107-Ab_solo",
+              "guitarset-02_SS2-88-F_comp",
+              "guitarset-02_SS2-88-F_solo",
+              "guitarset-03_SS2-107-Ab_comp",
+              "guitarset-03_SS2-107-Ab_solo",
+              "guitarset-03_SS2-88-F_comp",
+              "guitarset-03_SS2-88-F_solo",
+              "guitarset-04_SS2-107-Ab_comp",
+              "guitarset-04_SS2-107-Ab_solo",
+              "guitarset-04_SS2-88-F_comp",
+              "guitarset-04_SS2-88-F_solo",
+              "guitarset-05_SS2-107-Ab_comp",
+              "guitarset-05_SS2-107-Ab_solo",
+              "guitarset-05_SS2-88-F_comp",
+              "guitarset-05_SS2-88-F_solo"
+            ],
+            "splits": [
+              "tuning"
+            ]
+          },
+          {
+            "group": "guitarset-leadsheet-SS3",
+            "trackIds": [
+              "guitarset-00_SS3-84-Bb_comp",
+              "guitarset-00_SS3-84-Bb_solo",
+              "guitarset-00_SS3-98-C_comp",
+              "guitarset-00_SS3-98-C_solo",
+              "guitarset-01_SS3-84-Bb_comp",
+              "guitarset-01_SS3-84-Bb_solo",
+              "guitarset-01_SS3-98-C_comp",
+              "guitarset-01_SS3-98-C_solo",
+              "guitarset-02_SS3-84-Bb_comp",
+              "guitarset-02_SS3-84-Bb_solo",
+              "guitarset-02_SS3-98-C_comp",
+              "guitarset-02_SS3-98-C_solo",
+              "guitarset-03_SS3-84-Bb_comp",
+              "guitarset-03_SS3-84-Bb_solo",
+              "guitarset-03_SS3-98-C_comp",
+              "guitarset-03_SS3-98-C_solo",
+              "guitarset-04_SS3-84-Bb_comp",
+              "guitarset-04_SS3-84-Bb_solo",
+              "guitarset-04_SS3-98-C_comp",
+              "guitarset-04_SS3-98-C_solo",
+              "guitarset-05_SS3-84-Bb_comp",
+              "guitarset-05_SS3-84-Bb_solo",
+              "guitarset-05_SS3-98-C_comp",
+              "guitarset-05_SS3-98-C_solo"
+            ],
+            "splits": [
+              "held_out"
+            ]
+          }
+        ]
+      }
+    },
+    "tempo": {
+      "labeled": 238,
+      "reported": 234,
+      "strictWithinHalfBpm": 47,
+      "acceptedMetricLevelMatch": 47,
+      "halfDoubleErrors": 8,
+      "unknown": 4,
+      "strictAccuracy": 0.19747899159663865,
+      "acceptedMetricLevelAccuracy": 0.19747899159663865,
+      "halfDoubleErrorRate": 0.03361344537815126,
+      "unknownRate": 0.01680672268907563
+    },
+    "key": {
+      "labeled": 238,
+      "reported": 227,
+      "exact": 137,
+      "camelotCompatible": 177,
+      "unknown": 11,
+      "exactAccuracy": 0.5756302521008403,
+      "camelotCompatibleRate": 0.7436974789915967,
+      "unknownRate": 0.046218487394957986
+    },
+    "unknown": {
+      "labeled": 0,
+      "correct": 0,
+      "incorrect": 0
+    },
+    "calibration": {
+      "tempo": {
+        "buckets": [
+          {
+            "label": "low",
+            "minimum": 0,
+            "maximum": 0.3333333333333333,
+            "labeled": 210,
+            "correct": 40,
+            "accuracy": 0.19047619047619047
+          },
+          {
+            "label": "medium",
+            "minimum": 0.3333333333333333,
+            "maximum": 0.6666666666666666,
+            "labeled": 23,
+            "correct": 7,
+            "accuracy": 0.30434782608695654
+          },
+          {
+            "label": "high",
+            "minimum": 0.6666666666666666,
+            "maximum": 1,
+            "labeled": 1,
+            "correct": 0,
+            "accuracy": 0
+          }
+        ],
+        "monotonic": false,
+        "verdict": "confidence decreases between one or more buckets"
+      },
+      "key": {
+        "buckets": [
+          {
+            "label": "low",
+            "minimum": 0,
+            "maximum": 0.3333333333333333,
+            "labeled": 211,
+            "correct": 123,
+            "accuracy": 0.5829383886255924
+          },
+          {
+            "label": "medium",
+            "minimum": 0.3333333333333333,
+            "maximum": 0.6666666666666666,
+            "labeled": 16,
+            "correct": 14,
+            "accuracy": 0.875
+          },
+          {
+            "label": "high",
+            "minimum": 0.6666666666666666,
+            "maximum": 1,
+            "labeled": 0,
+            "correct": 0
+          }
+        ],
+        "monotonic": false,
+        "verdict": "requires observations in all three confidence buckets"
+      }
+    },
+    "throughput": {
+      "environment": {
+        "os": "windows",
+        "architecture": "amd64",
+        "cpuModel": "AMD64 Family 23 Model 113 Stepping 0, AuthenticAMD",
+        "cpuCount": 12,
+        "goVersion": "go1.26.8"
+      },
+      "tracks": [
+        {
+          "id": "guitarset-00_BN1-129-Eb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.324399092970545,
+          "wallSeconds": 0.29584,
+          "decodeAndStreamSeconds": 0.008104200000000006,
+          "dspSeconds": 0.2877358
+        },
+        {
+          "id": "guitarset-00_BN1-129-Eb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.324399092970545,
+          "wallSeconds": 0.2884841,
+          "decodeAndStreamSeconds": 0.014361000000000068,
+          "dspSeconds": 0.27412309999999995
+        },
+        {
+          "id": "guitarset-00_BN1-147-Gb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 19.585600907029498,
+          "wallSeconds": 0.241653,
+          "decodeAndStreamSeconds": 0.005002999999999924,
+          "dspSeconds": 0.23665000000000008
+        },
+        {
+          "id": "guitarset-00_BN1-147-Gb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 19.585600907029498,
+          "wallSeconds": 0.2536261,
+          "decodeAndStreamSeconds": 0.005687100000000028,
+          "dspSeconds": 0.247939
+        },
+        {
+          "id": "guitarset-00_BN2-131-B_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.30639455782316,
+          "wallSeconds": 0.396492,
+          "decodeAndStreamSeconds": 0.015048400000000073,
+          "dspSeconds": 0.38144359999999994
+        },
+        {
+          "id": "guitarset-00_BN2-131-B_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.30639455782316,
+          "wallSeconds": 0.3896572,
+          "decodeAndStreamSeconds": 0.011995099999999759,
+          "dspSeconds": 0.3776621000000002
+        },
+        {
+          "id": "guitarset-00_BN2-166-Ab_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 23.130000000000024,
+          "wallSeconds": 0.3086787,
+          "decodeAndStreamSeconds": 0.010037600000000035,
+          "dspSeconds": 0.29864109999999994
+        },
+        {
+          "id": "guitarset-00_BN2-166-Ab_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 23.130000000000024,
+          "wallSeconds": 0.305585,
+          "decodeAndStreamSeconds": 0.008994599999999853,
+          "dspSeconds": 0.29659040000000014
+        },
+        {
+          "id": "guitarset-00_Funk1-114-Ab_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 25.258390022675766,
+          "wallSeconds": 0.3441111,
+          "decodeAndStreamSeconds": 0.00781549999999992,
+          "dspSeconds": 0.3362956000000001
+        },
+        {
+          "id": "guitarset-00_Funk1-114-Ab_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 25.258390022675766,
+          "wallSeconds": 0.3488044,
+          "decodeAndStreamSeconds": 0.010855199999999843,
+          "dspSeconds": 0.33794920000000017
+        },
+        {
+          "id": "guitarset-00_Funk1-97-C_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.68839002267577,
+          "wallSeconds": 0.3945064,
+          "decodeAndStreamSeconds": 0.010514599999999985,
+          "dspSeconds": 0.3839918
+        },
+        {
+          "id": "guitarset-00_Funk1-97-C_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.68839002267577,
+          "wallSeconds": 0.3827369,
+          "decodeAndStreamSeconds": 0.013551999999999897,
+          "dspSeconds": 0.3691849000000001
+        },
+        {
+          "id": "guitarset-00_Funk2-108-Eb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.54839002267571,
+          "wallSeconds": 0.4505817,
+          "decodeAndStreamSeconds": 0.007999799999999835,
+          "dspSeconds": 0.44258190000000014
+        },
+        {
+          "id": "guitarset-00_Funk2-108-Eb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.54839002267571,
+          "wallSeconds": 0.4440905,
+          "decodeAndStreamSeconds": 0.0070124999999998106,
+          "dspSeconds": 0.4370780000000002
+        },
+        {
+          "id": "guitarset-00_Funk2-119-G_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.2631972789116,
+          "wallSeconds": 0.4054454,
+          "decodeAndStreamSeconds": 0.010057800000000006,
+          "dspSeconds": 0.3953876
+        },
+        {
+          "id": "guitarset-00_Funk2-119-G_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.2631972789116,
+          "wallSeconds": 0.4119571,
+          "decodeAndStreamSeconds": 0.003528899999999946,
+          "dspSeconds": 0.4084282000000001
+        },
+        {
+          "id": "guitarset-00_Jazz1-130-D_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.2734461,
+          "decodeAndStreamSeconds": 0.00818560000000007,
+          "dspSeconds": 0.26526049999999995
+        },
+        {
+          "id": "guitarset-00_Jazz1-130-D_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.2851596,
+          "decodeAndStreamSeconds": 0.00750270000000014,
+          "dspSeconds": 0.2776568999999999
+        },
+        {
+          "id": "guitarset-00_Jazz1-200-B_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 14.400000000000013,
+          "wallSeconds": 0.1978646,
+          "decodeAndStreamSeconds": 0.006567599999999868,
+          "dspSeconds": 0.19129700000000013
+        },
+        {
+          "id": "guitarset-00_Jazz1-200-B_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 14.400000000000013,
+          "wallSeconds": 0.1863639,
+          "decodeAndStreamSeconds": 0.006655499999999953,
+          "dspSeconds": 0.17970840000000005
+        },
+        {
+          "id": "guitarset-00_Jazz2-110-Bb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 34.90319727891155,
+          "wallSeconds": 0.4667627,
+          "decodeAndStreamSeconds": 0.012465099999999896,
+          "dspSeconds": 0.4542976000000001
+        },
+        {
+          "id": "guitarset-00_Jazz2-110-Bb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 34.90319727891155,
+          "wallSeconds": 0.4691092,
+          "decodeAndStreamSeconds": 0.011000100000000068,
+          "dspSeconds": 0.45810909999999994
+        },
+        {
+          "id": "guitarset-00_Jazz2-187-F#_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 20.531995464852628,
+          "wallSeconds": 0.2639211,
+          "decodeAndStreamSeconds": 0.003994600000000015,
+          "dspSeconds": 0.2599265
+        },
+        {
+          "id": "guitarset-00_Jazz2-187-F#_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 20.531995464852628,
+          "wallSeconds": 0.2744511,
+          "decodeAndStreamSeconds": 0.005523499999999959,
+          "dspSeconds": 0.26892760000000004
+        },
+        {
+          "id": "guitarset-00_Rock1-130-A_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.2956574,
+          "decodeAndStreamSeconds": 0.011003800000000008,
+          "dspSeconds": 0.2846536
+        },
+        {
+          "id": "guitarset-00_Rock1-130-A_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.2950924,
+          "decodeAndStreamSeconds": 0.011539499999999925,
+          "dspSeconds": 0.28355290000000005
+        },
+        {
+          "id": "guitarset-00_Rock1-90-C#_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.000000000000036,
+          "wallSeconds": 0.4932919,
+          "decodeAndStreamSeconds": 0.013659200000000316,
+          "dspSeconds": 0.4796326999999997
+        },
+        {
+          "id": "guitarset-00_Rock1-90-C#_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.000000000000036,
+          "wallSeconds": 0.428301,
+          "decodeAndStreamSeconds": 0.011831699999999945,
+          "dspSeconds": 0.41646930000000004
+        },
+        {
+          "id": "guitarset-00_Rock2-142-D_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 27.041609977324292,
+          "wallSeconds": 0.4508312,
+          "decodeAndStreamSeconds": 0.004999599999999937,
+          "dspSeconds": 0.44583160000000005
+        },
+        {
+          "id": "guitarset-00_Rock2-142-D_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 27.041609977324292,
+          "wallSeconds": 0.4663023,
+          "decodeAndStreamSeconds": 0.007998300000000125,
+          "dspSeconds": 0.4583039999999999
+        },
+        {
+          "id": "guitarset-00_Rock2-85-F_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 45.17319727891137,
+          "wallSeconds": 0.6058857,
+          "decodeAndStreamSeconds": 0.012158699999999523,
+          "dspSeconds": 0.5937270000000004
+        },
+        {
+          "id": "guitarset-00_Rock2-85-F_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 45.17319727891137,
+          "wallSeconds": 0.6096196,
+          "decodeAndStreamSeconds": 0.011009000000000269,
+          "dspSeconds": 0.5986105999999998
+        },
+        {
+          "id": "guitarset-00_SS1-100-C#_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 28.800000000000033,
+          "wallSeconds": 0.386867,
+          "decodeAndStreamSeconds": 0.013056800000000146,
+          "dspSeconds": 0.37381019999999987
+        },
+        {
+          "id": "guitarset-00_SS1-100-C#_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 28.800000000000033,
+          "wallSeconds": 0.3996158,
+          "decodeAndStreamSeconds": 0.011664499999999911,
+          "dspSeconds": 0.3879513000000001
+        },
+        {
+          "id": "guitarset-00_SS1-68-E_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 42.34639455782298,
+          "wallSeconds": 0.547933,
+          "decodeAndStreamSeconds": 0.010609800000000114,
+          "dspSeconds": 0.5373231999999999
+        },
+        {
+          "id": "guitarset-00_SS1-68-E_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 42.34639455782298,
+          "wallSeconds": 0.5569448,
+          "decodeAndStreamSeconds": 0.01523399999999997,
+          "dspSeconds": 0.5417108
+        },
+        {
+          "id": "guitarset-00_SS2-107-Ab_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.886394557823095,
+          "wallSeconds": 0.4740416,
+          "decodeAndStreamSeconds": 0.011264500000000066,
+          "dspSeconds": 0.46277709999999994
+        },
+        {
+          "id": "guitarset-00_SS2-107-Ab_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.886394557823095,
+          "wallSeconds": 0.4688831,
+          "decodeAndStreamSeconds": 0.011039499999999924,
+          "dspSeconds": 0.4578436000000001
+        },
+        {
+          "id": "guitarset-00_SS2-88-F_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 43.62920634920618,
+          "wallSeconds": 0.6275272,
+          "decodeAndStreamSeconds": 0.021572200000000485,
+          "dspSeconds": 0.6059549999999995
+        },
+        {
+          "id": "guitarset-00_SS2-88-F_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 43.62920634920618,
+          "wallSeconds": 0.6592567,
+          "decodeAndStreamSeconds": 0.012054499999999857,
+          "dspSeconds": 0.6472022000000002
+        },
+        {
+          "id": "guitarset-01_BN1-129-Eb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.324399092970545,
+          "wallSeconds": 0.305188,
+          "decodeAndStreamSeconds": 0.003518100000000024,
+          "dspSeconds": 0.3016699
+        },
+        {
+          "id": "guitarset-01_BN1-129-Eb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.324399092970545,
+          "wallSeconds": 0.2770603,
+          "decodeAndStreamSeconds": 0.005583699999999858,
+          "dspSeconds": 0.2714766000000001
+        },
+        {
+          "id": "guitarset-01_BN1-147-Gb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 19.585600907029498,
+          "wallSeconds": 0.2592622,
+          "decodeAndStreamSeconds": 0.011250900000000064,
+          "dspSeconds": 0.24801129999999993
+        },
+        {
+          "id": "guitarset-01_BN1-147-Gb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 19.585600907029498,
+          "wallSeconds": 0.2504716,
+          "decodeAndStreamSeconds": 0.007224099999999983,
+          "dspSeconds": 0.24324750000000003
+        },
+        {
+          "id": "guitarset-01_BN2-131-B_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.30639455782316,
+          "wallSeconds": 0.3785581,
+          "decodeAndStreamSeconds": 0.011991999999999947,
+          "dspSeconds": 0.36656610000000006
+        },
+        {
+          "id": "guitarset-01_BN2-131-B_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.30639455782316,
+          "wallSeconds": 0.3691434,
+          "decodeAndStreamSeconds": 0.009992000000000056,
+          "dspSeconds": 0.35915139999999995
+        },
+        {
+          "id": "guitarset-01_BN2-166-Ab_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 23.130000000000024,
+          "wallSeconds": 0.2954176,
+          "decodeAndStreamSeconds": 0.0065646000000000315,
+          "dspSeconds": 0.28885299999999997
+        },
+        {
+          "id": "guitarset-01_BN2-166-Ab_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 23.130000000000024,
+          "wallSeconds": 0.3045012,
+          "decodeAndStreamSeconds": 0.010998800000000142,
+          "dspSeconds": 0.2935023999999999
+        },
+        {
+          "id": "guitarset-01_Funk1-114-Ab_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 25.258390022675766,
+          "wallSeconds": 0.3370844,
+          "decodeAndStreamSeconds": 0.0059967000000001325,
+          "dspSeconds": 0.3310876999999999
+        },
+        {
+          "id": "guitarset-01_Funk1-114-Ab_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 25.258390022675766,
+          "wallSeconds": 0.3371023,
+          "decodeAndStreamSeconds": 0.004997699999999994,
+          "dspSeconds": 0.3321046
+        },
+        {
+          "id": "guitarset-01_Funk1-97-C_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.68839002267577,
+          "wallSeconds": 0.4035836,
+          "decodeAndStreamSeconds": 0.008620499999999864,
+          "dspSeconds": 0.3949631000000001
+        },
+        {
+          "id": "guitarset-01_Funk1-97-C_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.68839002267577,
+          "wallSeconds": 0.3736891,
+          "decodeAndStreamSeconds": 0.008060800000000035,
+          "dspSeconds": 0.36562829999999996
+        },
+        {
+          "id": "guitarset-01_Funk2-108-Eb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.54839002267571,
+          "wallSeconds": 0.4787732,
+          "decodeAndStreamSeconds": 0.016586600000000173,
+          "dspSeconds": 0.46218659999999984
+        },
+        {
+          "id": "guitarset-01_Funk2-108-Eb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.54839002267571,
+          "wallSeconds": 0.4902389,
+          "decodeAndStreamSeconds": 0.015552800000000033,
+          "dspSeconds": 0.47468609999999994
+        },
+        {
+          "id": "guitarset-01_Funk2-119-G_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.2631972789116,
+          "wallSeconds": 0.4451961,
+          "decodeAndStreamSeconds": 0.00999739999999999,
+          "dspSeconds": 0.4351987
+        },
+        {
+          "id": "guitarset-01_Funk2-119-G_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.2631972789116,
+          "wallSeconds": 0.449166,
+          "decodeAndStreamSeconds": 0.009742500000000098,
+          "dspSeconds": 0.4394234999999999
+        },
+        {
+          "id": "guitarset-01_Jazz1-130-D_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.2804216,
+          "decodeAndStreamSeconds": 0.005996399999999957,
+          "dspSeconds": 0.27442520000000004
+        },
+        {
+          "id": "guitarset-01_Jazz1-130-D_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.2822971,
+          "decodeAndStreamSeconds": 0.005002000000000062,
+          "dspSeconds": 0.27729509999999996
+        },
+        {
+          "id": "guitarset-01_Jazz1-200-B_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 14.400000000000013,
+          "wallSeconds": 0.2087043,
+          "decodeAndStreamSeconds": 0.0039968000000000226,
+          "dspSeconds": 0.2047075
+        },
+        {
+          "id": "guitarset-01_Jazz1-200-B_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 14.400000000000013,
+          "wallSeconds": 0.2071899,
+          "decodeAndStreamSeconds": 0.004003900000000032,
+          "dspSeconds": 0.20318599999999998
+        },
+        {
+          "id": "guitarset-01_Jazz2-110-Bb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 34.90319727891155,
+          "wallSeconds": 0.4717954,
+          "decodeAndStreamSeconds": 0.015773900000000007,
+          "dspSeconds": 0.45602149999999997
+        },
+        {
+          "id": "guitarset-01_Jazz2-110-Bb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 34.90319727891155,
+          "wallSeconds": 0.6718292,
+          "decodeAndStreamSeconds": 0.01752729999999958,
+          "dspSeconds": 0.6543019000000004
+        },
+        {
+          "id": "guitarset-01_Jazz2-187-F#_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 20.531995464852628,
+          "wallSeconds": 0.2818783,
+          "decodeAndStreamSeconds": 0.005029600000000023,
+          "dspSeconds": 0.2768487
+        },
+        {
+          "id": "guitarset-01_Jazz2-187-F#_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 20.531995464852628,
+          "wallSeconds": 0.2992094,
+          "decodeAndStreamSeconds": 0.0045243999999999285,
+          "dspSeconds": 0.2946850000000001
+        },
+        {
+          "id": "guitarset-01_Rock1-130-A_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.2854573,
+          "decodeAndStreamSeconds": 0.009039300000000028,
+          "dspSeconds": 0.276418
+        },
+        {
+          "id": "guitarset-01_Rock1-130-A_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.2882848,
+          "decodeAndStreamSeconds": 0.004621299999999995,
+          "dspSeconds": 0.2836635
+        },
+        {
+          "id": "guitarset-01_Rock1-90-C#_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.000000000000036,
+          "wallSeconds": 0.4692688,
+          "decodeAndStreamSeconds": 0.014555499999999943,
+          "dspSeconds": 0.45471330000000004
+        },
+        {
+          "id": "guitarset-01_Rock1-90-C#_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.000000000000036,
+          "wallSeconds": 0.5134998,
+          "decodeAndStreamSeconds": 0.009523099999999673,
+          "dspSeconds": 0.5039767000000003
+        },
+        {
+          "id": "guitarset-01_Rock2-142-D_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 27.041609977324292,
+          "wallSeconds": 0.3410966,
+          "decodeAndStreamSeconds": 0.014739799999999914,
+          "dspSeconds": 0.3263568000000001
+        },
+        {
+          "id": "guitarset-01_Rock2-142-D_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 27.041609977324292,
+          "wallSeconds": 0.3402243,
+          "decodeAndStreamSeconds": 0.00699870000000008,
+          "dspSeconds": 0.3332255999999999
+        },
+        {
+          "id": "guitarset-01_Rock2-85-F_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 45.17319727891137,
+          "wallSeconds": 0.5791194,
+          "decodeAndStreamSeconds": 0.009539699999999818,
+          "dspSeconds": 0.5695797000000001
+        },
+        {
+          "id": "guitarset-01_Rock2-85-F_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 45.17319727891137,
+          "wallSeconds": 0.5759279,
+          "decodeAndStreamSeconds": 0.016988799999999804,
+          "dspSeconds": 0.5589391000000002
+        },
+        {
+          "id": "guitarset-01_SS1-100-C#_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 28.800000000000033,
+          "wallSeconds": 0.3678077,
+          "decodeAndStreamSeconds": 0.005003799999999892,
+          "dspSeconds": 0.3628039000000001
+        },
+        {
+          "id": "guitarset-01_SS1-100-C#_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 28.800000000000033,
+          "wallSeconds": 0.3776063,
+          "decodeAndStreamSeconds": 0.012181000000000053,
+          "dspSeconds": 0.36542529999999995
+        },
+        {
+          "id": "guitarset-01_SS1-68-E_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 42.34639455782298,
+          "wallSeconds": 0.5636027,
+          "decodeAndStreamSeconds": 0.007502099999999956,
+          "dspSeconds": 0.5561006000000001
+        },
+        {
+          "id": "guitarset-01_SS1-68-E_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 42.34639455782298,
+          "wallSeconds": 0.5438655,
+          "decodeAndStreamSeconds": 0.018231300000000283,
+          "dspSeconds": 0.5256341999999997
+        },
+        {
+          "id": "guitarset-01_SS2-107-Ab_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.886394557823095,
+          "wallSeconds": 0.4468099,
+          "decodeAndStreamSeconds": 0.01540020000000003,
+          "dspSeconds": 0.43140969999999995
+        },
+        {
+          "id": "guitarset-01_SS2-107-Ab_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.886394557823095,
+          "wallSeconds": 0.4823769,
+          "decodeAndStreamSeconds": 0.020094300000000176,
+          "dspSeconds": 0.4622825999999998
+        },
+        {
+          "id": "guitarset-01_SS2-88-F_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 43.62920634920618,
+          "wallSeconds": 0.666721,
+          "decodeAndStreamSeconds": 0.018895499999999843,
+          "dspSeconds": 0.6478255000000002
+        },
+        {
+          "id": "guitarset-01_SS2-88-F_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 43.62920634920618,
+          "wallSeconds": 0.5601358,
+          "decodeAndStreamSeconds": 0.015821699999999717,
+          "dspSeconds": 0.5443141000000002
+        },
+        {
+          "id": "guitarset-02_BN1-129-Eb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.324399092970545,
+          "wallSeconds": 0.2823514,
+          "decodeAndStreamSeconds": 0.007590299999999883,
+          "dspSeconds": 0.2747611000000001
+        },
+        {
+          "id": "guitarset-02_BN1-129-Eb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.324399092970545,
+          "wallSeconds": 0.2847911,
+          "decodeAndStreamSeconds": 0.007991199999999976,
+          "dspSeconds": 0.27679990000000004
+        },
+        {
+          "id": "guitarset-02_BN1-147-Gb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 19.585600907029498,
+          "wallSeconds": 0.2492477,
+          "decodeAndStreamSeconds": 0.011120799999999986,
+          "dspSeconds": 0.2381269
+        },
+        {
+          "id": "guitarset-02_BN1-147-Gb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 19.585600907029498,
+          "wallSeconds": 0.2486344,
+          "decodeAndStreamSeconds": 0.007139500000000049,
+          "dspSeconds": 0.24149489999999996
+        },
+        {
+          "id": "guitarset-02_BN2-131-B_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.30639455782316,
+          "wallSeconds": 0.3810502,
+          "decodeAndStreamSeconds": 0.00700410000000018,
+          "dspSeconds": 0.3740460999999998
+        },
+        {
+          "id": "guitarset-02_BN2-131-B_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.30639455782316,
+          "wallSeconds": 0.3823723,
+          "decodeAndStreamSeconds": 0.008711999999999998,
+          "dspSeconds": 0.3736603
+        },
+        {
+          "id": "guitarset-02_BN2-166-Ab_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 23.130000000000024,
+          "wallSeconds": 0.3420802,
+          "decodeAndStreamSeconds": 0.012058100000000072,
+          "dspSeconds": 0.33002209999999993
+        },
+        {
+          "id": "guitarset-02_BN2-166-Ab_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 23.130000000000024,
+          "wallSeconds": 0.3001617,
+          "decodeAndStreamSeconds": 0.0059587000000000945,
+          "dspSeconds": 0.2942029999999999
+        },
+        {
+          "id": "guitarset-02_Funk1-114-Ab_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 25.258390022675766,
+          "wallSeconds": 0.3234719,
+          "decodeAndStreamSeconds": 0.008552499999999907,
+          "dspSeconds": 0.31491940000000007
+        },
+        {
+          "id": "guitarset-02_Funk1-114-Ab_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 25.258390022675766,
+          "wallSeconds": 0.3293843,
+          "decodeAndStreamSeconds": 0.006609500000000101,
+          "dspSeconds": 0.3227747999999999
+        },
+        {
+          "id": "guitarset-02_Funk1-97-C_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.68839002267577,
+          "wallSeconds": 0.3792979,
+          "decodeAndStreamSeconds": 0.011579400000000184,
+          "dspSeconds": 0.36771849999999984
+        },
+        {
+          "id": "guitarset-02_Funk1-97-C_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.68839002267577,
+          "wallSeconds": 0.3787323,
+          "decodeAndStreamSeconds": 0.010456799999999933,
+          "dspSeconds": 0.3682755000000001
+        },
+        {
+          "id": "guitarset-02_Funk2-108-Eb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.54839002267571,
+          "wallSeconds": 0.4770293,
+          "decodeAndStreamSeconds": 0.019045100000000037,
+          "dspSeconds": 0.45798419999999995
+        },
+        {
+          "id": "guitarset-02_Funk2-108-Eb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.54839002267571,
+          "wallSeconds": 0.4553713,
+          "decodeAndStreamSeconds": 0.007050999999999752,
+          "dspSeconds": 0.4483203000000002
+        },
+        {
+          "id": "guitarset-02_Funk2-119-G_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.2631972789116,
+          "wallSeconds": 0.4057965,
+          "decodeAndStreamSeconds": 0.010036599999999729,
+          "dspSeconds": 0.3957599000000003
+        },
+        {
+          "id": "guitarset-02_Jazz1-130-D_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.2882918,
+          "decodeAndStreamSeconds": 0.006006099999999903,
+          "dspSeconds": 0.2822857000000001
+        },
+        {
+          "id": "guitarset-02_Jazz1-130-D_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.2933638,
+          "decodeAndStreamSeconds": 0.00500070000000008,
+          "dspSeconds": 0.28836309999999993
+        },
+        {
+          "id": "guitarset-02_Jazz1-200-B_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 14.400000000000013,
+          "wallSeconds": 0.1845771,
+          "decodeAndStreamSeconds": 0.006964299999999923,
+          "dspSeconds": 0.17761280000000007
+        },
+        {
+          "id": "guitarset-02_Jazz1-200-B_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 14.400000000000013,
+          "wallSeconds": 0.1825924,
+          "decodeAndStreamSeconds": 0.006580900000000028,
+          "dspSeconds": 0.17601149999999996
+        },
+        {
+          "id": "guitarset-02_Jazz2-110-Bb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 34.90319727891155,
+          "wallSeconds": 0.5067407,
+          "decodeAndStreamSeconds": 0.012594800000000073,
+          "dspSeconds": 0.49414589999999997
+        },
+        {
+          "id": "guitarset-02_Jazz2-110-Bb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 34.90319727891155,
+          "wallSeconds": 0.4498487,
+          "decodeAndStreamSeconds": 0.014999500000000165,
+          "dspSeconds": 0.4348491999999998
+        },
+        {
+          "id": "guitarset-02_Jazz2-187-F#_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 20.531995464852628,
+          "wallSeconds": 0.2754623,
+          "decodeAndStreamSeconds": 0.006067700000000065,
+          "dspSeconds": 0.26939459999999993
+        },
+        {
+          "id": "guitarset-02_Jazz2-187-F#_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 20.531995464852628,
+          "wallSeconds": 0.2721098,
+          "decodeAndStreamSeconds": 0.0075290999999999,
+          "dspSeconds": 0.2645807000000001
+        },
+        {
+          "id": "guitarset-02_Rock1-130-A_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.2817172,
+          "decodeAndStreamSeconds": 0.004992600000000014,
+          "dspSeconds": 0.2767246
+        },
+        {
+          "id": "guitarset-02_Rock1-130-A_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.2838571,
+          "decodeAndStreamSeconds": 0.004998999999999976,
+          "dspSeconds": 0.2788581
+        },
+        {
+          "id": "guitarset-02_Rock1-90-C#_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.000000000000036,
+          "wallSeconds": 0.4576578,
+          "decodeAndStreamSeconds": 0.014523300000000128,
+          "dspSeconds": 0.4431344999999999
+        },
+        {
+          "id": "guitarset-02_Rock1-90-C#_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.000000000000036,
+          "wallSeconds": 0.4222456,
+          "decodeAndStreamSeconds": 0.010151599999999927,
+          "dspSeconds": 0.41209400000000007
+        },
+        {
+          "id": "guitarset-02_Rock2-142-D_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 27.041609977324292,
+          "wallSeconds": 0.3625947,
+          "decodeAndStreamSeconds": 0.0050016000000001615,
+          "dspSeconds": 0.35759309999999983
+        },
+        {
+          "id": "guitarset-02_Rock2-142-D_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 27.041609977324292,
+          "wallSeconds": 0.3578138,
+          "decodeAndStreamSeconds": 0.007508199999999909,
+          "dspSeconds": 0.3503056000000001
+        },
+        {
+          "id": "guitarset-02_Rock2-85-F_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 45.17319727891137,
+          "wallSeconds": 0.5960091,
+          "decodeAndStreamSeconds": 0.013011699999999737,
+          "dspSeconds": 0.5829974000000002
+        },
+        {
+          "id": "guitarset-02_Rock2-85-F_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 45.17319727891137,
+          "wallSeconds": 0.7502776,
+          "decodeAndStreamSeconds": 0.026859399999999756,
+          "dspSeconds": 0.7234182000000002
+        },
+        {
+          "id": "guitarset-02_SS1-100-C#_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 28.800000000000033,
+          "wallSeconds": 0.3774112,
+          "decodeAndStreamSeconds": 0.008037200000000244,
+          "dspSeconds": 0.36937399999999976
+        },
+        {
+          "id": "guitarset-02_SS1-100-C#_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 28.800000000000033,
+          "wallSeconds": 0.3833071,
+          "decodeAndStreamSeconds": 0.009016999999999886,
+          "dspSeconds": 0.3742901000000001
+        },
+        {
+          "id": "guitarset-02_SS1-68-E_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 42.34639455782298,
+          "wallSeconds": 0.5487536,
+          "decodeAndStreamSeconds": 0.012997799999999726,
+          "dspSeconds": 0.5357558000000002
+        },
+        {
+          "id": "guitarset-02_SS1-68-E_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 42.34639455782298,
+          "wallSeconds": 0.5347565,
+          "decodeAndStreamSeconds": 0.009991000000000194,
+          "dspSeconds": 0.5247654999999998
+        },
+        {
+          "id": "guitarset-02_SS2-107-Ab_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.886394557823095,
+          "wallSeconds": 0.4513073,
+          "decodeAndStreamSeconds": 0.00404609999999983,
+          "dspSeconds": 0.4472612000000002
+        },
+        {
+          "id": "guitarset-02_SS2-107-Ab_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.886394557823095,
+          "wallSeconds": 0.4569951,
+          "decodeAndStreamSeconds": 0.011511800000000072,
+          "dspSeconds": 0.4454832999999999
+        },
+        {
+          "id": "guitarset-02_SS2-88-F_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 43.62920634920618,
+          "wallSeconds": 0.5576207,
+          "decodeAndStreamSeconds": 0.013190200000000152,
+          "dspSeconds": 0.5444304999999998
+        },
+        {
+          "id": "guitarset-02_SS2-88-F_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 43.62920634920618,
+          "wallSeconds": 0.5465305,
+          "decodeAndStreamSeconds": 0.013978399999999946,
+          "dspSeconds": 0.5325521000000001
+        },
+        {
+          "id": "guitarset-03_BN1-129-Eb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.324399092970545,
+          "wallSeconds": 0.2838726,
+          "decodeAndStreamSeconds": 0.007002499999999967,
+          "dspSeconds": 0.2768701
+        },
+        {
+          "id": "guitarset-03_BN1-129-Eb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.324399092970545,
+          "wallSeconds": 0.2875251,
+          "decodeAndStreamSeconds": 0.007026799999999944,
+          "dspSeconds": 0.28049830000000003
+        },
+        {
+          "id": "guitarset-03_BN1-147-Gb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 19.585600907029498,
+          "wallSeconds": 0.2510243,
+          "decodeAndStreamSeconds": 0.00582099999999991,
+          "dspSeconds": 0.24520330000000007
+        },
+        {
+          "id": "guitarset-03_BN1-147-Gb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 19.585600907029498,
+          "wallSeconds": 0.255051,
+          "decodeAndStreamSeconds": 0.00702910000000001,
+          "dspSeconds": 0.24802190000000002
+        },
+        {
+          "id": "guitarset-03_BN2-131-B_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.30639455782316,
+          "wallSeconds": 0.3850099,
+          "decodeAndStreamSeconds": 0.012525299999999906,
+          "dspSeconds": 0.3724846000000001
+        },
+        {
+          "id": "guitarset-03_BN2-131-B_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.30639455782316,
+          "wallSeconds": 0.3846858,
+          "decodeAndStreamSeconds": 0.012992899999999918,
+          "dspSeconds": 0.3716929000000001
+        },
+        {
+          "id": "guitarset-03_BN2-166-Ab_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 23.130000000000024,
+          "wallSeconds": 0.2892479,
+          "decodeAndStreamSeconds": 0.004742800000000047,
+          "dspSeconds": 0.28450509999999996
+        },
+        {
+          "id": "guitarset-03_BN2-166-Ab_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 23.130000000000024,
+          "wallSeconds": 0.2983233,
+          "decodeAndStreamSeconds": 0.0050020000000000064,
+          "dspSeconds": 0.2933213
+        },
+        {
+          "id": "guitarset-03_Funk1-114-Ab_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 25.258390022675766,
+          "wallSeconds": 0.3206188,
+          "decodeAndStreamSeconds": 0.006692299999999818,
+          "dspSeconds": 0.31392650000000016
+        },
+        {
+          "id": "guitarset-03_Funk1-114-Ab_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 25.258390022675766,
+          "wallSeconds": 0.3173287,
+          "decodeAndStreamSeconds": 0.012694499999999997,
+          "dspSeconds": 0.3046342
+        },
+        {
+          "id": "guitarset-03_Funk1-97-C_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.68839002267577,
+          "wallSeconds": 0.3821822,
+          "decodeAndStreamSeconds": 0.0075342000000001574,
+          "dspSeconds": 0.37464799999999987
+        },
+        {
+          "id": "guitarset-03_Funk1-97-C_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.68839002267577,
+          "wallSeconds": 0.3945379,
+          "decodeAndStreamSeconds": 0.01599960000000017,
+          "dspSeconds": 0.3785382999999998
+        },
+        {
+          "id": "guitarset-03_Funk2-108-Eb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.54839002267571,
+          "wallSeconds": 0.4873373,
+          "decodeAndStreamSeconds": 0.013595899999999661,
+          "dspSeconds": 0.4737414000000003
+        },
+        {
+          "id": "guitarset-03_Funk2-108-Eb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.54839002267571,
+          "wallSeconds": 0.4847706,
+          "decodeAndStreamSeconds": 0.019989299999999932,
+          "dspSeconds": 0.46478130000000006
+        },
+        {
+          "id": "guitarset-03_Funk2-119-G_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.2631972789116,
+          "wallSeconds": 0.4553984,
+          "decodeAndStreamSeconds": 0.009669100000000097,
+          "dspSeconds": 0.4457292999999999
+        },
+        {
+          "id": "guitarset-03_Funk2-119-G_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.2631972789116,
+          "wallSeconds": 0.4133433,
+          "decodeAndStreamSeconds": 0.010097299999999976,
+          "dspSeconds": 0.40324600000000005
+        },
+        {
+          "id": "guitarset-03_Jazz1-130-D_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.2811719,
+          "decodeAndStreamSeconds": 0.0035547000000000217,
+          "dspSeconds": 0.27761719999999995
+        },
+        {
+          "id": "guitarset-03_Jazz1-130-D_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.2743356,
+          "decodeAndStreamSeconds": 0.004997699999999938,
+          "dspSeconds": 0.2693379000000001
+        },
+        {
+          "id": "guitarset-03_Jazz1-200-B_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 14.400000000000013,
+          "wallSeconds": 0.1810776,
+          "decodeAndStreamSeconds": 0.007022499999999959,
+          "dspSeconds": 0.17405510000000005
+        },
+        {
+          "id": "guitarset-03_Jazz1-200-B_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 14.400000000000013,
+          "wallSeconds": 0.1837068,
+          "decodeAndStreamSeconds": 0.007996600000000048,
+          "dspSeconds": 0.17571019999999996
+        },
+        {
+          "id": "guitarset-03_Jazz2-110-Bb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 34.90319727891155,
+          "wallSeconds": 0.4571576,
+          "decodeAndStreamSeconds": 0.00904620000000006,
+          "dspSeconds": 0.44811139999999994
+        },
+        {
+          "id": "guitarset-03_Jazz2-110-Bb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 34.90319727891155,
+          "wallSeconds": 0.4869542,
+          "decodeAndStreamSeconds": 0.014055500000000165,
+          "dspSeconds": 0.47289869999999984
+        },
+        {
+          "id": "guitarset-03_Jazz2-187-F#_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 20.531995464852628,
+          "wallSeconds": 0.269728,
+          "decodeAndStreamSeconds": 0.0049999000000000016,
+          "dspSeconds": 0.2647281
+        },
+        {
+          "id": "guitarset-03_Jazz2-187-F#_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 20.531995464852628,
+          "wallSeconds": 0.2591531,
+          "decodeAndStreamSeconds": 0.009566000000000102,
+          "dspSeconds": 0.24958709999999992
+        },
+        {
+          "id": "guitarset-03_Rock1-130-A_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.2811684,
+          "decodeAndStreamSeconds": 0.006156199999999945,
+          "dspSeconds": 0.27501220000000004
+        },
+        {
+          "id": "guitarset-03_Rock1-130-A_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.2821889,
+          "decodeAndStreamSeconds": 0.008495000000000141,
+          "dspSeconds": 0.2736938999999999
+        },
+        {
+          "id": "guitarset-03_Rock1-90-C#_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.000000000000036,
+          "wallSeconds": 0.4055665,
+          "decodeAndStreamSeconds": 0.009465200000000062,
+          "dspSeconds": 0.39610129999999993
+        },
+        {
+          "id": "guitarset-03_Rock1-90-C#_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.000000000000036,
+          "wallSeconds": 0.417273,
+          "decodeAndStreamSeconds": 0.010747799999999919,
+          "dspSeconds": 0.4065252000000001
+        },
+        {
+          "id": "guitarset-03_Rock2-142-D_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 27.041609977324292,
+          "wallSeconds": 0.3463657,
+          "decodeAndStreamSeconds": 0.010257000000000183,
+          "dspSeconds": 0.3361086999999998
+        },
+        {
+          "id": "guitarset-03_Rock2-142-D_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 27.041609977324292,
+          "wallSeconds": 0.3431807,
+          "decodeAndStreamSeconds": 0.006996900000000028,
+          "dspSeconds": 0.3361838
+        },
+        {
+          "id": "guitarset-03_Rock2-85-F_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 45.17319727891137,
+          "wallSeconds": 0.5763608,
+          "decodeAndStreamSeconds": 0.0123397999999999,
+          "dspSeconds": 0.5640210000000001
+        },
+        {
+          "id": "guitarset-03_Rock2-85-F_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 45.17319727891137,
+          "wallSeconds": 0.6116509,
+          "decodeAndStreamSeconds": 0.017979399999999868,
+          "dspSeconds": 0.5936715000000001
+        },
+        {
+          "id": "guitarset-03_SS1-100-C#_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 28.800000000000033,
+          "wallSeconds": 0.4362917,
+          "decodeAndStreamSeconds": 0.013507399999999892,
+          "dspSeconds": 0.4227843000000001
+        },
+        {
+          "id": "guitarset-03_SS1-100-C#_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 28.800000000000033,
+          "wallSeconds": 0.4041846,
+          "decodeAndStreamSeconds": 0.010529900000000203,
+          "dspSeconds": 0.3936546999999998
+        },
+        {
+          "id": "guitarset-03_SS1-68-E_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 42.34639455782298,
+          "wallSeconds": 0.5530439,
+          "decodeAndStreamSeconds": 0.01152579999999992,
+          "dspSeconds": 0.5415181000000001
+        },
+        {
+          "id": "guitarset-03_SS1-68-E_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 42.34639455782298,
+          "wallSeconds": 0.5299569,
+          "decodeAndStreamSeconds": 0.013984799999999908,
+          "dspSeconds": 0.5159721
+        },
+        {
+          "id": "guitarset-03_SS2-107-Ab_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.886394557823095,
+          "wallSeconds": 0.4608141,
+          "decodeAndStreamSeconds": 0.007839199999999935,
+          "dspSeconds": 0.45297490000000007
+        },
+        {
+          "id": "guitarset-03_SS2-107-Ab_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.886394557823095,
+          "wallSeconds": 0.4447736,
+          "decodeAndStreamSeconds": 0.009636100000000092,
+          "dspSeconds": 0.4351374999999999
+        },
+        {
+          "id": "guitarset-03_SS2-88-F_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 43.62920634920618,
+          "wallSeconds": 0.5533176,
+          "decodeAndStreamSeconds": 0.0077144999999997355,
+          "dspSeconds": 0.5456031000000002
+        },
+        {
+          "id": "guitarset-03_SS2-88-F_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 43.62920634920618,
+          "wallSeconds": 0.5532839,
+          "decodeAndStreamSeconds": 0.015994900000000145,
+          "dspSeconds": 0.5372889999999999
+        },
+        {
+          "id": "guitarset-04_BN1-129-Eb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.324399092970545,
+          "wallSeconds": 0.2897954,
+          "decodeAndStreamSeconds": 0.010492099999999949,
+          "dspSeconds": 0.27930330000000003
+        },
+        {
+          "id": "guitarset-04_BN1-129-Eb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.324399092970545,
+          "wallSeconds": 0.2806322,
+          "decodeAndStreamSeconds": 0.004035399999999856,
+          "dspSeconds": 0.27659680000000014
+        },
+        {
+          "id": "guitarset-04_BN1-147-Gb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 19.585600907029498,
+          "wallSeconds": 0.2451029,
+          "decodeAndStreamSeconds": 0.005759100000000045,
+          "dspSeconds": 0.23934379999999997
+        },
+        {
+          "id": "guitarset-04_BN1-147-Gb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 19.585600907029498,
+          "wallSeconds": 0.2518559,
+          "decodeAndStreamSeconds": 0.005265700000000012,
+          "dspSeconds": 0.2465902
+        },
+        {
+          "id": "guitarset-04_BN2-131-B_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.30639455782316,
+          "wallSeconds": 0.3884101,
+          "decodeAndStreamSeconds": 0.01113779999999992,
+          "dspSeconds": 0.37727230000000006
+        },
+        {
+          "id": "guitarset-04_BN2-131-B_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.30639455782316,
+          "wallSeconds": 0.3764609,
+          "decodeAndStreamSeconds": 0.00899690000000003,
+          "dspSeconds": 0.36746399999999996
+        },
+        {
+          "id": "guitarset-04_BN2-166-Ab_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 23.130000000000024,
+          "wallSeconds": 0.2966362,
+          "decodeAndStreamSeconds": 0.005690100000000031,
+          "dspSeconds": 0.2909461
+        },
+        {
+          "id": "guitarset-04_BN2-166-Ab_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 23.130000000000024,
+          "wallSeconds": 0.2948863,
+          "decodeAndStreamSeconds": 0.004000399999999904,
+          "dspSeconds": 0.2908859000000001
+        },
+        {
+          "id": "guitarset-04_Funk1-114-Ab_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 25.258390022675766,
+          "wallSeconds": 0.3172469,
+          "decodeAndStreamSeconds": 0.006999099999999925,
+          "dspSeconds": 0.3102478000000001
+        },
+        {
+          "id": "guitarset-04_Funk1-114-Ab_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 25.258390022675766,
+          "wallSeconds": 0.3177703,
+          "decodeAndStreamSeconds": 0.008537999999999879,
+          "dspSeconds": 0.3092323000000001
+        },
+        {
+          "id": "guitarset-04_Funk1-97-C_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.68839002267577,
+          "wallSeconds": 0.3832804,
+          "decodeAndStreamSeconds": 0.011045400000000039,
+          "dspSeconds": 0.372235
+        },
+        {
+          "id": "guitarset-04_Funk1-97-C_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.68839002267577,
+          "wallSeconds": 0.3892597,
+          "decodeAndStreamSeconds": 0.01103869999999979,
+          "dspSeconds": 0.3782210000000002
+        },
+        {
+          "id": "guitarset-04_Funk2-108-Eb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.54839002267571,
+          "wallSeconds": 0.4686477,
+          "decodeAndStreamSeconds": 0.011520799999999942,
+          "dspSeconds": 0.45712690000000006
+        },
+        {
+          "id": "guitarset-04_Funk2-108-Eb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.54839002267571,
+          "wallSeconds": 0.4911203,
+          "decodeAndStreamSeconds": 0.005588499999999941,
+          "dspSeconds": 0.48553180000000007
+        },
+        {
+          "id": "guitarset-04_Funk2-119-G_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.2631972789116,
+          "wallSeconds": 0.4240729,
+          "decodeAndStreamSeconds": 0.009997399999999823,
+          "dspSeconds": 0.41407550000000015
+        },
+        {
+          "id": "guitarset-04_Funk2-119-G_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.2631972789116,
+          "wallSeconds": 0.4449294,
+          "decodeAndStreamSeconds": 0.01314269999999984,
+          "dspSeconds": 0.43178670000000013
+        },
+        {
+          "id": "guitarset-04_Jazz1-130-D_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.313727,
+          "decodeAndStreamSeconds": 0.004999299999999929,
+          "dspSeconds": 0.30872770000000005
+        },
+        {
+          "id": "guitarset-04_Jazz1-130-D_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.2857267,
+          "decodeAndStreamSeconds": 0.00899709999999998,
+          "dspSeconds": 0.2767296
+        },
+        {
+          "id": "guitarset-04_Jazz1-200-B_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 14.400000000000013,
+          "wallSeconds": 0.1842868,
+          "decodeAndStreamSeconds": 0.0065039999999999265,
+          "dspSeconds": 0.17778280000000007
+        },
+        {
+          "id": "guitarset-04_Jazz2-110-Bb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 34.90319727891155,
+          "wallSeconds": 0.4373012,
+          "decodeAndStreamSeconds": 0.010018699999999992,
+          "dspSeconds": 0.4272825
+        },
+        {
+          "id": "guitarset-04_Jazz2-110-Bb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 34.90319727891155,
+          "wallSeconds": 0.4399389,
+          "decodeAndStreamSeconds": 0.01199530000000032,
+          "dspSeconds": 0.4279435999999997
+        },
+        {
+          "id": "guitarset-04_Jazz2-187-F#_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 20.531995464852628,
+          "wallSeconds": 0.2596442,
+          "decodeAndStreamSeconds": 0.008040999999999965,
+          "dspSeconds": 0.2516032
+        },
+        {
+          "id": "guitarset-04_Jazz2-187-F#_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 20.531995464852628,
+          "wallSeconds": 0.2654016,
+          "decodeAndStreamSeconds": 0.005510900000000207,
+          "dspSeconds": 0.2598906999999998
+        },
+        {
+          "id": "guitarset-04_Rock1-130-A_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.2928601,
+          "decodeAndStreamSeconds": 0.003998700000000022,
+          "dspSeconds": 0.2888614
+        },
+        {
+          "id": "guitarset-04_Rock1-130-A_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.3008531,
+          "decodeAndStreamSeconds": 0.009035099999999963,
+          "dspSeconds": 0.291818
+        },
+        {
+          "id": "guitarset-04_Rock1-90-C#_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.000000000000036,
+          "wallSeconds": 0.5363332,
+          "decodeAndStreamSeconds": 0.014570399999999761,
+          "dspSeconds": 0.5217628000000002
+        },
+        {
+          "id": "guitarset-04_Rock1-90-C#_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.000000000000036,
+          "wallSeconds": 0.4670487,
+          "decodeAndStreamSeconds": 0.008999700000000221,
+          "dspSeconds": 0.45804899999999976
+        },
+        {
+          "id": "guitarset-04_Rock2-142-D_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 27.041609977324292,
+          "wallSeconds": 0.3549557,
+          "decodeAndStreamSeconds": 0.011998000000000286,
+          "dspSeconds": 0.3429576999999997
+        },
+        {
+          "id": "guitarset-04_Rock2-142-D_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 27.041609977324292,
+          "wallSeconds": 0.367785,
+          "decodeAndStreamSeconds": 0.011540800000000073,
+          "dspSeconds": 0.3562441999999999
+        },
+        {
+          "id": "guitarset-04_Rock2-85-F_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 45.17319727891137,
+          "wallSeconds": 0.6162871,
+          "decodeAndStreamSeconds": 0.021125100000000563,
+          "dspSeconds": 0.5951619999999994
+        },
+        {
+          "id": "guitarset-04_Rock2-85-F_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 45.17319727891137,
+          "wallSeconds": 0.5786343,
+          "decodeAndStreamSeconds": 0.014304100000000042,
+          "dspSeconds": 0.5643302
+        },
+        {
+          "id": "guitarset-04_SS1-100-C#_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 28.800000000000033,
+          "wallSeconds": 0.3716889,
+          "decodeAndStreamSeconds": 0.006532499999999997,
+          "dspSeconds": 0.3651564
+        },
+        {
+          "id": "guitarset-04_SS1-100-C#_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 28.800000000000033,
+          "wallSeconds": 0.3926261,
+          "decodeAndStreamSeconds": 0.009732599999999703,
+          "dspSeconds": 0.3828935000000003
+        },
+        {
+          "id": "guitarset-04_SS1-68-E_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 42.34639455782298,
+          "wallSeconds": 0.5428917,
+          "decodeAndStreamSeconds": 0.01757609999999976,
+          "dspSeconds": 0.5253156000000002
+        },
+        {
+          "id": "guitarset-04_SS1-68-E_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 42.34639455782298,
+          "wallSeconds": 0.564592,
+          "decodeAndStreamSeconds": 0.016494499999999968,
+          "dspSeconds": 0.5480975
+        },
+        {
+          "id": "guitarset-04_SS2-107-Ab_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.886394557823095,
+          "wallSeconds": 0.4686521,
+          "decodeAndStreamSeconds": 0.0075129000000000445,
+          "dspSeconds": 0.46113919999999997
+        },
+        {
+          "id": "guitarset-04_SS2-107-Ab_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.886394557823095,
+          "wallSeconds": 0.4509708,
+          "decodeAndStreamSeconds": 0.011011199999999999,
+          "dspSeconds": 0.4399596
+        },
+        {
+          "id": "guitarset-04_SS2-88-F_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 43.62920634920618,
+          "wallSeconds": 0.5520078,
+          "decodeAndStreamSeconds": 0.016546700000000025,
+          "dspSeconds": 0.5354611
+        },
+        {
+          "id": "guitarset-04_SS2-88-F_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 43.62920634920618,
+          "wallSeconds": 0.5814015,
+          "decodeAndStreamSeconds": 0.015048400000000184,
+          "dspSeconds": 0.5663530999999998
+        },
+        {
+          "id": "guitarset-05_BN1-129-Eb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.324399092970545,
+          "wallSeconds": 0.2877785,
+          "decodeAndStreamSeconds": 0.005118300000000131,
+          "dspSeconds": 0.28266019999999986
+        },
+        {
+          "id": "guitarset-05_BN1-129-Eb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.324399092970545,
+          "wallSeconds": 0.2792619,
+          "decodeAndStreamSeconds": 0.006758299999999939,
+          "dspSeconds": 0.27250360000000007
+        },
+        {
+          "id": "guitarset-05_BN1-147-Gb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 19.585600907029498,
+          "wallSeconds": 0.2670013,
+          "decodeAndStreamSeconds": 0.006533399999999967,
+          "dspSeconds": 0.26046790000000003
+        },
+        {
+          "id": "guitarset-05_BN1-147-Gb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 19.585600907029498,
+          "wallSeconds": 0.2604725,
+          "decodeAndStreamSeconds": 0.0025219000000000213,
+          "dspSeconds": 0.2579506
+        },
+        {
+          "id": "guitarset-05_BN2-131-B_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.30639455782316,
+          "wallSeconds": 0.3862069,
+          "decodeAndStreamSeconds": 0.008059100000000041,
+          "dspSeconds": 0.3781478
+        },
+        {
+          "id": "guitarset-05_BN2-131-B_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.30639455782316,
+          "wallSeconds": 0.4352923,
+          "decodeAndStreamSeconds": 0.008341600000000116,
+          "dspSeconds": 0.4269506999999999
+        },
+        {
+          "id": "guitarset-05_BN2-166-Ab_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 23.130000000000024,
+          "wallSeconds": 0.3973121,
+          "decodeAndStreamSeconds": 0.01543860000000008,
+          "dspSeconds": 0.3818734999999999
+        },
+        {
+          "id": "guitarset-05_BN2-166-Ab_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 23.130000000000024,
+          "wallSeconds": 0.3757203,
+          "decodeAndStreamSeconds": 0.010344799999999876,
+          "dspSeconds": 0.36537550000000013
+        },
+        {
+          "id": "guitarset-05_Funk1-114-Ab_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 25.258390022675766,
+          "wallSeconds": 0.4113155,
+          "decodeAndStreamSeconds": 0.005148099999999933,
+          "dspSeconds": 0.40616740000000007
+        },
+        {
+          "id": "guitarset-05_Funk1-114-Ab_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 25.258390022675766,
+          "wallSeconds": 0.4305193,
+          "decodeAndStreamSeconds": 0.011058100000000237,
+          "dspSeconds": 0.41946119999999976
+        },
+        {
+          "id": "guitarset-05_Funk1-97-C_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.68839002267577,
+          "wallSeconds": 0.5423585,
+          "decodeAndStreamSeconds": 0.011518399999999818,
+          "dspSeconds": 0.5308401000000001
+        },
+        {
+          "id": "guitarset-05_Funk1-97-C_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 29.68839002267577,
+          "wallSeconds": 0.8035941,
+          "decodeAndStreamSeconds": 0.03761949999999992,
+          "dspSeconds": 0.7659746000000001
+        },
+        {
+          "id": "guitarset-05_Funk2-108-Eb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.54839002267571,
+          "wallSeconds": 0.8078309,
+          "decodeAndStreamSeconds": 0.019720600000000532,
+          "dspSeconds": 0.7881102999999995
+        },
+        {
+          "id": "guitarset-05_Funk2-108-Eb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.54839002267571,
+          "wallSeconds": 0.5733238,
+          "decodeAndStreamSeconds": 0.018987600000000104,
+          "dspSeconds": 0.5543362
+        },
+        {
+          "id": "guitarset-05_Funk2-119-G_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.2631972789116,
+          "wallSeconds": 0.4332924,
+          "decodeAndStreamSeconds": 0.012528100000000097,
+          "dspSeconds": 0.4207642999999999
+        },
+        {
+          "id": "guitarset-05_Funk2-119-G_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.2631972789116,
+          "wallSeconds": 0.4432169,
+          "decodeAndStreamSeconds": 0.011623500000000064,
+          "dspSeconds": 0.43159339999999996
+        },
+        {
+          "id": "guitarset-05_Jazz1-130-D_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.3420334,
+          "decodeAndStreamSeconds": 0.00974170000000013,
+          "dspSeconds": 0.33229169999999986
+        },
+        {
+          "id": "guitarset-05_Jazz1-130-D_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.3072708,
+          "decodeAndStreamSeconds": 0.00873800000000019,
+          "dspSeconds": 0.2985327999999998
+        },
+        {
+          "id": "guitarset-05_Jazz1-200-B_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 14.400000000000013,
+          "wallSeconds": 0.2691945,
+          "decodeAndStreamSeconds": 0.0039999999999998925,
+          "dspSeconds": 0.2651945000000001
+        },
+        {
+          "id": "guitarset-05_Jazz1-200-B_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 14.400000000000013,
+          "wallSeconds": 0.192515,
+          "decodeAndStreamSeconds": 0.002999500000000016,
+          "dspSeconds": 0.18951549999999998
+        },
+        {
+          "id": "guitarset-05_Jazz2-110-Bb_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 34.90319727891155,
+          "wallSeconds": 0.4675074,
+          "decodeAndStreamSeconds": 0.00900560000000028,
+          "dspSeconds": 0.45850179999999974
+        },
+        {
+          "id": "guitarset-05_Jazz2-110-Bb_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 34.90319727891155,
+          "wallSeconds": 0.5248773,
+          "decodeAndStreamSeconds": 0.013995799999999892,
+          "dspSeconds": 0.5108815000000001
+        },
+        {
+          "id": "guitarset-05_Jazz2-187-F#_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 20.531995464852628,
+          "wallSeconds": 0.292845,
+          "decodeAndStreamSeconds": 0.010506100000000074,
+          "dspSeconds": 0.28233889999999995
+        },
+        {
+          "id": "guitarset-05_Jazz2-187-F#_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 20.531995464852628,
+          "wallSeconds": 0.3257989,
+          "decodeAndStreamSeconds": 0.009977999999999987,
+          "dspSeconds": 0.3158209
+        },
+        {
+          "id": "guitarset-05_Rock1-130-A_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.8644519,
+          "decodeAndStreamSeconds": 0.027671299999999843,
+          "dspSeconds": 0.8367806000000002
+        },
+        {
+          "id": "guitarset-05_Rock1-130-A_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 22.147210884353765,
+          "wallSeconds": 0.4804763,
+          "decodeAndStreamSeconds": 0.009047199999999977,
+          "dspSeconds": 0.47142910000000005
+        },
+        {
+          "id": "guitarset-05_Rock1-90-C#_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.000000000000036,
+          "wallSeconds": 0.4698493,
+          "decodeAndStreamSeconds": 0.015551700000000113,
+          "dspSeconds": 0.4542975999999999
+        },
+        {
+          "id": "guitarset-05_Rock1-90-C#_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 32.000000000000036,
+          "wallSeconds": 0.4407626,
+          "decodeAndStreamSeconds": 0.009993799999999942,
+          "dspSeconds": 0.43076880000000006
+        },
+        {
+          "id": "guitarset-05_Rock2-142-D_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 27.041609977324292,
+          "wallSeconds": 0.3777354,
+          "decodeAndStreamSeconds": 0.013524300000000211,
+          "dspSeconds": 0.3642110999999998
+        },
+        {
+          "id": "guitarset-05_Rock2-142-D_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 27.041609977324292,
+          "wallSeconds": 0.3577532,
+          "decodeAndStreamSeconds": 0.00956320000000005,
+          "dspSeconds": 0.34818999999999994
+        },
+        {
+          "id": "guitarset-05_Rock2-85-F_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 45.17319727891137,
+          "wallSeconds": 0.6022582,
+          "decodeAndStreamSeconds": 0.015032200000000051,
+          "dspSeconds": 0.5872259999999999
+        },
+        {
+          "id": "guitarset-05_Rock2-85-F_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 45.17319727891137,
+          "wallSeconds": 0.6071873,
+          "decodeAndStreamSeconds": 0.022988499999999745,
+          "dspSeconds": 0.5841988000000002
+        },
+        {
+          "id": "guitarset-05_SS1-100-C#_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 28.800000000000033,
+          "wallSeconds": 0.3847817,
+          "decodeAndStreamSeconds": 0.01250400000000007,
+          "dspSeconds": 0.37227769999999993
+        },
+        {
+          "id": "guitarset-05_SS1-100-C#_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 28.800000000000033,
+          "wallSeconds": 0.3816898,
+          "decodeAndStreamSeconds": 0.008994300000000122,
+          "dspSeconds": 0.3726954999999999
+        },
+        {
+          "id": "guitarset-05_SS1-68-E_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 42.34639455782298,
+          "wallSeconds": 0.6228328,
+          "decodeAndStreamSeconds": 0.019277600000000228,
+          "dspSeconds": 0.6035551999999997
+        },
+        {
+          "id": "guitarset-05_SS1-68-E_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 42.34639455782298,
+          "wallSeconds": 0.7924893,
+          "decodeAndStreamSeconds": 0.02467330000000001,
+          "dspSeconds": 0.7678159999999999
+        },
+        {
+          "id": "guitarset-05_SS2-107-Ab_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.886394557823095,
+          "wallSeconds": 0.5165913,
+          "decodeAndStreamSeconds": 0.01217440000000003,
+          "dspSeconds": 0.5044169
+        },
+        {
+          "id": "guitarset-05_SS2-107-Ab_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 35.886394557823095,
+          "wallSeconds": 0.4984243,
+          "decodeAndStreamSeconds": 0.011998099999999956,
+          "dspSeconds": 0.48642620000000003
+        },
+        {
+          "id": "guitarset-05_SS2-88-F_comp",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 43.62920634920618,
+          "wallSeconds": 0.5808127,
+          "decodeAndStreamSeconds": 0.0200001999999998,
+          "dspSeconds": 0.5608125000000002
+        },
+        {
+          "id": "guitarset-05_SS2-88-F_solo",
+          "codec": "wav",
+          "sampleRate": 44100,
+          "sourceChannels": 1,
+          "audioSeconds": 43.62920634920618,
+          "wallSeconds": 0.6331037,
+          "decodeAndStreamSeconds": 0.021978600000000292,
+          "dspSeconds": 0.6111250999999998
+        }
+      ],
+      "audioSeconds": 6986.670952380953,
+      "wallSeconds": 95.78298290000005,
+      "decodeAndStreamSeconds": 2.4807149000000006,
+      "dspSeconds": 93.30226800000003,
+      "totalRealtimeMultiple": 72.94271634529508,
+      "decodeRealtimeMultiple": 2816.3941581440704,
+      "dspRealtimeMultiple": 74.88211275186741
+    }
+  },
+  "rangeDiagnostics": {
+    "inside90to180": {
+      "labeled": 179,
+      "strictWithinHalfBpm": 47,
+      "unknown": 2
+    },
+    "outside90to180": {
+      "labeled": 59,
+      "strictWithinHalfBpm": 0,
+      "unknown": 2
+    }
+  },
+  "sourceErrors": 0,
+  "limitations": [
+    "Short solo acoustic guitar excerpts do not cover required electronic/live-drum strata.",
+    "Global tempo/key and backing-track-derived grids are independent of Spotify but not manually performed onset annotations.",
+    "Shared harmonic vocabulary may remain across lead-sheet groups; no composition-independence claim.",
+    "Tuning-split metrics are development diagnostics, never release qualification.",
+    "No browser baseline, supported-platform comparison, or perceptual score is included.",
+    "Measured throughput is analyzer-only, excluding persistence and UI."
+  ]
+}

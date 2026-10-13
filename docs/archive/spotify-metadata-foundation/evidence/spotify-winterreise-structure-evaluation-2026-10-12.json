@@ -1,0 +1,589 @@
+{
+  "method": "Maximum one-to-one temporal matches; interior boundaries only; predictions clipped to annotated interior; unavailable outputs count as misses.",
+  "dataset": "https://doi.org/10.5281/zenodo.10839767",
+  "algorithm": "track-v3-spotify-local-artifacts;tempo-v3-multifeature-half-bpm;key-v2-hpcp-ks;energy-level-v1-fixed-reference;itu-r-bs1770-5-annex1-k-weight-gating-v1;itu-r-bs1770-5-annex2-4x-fir-v1",
+  "configuration": {
+    "Tempo": {
+      "Range": "auto",
+      "Method": "multifeature-half-bpm",
+      "MinBPM": 90,
+      "MaxBPM": 180,
+      "MinOnsetCrestFactor": 15
+    },
+    "Key": {
+      "MaxChromaFlatness": 0.98,
+      "MaxFrequency": 3500,
+      "Profile": "krumhansl",
+      "Extraction": "hpcp-peaks"
+    },
+    "SkipTempo": false,
+    "SkipKey": false,
+    "GridBPM": null,
+    "ProviderBeatGrid": null,
+    "SkipThreeBand": false
+  },
+  "limitations": [
+    "Energy-derived regions and annotated musical-form regions have different semantics; labels are not scored.",
+    "No BPM/beat/downbeat accuracy or broad qualification follows from this boundary comparison."
+  ],
+  "windows": [
+    {
+      "toleranceSeconds": 0.5,
+      "tracks": [
+        {
+          "id": "Schubert_D911-01_HU33",
+          "available": true,
+          "referenceBoundaries": 16,
+          "predictedBoundaries": 12,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 1,
+          "precision": 0.08333333333333333,
+          "recall": 0.0625,
+          "f1": 0.07142857142857142
+        },
+        {
+          "id": "Schubert_D911-02_HU33",
+          "available": true,
+          "referenceBoundaries": 9,
+          "predictedBoundaries": 5,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 1,
+          "precision": 0.2,
+          "recall": 0.1111111111111111,
+          "f1": 0.14285714285714285
+        },
+        {
+          "id": "Schubert_D911-03_HU33",
+          "available": true,
+          "referenceBoundaries": 5,
+          "predictedBoundaries": 8,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        {
+          "id": "Schubert_D911-04_HU33",
+          "available": true,
+          "referenceBoundaries": 9,
+          "predictedBoundaries": 7,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        {
+          "id": "Schubert_D911-05_HU33",
+          "available": true,
+          "referenceBoundaries": 9,
+          "predictedBoundaries": 5,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        {
+          "id": "Schubert_D911-06_HU33",
+          "available": true,
+          "referenceBoundaries": 8,
+          "predictedBoundaries": 8,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        {
+          "id": "Schubert_D911-07_HU33",
+          "available": true,
+          "referenceBoundaries": 7,
+          "predictedBoundaries": 3,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        {
+          "id": "Schubert_D911-08_HU33",
+          "available": true,
+          "referenceBoundaries": 4,
+          "predictedBoundaries": 10,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 1,
+          "precision": 0.1,
+          "recall": 0.25,
+          "f1": 0.14285714285714285
+        },
+        {
+          "id": "Schubert_D911-09_HU33",
+          "available": true,
+          "referenceBoundaries": 4,
+          "predictedBoundaries": 9,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        {
+          "id": "Schubert_D911-10_HU33",
+          "available": true,
+          "referenceBoundaries": 6,
+          "predictedBoundaries": 8,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 1,
+          "precision": 0.125,
+          "recall": 0.16666666666666666,
+          "f1": 0.14285714285714285
+        },
+        {
+          "id": "Schubert_D911-11_HU33",
+          "available": true,
+          "referenceBoundaries": 7,
+          "predictedBoundaries": 8,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        {
+          "id": "Schubert_D911-12_HU33",
+          "available": true,
+          "referenceBoundaries": 4,
+          "predictedBoundaries": 8,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        {
+          "id": "Schubert_D911-13_HU33",
+          "available": true,
+          "referenceBoundaries": 6,
+          "predictedBoundaries": 7,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        {
+          "id": "Schubert_D911-14_HU33",
+          "available": true,
+          "referenceBoundaries": 8,
+          "predictedBoundaries": 7,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        {
+          "id": "Schubert_D911-15_HU33",
+          "available": true,
+          "referenceBoundaries": 6,
+          "predictedBoundaries": 2,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        {
+          "id": "Schubert_D911-16_HU33",
+          "available": true,
+          "referenceBoundaries": 4,
+          "predictedBoundaries": 5,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 1,
+          "precision": 0.2,
+          "recall": 0.25,
+          "f1": 0.2222222222222222
+        },
+        {
+          "id": "Schubert_D911-17_HU33",
+          "available": true,
+          "referenceBoundaries": 4,
+          "predictedBoundaries": 8,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 1,
+          "precision": 0.125,
+          "recall": 0.25,
+          "f1": 0.16666666666666666
+        },
+        {
+          "id": "Schubert_D911-18_HU33",
+          "available": true,
+          "referenceBoundaries": 3,
+          "predictedBoundaries": 5,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        {
+          "id": "Schubert_D911-19_HU33",
+          "available": true,
+          "referenceBoundaries": 5,
+          "predictedBoundaries": 3,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 1,
+          "precision": 0.3333333333333333,
+          "recall": 0.2,
+          "f1": 0.25
+        },
+        {
+          "id": "Schubert_D911-20_HU33",
+          "available": true,
+          "referenceBoundaries": 6,
+          "predictedBoundaries": 0,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        {
+          "id": "Schubert_D911-21_HU33",
+          "available": true,
+          "referenceBoundaries": 7,
+          "predictedBoundaries": 10,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        {
+          "id": "Schubert_D911-22_HU33",
+          "available": true,
+          "referenceBoundaries": 6,
+          "predictedBoundaries": 10,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 1,
+          "precision": 0.1,
+          "recall": 0.16666666666666666,
+          "f1": 0.125
+        },
+        {
+          "id": "Schubert_D911-23_HU33",
+          "available": true,
+          "referenceBoundaries": 5,
+          "predictedBoundaries": 12,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 1,
+          "precision": 0.08333333333333333,
+          "recall": 0.2,
+          "f1": 0.11764705882352941
+        },
+        {
+          "id": "Schubert_D911-24_HU33",
+          "available": true,
+          "referenceBoundaries": 5,
+          "predictedBoundaries": 1,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        }
+      ],
+      "missingStructureTracks": 0,
+      "referenceBoundaries": 153,
+      "predictedBoundaries": 161,
+      "matched": 9,
+      "micro": {
+        "precision": 0.055900621118012424,
+        "recall": 0.058823529411764705,
+        "f1": 0.05732484076433121
+      },
+      "macroF1": 0.057563997821350764
+    },
+    {
+      "toleranceSeconds": 3.0,
+      "tracks": [
+        {
+          "id": "Schubert_D911-01_HU33",
+          "available": true,
+          "referenceBoundaries": 16,
+          "predictedBoundaries": 12,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 5,
+          "precision": 0.4166666666666667,
+          "recall": 0.3125,
+          "f1": 0.35714285714285715
+        },
+        {
+          "id": "Schubert_D911-02_HU33",
+          "available": true,
+          "referenceBoundaries": 9,
+          "predictedBoundaries": 5,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 2,
+          "precision": 0.4,
+          "recall": 0.2222222222222222,
+          "f1": 0.2857142857142857
+        },
+        {
+          "id": "Schubert_D911-03_HU33",
+          "available": true,
+          "referenceBoundaries": 5,
+          "predictedBoundaries": 8,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 1,
+          "precision": 0.125,
+          "recall": 0.2,
+          "f1": 0.15384615384615385
+        },
+        {
+          "id": "Schubert_D911-04_HU33",
+          "available": true,
+          "referenceBoundaries": 9,
+          "predictedBoundaries": 7,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        {
+          "id": "Schubert_D911-05_HU33",
+          "available": true,
+          "referenceBoundaries": 9,
+          "predictedBoundaries": 5,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        {
+          "id": "Schubert_D911-06_HU33",
+          "available": true,
+          "referenceBoundaries": 8,
+          "predictedBoundaries": 8,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 1,
+          "precision": 0.125,
+          "recall": 0.125,
+          "f1": 0.125
+        },
+        {
+          "id": "Schubert_D911-07_HU33",
+          "available": true,
+          "referenceBoundaries": 7,
+          "predictedBoundaries": 3,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        {
+          "id": "Schubert_D911-08_HU33",
+          "available": true,
+          "referenceBoundaries": 4,
+          "predictedBoundaries": 10,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 1,
+          "precision": 0.1,
+          "recall": 0.25,
+          "f1": 0.14285714285714285
+        },
+        {
+          "id": "Schubert_D911-09_HU33",
+          "available": true,
+          "referenceBoundaries": 4,
+          "predictedBoundaries": 9,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 2,
+          "precision": 0.2222222222222222,
+          "recall": 0.5,
+          "f1": 0.3076923076923077
+        },
+        {
+          "id": "Schubert_D911-10_HU33",
+          "available": true,
+          "referenceBoundaries": 6,
+          "predictedBoundaries": 8,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 2,
+          "precision": 0.25,
+          "recall": 0.3333333333333333,
+          "f1": 0.2857142857142857
+        },
+        {
+          "id": "Schubert_D911-11_HU33",
+          "available": true,
+          "referenceBoundaries": 7,
+          "predictedBoundaries": 8,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 2,
+          "precision": 0.25,
+          "recall": 0.2857142857142857,
+          "f1": 0.26666666666666666
+        },
+        {
+          "id": "Schubert_D911-12_HU33",
+          "available": true,
+          "referenceBoundaries": 4,
+          "predictedBoundaries": 8,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        {
+          "id": "Schubert_D911-13_HU33",
+          "available": true,
+          "referenceBoundaries": 6,
+          "predictedBoundaries": 7,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 4,
+          "precision": 0.5714285714285714,
+          "recall": 0.6666666666666666,
+          "f1": 0.6153846153846154
+        },
+        {
+          "id": "Schubert_D911-14_HU33",
+          "available": true,
+          "referenceBoundaries": 8,
+          "predictedBoundaries": 7,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 1,
+          "precision": 0.14285714285714285,
+          "recall": 0.125,
+          "f1": 0.13333333333333333
+        },
+        {
+          "id": "Schubert_D911-15_HU33",
+          "available": true,
+          "referenceBoundaries": 6,
+          "predictedBoundaries": 2,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        {
+          "id": "Schubert_D911-16_HU33",
+          "available": true,
+          "referenceBoundaries": 4,
+          "predictedBoundaries": 5,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 2,
+          "precision": 0.4,
+          "recall": 0.5,
+          "f1": 0.4444444444444444
+        },
+        {
+          "id": "Schubert_D911-17_HU33",
+          "available": true,
+          "referenceBoundaries": 4,
+          "predictedBoundaries": 8,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 1,
+          "precision": 0.125,
+          "recall": 0.25,
+          "f1": 0.16666666666666666
+        },
+        {
+          "id": "Schubert_D911-18_HU33",
+          "available": true,
+          "referenceBoundaries": 3,
+          "predictedBoundaries": 5,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 2,
+          "precision": 0.4,
+          "recall": 0.6666666666666666,
+          "f1": 0.5
+        },
+        {
+          "id": "Schubert_D911-19_HU33",
+          "available": true,
+          "referenceBoundaries": 5,
+          "predictedBoundaries": 3,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 2,
+          "precision": 0.6666666666666666,
+          "recall": 0.4,
+          "f1": 0.5
+        },
+        {
+          "id": "Schubert_D911-20_HU33",
+          "available": true,
+          "referenceBoundaries": 6,
+          "predictedBoundaries": 0,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        {
+          "id": "Schubert_D911-21_HU33",
+          "available": true,
+          "referenceBoundaries": 7,
+          "predictedBoundaries": 10,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        {
+          "id": "Schubert_D911-22_HU33",
+          "available": true,
+          "referenceBoundaries": 6,
+          "predictedBoundaries": 10,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 4,
+          "precision": 0.4,
+          "recall": 0.6666666666666666,
+          "f1": 0.5
+        },
+        {
+          "id": "Schubert_D911-23_HU33",
+          "available": true,
+          "referenceBoundaries": 5,
+          "predictedBoundaries": 12,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 1,
+          "precision": 0.08333333333333333,
+          "recall": 0.2,
+          "f1": 0.11764705882352941
+        },
+        {
+          "id": "Schubert_D911-24_HU33",
+          "available": true,
+          "referenceBoundaries": 5,
+          "predictedBoundaries": 1,
+          "excludedOutsideAnnotatedInterior": 0,
+          "matched": 0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        }
+      ],
+      "missingStructureTracks": 0,
+      "referenceBoundaries": 153,
+      "predictedBoundaries": 161,
+      "matched": 33,
+      "micro": {
+        "precision": 0.20496894409937888,
+        "recall": 0.21568627450980393,
+        "f1": 0.21019108280254778
+      },
+      "macroF1": 0.2042545757619287
+    }
+  ]
+}

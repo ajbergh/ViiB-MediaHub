@@ -1,0 +1,63 @@
+{
+  "capturedAt": "2026-10-12T06:20:32.487Z",
+  "completedAt": "2026-10-12T06:20:33.256Z",
+  "method": "GET-only production local-waveform route validation of the three newest source-bound local artifacts; no provider dispatch.",
+  "samples": [
+    {
+      "songId": "47718f70fa661f88",
+      "httpStatus": 200,
+      "representation": "local_three_band_estimate",
+      "algorithm": "onepole-band-peaks-v1",
+      "payloadBytes": 637959,
+      "units": "filtered_pcm_absolute_peak",
+      "sampleRate": 44100,
+      "frames": 9524736,
+      "resolution": 882,
+      "windows": 10800,
+      "finiteNonnegative": true,
+      "alignedBands": true,
+      "headerMatches": true,
+      "durationEvidenceAvailable": true,
+      "durationDifferenceSeconds": 4.121147867408581e-12
+    },
+    {
+      "songId": "2050f9f31eb6dfe7",
+      "httpStatus": 200,
+      "representation": "local_three_band_estimate",
+      "algorithm": "onepole-band-peaks-v1",
+      "payloadBytes": 1052943,
+      "units": "filtered_pcm_absolute_peak",
+      "sampleRate": 44100,
+      "frames": 15790464,
+      "resolution": 882,
+      "windows": 17904,
+      "finiteNonnegative": true,
+      "alignedBands": true,
+      "headerMatches": true,
+      "durationEvidenceAvailable": true,
+      "durationDifferenceSeconds": 1.2107648217352107e-11
+    },
+    {
+      "songId": "4769d88d646bb0c5",
+      "httpStatus": 200,
+      "representation": "local_three_band_estimate",
+      "algorithm": "onepole-band-peaks-v1",
+      "payloadBytes": 1522960,
+      "units": "filtered_pcm_absolute_peak",
+      "sampleRate": 44100,
+      "frames": 22394880,
+      "resolution": 882,
+      "windows": 25392,
+      "finiteNonnegative": true,
+      "alignedBands": true,
+      "headerMatches": true,
+      "durationEvidenceAvailable": true,
+      "durationDifferenceSeconds": 2.0463630789890885e-11
+    }
+  ],
+  "limitations": [
+    "Non-random samples during ongoing library repair; not whole-library completion.",
+    "Running build contains provider-band admission repair; subsequent atomic-publication edit has not been loaded.",
+    "No browser/rendering/accessibility, independent accuracy or provider band scale qualification."
+  ]
+}

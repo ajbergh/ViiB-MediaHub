@@ -24,7 +24,22 @@ func (a *API) spotifyTrackFeaturesResult(ctx context.Context, id string) (*spoti
 	service := a.spotifyAnalysis
 	a.spotifyAnalysisMu.RUnlock()
 	if service == nil {
-		return nil, "spotify_disabled", false
+		runtime := a.spotifyTokens()
+		account, stop := runtime.requestContext(ctx)
+		defer stop()
+		budget, cancel := context.WithTimeout(account, 25*time.Second)
+		defer cancel()
+		if err := runtime.ensureMetadataOwner(budget); err != nil {
+			return nil, "spotify_owner_unavailable", false
+		}
+		a.initSpotifyAnalysis()
+		a.spotifyAnalysisMu.RLock()
+		service = a.spotifyAnalysis
+		a.spotifyAnalysisMu.RUnlock()
+		if service == nil {
+			return nil, "spotify_disabled", false
+		}
+		ctx = budget
 	}
 	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()

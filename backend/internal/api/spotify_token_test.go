@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -103,6 +105,12 @@ func TestSpotifyRequestRetriesOnceAfterUnauthorized(t *testing.T) {
 	}
 
 	api := &API{db: database}
+	api.spotifyHTTPClient = &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/v1/me" {
+			return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"id":"token-test-owner"}`))}, nil
+		}
+		return http.DefaultTransport.RoundTrip(r)
+	})}
 	response, err := api.doSpotifyRequest(context.Background(), http.MethodGet, resource.URL, nil, "")
 	if err != nil {
 		t.Fatal(err)

@@ -37,6 +37,7 @@ type Options struct {
 	// including client-token minting and nested library hydration requests.
 	BeforeRequest func(context.Context) error
 	OnRateLimit   func(string) time.Duration
+	OnDomain      func(context.Context, []CapturedEntity)
 }
 type Client struct {
 	mu                    sync.Mutex
@@ -51,6 +52,7 @@ type Client struct {
 	deadline              time.Time
 	beforeRequest         func(context.Context) error
 	onRateLimit           func(string) time.Duration
+	onDomain              func(context.Context, []CapturedEntity)
 }
 
 func (c *Client) Format(state fmt.State, verb rune) {
@@ -72,7 +74,7 @@ func New(options Options) *Client {
 		now = time.Now
 	}
 	lifetime, cancel := context.WithCancel(context.Background())
-	return &Client{http: client, now: now, gate: make(chan struct{}, 1), lifetime: lifetime, cancel: cancel, beforeRequest: options.BeforeRequest, onRateLimit: options.OnRateLimit}
+	return &Client{http: client, now: now, gate: make(chan struct{}, 1), lifetime: lifetime, cancel: cancel, beforeRequest: options.BeforeRequest, onRateLimit: options.OnRateLimit, onDomain: options.OnDomain}
 }
 func (c *Client) Close() {
 	c.mu.Lock()
@@ -204,6 +206,11 @@ func (c *Client) request(ctx context.Context, stage, target string, payload any,
 	}
 	if json.Unmarshal(raw, result) != nil {
 		return ErrSchema
+	}
+	if c.onDomain != nil && ctx.Err() == nil {
+		if entities, err := CaptureDomain(stage, payload, raw); err == nil && len(entities) > 0 {
+			c.onDomain(ctx, entities)
+		}
 	}
 	return ctx.Err()
 }

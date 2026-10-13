@@ -1,3 +1,4 @@
+import { savedLibraryDownloadOrigins } from '../lib/spotifyDownloadOrigins';
 /**
  * ViiB MediaHub - Spotify Album Detail Page
  * 
@@ -19,7 +20,7 @@
 import {fetchSpotifyAlbum} from '../services/spotifyAlbum';
 import { SpotifyArtistLinks } from '../components/SpotifyArtistLinks';
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router';
+import { useParams, useNavigate, useLocation } from 'react-router';
 import { ArrowLeft, Play, MoreHorizontal, Loader2, Clock, ExternalLink, Download, Shuffle, ListPlus, CheckCircle } from 'lucide-react';
 import { SpotifyService } from '../services/spotifyService';
 import { useStore } from '../store';
@@ -58,6 +59,9 @@ interface SpotifyAlbumFull {
 export const SpotifyAlbumDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const sessionGeneration = useStore(s => s.spotifySessionGeneration);
+  const downloadOrigins = savedLibraryDownloadOrigins(location.state, id, sessionGeneration);
   const { addLog, playSong, addToQueue, showToast, openContextMenu } = useStore();
   
   const [album, setAlbum] = useState<SpotifyAlbumFull | null>(null);
@@ -72,7 +76,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
     
     setIsDownloading(true);
     try {
-      await api.downloadAlbum(album.id, album.name, album.artists[0]?.name || 'Unknown Artist');
+      await api.downloadAlbum(album.id, album.name, album.artists[0]?.name || 'Unknown Artist', downloadOrigins);
       addLog('success', `Started download for album: ${album.name}`);
     } catch (err) {
       console.error('Download failed:', err);
@@ -133,7 +137,9 @@ export const SpotifyAlbumDetail: React.FC = () => {
         track.name,
         track.artists?.map(a => a.name).join(', ') || album?.artists[0]?.name || 'Unknown Artist',
         album?.name || 'Unknown Album',
-        Math.floor(track.duration_ms / 1000)
+        Math.floor(track.duration_ms / 1000),
+        album ? [...(downloadOrigins || []), { kind: 'album', id: album.id,
+          position: Number.isInteger(track.track_number) && track.track_number > 0 ? track.track_number - 1 : -1 }] : downloadOrigins
       );
       showToast({ type: 'success', message: `Queued for download: ${track.name}` });
     } catch (error) {
@@ -238,7 +244,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
             Back
           </Button>
 
-          <div className="flex gap-8 items-end">
+          <div className="flex flex-col gap-6 sm:flex-row sm:gap-8 sm:items-end">
             <div className="w-64 h-64 flex-shrink-0 shadow-2xl rounded-lg overflow-hidden">
               <img 
                 src={album.images[0]?.url} 
@@ -247,10 +253,10 @@ export const SpotifyAlbumDetail: React.FC = () => {
               />
             </div>
 
-            <div className="flex-1 pb-4">
+            <div className="min-w-0 w-full flex-1 pb-4">
               <p className="text-sm font-bold uppercase tracking-wider text-text-secondary mb-2">Album</p>
-              <h1 className="text-display font-bold mb-4 leading-tight">{album.name}</h1>
-              <div className="flex items-center gap-2 text-text-secondary">
+              <h1 className="text-display font-bold mb-4 leading-tight break-words">{album.name}</h1>
+              <div className="flex flex-wrap items-center gap-2 text-text-secondary">
                 <span className="font-bold text-text-main">
                   <SpotifyArtistLinks artists={album.artists} />
                 </span>
@@ -270,7 +276,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
       </div>
 
       {/* Actions */}
-      <div className="px-8 py-6 flex items-center gap-4 bg-gradient-to-b from-transparent to-surface-0">
+      <div className="px-8 py-6 flex flex-wrap items-center gap-4 bg-gradient-to-b from-transparent to-surface-0">
         <Button
           variant="primary"
           accent="brand"

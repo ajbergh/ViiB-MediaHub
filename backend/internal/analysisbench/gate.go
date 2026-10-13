@@ -119,6 +119,14 @@ func EvaluatePhase0Gate(manifest CorpusManifest, candidate, browserBaseline Resu
 		throughputTripwire(throughputForSplit(manifest, candidate, SplitHeldOut)),
 		determinismTripwire(determinism),
 	)
+	// Per-dimension negative labels supplement the original both-unknown
+	// tripwire. They never replace its required held-out evidence.
+	if candidateReport.TempoRefusal.Labeled > 0 {
+		report.Tripwires = append(report.Tripwires, minimumRateTripwire("Explicit tempo refusal labels returning unknown", "≥ 90%", candidateReport.TempoRefusal.Accuracy, .90, "requires observed tempo refusals"))
+	}
+	if candidateReport.KeyRefusal.Labeled > 0 {
+		report.Tripwires = append(report.Tripwires, minimumRateTripwire("Explicit key refusal labels returning unknown", "≥ 90%", candidateReport.KeyRefusal.Accuracy, .90, "requires observed key refusals"))
+	}
 	report.Passed = report.Corpus.Phase0Ready
 	for _, tripwire := range report.Tripwires {
 		if tripwire.Status != "pass" {
@@ -337,6 +345,7 @@ func compareDetectorResult(report *DeterminismReport, algorithm, id string, expe
 		{"tempoStability", expected.TempoStability, actual.TempoStability},
 		{"tempoCrestFactor", expected.TempoCrestFactor, actual.TempoCrestFactor},
 		{"keyFlatness", expected.KeyFlatness, actual.KeyFlatness},
+		{"audioDurationSeconds", &expected.AudioDurationSeconds, &actual.AudioDurationSeconds},
 		{"tempoConfidence", expected.TempoConfidence, actual.TempoConfidence}, {"keyConfidence", expected.KeyConfidence, actual.KeyConfidence},
 	} {
 		if scalar.a == nil && scalar.b == nil {
@@ -355,17 +364,21 @@ func compareDetectorResult(report *DeterminismReport, algorithm, id string, expe
 	if expected.Status != actual.Status {
 		report.Differences = append(report.Differences, DeterminismDifference{Algorithm: algorithm, TrackID: id, Field: "status", Expected: expected.Status, Actual: actual.Status})
 	}
-	compareBeatPositions(report, algorithm, id, expected.BeatPositions, actual.BeatPositions)
+	if expected.StructureAvailable != actual.StructureAvailable {
+		report.Differences = append(report.Differences, DeterminismDifference{Algorithm: algorithm, TrackID: id, Field: "structureAvailable", Expected: strconv.FormatBool(expected.StructureAvailable), Actual: strconv.FormatBool(actual.StructureAvailable)})
+	}
+	compareTemporalPositions(report, algorithm, id, "beatPositions", expected.BeatPositions, actual.BeatPositions)
+	compareTemporalPositions(report, algorithm, id, "structureBoundaries", expected.StructureBoundaries, actual.StructureBoundaries)
 }
 
-func compareBeatPositions(report *DeterminismReport, algorithm, id string, expected, actual []float64) {
+func compareTemporalPositions(report *DeterminismReport, algorithm, id, field string, expected, actual []float64) {
 	if len(expected) != len(actual) {
-		report.Differences = append(report.Differences, DeterminismDifference{Algorithm: algorithm, TrackID: id, Field: "beatPositions.length", Expected: strconv.Itoa(len(expected)), Actual: strconv.Itoa(len(actual))})
+		report.Differences = append(report.Differences, DeterminismDifference{Algorithm: algorithm, TrackID: id, Field: field + ".length", Expected: strconv.Itoa(len(expected)), Actual: strconv.Itoa(len(actual))})
 		return
 	}
 	for index := range expected {
 		if math.Abs(expected[index]-actual[index]) > 1e-6 {
-			report.Differences = append(report.Differences, DeterminismDifference{Algorithm: algorithm, TrackID: id, Field: fmt.Sprintf("beatPositions[%d]", index), Expected: fmt.Sprintf("%.9f", expected[index]), Actual: fmt.Sprintf("%.9f", actual[index])})
+			report.Differences = append(report.Differences, DeterminismDifference{Algorithm: algorithm, TrackID: id, Field: fmt.Sprintf("%s[%d]", field, index), Expected: fmt.Sprintf("%.9f", expected[index]), Actual: fmt.Sprintf("%.9f", actual[index])})
 		}
 	}
 }

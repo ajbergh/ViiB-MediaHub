@@ -12,6 +12,18 @@ func (d *DB) EnsureExternalTrackAnalysisSchema() error {
 		return nil
 	}
 	_, err := d.conn.Exec(`
+ CREATE TABLE IF NOT EXISTS spotify_audio_field_attempts (
+ spotify_id TEXT NOT NULL, endpoint TEXT NOT NULL, context_key TEXT NOT NULL,
+ field_key TEXT NOT NULL, state TEXT NOT NULL, reason TEXT NOT NULL,
+ checked_at INTEGER NOT NULL, adapter_revision TEXT NOT NULL,
+ PRIMARY KEY(spotify_id,endpoint,context_key,field_key));
+ CREATE TABLE IF NOT EXISTS spotify_audio_observations (
+ spotify_id TEXT NOT NULL, endpoint TEXT NOT NULL, context_key TEXT NOT NULL,
+ field_key TEXT NOT NULL, metric TEXT NOT NULL, units TEXT NOT NULL,
+ value_json TEXT NOT NULL CHECK(length(value_json)<=1024), confidence REAL,
+ schema_version INTEGER NOT NULL, adapter_revision TEXT NOT NULL,
+ retrieved_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+ PRIMARY KEY(spotify_id,endpoint,context_key,field_key));
  CREATE TABLE IF NOT EXISTS track_external_identity (
  song_id TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
  provider TEXT NOT NULL CHECK(provider='spotify'),
@@ -104,6 +116,12 @@ func (d *DB) EnsureExternalTrackAnalysisSchema() error {
 			if _, e = d.conn.Exec("ALTER TABLE spotify_download_evidence ADD COLUMN features_json TEXT NOT NULL DEFAULT '' CHECK(length(features_json)<=16384)"); e != nil {
 				return e
 			}
+		}
+		if e := ensureTextColumn(d, "external_track_analysis", "account_context"); e != nil {
+			return e
+		}
+		if e := ensureTextColumn(d, "external_track_analysis_status", "account_context"); e != nil {
+			return e
 		}
 		d.externalSchemaReady = true
 	}

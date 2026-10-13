@@ -1,0 +1,141 @@
+{
+  "dataset": "https://doi.org/10.5281/zenodo.3967852",
+  "split": "tuning",
+  "sourceHEAD": "d2b7139",
+  "sourceIncludesUncommittedChanges": true,
+  "manifestSHA256": "db4b51fd41af4d4bd0d72bbe3251f9836ccb60a95918610952a55782ea03d553",
+  "baselineResultsSHA256": "65d1abd29c81d866765931cca392e435591873c33f2b50d29b606dbdea6a4d2f",
+  "baselineTempo": {
+    "labeled": 308,
+    "reported": 220,
+    "strictWithinHalfBpm": 87,
+    "acceptedMetricLevelMatch": 87,
+    "halfDoubleErrors": 14,
+    "unknown": 88,
+    "strictAccuracy": 0.2824675324675325,
+    "acceptedMetricLevelAccuracy": 0.2824675324675325,
+    "halfDoubleErrorRate": 0.045454545454545456,
+    "unknownRate": 0.2857142857142857
+  },
+  "runs": {
+    "wideRefined": {
+      "resultsSHA256": "53253171b059ebf5f1f392a5dd7c9c1b5ff829e45f046c808020d9ced00ea0c5",
+      "configuration": {
+        "Tempo": {
+          "Range": "custom",
+          "Method": "multifeature-refined-half-bpm",
+          "MinBPM": 40,
+          "MaxBPM": 240,
+          "MinOnsetCrestFactor": 15
+        },
+        "Key": {
+          "MaxChromaFlatness": 0.98,
+          "MaxFrequency": 3500,
+          "Profile": "krumhansl",
+          "Extraction": "hpcp-peaks"
+        },
+        "SkipTempo": false,
+        "SkipKey": false,
+        "GridBPM": null,
+        "ProviderBeatGrid": null,
+        "SkipThreeBand": false
+      },
+      "tempo": {
+        "labeled": 308,
+        "reported": 238,
+        "strictWithinHalfBpm": 37,
+        "acceptedMetricLevelMatch": 37,
+        "halfDoubleErrors": 98,
+        "unknown": 70,
+        "strictAccuracy": 0.12012987012987013,
+        "acceptedMetricLevelAccuracy": 0.12012987012987013,
+        "halfDoubleErrorRate": 0.3181818181818182,
+        "unknownRate": 0.22727272727272727
+      },
+      "cohorts": {
+        "inside90to180": {
+          "labeled": 267,
+          "strictWithinHalfBpm": 33,
+          "unknown": 59
+        },
+        "outside90to180": {
+          "labeled": 41,
+          "strictWithinHalfBpm": 4,
+          "unknown": 11
+        }
+      },
+      "gainedStrictComparedWithDefault": 14,
+      "lostStrictComparedWithDefault": 64,
+      "sourceErrors": 0
+    },
+    "phaseSupport": {
+      "resultsSHA256": "196b91701df460c2373cc505b63671fb0ec2ac3e1fc9782a97b613d0fe1ebab1",
+      "configuration": {
+        "Tempo": {
+          "Range": "custom",
+          "Method": "phase-support",
+          "MinBPM": 40,
+          "MaxBPM": 240,
+          "MinOnsetCrestFactor": 15
+        },
+        "Key": {
+          "MaxChromaFlatness": 0.98,
+          "MaxFrequency": 3500,
+          "Profile": "krumhansl",
+          "Extraction": "hpcp-peaks"
+        },
+        "SkipTempo": false,
+        "SkipKey": false,
+        "GridBPM": null,
+        "ProviderBeatGrid": null,
+        "SkipThreeBand": false
+      },
+      "tempo": {
+        "labeled": 308,
+        "reported": 223,
+        "strictWithinHalfBpm": 86,
+        "acceptedMetricLevelMatch": 86,
+        "halfDoubleErrors": 94,
+        "unknown": 85,
+        "strictAccuracy": 0.2792207792207792,
+        "acceptedMetricLevelAccuracy": 0.2792207792207792,
+        "halfDoubleErrorRate": 0.3051948051948052,
+        "unknownRate": 0.275974025974026
+      },
+      "cohorts": {
+        "inside90to180": {
+          "labeled": 267,
+          "strictWithinHalfBpm": 80,
+          "unknown": 72
+        },
+        "outside90to180": {
+          "labeled": 41,
+          "strictWithinHalfBpm": 6,
+          "unknown": 13
+        }
+      },
+      "gainedStrictComparedWithDefault": 34,
+      "lostStrictComparedWithDefault": 35,
+      "sourceErrors": 0
+    }
+  },
+  "sourceSHA256": {
+    "backend/cmd/analysisbench/main.go": "3ddf447c3a4dd1ef88c44e36842716536b8a2988dffdc26c55214f86d8d3f790",
+    "backend/cmd/analysisbench/tempo_bounds.go": "61cb5e7647bc12cd25d8c098d1675af46e54edee98569a7f0a93120cb81c71c3",
+    "backend/internal/analysis/tempo/interval_consistency.go": "163cebca6ba0211958a34e711fbc750619c3d86c1a73b286d0a01cec0cb3a4d1",
+    "backend/internal/analysis/tempo/multifeature.go": "333ddb34c7441e1823753f232361e83ecbde35392da8dea3ae02e0c1e951b02f",
+    "backend/internal/analysis/tempo/phase_support.go": "18b33f408fed3a10a236c2008d567fdc52aa57d71b1f958edf9514600cbfeadf",
+    "backend/internal/analysis/tempo/service.go": "08709fc72008c32019038f15df765449b0ae04a8d456c5568e28515da11bca57",
+    "backend/internal/analysis/tempo/tempo.go": "f46a1733862fe219f8ef91b384d63da1bc16b2f3823afc84bcee891fefa5d4b4"
+  },
+  "inputHashesVerifiedAfterAnalysis": 487,
+  "reservedRecordingsUnanalyzed": 179,
+  "decision": "Neither candidate promoted. Phase-support passes synthetic regressions but has 86/308 strict matches and 94/308 half/double errors. Production defaults remain unchanged.",
+  "limitations": [
+    "All 308 tuning recordings remain in the denominator; no held-out evaluation performed.",
+    "The control and initial experiment ran concurrently; timing is not comparative performance evidence.",
+    "Uploader separation and byte uniqueness do not establish recording or near-duplicate independence.",
+    "Phase support assumes approximately static tempo and does not measure meter or downbeats.",
+    "Explicit CLI bounds are now recorded in configuration; earlier temporary-helper range diagnostics are not the reproduction method for these runs."
+  ]
+}

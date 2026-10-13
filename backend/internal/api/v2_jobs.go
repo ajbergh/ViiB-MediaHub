@@ -291,7 +291,7 @@ func (a *API) runClaimedJob(job db.Job) {
 			_ = a.db.FailJob(id, "genre_stats_failed", err.Error())
 			return
 		}
-		_ = a.db.CompleteJob(id, map[string]string{"status": "refreshed"}, "Genre statistics refreshed")
+		_, _ = a.completeCancelableJob(id, map[string]string{"status": "refreshed"}, "Genre statistics refreshed")
 	default:
 		_ = a.db.FailJob(id, "unsupported_job_type", "Unsupported job type")
 	}
@@ -320,8 +320,10 @@ func (a *API) runFullScanJob(id string) {
 		_ = a.db.CancelJob(id, "Cancellation completed after the current scan operation")
 		return
 	}
-	_ = a.db.CompleteJob(id, result, fmt.Sprintf("Scan complete: %d new, %d updated, %d removed", result.NewSongs, result.UpdatedSongs, result.RemovedSongs))
-	a.queueAutoAnalysis("a full scan")
+	completed, err := a.completeCancelableJob(id, result, fmt.Sprintf("Scan complete: %d new, %d updated, %d removed", result.NewSongs, result.UpdatedSongs, result.RemovedSongs))
+	if err == nil && completed {
+		a.queueAutoAnalysis("a full scan")
+	}
 }
 
 func (a *API) runQuickScanJob(id string) {
@@ -350,13 +352,15 @@ func (a *API) runQuickScanJob(id string) {
 		_ = a.db.CancelJob(id, "Cancellation completed after the current quick-scan batch")
 		return
 	}
-	_ = a.db.CompleteJob(id, map[string]any{"detection": quick, "result": result}, fmt.Sprintf("Quick scan complete: %d changes", len(quick.ChangedFiles)))
-	a.queueAutoAnalysis("a quick scan")
+	completed, completeErr := a.completeCancelableJob(id, map[string]any{"detection": quick, "result": result}, fmt.Sprintf("Quick scan complete: %d changes", len(quick.ChangedFiles)))
+	if completeErr == nil && completed {
+		a.queueAutoAnalysis("a quick scan")
+	}
 }
 
 func (a *API) jobCancellationRequested(id string) bool {
 	job, err := a.db.GetJob(id)
-	return err == nil && job.Status == db.JobStatusCanceling
+	return err == nil && (job.Status == db.JobStatusCanceling || job.Status == db.JobStatusCanceled)
 }
 
 func (a *API) jobEventsV2(w http.ResponseWriter, r *http.Request) {

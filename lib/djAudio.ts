@@ -2588,7 +2588,9 @@ export class DJAudioEngine {
     const beatGrid = latestDeck.beatGrid;
     let start = source.getPosition();
     let end = start + beats * (60 / bpm);
-    if (state.djMixer.quantize && beatGrid?.length) {
+    // Unreviewed timing remains advisory; keep a playhead-relative tempo loop
+    // until the DJ explicitly reviews and locks a manual grid.
+    if (state.djMixer.quantize && canSyncBeatGrid(latestDeck) && beatGrid) {
       const offset = latestDeck.beatGridOffset || 0;
       let nearest = 0;
       for (let index = 1; index < beatGrid.length; index++) {

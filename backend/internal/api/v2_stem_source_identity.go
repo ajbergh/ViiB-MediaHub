@@ -28,11 +28,23 @@ func stemSourceMatchesContext(ctx context.Context, song *db.Song, manifest stems
 	if fullHash == "" {
 		fullHash, err = stemSourceHashes.SHA256Context(ctx, song.FilePath)
 	}
+	return stemSourceMatchesFullHash(ctx, song, manifest, fullHash, err, false)
+}
+
+func stemSourceMatchesFreshContext(ctx context.Context, song *db.Song, manifest stems.Manifest) (bool, error) {
+	fullHash, err := stemSourceHashes.SHA256FreshContext(ctx, song.FilePath)
+	return stemSourceMatchesFullHash(ctx, song, manifest, fullHash, err, true)
+}
+
+func stemSourceMatchesFullHash(ctx context.Context, song *db.Song, manifest stems.Manifest, fullHash string, err error, forceFreshAudio bool) (bool, error) {
 	if err == nil && strings.EqualFold(fullHash, manifest.Source.SHA256) {
 		return true, nil
 	}
 	if ctx.Err() != nil {
 		return false, ctx.Err()
+	}
+	if forceFreshAudio {
+		return stemAudioIdentityMatchesFreshContext(ctx, song, manifest)
 	}
 	return stemAudioIdentityMatchesContext(ctx, song, manifest)
 }
@@ -47,6 +59,17 @@ func stemAudioIdentityMatchesContext(ctx context.Context, song *db.Song, manifes
 		return false, nil
 	}
 	pcmHash, err := stemSourceAudioHashes.SHA256(ctx, decoderRegistry(), analysis.ResolvedSource{Name: filepath.Base(song.FilePath), Path: song.FilePath}, manifest.Audio.SampleRate, manifest.Audio.Channels)
+	if err != nil {
+		return false, err
+	}
+	return strings.EqualFold(pcmHash, manifest.Source.AudioSHA256), nil
+}
+
+func stemAudioIdentityMatchesFreshContext(ctx context.Context, song *db.Song, manifest stems.Manifest) (bool, error) {
+	if manifest.Source.AudioSHA256 == "" {
+		return false, nil
+	}
+	pcmHash, err := stemSourceAudioHashes.SHA256Fresh(ctx, decoderRegistry(), analysis.ResolvedSource{Name: filepath.Base(song.FilePath), Path: song.FilePath}, manifest.Audio.SampleRate, manifest.Audio.Channels)
 	if err != nil {
 		return false, err
 	}

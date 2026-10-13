@@ -1,5 +1,7 @@
 # Spotify WebPlayer Authentication and Audio Analysis Implementation Plan
 
+> Scope update — 2026-10-12: This records delivered provider/auth engineering and remaining parity limits. Further local scanning/DSP improvements and accuracy qualification are deferred. Use the current branch handoff for merge scope, rather than treating every historical planning gate as a merge requirement. See [current branch scope](SPOTIFY_BRANCH_REMAINING_WORK.md) and [future local-analysis work](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
+
 **Updated:** 2026-10-04
 
 **Branch:** spotify/webplayer-auth-analysis-provider

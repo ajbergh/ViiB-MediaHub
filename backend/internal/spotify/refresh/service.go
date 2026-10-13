@@ -74,7 +74,6 @@ type Service struct {
 	now        func() time.Time
 	root       context.Context
 	cancel     context.CancelFunc
-	gate       chan struct{}
 	flights    map[key]*flight
 	closed     bool
 	generation uint64
@@ -104,7 +103,7 @@ func New(store Store, provider Provider, opts Options) (*Service, error) {
 	}
 	root, cancel := context.WithCancel(context.Background())
 	return &Service{store: store, provider: provider, opts: opts, now: now, root: root, cancel: cancel,
-		gate: providerGate, flights: make(map[key]*flight), generation: 1, state: "ready"}, nil
+		flights: make(map[key]*flight), generation: 1, state: "ready"}, nil
 }
 func (s *Service) Status() Status {
 	s.mu.Lock()
@@ -174,7 +173,11 @@ func (s *Service) Refresh(ctx context.Context, id, endpoint string) (Result, err
 		s.mu.Unlock()
 		return Result{}, &analysis.Error{Code: analysis.TemporarilyUnavailable, RetryAfter: time.Second}
 	}
-	workCtx, cancel := context.WithTimeout(s.root, 20*time.Second)
+	workRoot := s.root
+	if background, _ := ctx.Value(backgroundKey{}).(bool); background {
+		workRoot = BackgroundContext(workRoot)
+	}
+	workCtx, cancel := context.WithTimeout(workRoot, 20*time.Second)
 	f := &flight{done: make(chan struct{}), cancel: cancel, waiters: 1}
 	s.flights[k] = f
 	generation := s.generation
@@ -214,14 +217,12 @@ func (s *Service) run(ctx context.Context, k key, f *flight, generation uint64) 
 	s.mu.Unlock()
 }
 func (s *Service) execute(ctx context.Context, k key, generation uint64) (Result, error) {
-	// Acquire the sole provider slot before checking cooldown; requests already
-	// queued when another request returns 429 must also observe its delay.
-	select {
-	case s.gate <- struct{}{}:
-	case <-ctx.Done():
-		return Result{}, ctx.Err()
+	// Admission precedes cooldown checks so queued work observes a prior 429.
+	release, err := AcquireProviderSlot(ctx)
+	if err != nil {
+		return Result{}, err
 	}
-	defer func() { <-s.gate }()
+	defer release()
 	s.mu.Lock()
 	if s.closed || s.generation != generation || ctx.Err() != nil {
 		s.mu.Unlock()

@@ -248,6 +248,10 @@ func CompareSpotifyReference(manifest CorpusManifest, results ResultSet, snapsho
 		track.ExpectedBPM = entry.BPM
 		track.AcceptedMetricBPM = nil
 		track.ExpectedUnknown = false
+		// This projection compares provider facts independently of human labels.
+		// A human key/tempo refusal must not constrain the provider snapshot.
+		track.ExpectedBPMUnknown = false
+		track.ExpectedKeyUnknown = false
 		track.ExpectedKey = ""
 		if hasKey {
 			mode := "major"

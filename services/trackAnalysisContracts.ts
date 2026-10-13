@@ -5,12 +5,69 @@ import type { DJHotCue } from './api';
 // Resolved server-side analysis for DJ display and timing. `bpm` deliberately
 // excludes legacy AI estimates, and `syncAllowed` is true only for manual or
 // audio-measured tempo. Spotify scalar tempo is displayable but supplies no beat phase.
+export interface SpotifyScalarField {
+  key: string;
+  metric: string;
+  units: string;
+  value: number | { tonic: number; mode: number; modeConfidence?: number };
+  confidence?: number;
+  endpoint: 'audio_features' | 'audio_analysis';
+  schemaVersion: number;
+  adapterRevision: string;
+  retrievedAt: string;
+  expiresAt: string;
+  stale: boolean;
+  durableImport?: boolean;
+}
+
+/** Source-bound candidates; stale provider evidence is inspection-only here. */
+export interface EffectiveScalarCandidate extends Omit<SpotifyScalarField, 'endpoint'> {
+  endpoint: 'audio_features' | 'audio_analysis' | '';
+  source: 'manual' | 'local' | 'spotify_private' | 'spotify_download_import';
+  sourceFingerprint: string;
+  locked?: boolean;
+}
+
+export interface EffectiveScalar {
+  key: string;
+  state: 'available' | 'unknown';
+  selected?: EffectiveScalarCandidate;
+  lastGood?: EffectiveScalarCandidate;
+}
+
 export interface TrackAnalysisFeature {
+  effectiveFields?: EffectiveScalar[];
+  providerScores?: Record<string, { value: number; stale: boolean; retrievedAt: string; expiresAt: string; endpoint: 'audio_features' | 'audio_analysis' }>;
+  providerScoresUnverified?: boolean;
+  providerScalars?: {
+    readOnly?: boolean;
+    unverified?: boolean;
+    provenance?: 'spotify_private_cache' | 'spotify_download_import' | 'spotify_mixed_private_and_download_import';
+    durableImportStatus?: { state: 'available' | 'not_available' | 'oversized'; checkedAt: string };
+    recordingId: string;
+    sourceFingerprint: string;
+    fields: SpotifyScalarField[];
+    attempts: Array<{
+      key: string;
+      endpoint: 'audio_features' | 'audio_analysis';
+      state: 'available' | 'not_returned' | 'invalid_field';
+      reason?: string;
+      checkedAt: string;
+      adapterRevision: string;
+      durableImport?: boolean;
+    }>;
+    selected: SpotifyScalarField[];
+    selectionPolicy: 'fresh_then_newest_v1';
+  };
   songId: string;
   status: 'pending' | 'running' | 'complete' | 'partial' | 'failed' | 'unsupported';
   analyzedAt?: number;
   bpm?: number;
   bpmConfidence?: number;
+  measuredBpm?: number;
+  measuredBpmConfidence?: number;
+  measuredKeyConfidence?: number;
+  localAlgorithmVersion?: string;
   bpmAltCandidate?: number;
   tempoStability?: number;
   tempoKind?: string;
@@ -25,6 +82,8 @@ export interface TrackAnalysisFeature {
   measuredKeyMode?: 'major' | 'minor';
   keyConfidence?: number;
   keySource: 'unknown' | 'manual' | 'measured' | 'spotify';
+  measuredEnergyLevel?: number;
+  energyLevelSource?: string;
   energyLevel?: number;
   energyLevelConfidence?: number;
   energyAlgorithmVersion?: string;
@@ -41,14 +100,17 @@ export interface TrackAnalysisFeature {
 // deck Sync can use measured beat positions without recreating a zero-offset
 // browser grid.
 export interface TrackBeatGrid {
+  sourceFingerprint?: string;
+  resolution?: 'available' | 'unavailable';
+  reason?: string;
   songId: string;
   beats: number[];
   downbeatIndices: number[];
   locked: boolean;
   algorithmVersion: string;
   /** Legacy alias retained for clients that predate explicit provenance. */
-  source?: 'unknown' | 'measured' | 'inferred-from-meter' | 'manual';
-  provenance?: 'unknown' | 'measured' | 'inferred-from-meter' | 'manual';
+  source?: 'unknown' | 'measured' | 'spotify' | 'inferred-from-meter' | 'manual';
+  provenance?: 'unknown' | 'measured' | 'spotify' | 'inferred-from-meter' | 'manual';
 }
 
 export interface TrackBeatGridUpdate {
@@ -196,6 +258,9 @@ export interface TransitionComponent {
 }
 
 export interface TransitionRecommendationFilters {
+  spotifyScoreMetric?: string;
+  minSpotifyScore?: number;
+  maxSpotifyScore?: number;
   minBpm?: number;
   maxBpm?: number;
   minEnergyLevel?: number;
@@ -209,6 +274,8 @@ export interface TransitionRecommendationFilters {
 }
 
 export interface TransitionCandidateFilterEvidence {
+  spotifyScoreMetric?: string;
+  spotifyScore?: { value: number; retrievedAt: string; expiresAt: string; endpoint: string; stale: boolean };
   bpm?: number;
   energyLevel?: number;
   stemsAvailable?: boolean;

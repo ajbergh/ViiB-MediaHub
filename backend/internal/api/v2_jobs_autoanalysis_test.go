@@ -3,6 +3,7 @@
 package api
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
@@ -124,5 +125,54 @@ func TestIsEnabledSettingAcceptsCommonSpellings(t *testing.T) {
 		if isEnabledSetting(value) {
 			t.Errorf("isEnabledSetting(%q) = true, want false", value)
 		}
+	}
+}
+
+func TestQueueAutoAnalysisAddsOneFollowupBehindRunningRun(t *testing.T) {
+	database, _, _ := analysisCatalog(t, 1)
+	api := &API{db: database, jobSchedulerOn: true}
+	if err := database.CreateJob(db.Job{ID: "active", Type: JobTypeAnalyzeTracks, Status: db.JobStatusRunning, Parameters: autoAnalysisParameters(db.AnalysisSelection{Mode: db.AnalysisSelectionMissing})}); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		api.queueAutoAnalysis("scan during analysis")
+	}
+	queued, err := database.ListJobs(100, db.JobStatusQueued)
+	if err != nil || len(queued) != 1 {
+		t.Fatal(queued, err)
+	}
+	active, err := database.GetJob("active")
+	if err != nil || active.Status != db.JobStatusRunning {
+		t.Fatal(active, err)
+	}
+}
+func TestQueueAutoAnalysisExplicitSelectionDoesNotCoverScan(t *testing.T) {
+	database, _, ids := analysisCatalog(t, 1)
+	api := &API{db: database, jobSchedulerOn: true}
+	if err := database.CreateJob(db.Job{ID: "explicit", Type: JobTypeAnalyzeTracks, Status: db.JobStatusQueued, Parameters: autoAnalysisParameters(db.AnalysisSelection{Mode: db.AnalysisSelectionIDs, SongIDs: ids})}); err != nil {
+		t.Fatal(err)
+	}
+	api.queueAutoAnalysis("scan")
+	jobs, err := database.ListJobs(100, db.JobStatusQueued)
+	if err != nil || len(jobs) != 2 {
+		t.Fatal(jobs, err)
+	}
+}
+
+func TestConcurrentScanTriggersCoalesceFollowup(t *testing.T) {
+	database, _, _ := analysisCatalog(t, 1)
+	api := &API{db: database, jobSchedulerOn: true}
+	if err := database.CreateJob(db.Job{ID: "active", Type: JobTypeAnalyzeTracks, Status: db.JobStatusRunning}); err != nil {
+		t.Fatal(err)
+	}
+	var group sync.WaitGroup
+	for range 8 {
+		group.Add(1)
+		go func() { defer group.Done(); api.queueAutoAnalysis("concurrent scan") }()
+	}
+	group.Wait()
+	jobs, err := database.ListJobs(100, db.JobStatusQueued)
+	if err != nil || len(jobs) != 1 {
+		t.Fatal(jobs, err)
 	}
 }

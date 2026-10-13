@@ -1,0 +1,445 @@
+{
+  "dataset": "https://doi.org/10.5281/zenodo.3371780",
+  "split": "tuning",
+  "tracks": 238,
+  "reservedTracksNotAnalyzed": 119,
+  "runs": [
+    {
+      "name": "default",
+      "resultsSHA256": "d5f210b169cf2e9b9a2a5e9293c9cc1efafde7b4837656489844c60d6927b854",
+      "sourceErrors": 0,
+      "configuration": {
+        "Tempo": {
+          "Range": "auto",
+          "Method": "multifeature-half-bpm",
+          "MinBPM": 90,
+          "MaxBPM": 180,
+          "MinOnsetCrestFactor": 15
+        },
+        "Key": {
+          "MaxChromaFlatness": 0.98,
+          "MaxFrequency": 3500,
+          "Profile": "krumhansl",
+          "Extraction": "hpcp-peaks"
+        },
+        "SkipTempo": false,
+        "SkipKey": false,
+        "GridBPM": null,
+        "ProviderBeatGrid": null,
+        "SkipThreeBand": false
+      },
+      "tempo": {
+        "labeled": 238,
+        "reported": 234,
+        "strictWithinHalfBpm": 47,
+        "acceptedMetricLevelMatch": 47,
+        "halfDoubleErrors": 8,
+        "unknown": 4,
+        "strictAccuracy": 0.19747899159663865,
+        "acceptedMetricLevelAccuracy": 0.19747899159663865,
+        "halfDoubleErrorRate": 0.03361344537815126,
+        "unknownRate": 0.01680672268907563
+      },
+      "key": {
+        "labeled": 238,
+        "reported": 227,
+        "exact": 137,
+        "camelotCompatible": 177,
+        "unknown": 11,
+        "exactAccuracy": 0.5756302521008403,
+        "camelotCompatibleRate": 0.7436974789915967,
+        "unknownRate": 0.046218487394957986
+      },
+      "calibration": {
+        "tempo": {
+          "buckets": [
+            {
+              "label": "low",
+              "minimum": 0,
+              "maximum": 0.3333333333333333,
+              "labeled": 210,
+              "correct": 40,
+              "accuracy": 0.19047619047619047
+            },
+            {
+              "label": "medium",
+              "minimum": 0.3333333333333333,
+              "maximum": 0.6666666666666666,
+              "labeled": 23,
+              "correct": 7,
+              "accuracy": 0.30434782608695654
+            },
+            {
+              "label": "high",
+              "minimum": 0.6666666666666666,
+              "maximum": 1,
+              "labeled": 1,
+              "correct": 0,
+              "accuracy": 0
+            }
+          ],
+          "monotonic": false,
+          "verdict": "confidence decreases between one or more buckets"
+        },
+        "key": {
+          "buckets": [
+            {
+              "label": "low",
+              "minimum": 0,
+              "maximum": 0.3333333333333333,
+              "labeled": 211,
+              "correct": 123,
+              "accuracy": 0.5829383886255924
+            },
+            {
+              "label": "medium",
+              "minimum": 0.3333333333333333,
+              "maximum": 0.6666666666666666,
+              "labeled": 16,
+              "correct": 14,
+              "accuracy": 0.875
+            },
+            {
+              "label": "high",
+              "minimum": 0.6666666666666666,
+              "maximum": 1,
+              "labeled": 0,
+              "correct": 0
+            }
+          ],
+          "monotonic": false,
+          "verdict": "requires observations in all three confidence buckets"
+        }
+      }
+    },
+    {
+      "name": "refined-temperley",
+      "resultsSHA256": "81ba6f92ed7fe24d4721707bdb76ddf668656f0f721e5365505b429c71895d51",
+      "sourceErrors": 0,
+      "configuration": {
+        "Tempo": {
+          "Range": "auto",
+          "Method": "multifeature-refined-half-bpm",
+          "MinBPM": 90,
+          "MaxBPM": 180,
+          "MinOnsetCrestFactor": 15
+        },
+        "Key": {
+          "MaxChromaFlatness": 0.98,
+          "MaxFrequency": 3500,
+          "Profile": "temperley",
+          "Extraction": "hpcp-peaks"
+        },
+        "SkipTempo": false,
+        "SkipKey": false,
+        "GridBPM": null,
+        "ProviderBeatGrid": null,
+        "SkipThreeBand": false
+      },
+      "tempo": {
+        "labeled": 238,
+        "reported": 236,
+        "strictWithinHalfBpm": 80,
+        "acceptedMetricLevelMatch": 80,
+        "halfDoubleErrors": 19,
+        "unknown": 2,
+        "strictAccuracy": 0.33613445378151263,
+        "acceptedMetricLevelAccuracy": 0.33613445378151263,
+        "halfDoubleErrorRate": 0.07983193277310924,
+        "unknownRate": 0.008403361344537815
+      },
+      "key": {
+        "labeled": 238,
+        "reported": 226,
+        "exact": 131,
+        "camelotCompatible": 177,
+        "unknown": 12,
+        "exactAccuracy": 0.5504201680672269,
+        "camelotCompatibleRate": 0.7436974789915967,
+        "unknownRate": 0.05042016806722689
+      },
+      "calibration": {
+        "tempo": {
+          "buckets": [
+            {
+              "label": "low",
+              "minimum": 0,
+              "maximum": 0.3333333333333333,
+              "labeled": 93,
+              "correct": 17,
+              "accuracy": 0.1827956989247312
+            },
+            {
+              "label": "medium",
+              "minimum": 0.3333333333333333,
+              "maximum": 0.6666666666666666,
+              "labeled": 86,
+              "correct": 28,
+              "accuracy": 0.32558139534883723
+            },
+            {
+              "label": "high",
+              "minimum": 0.6666666666666666,
+              "maximum": 1,
+              "labeled": 57,
+              "correct": 35,
+              "accuracy": 0.6140350877192983
+            }
+          ],
+          "monotonic": true,
+          "verdict": "monotonic across all three confidence buckets"
+        },
+        "key": {
+          "buckets": [
+            {
+              "label": "low",
+              "minimum": 0,
+              "maximum": 0.3333333333333333,
+              "labeled": 216,
+              "correct": 121,
+              "accuracy": 0.5601851851851852
+            },
+            {
+              "label": "medium",
+              "minimum": 0.3333333333333333,
+              "maximum": 0.6666666666666666,
+              "labeled": 10,
+              "correct": 10,
+              "accuracy": 1
+            },
+            {
+              "label": "high",
+              "minimum": 0.6666666666666666,
+              "maximum": 1,
+              "labeled": 0,
+              "correct": 0
+            }
+          ],
+          "monotonic": false,
+          "verdict": "requires observations in all three confidence buckets"
+        }
+      }
+    },
+    {
+      "name": "beat-interval-temperley-2000",
+      "resultsSHA256": "cb4c53025b73e6659d1612dc3f3189db1bb876b90ecc9d3c2eeab9d9883f7d71",
+      "sourceErrors": 0,
+      "configuration": {
+        "Tempo": {
+          "Range": "auto",
+          "Method": "beat-interval-consistency",
+          "MinBPM": 90,
+          "MaxBPM": 180,
+          "MinOnsetCrestFactor": 15
+        },
+        "Key": {
+          "MaxChromaFlatness": 0.98,
+          "MaxFrequency": 2000,
+          "Profile": "temperley",
+          "Extraction": "hpcp-peaks"
+        },
+        "SkipTempo": false,
+        "SkipKey": false,
+        "GridBPM": null,
+        "ProviderBeatGrid": null,
+        "SkipThreeBand": false
+      },
+      "tempo": {
+        "labeled": 238,
+        "reported": 238,
+        "strictWithinHalfBpm": 43,
+        "acceptedMetricLevelMatch": 43,
+        "halfDoubleErrors": 10,
+        "unknown": 0,
+        "strictAccuracy": 0.18067226890756302,
+        "acceptedMetricLevelAccuracy": 0.18067226890756302,
+        "halfDoubleErrorRate": 0.04201680672268908,
+        "unknownRate": 0
+      },
+      "key": {
+        "labeled": 238,
+        "reported": 227,
+        "exact": 135,
+        "camelotCompatible": 177,
+        "unknown": 11,
+        "exactAccuracy": 0.5672268907563025,
+        "camelotCompatibleRate": 0.7436974789915967,
+        "unknownRate": 0.046218487394957986
+      },
+      "calibration": {
+        "tempo": {
+          "buckets": [
+            {
+              "label": "low",
+              "minimum": 0,
+              "maximum": 0.3333333333333333,
+              "labeled": 226,
+              "correct": 39,
+              "accuracy": 0.17256637168141592
+            },
+            {
+              "label": "medium",
+              "minimum": 0.3333333333333333,
+              "maximum": 0.6666666666666666,
+              "labeled": 12,
+              "correct": 4,
+              "accuracy": 0.3333333333333333
+            },
+            {
+              "label": "high",
+              "minimum": 0.6666666666666666,
+              "maximum": 1,
+              "labeled": 0,
+              "correct": 0
+            }
+          ],
+          "monotonic": false,
+          "verdict": "requires observations in all three confidence buckets"
+        },
+        "key": {
+          "buckets": [
+            {
+              "label": "low",
+              "minimum": 0,
+              "maximum": 0.3333333333333333,
+              "labeled": 218,
+              "correct": 126,
+              "accuracy": 0.5779816513761468
+            },
+            {
+              "label": "medium",
+              "minimum": 0.3333333333333333,
+              "maximum": 0.6666666666666666,
+              "labeled": 9,
+              "correct": 9,
+              "accuracy": 1
+            },
+            {
+              "label": "high",
+              "minimum": 0.6666666666666666,
+              "maximum": 1,
+              "labeled": 0,
+              "correct": 0
+            }
+          ],
+          "monotonic": false,
+          "verdict": "requires observations in all three confidence buckets"
+        }
+      }
+    },
+    {
+      "name": "autocorrelation-direct",
+      "resultsSHA256": "7f57dd58364a0e9905c023134e6af02bd0edde47aef5237ac7b5b64efc5043e9",
+      "sourceErrors": 0,
+      "configuration": {
+        "Tempo": {
+          "Range": "auto",
+          "Method": "onset-autocorrelation",
+          "MinBPM": 90,
+          "MaxBPM": 180,
+          "MinOnsetCrestFactor": 15
+        },
+        "Key": {
+          "MaxChromaFlatness": 0.98,
+          "MaxFrequency": 2093,
+          "Profile": "krumhansl",
+          "Extraction": "direct-chroma"
+        },
+        "SkipTempo": false,
+        "SkipKey": false,
+        "GridBPM": null,
+        "ProviderBeatGrid": null,
+        "SkipThreeBand": false
+      },
+      "tempo": {
+        "labeled": 238,
+        "reported": 237,
+        "strictWithinHalfBpm": 18,
+        "acceptedMetricLevelMatch": 18,
+        "halfDoubleErrors": 1,
+        "unknown": 1,
+        "strictAccuracy": 0.07563025210084033,
+        "acceptedMetricLevelAccuracy": 0.07563025210084033,
+        "halfDoubleErrorRate": 0.004201680672268907,
+        "unknownRate": 0.004201680672268907
+      },
+      "key": {
+        "labeled": 238,
+        "reported": 223,
+        "exact": 93,
+        "camelotCompatible": 145,
+        "unknown": 15,
+        "exactAccuracy": 0.3907563025210084,
+        "camelotCompatibleRate": 0.6092436974789915,
+        "unknownRate": 0.06302521008403361
+      },
+      "calibration": {
+        "tempo": {
+          "buckets": [
+            {
+              "label": "low",
+              "minimum": 0,
+              "maximum": 0.3333333333333333,
+              "labeled": 232,
+              "correct": 18,
+              "accuracy": 0.07758620689655173
+            },
+            {
+              "label": "medium",
+              "minimum": 0.3333333333333333,
+              "maximum": 0.6666666666666666,
+              "labeled": 5,
+              "correct": 0,
+              "accuracy": 0
+            },
+            {
+              "label": "high",
+              "minimum": 0.6666666666666666,
+              "maximum": 1,
+              "labeled": 0,
+              "correct": 0
+            }
+          ],
+          "monotonic": false,
+          "verdict": "requires observations in all three confidence buckets"
+        },
+        "key": {
+          "buckets": [
+            {
+              "label": "low",
+              "minimum": 0,
+              "maximum": 0.3333333333333333,
+              "labeled": 213,
+              "correct": 86,
+              "accuracy": 0.40375586854460094
+            },
+            {
+              "label": "medium",
+              "minimum": 0.3333333333333333,
+              "maximum": 0.6666666666666666,
+              "labeled": 10,
+              "correct": 7,
+              "accuracy": 0.7
+            },
+            {
+              "label": "high",
+              "minimum": 0.6666666666666666,
+              "maximum": 1,
+              "labeled": 0,
+              "correct": 0
+            }
+          ],
+          "monotonic": false,
+          "verdict": "requires observations in all three confidence buckets"
+        }
+      }
+    }
+  ],
+  "decision": "No candidate promoted. Best strict tempo result remains below the broad accuracy requirement and exceeds the half/double ceiling; alternative key configurations do not improve on default. Keep held-out recordings reserved.",
+  "limitations": [
+    "Tuning diagnostics are not release qualification.",
+    "Candidate runs overlapped in time; do not use their wall times as comparable runtime performance evidence.",
+    "No browser baseline or broad genre qualification.",
+    "Each run pairs independent tempo/key configurations; no cross-dimensional causal interaction is inferred."
+  ]
+}

@@ -46,7 +46,10 @@ func TestExportCommandWritesLoadableSnapshotAndPreservesExistingOutput(t *testin
 	}
 	now := time.Now().UTC()
 	bpm := 120.0
-	observation := spotifyanalysis.Observation{TrackID: id, Source: "spotify_internal", SourceEndpoint: "audio_features", RetrievedAt: now.Add(-time.Minute), BPM: &bpm}
+	observation := spotifyanalysis.Observation{AccountContext: "export-fixture", TrackID: id, Source: "spotify_internal", SourceEndpoint: "audio_features", RetrievedAt: now.Add(-time.Minute), BPM: &bpm}
+	if err := database.ActivateSpotifyMetadataContext("export-fixture"); err != nil {
+		t.Fatal(err)
+	}
 	if err := database.PutExternalAnalysis(observation, "fixture-adapter-v1", now.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}

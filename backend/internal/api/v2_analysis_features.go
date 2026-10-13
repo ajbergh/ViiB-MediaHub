@@ -3,6 +3,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
@@ -20,6 +22,8 @@ import (
 	analysiskey "github.com/ajbergh/viib-mediahub/internal/analysis/key"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/dj"
+	"github.com/ajbergh/viib-mediahub/internal/logger"
+	spotifyauth "github.com/ajbergh/viib-mediahub/internal/spotify/auth"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -27,45 +31,58 @@ import (
 // snapshot for one song. It intentionally omits diagnostic and source-path
 // fields, leaving the library UI with only values it can safely display.
 type TrackAnalysisFeatureResponse struct {
-	BPMAltCandidate        *float64 `json:"bpmAltCandidate,omitempty"`
-	TempoStability         *float64 `json:"tempoStability,omitempty"`
-	TempoKind              *string  `json:"tempoKind,omitempty"`
-	SongID                 string   `json:"songId"`
-	Status                 string   `json:"status"`
-	AnalyzedAt             *int64   `json:"analyzedAt,omitempty"`
-	BPM                    *float64 `json:"bpm,omitempty"`
-	BPMConfidence          *float64 `json:"bpmConfidence,omitempty"`
-	BPMSource              string   `json:"bpmSource"`
-	SyncAllowed            bool     `json:"syncAllowed"`
-	Key                    *string  `json:"key,omitempty"`
-	CamelotKey             *string  `json:"camelotKey,omitempty"`
-	OpenKey                *string  `json:"openKey,omitempty"`
-	KeyConfidence          *float64 `json:"keyConfidence,omitempty"`
-	KeySource              string   `json:"keySource"`
-	KeyTonic               *int     `json:"keyTonic,omitempty"`
-	KeyMode                *string  `json:"keyMode,omitempty"`
-	MeasuredKeyTonic       *int     `json:"measuredKeyTonic,omitempty"`
-	MeasuredKeyMode        *string  `json:"measuredKeyMode,omitempty"`
-	EnergyLevel            *int     `json:"energyLevel,omitempty"`
-	EnergyLevelConfidence  *float64 `json:"energyLevelConfidence,omitempty"`
-	EnergyAlgorithmVersion *string  `json:"energyAlgorithmVersion,omitempty"`
-	StructureAvailable     bool     `json:"structureAvailable"`
-	IntegratedLUFSBS1770   *float64 `json:"integratedLufsBs1770,omitempty"`
-	TruePeakDBTP           *float64 `json:"truePeakDbtp,omitempty"`
-	SourceFingerprint      string   `json:"sourceFingerprint,omitempty"`
+	EffectiveFields          []db.EffectiveScalar              `json:"effectiveFields,omitempty"`
+	ProviderScores           map[string]db.SpotifyScoreSummary `json:"providerScores,omitempty"`
+	ProviderScoresUnverified bool                              `json:"providerScoresUnverified,omitempty"`
+	ProviderScalars          *SongProviderScalars              `json:"providerScalars,omitempty"`
+	MeasuredBPM              *float64                          `json:"measuredBpm,omitempty"`
+	MeasuredBPMConfidence    *float64                          `json:"measuredBpmConfidence,omitempty"`
+	MeasuredKeyConfidence    *float64                          `json:"measuredKeyConfidence,omitempty"`
+	LocalAlgorithmVersion    *string                           `json:"localAlgorithmVersion,omitempty"`
+	BPMAltCandidate          *float64                          `json:"bpmAltCandidate,omitempty"`
+	TempoStability           *float64                          `json:"tempoStability,omitempty"`
+	TempoKind                *string                           `json:"tempoKind,omitempty"`
+	SongID                   string                            `json:"songId"`
+	Status                   string                            `json:"status"`
+	AnalyzedAt               *int64                            `json:"analyzedAt,omitempty"`
+	BPM                      *float64                          `json:"bpm,omitempty"`
+	BPMConfidence            *float64                          `json:"bpmConfidence,omitempty"`
+	BPMSource                string                            `json:"bpmSource"`
+	SyncAllowed              bool                              `json:"syncAllowed"`
+	Key                      *string                           `json:"key,omitempty"`
+	CamelotKey               *string                           `json:"camelotKey,omitempty"`
+	OpenKey                  *string                           `json:"openKey,omitempty"`
+	KeyConfidence            *float64                          `json:"keyConfidence,omitempty"`
+	KeySource                string                            `json:"keySource"`
+	KeyTonic                 *int                              `json:"keyTonic,omitempty"`
+	KeyMode                  *string                           `json:"keyMode,omitempty"`
+	MeasuredKeyTonic         *int                              `json:"measuredKeyTonic,omitempty"`
+	MeasuredKeyMode          *string                           `json:"measuredKeyMode,omitempty"`
+	MeasuredEnergyLevel      *int                              `json:"measuredEnergyLevel,omitempty"`
+	EnergyLevelSource        string                            `json:"energyLevelSource,omitempty"`
+	EnergyLevel              *int                              `json:"energyLevel,omitempty"`
+	EnergyLevelConfidence    *float64                          `json:"energyLevelConfidence,omitempty"`
+	EnergyAlgorithmVersion   *string                           `json:"energyAlgorithmVersion,omitempty"`
+	StructureAvailable       bool                              `json:"structureAvailable"`
+	IntegratedLUFSBS1770     *float64                          `json:"integratedLufsBs1770,omitempty"`
+	TruePeakDBTP             *float64                          `json:"truePeakDbtp,omitempty"`
+	SourceFingerprint        string                            `json:"sourceFingerprint,omitempty"`
 }
 
 // BeatGridResponse is a presentation-safe timing artifact.  Beat times stay
 // in seconds so waveform and deck clients do not need to reproduce codec or
 // tempo interpolation behavior.
 type BeatGridResponse struct {
-	Source           string    `json:"source"`
-	Provenance       string    `json:"provenance"`
-	SongID           string    `json:"songId"`
-	Beats            []float64 `json:"beats"`
-	DownbeatIndices  []int     `json:"downbeatIndices"`
-	Locked           bool      `json:"locked"`
-	AlgorithmVersion string    `json:"algorithmVersion"`
+	SourceFingerprint string    `json:"sourceFingerprint"`
+	Resolution        string    `json:"resolution"`
+	Reason            string    `json:"reason,omitempty"`
+	Source            string    `json:"source"`
+	Provenance        string    `json:"provenance"`
+	SongID            string    `json:"songId"`
+	Beats             []float64 `json:"beats"`
+	DownbeatIndices   []int     `json:"downbeatIndices"`
+	Locked            bool      `json:"locked"`
+	AlgorithmVersion  string    `json:"algorithmVersion"`
 }
 
 // BeatGridUpdate accepts a complete validated replacement from the editor.
@@ -123,13 +140,18 @@ type TransitionRecommendationResponse struct {
 // TransitionCandidateEvidence echoes the resolved measurements used by the
 // optional Mix Next filters. Stem availability means a registered ready set.
 type TransitionCandidateEvidence struct {
-	BPM            *float64 `json:"bpm,omitempty"`
-	EnergyLevel    *int     `json:"energyLevel,omitempty"`
-	StemsAvailable *bool    `json:"stemsAvailable,omitempty"`
-	LastPlayed     *int64   `json:"lastPlayed,omitempty"`
+	SpotifyScore       *db.SpotifyScoreSummary `json:"spotifyScore,omitempty"`
+	SpotifyScoreMetric string                  `json:"spotifyScoreMetric,omitempty"`
+	BPM                *float64                `json:"bpm,omitempty"`
+	EnergyLevel        *int                    `json:"energyLevel,omitempty"`
+	StemsAvailable     *bool                   `json:"stemsAvailable,omitempty"`
+	LastPlayed         *int64                  `json:"lastPlayed,omitempty"`
 }
 
 type TransitionRecommendationFilters struct {
+	SpotifyScoreMetric     string   `json:"spotifyScoreMetric,omitempty"`
+	MinSpotifyScore        *float64 `json:"minSpotifyScore,omitempty"`
+	MaxSpotifyScore        *float64 `json:"maxSpotifyScore,omitempty"`
 	MinBPM                 *float64 `json:"minBpm,omitempty"`
 	MaxBPM                 *float64 `json:"maxBpm,omitempty"`
 	MinEnergyLevel         *int     `json:"minEnergyLevel,omitempty"`
@@ -158,9 +180,9 @@ func (a *API) getTrackAnalysisFeatureV2(w http.ResponseWriter, r *http.Request) 
 		respondError(w, http.StatusBadRequest, "song ID is required")
 		return
 	}
-	analysis, err := a.db.GetTrackAnalysis(songID)
+	analysis, err := a.trackAnalysisOrUnanalyzed(songID)
 	if errors.Is(err, sql.ErrNoRows) {
-		respondError(w, http.StatusNotFound, "analysis not found")
+		respondError(w, http.StatusNotFound, "song not found")
 		return
 	}
 	if err != nil {
@@ -175,12 +197,114 @@ func (a *API) getTrackAnalysisFeatureV2(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	override.Fields, err = a.db.GetTrackMetadataOverrides(songID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "manual metadata unavailable")
+		return
+	}
+
 	currentFingerprints, err := a.currentAnalysisSourceFingerprints([]string{songID})
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, trackAnalysisFeatureResponseWithCurrentSource(analysis, override, currentFingerprints[songID]))
+	fingerprint := currentFingerprints[songID]
+	err = a.withSongProviderScalars(r.Context(), songID, fingerprint, func(providerScalars *SongProviderScalars, providerErr error) {
+		if r.Context().Err() != nil {
+			return
+		}
+		latest, sourceErr := a.currentAnalysisSourceFingerprints([]string{songID})
+		if sourceErr != nil {
+			respondError(w, http.StatusInternalServerError, "source unavailable")
+			return
+		}
+		if latest[songID] != fingerprint {
+			respondError(w, http.StatusPreconditionFailed, "song source changed while reading analysis; reload analysis details")
+			return
+		}
+		if providerErr != nil && !errors.Is(providerErr, spotifyauth.ErrAuthenticationRequired) {
+			if errors.Is(providerErr, context.Canceled) || errors.Is(providerErr, context.DeadlineExceeded) {
+				return
+			}
+			logger.API("Optional Spotify scalar read failed for song %s; returning local/manual analysis: %v", songID, providerErr)
+			providerScalars = nil
+		}
+		response := trackAnalysisFeatureResponseWithCurrentSource(analysis, override, fingerprint)
+		measurement, measurementErr := a.db.GetTrackAnalysisArtifactBounded(songID, features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion, features.MaxBS1770ArtifactBytes)
+		if measurementErr != nil && !errors.Is(measurementErr, sql.ErrNoRows) && !errors.Is(measurementErr, db.ErrTrackAnalysisArtifactTooLarge) {
+			respondError(w, http.StatusInternalServerError, "local loudness unavailable")
+			return
+		}
+		if measurementErr == nil {
+			lufs, truePeak := trackBS1770ListMeasurements(analysis, fingerprint, db.TrackAnalysisArtifactMetadata{
+				SongID: measurement.SongID, Kind: measurement.Kind, FormatVersion: measurement.FormatVersion,
+				AlgorithmVersion: measurement.AlgorithmVersion, Encoding: measurement.Encoding,
+				Provenance: measurement.Provenance, SourceFingerprint: measurement.SourceFingerprint,
+			}, measurement.Data)
+			response.IntegratedLUFSBS1770 = lufs
+			response.TruePeakDBTP = truePeak
+		}
+		response.ProviderScalars = providerScalars
+		var admitted []db.SpotifyScalarField
+		if providerScalars != nil && !providerScalars.Unverified {
+			admitted = providerScalars.Fields
+		}
+		response.EffectiveFields = db.ResolveAnalysisScalarFields(analysis, override, fingerprint, admitted)
+		applyEffectiveScalarCompatibilityFields(&response, response.EffectiveFields)
+		a.respondCurrentTrackAnalysisFeature(w, songID, fingerprint, response)
+	})
+	if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		respondError(w, http.StatusInternalServerError, "metadata unavailable")
+	}
+}
+
+// respondCurrentTrackAnalysisFeature fences the final publication point too:
+// source-bound local artifacts may be read after the provider callback's
+// earlier check, and the file can be replaced during that read.
+func (a *API) respondCurrentTrackAnalysisFeature(w http.ResponseWriter, songID, expectedFingerprint string, response TrackAnalysisFeatureResponse) {
+	// Detail and edit responses report the same source-qualified readiness as
+	// library rows. Check payload size in SQLite before materializing the BLOB.
+	response.StructureAvailable = false
+	artifact, artifactErr := a.db.GetTrackAnalysisArtifactBounded(songID, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion, features.MaxStructureStatusArtifactBytes)
+	if artifactErr != nil && !errors.Is(artifactErr, sql.ErrNoRows) && !errors.Is(artifactErr, db.ErrTrackAnalysisArtifactTooLarge) {
+		respondError(w, http.StatusInternalServerError, "local structure unavailable")
+		return
+	}
+	if artifactErr == nil {
+		analysis, err := a.db.GetTrackAnalysis(songID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			respondError(w, http.StatusInternalServerError, "local structure unavailable")
+			return
+		}
+		if err == nil {
+			response.StructureAvailable = trackStructureAvailable(analysis, expectedFingerprint, db.TrackAnalysisArtifactMetadata{
+				SongID: artifact.SongID, Kind: artifact.Kind, FormatVersion: artifact.FormatVersion,
+				AlgorithmVersion: artifact.AlgorithmVersion, Encoding: artifact.Encoding,
+				Provenance: artifact.Provenance, SourceFingerprint: artifact.SourceFingerprint,
+			}, artifact.SourceFingerprint, artifact.Data)
+		}
+	}
+	current, err := a.analysisSourceMatchesCurrent(songID, expectedFingerprint)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "source unavailable")
+		return
+	}
+	if !current {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while reading analysis; reload analysis details")
+		return
+	}
+	if response.SourceFingerprint != "" {
+		w.Header().Set("ETag", strconv.Quote(response.SourceFingerprint))
+	}
+	respondJSON(w, response)
+}
+
+func (a *API) analysisSourceMatchesCurrent(songID, expectedFingerprint string) (bool, error) {
+	latest, err := a.currentAnalysisSourceFingerprints([]string{songID})
+	if err != nil {
+		return false, err
+	}
+	return latest[songID] == expectedFingerprint, nil
 }
 
 func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request) {
@@ -194,6 +318,18 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	manualFields, err := a.db.ListTrackMetadataOverrides()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "manual metadata unavailable")
+		return
+	}
+	for song, fields := range manualFields {
+		override := overrides[song]
+		override.SongID = song
+		override.Fields = fields
+		overrides[song] = override
+	}
+
 	structureMetadata, err := a.db.ListTrackAnalysisArtifactMetadata(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
@@ -247,7 +383,7 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 			end = len(candidateIDs)
 		}
 		chunk := candidateIDs[start:end]
-		if err := a.db.VisitTrackAnalysisArtifactPayloads(chunk, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion,
+		if err := a.db.VisitTrackAnalysisArtifactPayloadsBounded(chunk, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion, features.MaxStructureStatusArtifactBytes,
 			func(songID, payloadFingerprint string, data []byte) error {
 				analysis, exists := analysisBySongID[songID]
 				metadata, hasMetadata := metadataBySongID[songID]
@@ -269,7 +405,7 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 			end = len(loudnessCandidateIDs)
 		}
 		chunk := loudnessCandidateIDs[start:end]
-		if err := a.db.VisitTrackAnalysisArtifactPayloads(chunk, features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion,
+		if err := a.db.VisitTrackAnalysisArtifactPayloadsBounded(chunk, features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion, features.MaxBS1770ArtifactBytes,
 			func(songID, payloadFingerprint string, data []byte) error {
 				analysis, exists := analysisBySongID[songID]
 				metadata, hasMetadata := loudnessMetadataBySongID[songID]
@@ -289,19 +425,80 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
-	response := make([]TrackAnalysisFeatureResponse, 0, len(analyses))
-	for _, analysis := range analyses {
-		feature := trackAnalysisFeatureResponseWithCurrentSource(analysis, overrides[analysis.SongID], currentFingerprints[analysis.SongID])
-		feature.StructureAvailable = readyStructureBySongID[analysis.SongID]
-		if value, exists := lufsBySongID[analysis.SongID]; exists {
-			feature.IntegratedLUFSBS1770 = &value
+	var providerFields map[string][]db.SpotifyScalarField
+	scoresUnverified := false
+	a.spotifyAuthMu.Lock()
+	scoreRuntime := a.spotifyAuth
+	a.spotifyAuthMu.Unlock()
+	publish := func() error {
+		// Source reads and durable-file verification can span replacement. Re-resolve
+		// once as a batch before applying any captured observations to library rows.
+		latestFingerprints, sourceErr := a.currentAnalysisSourceFingerprints(allAnalysisIDs)
+		if sourceErr != nil {
+			respondError(w, http.StatusInternalServerError, "source unavailable")
+			return nil
 		}
-		if value, exists := truePeakBySongID[analysis.SongID]; exists {
-			feature.TruePeakDBTP = &value
+		for song, fp := range currentFingerprints {
+			if latestFingerprints[song] != fp {
+				delete(providerFields, song)
+				delete(lufsBySongID, song)
+				delete(truePeakBySongID, song)
+				readyStructureBySongID[song] = false
+			}
 		}
-		response = append(response, feature)
+		currentFingerprints = latestFingerprints
+		providerFields, err = a.db.RevalidateSpotifyScalarCandidateBatch(currentFingerprints, providerFields)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "metadata unavailable")
+			return nil
+		}
+		scoreSummaries := db.SpotifyScoreSummariesFromFields(providerFields)
+		response := make([]TrackAnalysisFeatureResponse, 0, len(analyses))
+		for _, analysis := range analyses {
+			feature := trackAnalysisFeatureResponseWithCurrentSource(analysis, overrides[analysis.SongID], currentFingerprints[analysis.SongID])
+			feature.EffectiveFields = db.ResolveAnalysisScalarFields(analysis, overrides[analysis.SongID], currentFingerprints[analysis.SongID], providerFields[analysis.SongID])
+			applyEffectiveScalarCompatibilityFields(&feature, feature.EffectiveFields)
+			feature.ProviderScores = scoreSummaries[analysis.SongID]
+			feature.ProviderScoresUnverified = scoresUnverified && len(feature.ProviderScores) > 0
+			feature.StructureAvailable = readyStructureBySongID[analysis.SongID]
+			if value, exists := lufsBySongID[analysis.SongID]; exists {
+				feature.IntegratedLUFSBS1770 = &value
+			}
+			if value, exists := truePeakBySongID[analysis.SongID]; exists {
+				feature.TruePeakDBTP = &value
+			}
+			response = append(response, feature)
+		}
+		respondJSON(w, response)
+		return nil
 	}
-	respondJSON(w, response)
+	if scoreRuntime != nil {
+		scoreCtx, cancel := scoreRuntime.requestContext(r.Context())
+		err := scoreRuntime.withMetadataRead(scoreCtx, func(fence db.SpotifyMetadataReadFence) error {
+			var err error
+			providerFields, err = a.db.GetSpotifyScalarCandidateBatchForRuntime(fence, currentFingerprints, time.Now())
+			scoresUnverified = fence.Pending
+			if err != nil {
+				return err
+			}
+			if err := scoreCtx.Err(); err != nil {
+				return err
+			}
+			return publish()
+		})
+		cancel()
+		if err == nil {
+			return
+		}
+		providerFields = nil
+	} else {
+		providerFields, err = a.db.GetDownloadedSpotifyScalarCandidateBatch(currentFingerprints, time.Now())
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "metadata unavailable")
+			return
+		}
+	}
+	_ = publish()
 }
 
 // currentAnalysisSourceFingerprints resolves many current identities without
@@ -344,6 +541,14 @@ func (a *API) currentAnalysisSourceFingerprints(songIDs []string) (map[string]st
 }
 
 func currentEnergyArtifactMatchesSource(analysis db.TrackAnalysis, currentFingerprint string, artifact db.TrackAnalysisArtifact) bool {
+	return currentEnergyArtifactMetadataMatchesSource(analysis, currentFingerprint, db.TrackAnalysisArtifactMetadata{
+		SongID: artifact.SongID, Kind: artifact.Kind, FormatVersion: artifact.FormatVersion,
+		AlgorithmVersion: artifact.AlgorithmVersion, Encoding: artifact.Encoding,
+		Provenance: artifact.Provenance, SourceFingerprint: artifact.SourceFingerprint,
+	})
+}
+
+func currentEnergyArtifactMetadataMatchesSource(analysis db.TrackAnalysis, currentFingerprint string, artifact db.TrackAnalysisArtifactMetadata) bool {
 	return trackStructureSourceEligible(analysis) && currentFingerprint != "" && currentFingerprint == analysis.SourceFingerprint &&
 		artifact.SongID == analysis.SongID && artifact.SourceFingerprint != "" && artifact.SourceFingerprint == analysis.SourceFingerprint &&
 		artifact.Kind == features.ArtifactKind && artifact.FormatVersion == features.FormatVersion && artifact.AlgorithmVersion == features.AlgorithmVersion &&
@@ -429,11 +634,164 @@ func trackBS1770ListMeasurements(analysis db.TrackAnalysis, currentFingerprint s
 }
 
 func trackAnalysisFeatureResponseWithCurrentSource(analysis db.TrackAnalysis, override db.TrackAnalysisOverride, currentFingerprint string) TrackAnalysisFeatureResponse {
-	return trackAnalysisFeatureResponseResolved(analysis, override, db.ResolveEffectiveBPMForSource(db.EffectiveBPMInputs{Override: &override, Analysis: &analysis}, currentFingerprint))
+	response := trackAnalysisFeatureResponseResolved(analysis, override, db.ResolveEffectiveBPMForSource(db.EffectiveBPMInputs{Override: &override, Analysis: &analysis}, currentFingerprint), db.ResolveEffectiveKeyForSource(db.EffectiveKeyInputs{Override: &override, Analysis: &analysis}, currentFingerprint))
+	response.SourceFingerprint = currentFingerprint
+	if currentFingerprint == "" || currentFingerprint != analysis.SourceFingerprint {
+		response.MeasuredBPM = nil
+		response.MeasuredBPMConfidence = nil
+		response.MeasuredKeyTonic = nil
+		response.MeasuredKeyMode = nil
+		response.MeasuredKeyConfidence = nil
+		response.LocalAlgorithmVersion = nil
+		response.EnergyLevel = nil
+		response.EnergyLevelConfidence = nil
+		response.EnergyAlgorithmVersion = nil
+	}
+	// Resolve the measured alternative independently of manual precedence.
+	measured := db.ResolveEffectiveScalar("local_energy_level", currentFingerprint, db.AnalysisScalarCandidates(analysis, db.TrackAnalysisOverride{}, currentFingerprint))
+	if measured.Selected != nil {
+		var level int
+		if json.Unmarshal(measured.Selected.Value, &level) == nil {
+			response.EnergyLevel = &level
+			response.EnergyLevelConfidence = measured.Selected.Confidence
+			version := measured.Selected.AdapterRevision
+			response.EnergyAlgorithmVersion = &version
+		}
+	}
+	response.MeasuredEnergyLevel = response.EnergyLevel
+	if response.EnergyLevel != nil {
+		response.EnergyLevelSource = "local"
+	}
+	// The compatibility value drives library filters and Mix Next. Resolve only
+	// the local 1â€“10 metric; Spotify's native energy score is a different field.
+	energy := db.ResolveEffectiveScalar("local_energy_level", currentFingerprint, db.AnalysisScalarCandidates(analysis, override, currentFingerprint))
+	if energy.Selected != nil {
+		var level int
+		if json.Unmarshal(energy.Selected.Value, &level) == nil {
+			response.EnergyLevel = &level
+			response.EnergyLevelSource = energy.Selected.Source
+			response.EnergyLevelConfidence = energy.Selected.Confidence
+			if energy.Selected.Source == "manual" {
+				response.EnergyAlgorithmVersion = nil
+			} else {
+				version := energy.Selected.AdapterRevision
+				response.EnergyAlgorithmVersion = &version
+			}
+		}
+	}
+	return response
 }
 
-func trackAnalysisFeatureResponseResolved(analysis db.TrackAnalysis, override db.TrackAnalysisOverride, effectiveBPM db.EffectiveBPM) TrackAnalysisFeatureResponse {
-	effectiveKey := db.ResolveEffectiveKey(db.EffectiveKeyInputs{Override: &override, Analysis: &analysis})
+func (a *API) trackAnalysisFeatureResponseWithProviderCandidates(ctx context.Context, songID string, analysis db.TrackAnalysis, override db.TrackAnalysisOverride, fingerprint string) (TrackAnalysisFeatureResponse, error) {
+	manualFields, err := a.db.GetTrackMetadataOverrides(songID)
+	if err != nil {
+		return TrackAnalysisFeatureResponse{}, err
+	}
+	override.Fields = manualFields
+	providerScalars, err := a.songProviderScalarsContext(ctx, songID, fingerprint)
+	if err != nil && !errors.Is(err, spotifyauth.ErrAuthenticationRequired) {
+		if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return TrackAnalysisFeatureResponse{}, err
+		}
+		logger.API("Optional Spotify scalar read failed for song %s; returning local/manual analysis: %v", songID, err)
+		providerScalars = nil
+	}
+	if err := ctx.Err(); err != nil {
+		return TrackAnalysisFeatureResponse{}, err
+	}
+	var admitted []db.SpotifyScalarField
+	if providerScalars != nil && !providerScalars.Unverified {
+		admitted = providerScalars.Fields
+	}
+	response := trackAnalysisFeatureResponseWithCurrentSource(analysis, override, fingerprint)
+	response.EffectiveFields = db.ResolveAnalysisScalarFields(analysis, override, fingerprint, admitted)
+	applyEffectiveScalarCompatibilityFields(&response, response.EffectiveFields)
+	return response, nil
+}
+
+func applyEffectiveScalarCompatibilityFields(response *TrackAnalysisFeatureResponse, effective []db.EffectiveScalar) {
+	if response == nil {
+		return
+	}
+	for _, field := range effective {
+		switch field.Key {
+		case "tempo_bpm":
+			response.BPM = nil
+			response.BPMConfidence = nil
+			response.BPMSource = db.EffectiveBPMUnknown
+			response.SyncAllowed = false
+			response.BPMAltCandidate = nil
+			response.TempoStability = nil
+			response.TempoKind = nil
+		case "key_mode":
+			response.Key = nil
+			response.CamelotKey = nil
+			response.OpenKey = nil
+			response.KeyTonic = nil
+			response.KeyMode = nil
+			response.KeyConfidence = nil
+			response.KeySource = db.EffectiveKeyUnknown
+		default:
+			continue
+		}
+		if field.Selected == nil {
+			continue
+		}
+		selected := field.Selected
+		switch field.Key {
+		case "tempo_bpm":
+			var value float64
+			if json.Unmarshal(selected.Value, &value) != nil {
+				continue
+			}
+			response.BPM = &value
+			response.BPMConfidence = selected.Confidence
+			response.BPMSource = compatibilityScalarSource(selected.Source)
+			response.SyncAllowed = selected.Source == "manual" || selected.Source == "local"
+			if selected.Source != "local" {
+				response.BPMAltCandidate = nil
+				response.TempoStability = nil
+				response.TempoKind = nil
+			}
+		case "key_mode":
+			var value struct {
+				Tonic int `json:"tonic"`
+				Mode  int `json:"mode"`
+			}
+			if json.Unmarshal(selected.Value, &value) != nil || value.Tonic < 0 || value.Tonic > 11 || (value.Mode != 0 && value.Mode != 1) {
+				continue
+			}
+			mode := "minor"
+			if value.Mode == 1 {
+				mode = "major"
+			}
+			response.KeyTonic = &value.Tonic
+			response.KeyMode = &mode
+			response.KeyConfidence = selected.Confidence
+			response.KeySource = compatibilityScalarSource(selected.Source)
+			keyName := analysiskey.FormatKey(value.Tonic, mode)
+			camelot := analysiskey.Camelot(value.Tonic, mode)
+			openKey := analysiskey.OpenKey(value.Tonic, mode)
+			response.Key = &keyName
+			response.CamelotKey = &camelot
+			response.OpenKey = &openKey
+		}
+	}
+}
+
+func compatibilityScalarSource(source string) string {
+	switch source {
+	case "manual":
+		return db.EffectiveBPMManual
+	case "local":
+		return db.EffectiveBPMMeasured
+	case "spotify_private", "spotify_download_import":
+		return db.EffectiveBPMSpotify
+	default:
+		return db.EffectiveBPMUnknown
+	}
+}
+func trackAnalysisFeatureResponseResolved(analysis db.TrackAnalysis, override db.TrackAnalysisOverride, effectiveBPM db.EffectiveBPM, effectiveKey db.EffectiveKey) TrackAnalysisFeatureResponse {
 	response := TrackAnalysisFeatureResponse{
 		SongID:      analysis.SongID,
 		Status:      analysis.Status,
@@ -445,16 +803,6 @@ func trackAnalysisFeatureResponseResolved(analysis db.TrackAnalysis, override db
 		KeyTonic:    effectiveKey.Tonic,
 		KeyMode:     effectiveKey.Mode,
 	}
-	// Scores from a running row may refer to an older source fingerprint. Only
-	// expose a settled score whose own algorithm provenance is present.
-	switch analysis.Status {
-	case db.TrackAnalysisComplete, db.TrackAnalysisPartial, db.TrackAnalysisFailed:
-		if analysis.EnergyLevel != nil && analysis.EnergyLevelConfidence != nil && analysis.EnergyAlgorithmVersion != nil && *analysis.EnergyAlgorithmVersion == features.EnergyLevelAlgorithmVersion {
-			response.EnergyLevel = analysis.EnergyLevel
-			response.EnergyLevelConfidence = analysis.EnergyLevelConfidence
-			response.EnergyAlgorithmVersion = analysis.EnergyAlgorithmVersion
-		}
-	}
 	if effectiveBPM.Source == db.EffectiveBPMMeasured {
 		response.BPMConfidence = analysis.BPMConfidence
 		response.BPMAltCandidate = analysis.BPMAltCandidate
@@ -464,10 +812,22 @@ func trackAnalysisFeatureResponseResolved(analysis db.TrackAnalysis, override db
 	if effectiveKey.Source == db.EffectiveKeyMeasured {
 		response.KeyConfidence = analysis.KeyConfidence
 	}
-	measuredKey := db.ResolveEffectiveKey(db.EffectiveKeyInputs{Analysis: &analysis})
-	if measuredKey.Tonic != nil && measuredKey.Mode != nil {
-		response.MeasuredKeyTonic = measuredKey.Tonic
-		response.MeasuredKeyMode = measuredKey.Mode
+	if local := db.CurrentLocalScalars(&analysis); local != nil {
+		response.MeasuredBPM = local.BPM
+		response.MeasuredBPMConfidence = local.BPMConfidence
+		response.MeasuredKeyTonic = local.KeyTonic
+		response.MeasuredKeyMode = local.KeyMode
+		response.MeasuredKeyConfidence = local.KeyConfidence
+		response.LocalAlgorithmVersion = &local.AlgorithmVersion
+		if effectiveBPM.Source == db.EffectiveBPMMeasured {
+			response.BPMConfidence = local.BPMConfidence
+			response.BPMAltCandidate = local.BPMAltCandidate
+			response.TempoStability = local.TempoStability
+			response.TempoKind = local.TempoKind
+		}
+		if effectiveKey.Source == db.EffectiveKeyMeasured {
+			response.KeyConfidence = local.KeyConfidence
+		}
 	}
 	if effectiveKey.Tonic != nil && effectiveKey.Mode != nil {
 		keyName := analysiskey.FormatKey(*effectiveKey.Tonic, *effectiveKey.Mode)
@@ -518,12 +878,46 @@ func (a *API) getTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	response := trackAnalysisFeatureResponseWithCurrentSource(trackAnalysis, override, currentFingerprints[songID])
-	response.SourceFingerprint = currentFingerprints[songID]
-	if response.SourceFingerprint != "" {
-		w.Header().Set("ETag", strconv.Quote(response.SourceFingerprint))
+	manualFields, err := a.db.GetTrackMetadataOverrides(songID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "manual metadata unavailable")
+		return
 	}
-	respondJSON(w, response)
+	override.Fields = manualFields
+	fingerprint := currentFingerprints[songID]
+	err = a.withSongProviderScalars(r.Context(), songID, fingerprint, func(providerScalars *SongProviderScalars, providerErr error) {
+		if r.Context().Err() != nil {
+			return
+		}
+		latest, sourceErr := a.currentAnalysisSourceFingerprints([]string{songID})
+		if sourceErr != nil {
+			respondError(w, http.StatusInternalServerError, "source unavailable")
+			return
+		}
+		if latest[songID] != fingerprint {
+			respondError(w, http.StatusPreconditionFailed, "song source changed while reading analysis; reload analysis details")
+			return
+		}
+		if providerErr != nil && !errors.Is(providerErr, spotifyauth.ErrAuthenticationRequired) {
+			if errors.Is(providerErr, context.Canceled) || errors.Is(providerErr, context.DeadlineExceeded) {
+				return
+			}
+			logger.API("Optional Spotify scalar read failed for song %s; returning local/manual analysis: %v", songID, providerErr)
+			providerScalars = nil
+		}
+		var admitted []db.SpotifyScalarField
+		if providerScalars != nil && !providerScalars.Unverified {
+			admitted = providerScalars.Fields
+		}
+		response := trackAnalysisFeatureResponseWithCurrentSource(trackAnalysis, override, fingerprint)
+		response.ProviderScalars = providerScalars
+		response.EffectiveFields = db.ResolveAnalysisScalarFields(trackAnalysis, override, fingerprint, admitted)
+		applyEffectiveScalarCompatibilityFields(&response, response.EffectiveFields)
+		a.respondCurrentTrackAnalysisFeature(w, songID, fingerprint, response)
+	})
+	if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		respondError(w, http.StatusInternalServerError, "metadata unavailable")
+	}
 }
 
 func (a *API) putTrackBPMV2(w http.ResponseWriter, r *http.Request) {
@@ -552,7 +946,7 @@ func (a *API) putTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	currentFingerprint, err := a.requireCurrentBPMSource(w, r, songID)
+	currentFingerprint, err := a.requireCurrentAnalysisSource(w, r, songID)
 	if err != nil {
 		return
 	}
@@ -562,11 +956,11 @@ func (a *API) putTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !updated {
-		respondError(w, http.StatusPreconditionFailed, "song source changed while saving BPM; reload BPM details before editing")
+		respondError(w, http.StatusPreconditionFailed, "song source changed while saving BPM; reload analysis details before editing")
 		return
 	}
-	if err := a.revalidateBPMSourceAfterWrite(songID, currentFingerprint); err != nil {
-		respondError(w, http.StatusPreconditionFailed, "song source changed while saving BPM; reload BPM details before editing")
+	if err := a.revalidateAnalysisSourceAfterWrite(songID, currentFingerprint); err != nil {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while saving BPM; reload analysis details before editing")
 		return
 	}
 	override, err := a.db.GetTrackAnalysisOverride(songID)
@@ -574,10 +968,13 @@ func (a *API) putTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	response := trackAnalysisFeatureResponseWithCurrentSource(trackAnalysis, override, currentFingerprint)
+	response, err := a.trackAnalysisFeatureResponseWithProviderCandidates(r.Context(), songID, trackAnalysis, override, currentFingerprint)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "metadata unavailable")
+		return
+	}
 	response.SourceFingerprint = currentFingerprint
-	w.Header().Set("ETag", strconv.Quote(currentFingerprint))
-	respondJSON(w, response)
+	a.respondCurrentTrackAnalysisFeature(w, songID, currentFingerprint, response)
 }
 
 func (a *API) resetTrackBPMV2(w http.ResponseWriter, r *http.Request) {
@@ -595,7 +992,7 @@ func (a *API) resetTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	currentFingerprint, err := a.requireCurrentBPMSource(w, r, songID)
+	currentFingerprint, err := a.requireCurrentAnalysisSource(w, r, songID)
 	if err != nil {
 		return
 	}
@@ -605,11 +1002,11 @@ func (a *API) resetTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !reset {
-		respondError(w, http.StatusPreconditionFailed, "song source changed while resetting BPM; reload BPM details before editing")
+		respondError(w, http.StatusPreconditionFailed, "song source changed while resetting BPM; reload analysis details before editing")
 		return
 	}
-	if err := a.revalidateBPMSourceAfterWrite(songID, currentFingerprint); err != nil {
-		respondError(w, http.StatusPreconditionFailed, "song source changed while resetting BPM; reload BPM details before editing")
+	if err := a.revalidateAnalysisSourceAfterWrite(songID, currentFingerprint); err != nil {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while resetting BPM; reload analysis details before editing")
 		return
 	}
 	override, err := a.db.GetTrackAnalysisOverride(songID)
@@ -619,13 +1016,16 @@ func (a *API) resetTrackBPMV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	response := trackAnalysisFeatureResponseWithCurrentSource(trackAnalysis, override, currentFingerprint)
+	response, err := a.trackAnalysisFeatureResponseWithProviderCandidates(r.Context(), songID, trackAnalysis, override, currentFingerprint)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "metadata unavailable")
+		return
+	}
 	response.SourceFingerprint = currentFingerprint
-	w.Header().Set("ETag", strconv.Quote(currentFingerprint))
-	respondJSON(w, response)
+	a.respondCurrentTrackAnalysisFeature(w, songID, currentFingerprint, response)
 }
 
-func (a *API) requireCurrentBPMSource(w http.ResponseWriter, r *http.Request, songID string) (string, error) {
+func (a *API) requireCurrentAnalysisSource(w http.ResponseWriter, r *http.Request, songID string) (string, error) {
 	expected := strings.TrimSpace(r.Header.Get("If-Match"))
 	if expected == "" {
 		respondError(w, http.StatusPreconditionRequired, "current source fingerprint is required")
@@ -644,13 +1044,13 @@ func (a *API) requireCurrentBPMSource(w http.ResponseWriter, r *http.Request, so
 		}
 	}
 	if actual == "" || strconv.Quote(actual) != expected {
-		respondError(w, http.StatusPreconditionFailed, "song source changed or is unavailable; reload BPM details before editing")
+		respondError(w, http.StatusPreconditionFailed, "song source changed or is unavailable; reload analysis details before editing")
 		return "", errors.New("source fingerprint precondition failed")
 	}
 	return actual, nil
 }
 
-func (a *API) revalidateBPMSourceAfterWrite(songID, expected string) error {
+func (a *API) revalidateAnalysisSourceAfterWrite(songID, expected string) error {
 	current, err := a.currentAnalysisSourceFingerprints([]string{songID})
 	if err != nil {
 		return err
@@ -662,7 +1062,7 @@ func (a *API) revalidateBPMSourceAfterWrite(songID, expected string) error {
 		}
 	}
 	if actual == "" || actual != expected {
-		return errors.New("source changed during BPM write")
+		return errors.New("source changed during analysis write")
 	}
 	return nil
 }
@@ -704,35 +1104,44 @@ func (a *API) putTrackKeyV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "key tonic must be 0 through 11 and mode must be major or minor")
 		return
 	}
-	analysis, err := a.db.GetTrackAnalysis(songID)
+	analysis, err := a.trackAnalysisOrUnanalyzed(songID)
 	if errors.Is(err, sql.ErrNoRows) {
-		respondError(w, http.StatusNotFound, "analysis not found")
+		respondError(w, http.StatusNotFound, "song not found")
 		return
 	}
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	fingerprint, err := a.requireCurrentAnalysisSource(w, r, songID)
+	if err != nil {
+		return
+	}
+	saved, err := a.db.SetTrackAnalysisKeyOverrideIfSourceCurrent(songID, *update.Tonic, update.Mode, fingerprint)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !saved {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while saving key; reload analysis details")
+		return
+	}
+	if err := a.revalidateAnalysisSourceAfterWrite(songID, fingerprint); err != nil {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while saving key; reload analysis details")
 		return
 	}
 	override, err := a.db.GetTrackAnalysisOverride(songID)
-	if errors.Is(err, sql.ErrNoRows) {
-		override = db.TrackAnalysisOverride{SongID: songID}
-	} else if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	override.KeyTonic = update.Tonic
-	override.KeyMode = &update.Mode
-	override.KeyLocked = true
-	if err := a.db.UpsertTrackAnalysisOverride(override); err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	currentFingerprints, err := a.currentAnalysisSourceFingerprints([]string{songID})
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, trackAnalysisFeatureResponseWithCurrentSource(analysis, override, currentFingerprints[songID]))
+	response, err := a.trackAnalysisFeatureResponseWithProviderCandidates(r.Context(), songID, analysis, override, fingerprint)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "metadata unavailable")
+		return
+	}
+	response.SourceFingerprint = fingerprint
+	a.respondCurrentTrackAnalysisFeature(w, songID, fingerprint, response)
 }
 
 func (a *API) resetTrackKeyV2(w http.ResponseWriter, r *http.Request) {
@@ -741,163 +1150,142 @@ func (a *API) resetTrackKeyV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "song ID is required")
 		return
 	}
-	analysis, err := a.db.GetTrackAnalysis(songID)
+	analysis, err := a.trackAnalysisOrUnanalyzed(songID)
 	if errors.Is(err, sql.ErrNoRows) {
-		respondError(w, http.StatusNotFound, "analysis not found")
+		respondError(w, http.StatusNotFound, "song not found")
 		return
 	}
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	fingerprint, err := a.requireCurrentAnalysisSource(w, r, songID)
+	if err != nil {
+		return
+	}
+	reset, err := a.db.ResetTrackAnalysisKeyOverrideIfSourceCurrent(songID, fingerprint)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !reset {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while resetting key; reload analysis details")
+		return
+	}
+	if err := a.revalidateAnalysisSourceAfterWrite(songID, fingerprint); err != nil {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while resetting key; reload analysis details")
 		return
 	}
 	override, err := a.db.GetTrackAnalysisOverride(songID)
-	if errors.Is(err, sql.ErrNoRows) {
-		override = db.TrackAnalysisOverride{SongID: songID}
-	} else if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	override.KeyTonic = nil
-	override.KeyMode = nil
-	override.KeyLocked = false
-	if err := a.db.UpsertTrackAnalysisOverride(override); err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	currentFingerprints, err := a.currentAnalysisSourceFingerprints([]string{songID})
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	respondJSON(w, trackAnalysisFeatureResponseWithCurrentSource(analysis, override, currentFingerprints[songID]))
+	response, err := a.trackAnalysisFeatureResponseWithProviderCandidates(r.Context(), songID, analysis, override, fingerprint)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "metadata unavailable")
+		return
+	}
+	response.SourceFingerprint = fingerprint
+	a.respondCurrentTrackAnalysisFeature(w, songID, fingerprint, response)
 }
 
 func (a *API) getBeatGridV2(w http.ResponseWriter, r *http.Request) {
-	songID := chi.URLParam(r, "songID")
-	artifact, err := a.db.GetTrackAnalysisArtifact(songID, beatgrid.ArtifactKind, beatgrid.FormatVersion, beatgrid.AlgorithmVersion)
-	if errors.Is(err, sql.ErrNoRows) {
-		respondError(w, http.StatusNotFound, "beatgrid not found")
+	song := chi.URLParam(r, "songID")
+	override, err := a.db.GetTrackAnalysisOverride(song)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		respondError(w, 500, err.Error())
 		return
 	}
+	fingerprints, err := a.currentAnalysisSourceFingerprints([]string{song})
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+		respondError(w, 500, err.Error())
 		return
 	}
-	grid, err := beatgrid.Decode(artifact.Data)
+	fp := fingerprints[song]
+	resolved, err := a.db.ResolveBeatGrid(song, fp)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+		respondError(w, 500, err.Error())
 		return
 	}
-	override, err := a.db.GetTrackAnalysisOverride(songID)
-	if errors.Is(err, sql.ErrNoRows) {
-		override = db.TrackAnalysisOverride{}
-	} else if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+	response := BeatGridResponse{SongID: song, Locked: override.BeatgridLocked, AlgorithmVersion: beatgrid.AlgorithmVersion, Source: "unknown", Provenance: "unknown", SourceFingerprint: fp, Resolution: "unavailable", Reason: resolved.Reason, Beats: []float64{}, DownbeatIndices: []int{}}
+	if fp != "" {
+		w.Header().Set("ETag", strconv.Quote(fp))
+	}
+	if resolved.Grid != nil {
+		response.Resolution = "available"
+		response.Reason = ""
+		response.Beats = resolved.Grid.Beats
+		response.DownbeatIndices = resolved.Grid.DownbeatIndices
+		response.Source = string(resolved.Grid.Provenance)
+		response.Provenance = response.Source
+	}
+	current, err := a.analysisSourceMatchesCurrent(song, fp)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "source unavailable")
 		return
 	}
-	provenance := beatgrid.Provenance(artifact.Provenance)
-	if artifact.Provenance == "" {
-		provenance = grid.EffectiveProvenance()
-	} else if !provenance.Valid() {
-		provenance = beatgrid.ProvenanceUnknown
+	if !current {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while reading beatgrid")
+		return
 	}
-	// Preserve the legacy source property while making its value truthful for
-	// existing clients; provenance is the preferred, explicit field.
-	respondJSON(w, BeatGridResponse{Source: string(provenance), Provenance: string(provenance), SongID: songID, Beats: grid.Beats, DownbeatIndices: grid.DownbeatIndices, Locked: override.BeatgridLocked, AlgorithmVersion: artifact.AlgorithmVersion})
+	respondJSON(w, response)
 }
-
 func (a *API) putBeatGridV2(w http.ResponseWriter, r *http.Request) {
-	songID := chi.URLParam(r, "songID")
-	if songID == "" {
-		respondError(w, http.StatusBadRequest, "song ID is required")
+	song := chi.URLParam(r, "songID")
+	if song == "" {
+		respondError(w, 400, "song ID is required")
 		return
 	}
 	var update BeatGridUpdate
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20))
-	if err := decoder.Decode(&update); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid beatgrid update")
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<20)).Decode(&update); err != nil {
+		respondError(w, 400, "invalid beatgrid update")
 		return
 	}
 	if update.BPM != nil && (math.IsNaN(*update.BPM) || math.IsInf(*update.BPM, 0) || *update.BPM <= 0 || *update.BPM > 1000) {
-		respondError(w, http.StatusBadRequest, "invalid beatgrid BPM")
+		respondError(w, 400, "invalid beatgrid BPM")
 		return
 	}
-	grid := beatgrid.Grid{Beats: update.Beats, DownbeatIndices: update.DownbeatIndices}
+	grid := beatgrid.Grid{Beats: update.Beats, DownbeatIndices: update.DownbeatIndices, Provenance: beatgrid.ProvenanceManual}
 	encoded, err := grid.Encode()
+	if err != nil || len(grid.Beats) < 2 {
+		respondError(w, 400, "invalid beatgrid timing")
+		return
+	}
+	fp, err := a.requireCurrentAnalysisSource(w, r, song)
 	if err != nil {
-		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if update.BPM != nil {
-		current, err := a.currentAnalysisSourceFingerprints([]string{songID})
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		currentFingerprint := current[songID]
-		if currentFingerprint == "" {
-			respondError(w, http.StatusConflict, "current source is unavailable; cannot save BPM")
-			return
-		}
-		if err := a.db.RefreshTrackAnalysisSourceRevision(songID, currentFingerprint); err != nil {
-			respondError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		updated, err := a.db.SetTrackAnalysisBPMOverrideIfSourceCurrent(songID, *update.BPM, currentFingerprint)
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if !updated || a.revalidateBPMSourceAfterWrite(songID, currentFingerprint) != nil {
-			respondError(w, http.StatusPreconditionFailed, "song source changed while saving BPM; reload before editing")
-			return
-		}
-	}
-	artifactID := songID + ":" + beatgrid.AlgorithmVersion
-	if err := a.db.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: artifactID, SongID: songID, Kind: beatgrid.ArtifactKind, FormatVersion: beatgrid.FormatVersion, AlgorithmVersion: beatgrid.AlgorithmVersion, Encoding: beatgrid.Encoding, Provenance: string(beatgrid.ProvenanceManual), Data: encoded}); err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+	artifact := db.TrackAnalysisArtifact{ID: song + ":" + beatgrid.AlgorithmVersion, SongID: song, Kind: beatgrid.ArtifactKind, FormatVersion: beatgrid.FormatVersion, AlgorithmVersion: beatgrid.AlgorithmVersion, Encoding: beatgrid.Encoding, Provenance: string(beatgrid.ProvenanceManual), SourceFingerprint: fp, Data: encoded}
+	updated, err := a.db.SaveManualBeatGridIfSourceCurrent(artifact, update.Locked, update.BPM)
+	if err != nil {
+		respondError(w, 500, err.Error())
 		return
 	}
-	override, err := a.db.GetTrackAnalysisOverride(songID)
-	if errors.Is(err, sql.ErrNoRows) {
-		override = db.TrackAnalysisOverride{SongID: songID}
-	} else if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+	if !updated || a.revalidateAnalysisSourceAfterWrite(song, fp) != nil {
+		respondError(w, 412, "song source changed while saving beatgrid; reload before editing")
 		return
 	}
-	override.BeatgridArtifactID = &artifactID
-	override.BeatgridLocked = update.Locked
-	if err := a.db.UpsertTrackAnalysisOverride(override); err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	respondJSON(w, BeatGridResponse{Source: string(beatgrid.ProvenanceManual), Provenance: string(beatgrid.ProvenanceManual), SongID: songID, Beats: grid.Beats, DownbeatIndices: grid.DownbeatIndices, Locked: update.Locked, AlgorithmVersion: beatgrid.AlgorithmVersion})
+	w.Header().Set("ETag", strconv.Quote(fp))
+	respondJSON(w, BeatGridResponse{SongID: song, Source: "manual", Provenance: "manual", Beats: grid.Beats, DownbeatIndices: grid.DownbeatIndices, Locked: update.Locked, AlgorithmVersion: beatgrid.AlgorithmVersion, SourceFingerprint: fp, Resolution: "available"})
 }
 
 // resetBeatGridV2 clears an explicit grid edit and its lock.  A later normal
 // analysis pass can then write a new detected grid; BPM/key overrides are
 // preserved exactly as the user set them.
 func (a *API) resetBeatGridV2(w http.ResponseWriter, r *http.Request) {
-	songID := chi.URLParam(r, "songID")
-	if songID == "" {
-		respondError(w, http.StatusBadRequest, "song ID is required")
+	song := chi.URLParam(r, "songID")
+	fp, err := a.requireCurrentAnalysisSource(w, r, song)
+	if err != nil {
 		return
 	}
-	override, err := a.db.GetTrackAnalysisOverride(songID)
-	if errors.Is(err, sql.ErrNoRows) {
-		override = db.TrackAnalysisOverride{SongID: songID}
-	} else if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+	updated, err := a.db.ResetBeatGridIfSourceCurrent(song, fp)
+	if err != nil {
+		respondError(w, 500, err.Error())
 		return
 	}
-	override.BeatgridArtifactID = nil
-	override.BeatgridLocked = false
-	if err := a.db.UpsertTrackAnalysisOverride(override); err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if err := a.db.DeleteTrackAnalysisArtifact(songID, beatgrid.ArtifactKind, beatgrid.FormatVersion, beatgrid.AlgorithmVersion); err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
+	if !updated || a.revalidateAnalysisSourceAfterWrite(song, fp) != nil {
+		respondError(w, 412, "song source changed while resetting beatgrid; reload before editing")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -914,7 +1302,7 @@ func (a *API) getEnergyFeaturesV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	artifact, err := a.db.GetTrackAnalysisArtifact(songID, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+	artifact, err := a.db.GetTrackAnalysisArtifactBounded(songID, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion, features.MaxStructureStatusArtifactBytes)
 	if errors.Is(err, sql.ErrNoRows) {
 		respondError(w, http.StatusNotFound, "energy features not found")
 		return
@@ -950,8 +1338,8 @@ func (a *API) getEnergyFeaturesV2(w http.ResponseWriter, r *http.Request) {
 		cueSuggestions = []features.CueSuggestion{}
 	}
 	response := EnergyFeaturesResponse{SongID: songID, LoudnessKind: result.LoudnessKind, PeakKind: result.PeakKind, ChannelScope: result.ChannelScope, Standard: result.Standard, IntegratedLUFS: result.IntegratedLUFS, TruePeakDBFS: result.TruePeakDBFS, Energy: energy, Sections: sections, CueSuggestions: cueSuggestions, AlgorithmVersion: artifact.AlgorithmVersion}
-	measurement, measurementErr := a.db.GetTrackAnalysisArtifact(songID, features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion)
-	if measurementErr != nil && !errors.Is(measurementErr, sql.ErrNoRows) {
+	measurement, measurementErr := a.db.GetTrackAnalysisArtifactBounded(songID, features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion, features.MaxBS1770ArtifactBytes)
+	if measurementErr != nil && !errors.Is(measurementErr, sql.ErrNoRows) && !errors.Is(measurementErr, db.ErrTrackAnalysisArtifactTooLarge) {
 		respondError(w, http.StatusInternalServerError, measurementErr.Error())
 		return
 	}
@@ -967,6 +1355,15 @@ func (a *API) getEnergyFeaturesV2(w http.ResponseWriter, r *http.Request) {
 			response.LoudnessStatus = &standards.LoudnessStatus
 			response.TruePeakStatus = &standards.TruePeakStatus
 		}
+	}
+	current, sourceErr := a.analysisSourceMatchesCurrent(songID, currentFingerprints[songID])
+	if sourceErr != nil {
+		respondError(w, http.StatusInternalServerError, "source unavailable")
+		return
+	}
+	if !current {
+		respondError(w, http.StatusPreconditionFailed, "song source changed while reading energy features; reload analysis details")
+		return
 	}
 	respondJSON(w, response)
 }
@@ -990,7 +1387,7 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 		respondError(w, http.StatusBadRequest, "intent must be one of hold, lift, reset, or harmonic; surprise and vocal-safe require evidence not yet available")
 		return
 	}
-	sourceArtifact, err := a.db.GetTrackAnalysisArtifact(songID, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+	sourceArtifact, err := a.db.GetTrackAnalysisArtifactBounded(songID, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion, features.MaxStructureStatusArtifactBytes)
 	if errors.Is(err, sql.ErrNoRows) {
 		respondError(w, http.StatusNotFound, "energy features not found")
 		return
@@ -999,7 +1396,7 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	artifacts, err := a.db.ListTrackAnalysisArtifacts(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+	artifacts, err := a.db.ListTrackAnalysisArtifactMetadata(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1071,6 +1468,22 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 		respondError(w, http.StatusConflict, "energy features are stale or cannot be verified for the current source")
 		return
 	}
+	candidateIDs := make([]string, 0, len(artifacts))
+	artifactMetadataByID := make(map[string]db.TrackAnalysisArtifactMetadata, len(artifacts))
+	for _, artifact := range artifacts {
+		if artifact.SongID == songID || artifact.PayloadBytes <= 0 || artifact.PayloadBytes > features.MaxStructureStatusArtifactBytes {
+			continue
+		}
+		analysisRecord, hasAnalysis := analysisByID[artifact.SongID]
+		if !hasAnalysis || !currentEnergyArtifactMetadataMatchesSource(analysisRecord, currentFingerprints[artifact.SongID], artifact) {
+			continue
+		}
+		if _, exists := songByID[artifact.SongID]; !exists {
+			continue
+		}
+		artifactMetadataByID[artifact.SongID] = artifact
+		candidateIDs = append(candidateIDs, artifact.SongID)
+	}
 	source, err := features.DecodeBounded(sourceArtifact.Data, features.MaxStructureStatusArtifactBytes)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
@@ -1081,91 +1494,233 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	metadataByID := make(map[string]features.TransitionMetadata, len(analysisByID))
-	for id, record := range analysisByID {
-		metadataByID[id] = resolvedTransitionMetadata(record, overrides[id], currentFingerprints[id])
+	manualFields, err := a.db.ListTrackMetadataOverrides()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "manual metadata unavailable")
+		return
+	}
+	for id, fields := range manualFields {
+		override := overrides[id]
+		override.Fields = fields
+		overrides[id] = override
 	}
 	stemStatuses := map[string]string{}
 	if filters.StemsAvailable != nil {
-		candidateIDs := make([]string, 0, len(artifacts))
-		for _, artifact := range artifacts {
-			if artifact.SongID != songID {
-				if _, exists := songByID[artifact.SongID]; exists {
-					candidateIDs = append(candidateIDs, artifact.SongID)
-				}
-			}
-		}
 		stemStatuses, err = a.db.ListStemStatuses(candidateIDs)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 	}
-	recommendations := make([]TransitionRecommendationResponse, 0, len(artifacts))
-	candidatesBeforeFilters := 0
-	for _, artifact := range artifacts {
-		if artifact.SongID == songID {
-			continue
+	assemble := func(providerFields map[string][]db.SpotifyScalarField) (TransitionRecommendationsResponse, int, string) {
+		providerScores := db.SpotifyScoreSummariesFromFields(providerFields)
+		metadataByID := make(map[string]features.TransitionMetadata, len(analysisByID))
+		for id, record := range analysisByID {
+			metadataByID[id] = resolvedTransitionMetadata(record, overrides[id], currentFingerprints[id], providerFields[id])
 		}
-		analysisRecord, hasAnalysis := analysisByID[artifact.SongID]
-		if !hasAnalysis || !currentEnergyArtifactMatchesSource(analysisRecord, currentFingerprints[artifact.SongID], artifact) {
-			continue
+		assemblyStatus := http.StatusOK
+		assemblyMessage := ""
+		recommendations := make([]TransitionRecommendationResponse, 0, len(candidateIDs))
+		candidatesBeforeFilters := 0
+		checkedSourceIDs := []string{songID}
+		var scoreFailure string
+		visitErr := a.db.VisitTrackAnalysisArtifactPayloadsBounded(candidateIDs, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion, features.MaxStructureStatusArtifactBytes,
+			func(candidateID, payloadFingerprint string, data []byte) error {
+				artifact, exists := artifactMetadataByID[candidateID]
+				if !exists || payloadFingerprint == "" || payloadFingerprint != artifact.SourceFingerprint {
+					return nil
+				}
+				candidate, decodeErr := features.DecodeBounded(data, features.MaxStructureStatusArtifactBytes)
+				if decodeErr != nil {
+					return nil // a corrupt candidate must not make the deck unavailable
+				}
+				song, exists := songByID[candidateID]
+				if !exists {
+					return nil
+				}
+				candidatesBeforeFilters++
+				checkedSourceIDs = append(checkedSourceIDs, candidateID)
+				var providerScore *db.SpotifyScoreSummary
+				if filters.SpotifyScoreMetric != "" {
+					summary, exists := providerScores[candidateID]["spotify_"+filters.SpotifyScoreMetric+"_score"]
+					if !exists || !transitionSpotifyScoreMatches(summary, filters, time.Now()) {
+						return nil
+					}
+					providerScore = &summary
+				}
+				transitionMetadata := metadataByID[candidateID]
+				stemAvailable := stemStatuses[candidateID] == "ready"
+				if !transitionCandidateMatchesFilters(transitionMetadata, stemAvailable, filters) || !transitionLibrarySongMatchesFilters(song, playlistSongIDs, filters) {
+					return nil
+				}
+				if filters.NotRecentlyPlayedHours != nil {
+					if _, playedRecently := recentlyPlayedIDs[song.ID]; playedRecently {
+						return nil
+					}
+				}
+				score, scoreErr := features.ScoreTransitionWithMetadata(source, candidate, metadataByID[songID], metadataByID[candidateID], intent)
+				if scoreErr != nil {
+					scoreFailure = scoreErr.Error()
+					return scoreErr
+				}
+				if filters.CamelotCompatible != nil && *filters.CamelotCompatible {
+					if !validTransitionMetadataKey(metadataByID[songID]) || !validTransitionMetadataKey(metadataByID[candidateID]) || !transitionCamelotCompatible(score.Vector.CamelotRelation) {
+						return nil
+					}
+				}
+				evidence := TransitionCandidateEvidence{BPM: transitionMetadata.BPM, EnergyLevel: transitionMetadata.EnergyLevel, SpotifyScore: providerScore, SpotifyScoreMetric: filters.SpotifyScoreMetric}
+				if filters.StemsAvailable != nil {
+					evidence.StemsAvailable = &stemAvailable
+				}
+				if filters.NotRecentlyPlayedHours != nil {
+					lastPlayed := song.LastPlayed
+					evidence.LastPlayed = &lastPlayed
+				}
+				recommendations = append(recommendations, TransitionRecommendationResponse{SongID: song.ID, Title: song.Title, Artist: song.Artist, Score: score.Score, Intent: intent, Vector: score.Vector, Components: score.Components, FilterEvidence: evidence})
+				return nil
+			})
+		if visitErr != nil {
+			if scoreFailure != "" {
+				return TransitionRecommendationsResponse{}, http.StatusBadRequest, scoreFailure
+			}
+			return TransitionRecommendationsResponse{}, http.StatusInternalServerError, visitErr.Error()
 		}
-		candidate, err := features.DecodeBounded(artifact.Data, features.MaxStructureStatusArtifactBytes)
+		sort.Slice(recommendations, func(i, j int) bool {
+			if recommendations[i].Score == recommendations[j].Score {
+				return recommendations[i].SongID < recommendations[j].SongID
+			}
+			return recommendations[i].Score > recommendations[j].Score
+		})
+		candidatesAfterFilters := len(recommendations)
+		limit := parseBoundedInt(r.URL.Query().Get("limit"), 10, 50)
+		if len(recommendations) > limit {
+			recommendations = recommendations[:limit]
+		}
+		stillCurrent, sourceErr := a.transitionRecommendationSourcesCurrent(currentFingerprints, checkedSourceIDs)
+		if sourceErr != nil {
+			return TransitionRecommendationsResponse{}, http.StatusInternalServerError, sourceErr.Error()
+		}
+		if !stillCurrent {
+			return TransitionRecommendationsResponse{}, http.StatusConflict, "a recommendation source changed during assembly; refresh recommendations"
+		}
+		return TransitionRecommendationsResponse{SongID: songID, Intent: intent, AlgorithmVersion: features.TransitionAlgorithmVersion, Filters: filters, CandidatesBeforeFilters: candidatesBeforeFilters, CandidatesAfterFilters: candidatesAfterFilters, Recommendations: recommendations}, assemblyStatus, assemblyMessage
+	}
+
+	a.spotifyAuthMu.Lock()
+	runtime := a.spotifyAuth
+	a.spotifyAuthMu.Unlock()
+	if runtime == nil {
+		providerFields, err := a.db.GetDownloadedSpotifyScalarCandidateBatchAll(currentFingerprints, time.Now())
 		if err != nil {
-			continue // a corrupt candidate must not make the deck unavailable
+			if r.Context().Err() != nil {
+				return
+			}
+			logger.API("Optional Spotify score read failed; returning local transition recommendations: %v", err)
+			providerFields = map[string][]db.SpotifyScalarField{}
 		}
-		song, exists := songByID[artifact.SongID]
-		if !exists {
-			continue
+		response, status, message := assemble(providerFields)
+		if status != http.StatusOK {
+			respondError(w, status, message)
+		} else {
+			respondJSON(w, response)
 		}
-		candidatesBeforeFilters++
-		transitionMetadata := metadataByID[artifact.SongID]
-		stemAvailable := stemStatuses[artifact.SongID] == "ready"
-		if !transitionCandidateMatchesFilters(transitionMetadata, stemAvailable, filters) || !transitionLibrarySongMatchesFilters(song, playlistSongIDs, filters) {
-			continue
-		}
-		if filters.NotRecentlyPlayedHours != nil {
-			if _, playedRecently := recentlyPlayedIDs[song.ID]; playedRecently {
-				continue
+		return
+	}
+	scoreCtx, cancel := runtime.requestContext(r.Context())
+	var response TransitionRecommendationsResponse
+	responseStatus := http.StatusOK
+	responseMessage := ""
+	readErr := runtime.withMetadataRead(scoreCtx, func(fence db.SpotifyMetadataReadFence) error {
+		providerFields := map[string][]db.SpotifyScalarField{}
+		if !fence.Pending {
+			providerFields, err = a.db.GetSpotifyScalarCandidateBatchForRuntimeAll(fence, currentFingerprints, time.Now())
+			if err != nil {
+				return err
 			}
 		}
-		score, scoreErr := features.ScoreTransitionWithMetadata(source, candidate, metadataByID[songID], metadataByID[artifact.SongID], intent)
-		if scoreErr != nil {
-			respondError(w, http.StatusBadRequest, scoreErr.Error())
+		response, responseStatus, responseMessage = assemble(providerFields)
+		// Retirement cancels the captured lifetime before waiting for this read
+		// fence. Reject a response assembled after that cancellation.
+		if err := scoreCtx.Err(); err != nil {
+			return err
+		}
+		// Keep account ownership fenced through serialization so a concurrent
+		// replacement cannot publish this account's score evidence afterward.
+		if responseStatus != http.StatusOK {
+			respondError(w, responseStatus, responseMessage)
+		} else {
+			respondJSON(w, response)
+		}
+		return nil
+	})
+	cancel()
+	if readErr != nil {
+		if r.Context().Err() != nil {
 			return
 		}
-		if filters.CamelotCompatible != nil && *filters.CamelotCompatible {
-			if !validTransitionKey(analysisByID[songID], overrides[songID]) || !validTransitionKey(analysisByID[artifact.SongID], overrides[artifact.SongID]) || !transitionCamelotCompatible(score.Vector.CamelotRelation) {
-				continue
-			}
+		logger.API("Optional Spotify score read/fence failed; returning local transition recommendations: %v", readErr)
+		response, status, message := assemble(nil)
+		if status != http.StatusOK {
+			respondError(w, status, message)
+		} else {
+			respondJSON(w, response)
 		}
-		evidence := TransitionCandidateEvidence{BPM: transitionMetadata.BPM, EnergyLevel: transitionMetadata.EnergyLevel}
-		if filters.StemsAvailable != nil {
-			evidence.StemsAvailable = &stemAvailable
-		}
-		if filters.NotRecentlyPlayedHours != nil {
-			lastPlayed := song.LastPlayed
-			evidence.LastPlayed = &lastPlayed
-		}
-		recommendations = append(recommendations, TransitionRecommendationResponse{SongID: song.ID, Title: song.Title, Artist: song.Artist, Score: score.Score, Intent: intent, Vector: score.Vector, Components: score.Components, FilterEvidence: evidence})
 	}
-	sort.Slice(recommendations, func(i, j int) bool {
-		if recommendations[i].Score == recommendations[j].Score {
-			return recommendations[i].SongID < recommendations[j].SongID
-		}
-		return recommendations[i].Score > recommendations[j].Score
-	})
-	candidatesAfterFilters := len(recommendations)
-	limit := parseBoundedInt(r.URL.Query().Get("limit"), 10, 50)
-	if len(recommendations) > limit {
-		recommendations = recommendations[:limit]
+}
+
+func (a *API) transitionRecommendationSourcesCurrent(expected map[string]string, songIDs []string) (bool, error) {
+	current, err := a.currentAnalysisSourceFingerprints(songIDs)
+	if err != nil {
+		return false, err
 	}
-	respondJSON(w, TransitionRecommendationsResponse{SongID: songID, Intent: intent, AlgorithmVersion: features.TransitionAlgorithmVersion, Filters: filters, CandidatesBeforeFilters: candidatesBeforeFilters, CandidatesAfterFilters: candidatesAfterFilters, Recommendations: recommendations})
+	return transitionRecommendationSourcesMatch(expected, current, songIDs), nil
+}
+
+func transitionRecommendationSourcesMatch(expected, current map[string]string, songIDs []string) bool {
+	for _, songID := range songIDs {
+		if expected[songID] == "" || current[songID] != expected[songID] {
+			return false
+		}
+	}
+	return true
 }
 
 func parseTransitionRecommendationFilters(values url.Values) (TransitionRecommendationFilters, error) {
 	var filters TransitionRecommendationFilters
+	if metric, present, err := singleQueryValue(values, "spotifyScoreMetric"); err != nil {
+		return filters, err
+	} else if present {
+		switch metric {
+		case "energy", "danceability", "acousticness", "instrumentalness", "liveness", "speechiness", "valence":
+			filters.SpotifyScoreMetric = metric
+		default:
+			return filters, errors.New("unsupported Spotify score metric")
+		}
+	}
+	for _, name := range []string{"minSpotifyScore", "maxSpotifyScore"} {
+		value, present, err := singleQueryValue(values, name)
+		if err != nil {
+			return filters, err
+		}
+		if !present {
+			continue
+		}
+		n, err := strconv.ParseFloat(value, 64)
+		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) || n < 0 || n > 1 {
+			return filters, fmt.Errorf("%s must be between 0 and 1", name)
+		}
+		if filters.SpotifyScoreMetric == "" {
+			return filters, errors.New("spotify score range requires spotifyScoreMetric")
+		}
+		if name == "minSpotifyScore" {
+			filters.MinSpotifyScore = &n
+		} else {
+			filters.MaxSpotifyScore = &n
+		}
+	}
+	if filters.MinSpotifyScore != nil && filters.MaxSpotifyScore != nil && *filters.MinSpotifyScore > *filters.MaxSpotifyScore {
+		return filters, errors.New("minimum Spotify score must not exceed maximum")
+	}
 	parseFloat := func(name string) (*float64, error) {
 		value, present, err := singleQueryValue(values, name)
 		if err != nil || !present {
@@ -1344,20 +1899,30 @@ func transitionCamelotCompatible(relation string) bool {
 	}
 }
 
-func validTransitionKey(analysis db.TrackAnalysis, override db.TrackAnalysisOverride) bool {
-	key := db.ResolveEffectiveKey(db.EffectiveKeyInputs{Override: &override, Analysis: &analysis})
+func validTransitionKey(analysis db.TrackAnalysis, override db.TrackAnalysisOverride, currentFingerprint string) bool {
+	key := db.ResolveEffectiveKeyForSource(db.EffectiveKeyInputs{Override: &override, Analysis: &analysis}, currentFingerprint)
 	if key.Tonic == nil || key.Mode == nil || *key.Tonic < 0 || *key.Tonic > 11 {
 		return false
 	}
 	return *key.Mode == analysiskey.ModeMajor || *key.Mode == analysiskey.ModeMinor
 }
 
-func resolvedTransitionMetadata(analysis db.TrackAnalysis, override db.TrackAnalysisOverride, currentFingerprint string) features.TransitionMetadata {
+func validTransitionMetadataKey(metadata features.TransitionMetadata) bool {
+	return metadata.CamelotKey != nil && metadata.KeySource != db.EffectiveBPMUnknown
+}
+
+func resolvedTransitionMetadata(analysis db.TrackAnalysis, override db.TrackAnalysisOverride, currentFingerprint string, providerCandidates ...[]db.SpotifyScalarField) features.TransitionMetadata {
 	resolved := trackAnalysisFeatureResponseWithCurrentSource(analysis, override, currentFingerprint)
+	var provider []db.SpotifyScalarField
+	if len(providerCandidates) > 0 {
+		provider = providerCandidates[0]
+	}
+	effective := db.ResolveAnalysisScalarFields(analysis, override, currentFingerprint, provider)
+	applyEffectiveScalarCompatibilityFields(&resolved, effective)
 	return features.TransitionMetadata{
 		BPM: resolved.BPM, BPMSource: resolved.BPMSource, BPMConfidence: resolved.BPMConfidence,
 		CamelotKey: resolved.CamelotKey, KeySource: resolved.KeySource, KeyConfidence: resolved.KeyConfidence,
-		EnergyLevel: resolved.EnergyLevel, EnergyLevelConfidence: resolved.EnergyLevelConfidence,
+		EnergyLevel: resolved.EnergyLevel, EnergyLevelSource: resolved.EnergyLevelSource, EnergyLevelConfidence: resolved.EnergyLevelConfidence,
 	}
 }
 
@@ -1379,25 +1944,47 @@ func (a *API) measuredEnergyForDJ() (map[string]float64, error) {
 	if err != nil {
 		return nil, err
 	}
-	artifacts, err := a.db.ListTrackAnalysisArtifacts(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+	artifacts, err := a.db.ListTrackAnalysisArtifactMetadata(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
 	if err != nil {
 		return nil, err
 	}
 	values := make(map[string]float64, len(artifacts))
+	candidateIDs := make([]string, 0, len(artifacts))
 	for _, artifact := range artifacts {
 		analysis, exists := analysisBySongID[artifact.SongID]
-		if !exists || !currentEnergyArtifactMatchesSource(analysis, currentFingerprints[artifact.SongID], artifact) {
+		if !exists || artifact.PayloadBytes <= 0 || artifact.PayloadBytes > features.MaxStructureStatusArtifactBytes ||
+			!currentEnergyArtifactMetadataMatchesSource(analysis, currentFingerprints[artifact.SongID], artifact) {
 			continue
 		}
-		result, err := features.Decode(artifact.Data)
-		if err != nil || len(result.Energy) == 0 {
-			continue
-		}
-		var total float64
-		for _, point := range result.Energy {
-			total += point.Value
-		}
-		values[artifact.SongID] = total / float64(len(result.Energy))
+		candidateIDs = append(candidateIDs, artifact.SongID)
+	}
+	err = a.db.VisitTrackAnalysisArtifactPayloadsBounded(candidateIDs, features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion, features.MaxStructureStatusArtifactBytes,
+		func(songID, payloadFingerprint string, data []byte) error {
+			analysis, exists := analysisBySongID[songID]
+			if !exists || payloadFingerprint == "" || payloadFingerprint != analysis.SourceFingerprint || currentFingerprints[songID] != analysis.SourceFingerprint {
+				return nil
+			}
+			result, decodeErr := features.DecodeBounded(data, features.MaxStructureStatusArtifactBytes)
+			if decodeErr != nil || len(result.Energy) == 0 {
+				return nil
+			}
+			var total float64
+			for _, point := range result.Energy {
+				total += point.Value
+			}
+			values[songID] = total / float64(len(result.Energy))
+			return nil
+		})
+	if err != nil {
+		return nil, err
 	}
 	return values, nil
+}
+
+// Optional native score filtering never changes the local transition score or grid.
+func transitionSpotifyScoreMatches(score db.SpotifyScoreSummary, filters TransitionRecommendationFilters, now time.Time) bool {
+	if score.Stale || !now.Before(score.ExpiresAt) || math.IsNaN(score.Value) || math.IsInf(score.Value, 0) || score.Value < 0 || score.Value > 1 {
+		return false
+	}
+	return (filters.MinSpotifyScore == nil || score.Value >= *filters.MinSpotifyScore) && (filters.MaxSpotifyScore == nil || score.Value <= *filters.MaxSpotifyScore)
 }

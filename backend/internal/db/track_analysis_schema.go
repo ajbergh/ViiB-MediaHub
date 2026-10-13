@@ -22,7 +22,16 @@ func (d *DB) EnsureTrackAnalysisSchema() error {
 		return value.(trackAnalysisSchemaResult).err
 	}
 	_, err := d.conn.Exec(`
-		CREATE TABLE IF NOT EXISTS track_analysis (
+ CREATE TABLE IF NOT EXISTS track_metadata_overrides (
+ song_id TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+ field_key TEXT NOT NULL, value_json TEXT NOT NULL, source_fingerprint TEXT NOT NULL,
+ updated_at INTEGER NOT NULL, PRIMARY KEY(song_id,field_key));
+
+		CREATE TABLE IF NOT EXISTS track_waveform_leases (
+ song_id TEXT PRIMARY KEY REFERENCES songs(id) ON DELETE CASCADE,
+ source_fingerprint TEXT NOT NULL, token TEXT NOT NULL, renewed_at INTEGER NOT NULL
+ );
+ CREATE TABLE IF NOT EXISTS track_analysis (
 			song_id TEXT PRIMARY KEY REFERENCES songs(id) ON DELETE CASCADE,
 			status TEXT NOT NULL CHECK(status IN ('pending', 'running', 'complete', 'partial', 'failed', 'unsupported')),
 			analysis_version INTEGER NOT NULL,
@@ -61,7 +70,7 @@ func (d *DB) EnsureTrackAnalysisSchema() error {
 			format_version INTEGER NOT NULL,
 			algorithm_version TEXT NOT NULL,
 			encoding TEXT NOT NULL,
-			provenance TEXT NOT NULL DEFAULT 'unknown' CHECK(provenance IN ('measured', 'inferred-from-meter', 'manual', 'unknown')),
+			provenance TEXT NOT NULL DEFAULT 'unknown' CHECK(provenance IN ('measured', 'spotify', 'inferred-from-meter', 'manual', 'unknown')),
 			source_fingerprint TEXT NOT NULL DEFAULT '',
 			data BLOB NOT NULL,
 			created_at INTEGER NOT NULL,
@@ -89,10 +98,25 @@ func (d *DB) EnsureTrackAnalysisSchema() error {
 		);
 	`)
 	if err == nil {
+		err = ensureTextColumn(d, "track_analysis", "claim_token")
+	}
+	if err == nil {
+		err = ensureTrackCapabilitySchema(d)
+	}
+	if err == nil {
+		err = ensureLocalScalarColumn(d)
+	}
+	if err == nil {
+		err = ensureAnalysisJSONColumn(d, "spotify_bindings_json")
+	}
+	if err == nil {
 		err = ensureTrackAnalysisEnergyColumns(d)
 	}
 	if err == nil {
 		err = ensureTrackAnalysisArtifactProvenanceColumn(d)
+	}
+	if err == nil {
+		err = ensureSpotifyBeatGridArtifactProvenance(d)
 	}
 	if err == nil {
 		err = ensureTrackAnalysisArtifactSourceFingerprintColumn(d)
@@ -101,12 +125,15 @@ func (d *DB) EnsureTrackAnalysisSchema() error {
 		err = ensureTrackAnalysisOverrideBPMSourceFingerprintColumn(d)
 	}
 	if err == nil {
+		err = ensureTrackAnalysisOverrideKeySourceFingerprintColumn(d)
+	}
+	if err == nil {
 		err = ensureSpotifyScalarSources(d)
 	}
-	result := trackAnalysisSchemaResult{err: err}
-	actual, loaded := trackAnalysisSchemas.LoadOrStore(d, result)
-	if loaded {
-		return actual.(trackAnalysisSchemaResult).err
+	// Cache only completed initialization. A transient lock or connection
+	// failure must be retryable on the next metadata/waveform request.
+	if err == nil {
+		trackAnalysisSchemas.Store(d, trackAnalysisSchemaResult{})
 	}
 	return err
 }
@@ -229,6 +256,36 @@ func ensureTrackAnalysisArtifactProvenanceColumn(d *DB) error {
 // ensureTrackAnalysisEnergyColumns upgrades installations created before the
 // Energy Level fields existed. SQLite ALTER TABLE ADD COLUMN is additive and
 // safe to rerun when guarded by PRAGMA table_info.
+// SQLite cannot widen the beat-grid provenance CHECK constraint with ALTER.
+func ensureSpotifyBeatGridArtifactProvenance(d *DB) error {
+	var definition string
+	if err := d.conn.QueryRow("SELECT sql FROM sqlite_master WHERE type='table' AND name='track_analysis_artifacts'").Scan(&definition); err != nil {
+		return err
+	}
+	if strings.Contains(definition, "'spotify'") {
+		return nil
+	}
+	definition = strings.Replace(definition, "'measured',", "'measured', 'spotify',", 1)
+	definition = strings.Replace(definition, "track_analysis_artifacts", "track_analysis_artifacts_spotify_upgrade", 1)
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, statement := range []string{
+		definition,
+		"INSERT INTO track_analysis_artifacts_spotify_upgrade SELECT * FROM track_analysis_artifacts",
+		"DROP TABLE track_analysis_artifacts",
+		"ALTER TABLE track_analysis_artifacts_spotify_upgrade RENAME TO track_analysis_artifacts",
+		"CREATE INDEX idx_track_analysis_artifacts_song ON track_analysis_artifacts(song_id)",
+	} {
+		if _, err := tx.Exec(statement); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func ensureTrackAnalysisEnergyColumns(d *DB) error {
 	rows, err := d.conn.Query(`PRAGMA table_info(track_analysis)`)
 	if err != nil {
@@ -297,4 +354,36 @@ func ensureSpotifyScalarSources(d *DB) error {
 		}
 	}
 	return tx.Commit()
+}
+
+func ensureTrackAnalysisOverrideKeySourceFingerprintColumn(d *DB) error {
+	rows, err := d.conn.Query(`PRAGMA table_info(track_analysis_overrides)`)
+	if err != nil {
+		return err
+	}
+	hasColumn := false
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, typ string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &defaultValue, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "key_source_fingerprint" {
+			hasColumn = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if hasColumn {
+		return nil
+	}
+	_, err = d.conn.Exec(`ALTER TABLE track_analysis_overrides ADD COLUMN key_source_fingerprint TEXT NOT NULL DEFAULT ''`)
+	return err
 }
