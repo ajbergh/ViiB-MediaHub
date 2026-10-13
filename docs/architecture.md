@@ -180,6 +180,17 @@ A source indicator can be displayed when useful, but source-specific copies of S
 
 ## Security boundary
 
+### Loopback HTTP trust boundary
+
+The Go backend listens on loopback (`127.0.0.1`), which means other browser tabs on the same machine can attempt cross-origin or DNS-rebinding requests if not explicitly restricted. `internal/server/server.go` enforces a centralized trust boundary before routing or emitting CORS/SSE headers:
+
+- **Trusted `Host` authorities (`IsTrustedHost`):** `127.0.0.1`, `localhost`, `[::1]`, `wails.localhost` (each with an optional valid port `1..65535`), and `wails` (no port). Any other `Host` value—including DNS-rebinding domains resolving to `127.0.0.1`—is rejected with `403 Forbidden`.
+- **Trusted `Origin` headers (`IsTrustedOrigin`):** `wails://wails`, `http(s)://wails.localhost(:port)`, local dev origins `http://(localhost|127.0.0.1|[::1]):(3000|5173)`, and same-port loopback origins `http(s)://(localhost|127.0.0.1|[::1])` matching the active server port. Any request carrying an untrusted `Origin` (including `Origin: null`) is rejected with `403 Forbidden` and receives no `Access-Control-Allow-Origin` header.
+- **Cross-site fetch defense:** Requests with `Sec-Fetch-Site: cross-site` that do not carry a trusted `Origin` are rejected with `403 Forbidden` on all mutating HTTP methods (`POST`, `PUT`, `PATCH`, `DELETE`) and `/api` routes, while preserving Wails desktop WebView requests where custom-scheme or virtual-host origins send `Origin: wails://wails` or `Origin: http(s)://wails.localhost`.
+- **Centralized CORS and SSE headers:** `cors.Handler` delegates to `IsTrustedOrigin`, and SSE handlers (`/api/library/events`, `/api/library/enrich-*/stream`, `/api/spotify/downloads/events`, `/api/v2/library/events`, `/api/v2/jobs/events`) rely on the router middleware rather than setting `Access-Control-Allow-Origin: *`.
+
+### Plex and provider credential boundary
+
 Sensitive Plex credentials are persisted through the existing encrypted sensitive-settings mechanism.
 
 Security invariants:
