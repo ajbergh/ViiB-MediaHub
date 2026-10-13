@@ -44,6 +44,7 @@ Branch scope and references reviewed on 2026-10-12. Further local scanning/DSP i
 
 | Reference | Purpose and status |
 |---|---|
+| [Product & Engineering Roadmap](ROADMAP.md) | Active overarching phases, priorities, release gates, dependencies and qualified-vs-planned status |
 | [OpenAPI v2](openapi-v2.yaml) | Machine-readable versioned backend API contract |
 | [Stem package v1](VIIB_STEM_PACKAGE_V1.md) | Current `.viibstems` interchange and validation contract |
 | [DJ professional analysis roadmap](DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md) | Delivered analysis engineering and remaining accuracy/calibration/release gates |
