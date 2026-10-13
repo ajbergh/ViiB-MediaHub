@@ -4,7 +4,9 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/ajbergh/viib-mediahub/internal/crypto"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/validation"
@@ -40,6 +42,16 @@ func (a *API) getSetting(w http.ResponseWriter, r *http.Request) {
 	if validation.IsSensitiveSettingKey(key) {
 		value, err := a.db.GetSetting(key)
 		if err != nil {
+			if errors.Is(err, crypto.ErrReauthRequired) {
+				respondJSON(w, map[string]interface{}{
+					"key":            key,
+					"value":          "",
+					"configured":     false,
+					"reauthRequired": true,
+					"message":        "Stored credential could not be decrypted; please re-enter it.",
+				})
+				return
+			}
 			respondError(w, http.StatusInternalServerError, "Failed to get setting")
 			return
 		}

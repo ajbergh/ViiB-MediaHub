@@ -180,7 +180,10 @@ A source indicator can be displayed when useful, but source-specific copies of S
 
 ## Security boundary
 
-Sensitive Plex credentials are persisted through the existing encrypted sensitive-settings mechanism.
+Sensitive credentials (`spotify_webplayer_session`, `spotify_credentials`, `plex_credentials`, `semantic_embedding_api_key`, `gemini_api_key`, `llm_api_key`, `lastfm_api_key`, `lastfm_shared_secret`, `lastfm_session_key`) are persisted through the versioned `enc:v2:` encrypted sensitive-settings mechanism in `internal/crypto`:
+
+- **OS-protected / relocation-safe master key (`enc:v2:`):** On first use in a data directory, ViiB generates a random 256-bit master key stored in `credentials.key` (mode `0600`). On Windows, the master key is protected at rest using Windows DPAPI (`CryptProtectData` bound to the current user profile). On other platforms (or if OS protection is unavailable), the master key is wrapped with AES-256-GCM using a relocation-safe machine/user key that excludes `os.Executable()`, so moving or upgrading the application binary never strands stored credentials.
+- **Automatic `enc:v1:` migration and reauthentication reporting:** Readable plaintext or legacy `enc:v1:` settings are automatically upgraded to `enc:v2:` on database startup and on `GetSetting` reads. If a legacy `enc:v1:` entry cannot be decrypted (for example, the executable was moved prior to upgrading to `enc:v2:`), `GetSetting` returns `crypto.ErrReauthRequired` and API status endpoints surface a clear reauthentication message without failing startup or disclosing ciphertext.
 
 Security invariants:
 
