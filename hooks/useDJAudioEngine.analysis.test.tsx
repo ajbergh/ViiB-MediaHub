@@ -121,5 +121,17 @@ for (const [name,useAudio] of [['full',useDJAudioEngine],['actions',useDJAudioEn
    await mounted(async audio=>{await audio.loadTrack('A',song,{expectedLoadGeneration:0,shouldCommit:()=>mocks.state.djDeckA.track===null});});
    expect(mocks.patch).toHaveBeenCalledTimes(1);expect(mocks.status).toHaveBeenLastCalledWith('A','available');
   });
+  it('marks deck analysisStatus as unsupported and skips beatgrid fetch when feature.status is unsupported without overrides',async()=>{
+   mocks.feature.mockResolvedValueOnce({songId:'song',status:'unsupported',bpmSource:'unknown',keySource:'unknown',syncAllowed:false,sourceFingerprint:'fp'});
+   await mounted(async audio=>{await audio.loadTrack('A',song);});
+   expect(mocks.grid).not.toHaveBeenCalled();
+   expect(mocks.status).toHaveBeenLastCalledWith('A','unsupported');
+  });
+  it('marks deck analysisStatus as available when feature.status is unsupported but a manual or Spotify BPM exists',async()=>{
+   mocks.feature.mockResolvedValueOnce({songId:'song',status:'unsupported',bpm:126,bpmSource:'manual',keySource:'unknown',syncAllowed:true,sourceFingerprint:'fp'});
+   await mounted(async audio=>{await audio.loadTrack('A',song);});
+   expect(mocks.grid).not.toHaveBeenCalled();
+   expect(mocks.status).toHaveBeenLastCalledWith('A','available');
+  });
  });
 }

@@ -103,7 +103,7 @@ export function SongAudioMetadata({ songId }: { songId: string }) {
     {current.error && <p role="status">Audio metadata refresh failed. Showing the previous snapshot. <button type="button" onClick={() => setRevision(value => value + 1)}>Retry audio metadata</button></p>}
     <div className="rounded-lg border border-surface-border p-3">
       {data.status === 'unsupported' && (
-        <p role="status" className="mb-1 text-amber-400">
+        <p role="status" className="mb-1 text-text-secondary">
           Local backend audio analysis (BPM, key, beatgrid, loudness) is not supported for this file format; only manual overrides or retained Spotify observations can supply values.
         </p>
       )}
