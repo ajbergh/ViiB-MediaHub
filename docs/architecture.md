@@ -180,7 +180,21 @@ A source indicator can be displayed when useful, but source-specific copies of S
 
 ## Security boundary
 
-Sensitive Plex credentials are persisted through the existing encrypted sensitive-settings mechanism.
+### Loopback HTTP trust boundary
+
+The Go backend listens on loopback (`127.0.0.1`), which means other browser tabs on the same machine can attempt cross-origin or DNS-rebinding requests if not explicitly restricted. `internal/server/server.go` enforces a centralized trust boundary before routing or emitting CORS/SSE headers:
+
+- **Trusted `Host` authorities (`IsTrustedHost`):** `127.0.0.1`, `localhost`, `[::1]`, `wails.localhost` (each with an optional valid port `1..65535`), and `wails` (no port). Any other `Host` value—including DNS-rebinding domains resolving to `127.0.0.1`—is rejected with `403 Forbidden`.
+- **Trusted `Origin` headers (`IsTrustedOrigin`):** `wails://wails`, `http(s)://wails.localhost(:port)`, local dev origins `http://(localhost|127.0.0.1|[::1]):(3000|5173)`, and same-port loopback origins `http(s)://(localhost|127.0.0.1|[::1])` matching the active server port. Any request carrying an untrusted `Origin` (including `Origin: null`) is rejected with `403 Forbidden` and receives no `Access-Control-Allow-Origin` header.
+- **Cross-site fetch defense:** Requests with `Sec-Fetch-Site: cross-site` that do not carry a trusted `Origin` are rejected with `403 Forbidden` on all mutating HTTP methods (`POST`, `PUT`, `PATCH`, `DELETE`) and `/api` routes, while preserving Wails desktop WebView requests where custom-scheme or virtual-host origins send `Origin: wails://wails` or `Origin: http(s)://wails.localhost`.
+- **Centralized CORS and SSE headers:** `cors.Handler` delegates to `IsTrustedOrigin`, and SSE handlers (`/api/library/events`, `/api/library/enrich-*/stream`, `/api/spotify/downloads/events`, `/api/v2/library/events`, `/api/v2/jobs/events`) rely on the router middleware rather than setting `Access-Control-Allow-Origin: *`.
+
+### Plex and provider credential boundary
+
+Sensitive credentials (`spotify_webplayer_session`, `spotify_credentials`, `plex_credentials`, `semantic_embedding_api_key`, `gemini_api_key`, `llm_api_key`, `lastfm_api_key`, `lastfm_shared_secret`, `lastfm_session_key`) are persisted through the versioned `enc:v2:` encrypted sensitive-settings mechanism in `internal/crypto`:
+
+- **OS-protected / relocation-safe master key (`enc:v2:`):** On first use in a data directory, ViiB generates a random 256-bit master key stored in `credentials.key` (mode `0600`). On Windows, the master key is protected at rest using Windows DPAPI (`CryptProtectData` bound to the current user profile). On other platforms (or if OS protection is unavailable), the master key is wrapped with AES-256-GCM using a relocation-safe machine/user key that excludes `os.Executable()`, so moving or upgrading the application binary never strands stored credentials.
+- **Automatic `enc:v1:` migration and reauthentication reporting:** Readable plaintext or legacy `enc:v1:` settings are automatically upgraded to `enc:v2:` on database startup and on `GetSetting` reads. If a legacy `enc:v1:` entry cannot be decrypted (for example, the executable was moved prior to upgrading to `enc:v2:`), `GetSetting` returns `crypto.ErrReauthRequired` and API status endpoints surface a clear reauthentication message without failing startup or disclosing ciphertext.
 
 Security invariants:
 
