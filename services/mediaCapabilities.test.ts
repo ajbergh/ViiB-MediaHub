@@ -1,6 +1,8 @@
 /** Tests for the canonical frontend media capability matrix and error helpers. */
 
 import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   CANONICAL_MEDIA_CAPABILITIES,
   CAPABILITY_MATRIX_VERSION,
@@ -10,10 +12,25 @@ import {
 } from './mediaCapabilities';
 
 describe('mediaCapabilities', () => {
-  it('defines canonical capabilities for MP3, OGG Vorbis, WAV, FLAC, M4A/AAC, Opus, and WMA', () => {
+  it('defines canonical capabilities for MP3, OGG Vorbis, WAV, FLAC, M4A/AAC, Opus, and WMA and matches backend audio/capabilities.go', () => {
     expect(CANONICAL_MEDIA_CAPABILITIES.version).toBe(CAPABILITY_MATRIX_VERSION);
     const ids = CANONICAL_MEDIA_CAPABILITIES.formats.map(f => f.id);
     expect(ids).toEqual(['mp3', 'ogg_vorbis', 'wav', 'flac', 'm4a_aac', 'opus', 'wma']);
+
+    const goSource = fs.readFileSync(
+      path.resolve(__dirname, '../backend/internal/audio/capabilities.go'),
+      'utf8',
+    );
+    expect(goSource).toContain(`CapabilityMatrixVersion = "${CAPABILITY_MATRIX_VERSION}"`);
+    for (const fmt of CANONICAL_MEDIA_CAPABILITIES.formats) {
+      expect(goSource).toContain(`ID:                     "${fmt.id}"`);
+      for (const ext of fmt.extensions) {
+        expect(goSource).toContain(`"${ext}"`);
+      }
+      if (fmt.backendDecoderId) {
+        expect(goSource).toContain(`BackendDecoderID:       "${fmt.backendDecoderId}"`);
+      }
+    }
   });
 
   it('normalizes extensions from filenames, paths, and bare extensions', () => {
