@@ -8,14 +8,18 @@ FLAC and M4A are accepted by the native library scanner and are included in the 
 
 ## Support matrix
 
-| Area | MP3 | OGG Vorbis | FLAC | M4A/AAC |
-|---|---|---|---|---|
-| Native library scan | Yes | Yes | Yes | Yes |
-| Native metadata extraction | TagLib primary + fallback | TagLib primary + fallback | TagLib primary + fallback | TagLib primary + fallback |
-| Browser-only folder import | Yes | Yes | **No** | **No** |
-| DJ library listing / deck request | No format filter | No format filter | No format filter | No format filter |
-| Backend DJ waveform / track analysis | Yes | Yes | **No** | **No** |
-| Client waveform fallback | Browser decode path | Browser decode path | Browser decode path, runtime-dependent | Browser decode path, runtime-dependent |
+The canonical machine-readable matrix is defined in [`backend/internal/audio/capabilities.go`](../backend/internal/audio/capabilities.go), mirrored in [`services/mediaCapabilities.ts`](../services/mediaCapabilities.ts), and exposed at `GET /api/v2/capabilities/media`.
+
+| Area | MP3 (`.mp3`) | OGG Vorbis (`.ogg`, `.oga`) | WAV (`.wav`, `.wave`) | FLAC (`.flac`) | M4A/AAC (`.m4a`, `.aac`) | Opus (`.opus`) | WMA (`.wma`) |
+|---|---|---|---|---|---|---|---|
+| Native library scan | Supported | Supported | Supported | Supported | Supported | Supported | Supported |
+| Native metadata extraction | TagLib + `dhowden/tag` | TagLib + `dhowden/tag` | TagLib + filename | TagLib + `dhowden/tag` | TagLib + `dhowden/tag` | TagLib + `dhowden/tag` | TagLib + filename |
+| Browser-only folder import | Supported | Supported | **Unsupported** | **Unsupported** (tracked in `P1.2`) | **Unsupported** (tracked in `P1.2`) | **Unsupported** | **Unsupported** |
+| Backend decoder ID | `go-mp3-v0.3.4` | `oggvorbis-v1.0.5` | `wav-pcm16-v1` | None | None | None | None |
+| Backend DJ waveform | Supported | Supported | Supported | **Client fallback (`422`)** | **Client fallback (`422`)** | **Client fallback (`422`)** | **Client fallback (`422`)** |
+| Client waveform fallback | Supported | Runtime-dependent | Supported | Runtime-dependent | Runtime-dependent | Runtime-dependent | Runtime-dependent |
+| Backend track analysis (BPM/key/grid/LUFS) | Supported | Supported | Supported | **Unsupported (`unsupported_codec`)** | **Unsupported (`unsupported_codec`)** | **Unsupported (`unsupported_codec`)** | **Unsupported (`unsupported_codec`)** |
+| Playback (`local` / `plex`) | Supported | Runtime-dependent | Supported | Runtime-dependent | Runtime-dependent | Runtime-dependent | Runtime-dependent |
 
 “OGG” in the backend analysis table means Vorbis: `.opus` is not registered as an OGG/Vorbis decoder. Browser decode support is runtime-dependent and is not guaranteed by the extension/MIME mapping alone.
 

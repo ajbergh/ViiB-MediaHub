@@ -81,6 +81,23 @@ paths:
                 properties:
                   revision: { type: integer, minimum: 0 }
                   retainedChanges: { type: integer, minimum: 0 }
+  /capabilities/media:
+    get:
+      operationId: getMediaCapabilities
+      summary: Return the canonical per-format and per-source media capability matrix
+      responses:
+        '200':
+          description: Canonical media capability matrix
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version, formats]
+                properties:
+                  version: { type: string, example: media-capabilities-v1 }
+                  formats:
+                    type: array
+                    items: { type: object, additionalProperties: true }
   /search:
     get:
       operationId: searchLibrary

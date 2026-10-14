@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ajbergh/viib-mediahub/internal/audio"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/go-chi/chi/v5"
@@ -29,6 +30,7 @@ func (a *API) V2Routes() chi.Router {
 	r.Get("/library/revision", a.getLibraryRevisionV2)
 	r.Get("/library/events", a.libraryRevisionEventsV2)
 	r.Get("/library/stats", a.getLibrarySyncStatsV2)
+	r.Get("/capabilities/media", a.getMediaCapabilitiesV2)
 	r.Get("/search", a.searchLibraryV2)
 	r.Get("/analysis", a.listTrackAnalysisFeaturesV2)
 	r.Get("/analysis/{songID}", a.getTrackAnalysisFeatureV2)
@@ -55,6 +57,10 @@ func (a *API) V2Routes() chi.Router {
 	r.Get("/analysis/{songID}/cues", a.listAnalysisCuesV2)
 	r.Post("/analysis/{songID}/cues/apply", a.applyAnalysisCuesV2)
 	return r
+}
+
+func (a *API) getMediaCapabilitiesV2(w http.ResponseWriter, _ *http.Request) {
+	respondV2JSON(w, http.StatusOK, audio.DefaultCapabilityMatrix())
 }
 
 func parseBoundedInt(raw string, fallback, maximum int) int {

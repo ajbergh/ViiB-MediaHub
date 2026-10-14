@@ -30,6 +30,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ajbergh/viib-mediahub/internal/audio"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/lastfm"
 	"github.com/ajbergh/viib-mediahub/internal/llm"
@@ -38,17 +39,8 @@ import (
 	taglib "go.senan.xyz/taglib"
 )
 
-// Supported audio file extensions
-var supportedExtensions = map[string]bool{
-	".mp3":  true,
-	".flac": true,
-	".m4a":  true,
-	".aac":  true,
-	".ogg":  true,
-	".opus": true,
-	".wav":  true,
-	".wma":  true,
-}
+// Supported audio file extensions derived from the canonical capability matrix.
+var supportedExtensions = audio.ScannerSupportedExtensions()
 
 // Common cover art filenames (case-insensitive matching)
 var coverFilenames = []string{
