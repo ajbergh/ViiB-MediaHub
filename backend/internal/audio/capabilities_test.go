@@ -108,6 +108,59 @@ func buildFLACVorbisCommentFixture(title, artist, album string) []byte {
 	return out.Bytes()
 }
 
+func buildMP4iTunesM4AFixture(title, artist, album string, trackNum, discNum, year int) []byte {
+	box := func(kind string, payload []byte) []byte {
+		var b bytes.Buffer
+		_ = binary.Write(&b, binary.BigEndian, uint32(8+len(payload)))
+		b.WriteString(kind[:4])
+		b.Write(payload)
+		return b.Bytes()
+	}
+	textAtom := func(atomType, value string) []byte {
+		var dataPayload bytes.Buffer
+		_ = binary.Write(&dataPayload, binary.BigEndian, uint32(1)) // UTF-8 text
+		_ = binary.Write(&dataPayload, binary.BigEndian, uint32(0))
+		dataPayload.WriteString(value)
+		return box(atomType, box("data", dataPayload.Bytes()))
+	}
+	pairAtom := func(atomType string, index, total uint16) []byte {
+		var dataPayload bytes.Buffer
+		_ = binary.Write(&dataPayload, binary.BigEndian, uint32(0)) // binary implicit
+		_ = binary.Write(&dataPayload, binary.BigEndian, uint32(0))
+		_ = binary.Write(&dataPayload, binary.BigEndian, uint16(0))
+		_ = binary.Write(&dataPayload, binary.BigEndian, index)
+		_ = binary.Write(&dataPayload, binary.BigEndian, total)
+		_ = binary.Write(&dataPayload, binary.BigEndian, uint16(0))
+		return box(atomType, box("data", dataPayload.Bytes()))
+	}
+
+	var ilstPayload bytes.Buffer
+	ilstPayload.Write(textAtom("\xa9nam", title))
+	ilstPayload.Write(textAtom("\xa9ART", artist))
+	ilstPayload.Write(textAtom("\xa9alb", album))
+	if year > 0 {
+		ilstPayload.Write(textAtom("\xa9day", "2024"))
+	}
+	if trackNum > 0 {
+		ilstPayload.Write(pairAtom("trkn", uint16(trackNum), 12))
+	}
+	if discNum > 0 {
+		ilstPayload.Write(pairAtom("disk", uint16(discNum), 2))
+	}
+
+	metaPayload := append([]byte{0, 0, 0, 0}, box("ilst", ilstPayload.Bytes())...)
+	udta := box("udta", box("meta", metaPayload))
+	moov := box("moov", udta)
+
+	var ftypPayload bytes.Buffer
+	ftypPayload.WriteString("M4A ")
+	_ = binary.Write(&ftypPayload, binary.BigEndian, uint32(0))
+	ftypPayload.WriteString("M4A mp42isom")
+	ftyp := box("ftyp", ftypPayload.Bytes())
+
+	return append(ftyp, moov...)
+}
+
 func TestDefaultCapabilityMatrixCompletenessAndConsistency(t *testing.T) {
 	matrix := DefaultCapabilityMatrix()
 	if matrix.Version != CapabilityMatrixVersion {
@@ -230,7 +283,20 @@ func TestExtractMetadataFixturesAcrossFormats(t *testing.T) {
 		t.Fatalf("unexpected WAV fallback metadata: %+v", wavMeta)
 	}
 
-	// 5. Minimal M4A/Opus/AAC filename fallback fixtures ensure ExtractMetadata
+	// 5. Real MP4/M4A container fixture with iTunes ilst atoms
+	m4aTaggedPath := filepath.Join(dir, "fixture_tagged.m4a")
+	if err := os.WriteFile(m4aTaggedPath, buildMP4iTunesM4AFixture("Test M4A Title", "Test M4A Artist", "Test M4A Album", 5, 2, 2024), 0600); err != nil {
+		t.Fatal(err)
+	}
+	m4aTaggedMeta, err := ExtractMetadata(m4aTaggedPath)
+	if err != nil {
+		t.Fatalf("ExtractMetadata(m4a tagged): %v", err)
+	}
+	if m4aTaggedMeta.Title != "Test M4A Title" || m4aTaggedMeta.Artist != "Test M4A Artist" || m4aTaggedMeta.Album != "Test M4A Album" || m4aTaggedMeta.TrackNumber != 5 || m4aTaggedMeta.DiscNumber != 2 || m4aTaggedMeta.Year != 2024 {
+		t.Fatalf("unexpected M4A iTunes metadata: %+v", m4aTaggedMeta)
+	}
+
+	// 6. Minimal untagged/corrupt container fallback fixtures ensure ExtractMetadata
 	// never panics and produces deterministic IDs and fallback fields.
 	for _, ext := range []string{".m4a", ".aac", ".opus", ".wma"} {
 		p := filepath.Join(dir, "sample"+ext)
