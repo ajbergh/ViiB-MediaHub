@@ -7,6 +7,7 @@ import { libraryIndex } from '../lib/libraryIndex';
 import { Song } from '../types';
 import { libraryOperationsV2 } from '../services/libraryOperationsV2';
 import { libraryService } from '../services/libraryService';
+import api from '../services/api';
 
 vi.mock('../store', () => ({
   useStore: { getState: () => ({}) },
@@ -35,6 +36,24 @@ function createTestLibraryState() {
   state = { ...state, ...slice, backendAvailable: true, isScanning: true };
   return state as unknown as typeof slice;
 }
+
+it('publishes a new song snapshot when liking without mutating existing subscribers', async () => {
+  const state = createTestLibraryState();
+  const first = Object.freeze(songs(2)[0]);
+  const second = songs(2)[1];
+  const previous = [first, second];
+  state.songs = previous;
+  vi.spyOn(api, 'toggleLike').mockResolvedValue({ liked: true } as never);
+  try {
+    await state.toggleLikeSong(first.id);
+    expect(state.likedSongIds.has(first.id)).toBe(true);
+    expect(state.songs).not.toBe(previous);
+    expect(state.songs[0]).not.toBe(first);
+    expect(state.songs[0].liked).toBe(true);
+    expect(first.liked).toBeUndefined();
+    expect(state.songs[1]).toBe(second);
+  } finally { vi.restoreAllMocks(); }
+});
 
 describe('library scan polling', () => {
   afterEach(() => {

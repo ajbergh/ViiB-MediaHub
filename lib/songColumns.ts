@@ -32,22 +32,22 @@ export function loadSongColumns(): SongColumnId[] {
   } catch { /* Invalid or unavailable storage uses the default layout. */ }
   return [...DEFAULT_SONG_COLUMNS];
 }
-const date = (value?: number) => value && Number.isFinite(value) ? new Date(value).toLocaleDateString() : '—';
+const date = (value?: number) => value && Number.isFinite(value) ? new Date(value).toLocaleDateString() : 'â€”';
 export function songColumnValue(id: SongColumnId, song: Song, analysis?: TrackAnalysisFeature): string {
   switch (id) {
-    case 'album': return song.album || '—';
-    case 'artist': return song.artist || '—';
+    case 'album': return song.album || 'â€”';
+    case 'artist': return song.artist || 'â€”';
     case 'plays': return String(song.playCount ?? 0);
     case 'duration': return formatTime(song.duration);
-    case 'bpm': { const bpm = analysis?.bpm ?? song.bpm; return bpm && Number.isFinite(bpm) ? String(Math.round(bpm * 10) / 10) : '—'; }
-    case 'key': return analysis?.key || '—';
-    case 'camelot': return analysis?.camelotKey || '—';
-    case 'genre': return song.genre?.join(', ') || '—';
-    case 'year': return String(song.originalYear || song.year || '—');
-    case 'mood': return song.mood || '—';
-    case 'energy': return analysis?.energyLevel != null ? String(analysis.energyLevel) : song.energy || '—';
-    case 'trackNumber': return String(song.trackNumber || '—');
-    case 'discNumber': return String(song.discNumber || '—');
+    case 'bpm': { const bpm = analysis?.bpm ?? song.bpm; return bpm && Number.isFinite(bpm) ? String(Math.round(bpm * 10) / 10) : 'â€”'; }
+    case 'key': return analysis?.key || 'â€”';
+    case 'camelot': return analysis?.camelotKey || 'â€”';
+    case 'genre': return song.genre?.join(', ') || 'â€”';
+    case 'year': return String(song.originalYear || song.year || 'â€”');
+    case 'mood': return song.mood || 'â€”';
+    case 'energy': return analysis?.energyLevel != null ? String(analysis.energyLevel) : song.energy || 'â€”';
+    case 'trackNumber': return String(song.trackNumber || 'â€”');
+    case 'discNumber': return String(song.discNumber || 'â€”');
     case 'added': return date(song.addedAt);
     case 'lastPlayed': return date(song.lastPlayed);
     case 'source': return song.sourceName || (song.source === 'plex' ? 'Plex' : song.isStreaming ? 'Spotify' : 'Local');

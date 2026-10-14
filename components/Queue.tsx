@@ -30,6 +30,7 @@ interface QueueRowProps {
   isCurrent: boolean;
   isDragging: boolean;
   cover: string | undefined;
+  onDragEnd: () => void;
   onDragStart: (e: React.DragEvent, index: number) => void;
   onDragOver: (e: React.DragEvent, index: number) => void;
   onDrop: (e: React.DragEvent, index: number) => void;
@@ -40,7 +41,7 @@ interface QueueRowProps {
 
 const QueueRow = React.memo<QueueRowProps>(({
   song, index, isCurrent, isDragging, cover,
-  onDragStart, onDragOver, onDrop, onPlay, onRemove, onContextMenu,
+  onDragStart, onDragEnd, onDragOver, onDrop, onPlay, onRemove, onContextMenu,
 }) => {
   const [imgError, setImgError] = useState(false);
 
@@ -55,6 +56,7 @@ const QueueRow = React.memo<QueueRowProps>(({
     <div
       draggable
       onDragStart={(e) => onDragStart(e, index)}
+      onDragEnd={onDragEnd}
       onDragOver={(e) => onDragOver(e, index)}
       onDrop={(e) => onDrop(e, index)}
       onContextMenu={(e) => onContextMenu(e, song, index)}
@@ -133,10 +135,12 @@ export const Queue: React.FC = () => {
 
   const albumCovers = useAlbumCovers();
   const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
+  const draggedIndex = useRef<number | null>(null);
   const [height, setHeight] = useState(520);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
 
   const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
+    draggedIndex.current = index;
     setDraggedItemIndex(index);
     e.dataTransfer.effectAllowed = 'move';
   }, []);
@@ -147,13 +151,16 @@ export const Queue: React.FC = () => {
 
   const handleDrop = useCallback((e: React.DragEvent, index: number) => {
     e.preventDefault();
-    setDraggedItemIndex((dragged) => {
-      if (dragged !== null && dragged !== index) {
-        reorderQueue(dragged, index);
-      }
-      return null;
-    });
+    const dragged = draggedIndex.current;
+    draggedIndex.current = null;
+    setDraggedItemIndex(null);
+    if (dragged !== null && dragged !== index) reorderQueue(dragged, index);
   }, [reorderQueue]);
+
+  const handleDragEnd = useCallback(() => {
+    draggedIndex.current = null;
+    setDraggedItemIndex(null);
+  }, []);
 
   const handleContextMenu = useCallback((e: React.MouseEvent, song: Song, index: number) => {
     openContextMenu(e, ContextMenuType.QUEUE_ITEM, { song, index });
@@ -262,6 +269,7 @@ export const Queue: React.FC = () => {
                 isDragging={draggedItemIndex === idx}
                 cover={song.coverUrl || albumCovers[song.album]}
                 onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
                 onDragOver={handleDragOver}
                 onDrop={handleDrop}
                 onPlay={playQueueItem}

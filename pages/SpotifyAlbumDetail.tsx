@@ -124,7 +124,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
   // Play a specific track (with rest of album as context)
   const handlePlayTrack = (trackIndex: number) => {
     if (albumSongs.length > 0 && trackIndex < albumSongs.length) {
-      playSong(albumSongs[trackIndex], albumSongs);
+      playSong(albumSongs[trackIndex], albumSongs, undefined, trackIndex);
     }
   };
 

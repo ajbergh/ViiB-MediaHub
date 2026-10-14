@@ -348,6 +348,32 @@ it('shows a current search failure, clears old results, and retries the same que
  });
 
 describe('Spotify state persistence across navigation', () => {
+    it('does not publish a retiring account profile into the new session cache', async () => {
+        await mount();
+        await act(async () => {
+            useStore.getState().logoutSpotify();
+            profile.resolve({ id: 'retired-account', display_name: 'Retired Account' } as never);
+            await Promise.resolve();
+        });
+        expect(useStore.getState().spotifyUser).toBeNull();
+    });
+
+    it('merges search pagination into the latest enriched results', async () => {
+        await mount(); await typeQuery('paging'); await enter();
+        const catalog = results('First');
+        catalog.tracks.next = 'next' as never;
+        Object.assign(catalog.tracks, { offset: 0, limit: 1, total: 2 });
+        await act(async () => requests[0].options.onCatalogResults!(catalog));
+        await tab('Load More');
+        const page = requests[1];
+        const enriched = results('Enriched first');
+        Object.assign(enriched.tracks, { next: 'next', offset: 0, limit: 1, total: 2 });
+        await act(async () => requests[0].final.resolve(enriched));
+        await act(async () => page.final.resolve(results('Second')));
+        expect(host.textContent).toContain('Enriched first');
+        expect(host.textContent).toContain('Second');
+    });
+
     it('does not reload saved albums, playlists, or completed search results when switching tabs or remounting', async () => {
         mocks.albums.mockResolvedValue({
             offset: 0,

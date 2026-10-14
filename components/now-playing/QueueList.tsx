@@ -1,6 +1,6 @@
 /** Displays the upcoming playback queue within Now Playing. */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Virtuoso } from 'react-virtuoso';
 import { Play, GripVertical, Trash2, Download, CheckCircle, Loader2 } from 'lucide-react';
 import { useStore, useAlbumCovers } from '../../store';
@@ -21,6 +21,7 @@ interface QueueListRowProps {
     isDragging: boolean;
     isDownloading: boolean;
     displayCover: string | undefined;
+    onDragEnd: () => void;
     onDragStart: (e: React.DragEvent, index: number) => void;
     onDragOver: (e: React.DragEvent, index: number) => void;
     onDrop: (e: React.DragEvent, index: number) => void;
@@ -38,6 +39,7 @@ const QueueListRow = React.memo<QueueListRowProps>(({
     isDownloading,
     displayCover,
     onDragStart,
+    onDragEnd,
     onDragOver,
     onDrop,
     onPlay,
@@ -58,6 +60,7 @@ const QueueListRow = React.memo<QueueListRowProps>(({
         <div
             draggable
             onDragStart={(e) => onDragStart(e, index)}
+            onDragEnd={onDragEnd}
             onDragOver={(e) => onDragOver(e, index)}
             onDrop={(e) => onDrop(e, index)}
             onContextMenu={(e) => onContextMenu(e, song, index)}
@@ -84,12 +87,14 @@ const QueueListRow = React.memo<QueueListRowProps>(({
                         alt=""
                     />
                 )}
-                <div
+                <button
+                    type="button"
+                    aria-label={`Play ${song.title}`}
                     className="absolute inset-0 bg-surface-0/60 hidden group-hover:flex items-center justify-center cursor-pointer"
                     onClick={() => onPlay(index)}
                 >
                     <Play size={20} className="text-text-main fill-current" />
-                </div>
+                </button>
             </div>
 
             <div className="flex-1 min-w-0">
@@ -143,6 +148,7 @@ export const QueueList: React.FC<Props> = ({ queue, currentSongIndex }) => {
     const showToast = useStore((state) => state.showToast);
     const albumCovers = useAlbumCovers();
     const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
+    const draggedIndex = useRef<number | null>(null);
     const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set());
 
     const handleDownloadTrack = useCallback(async (song: Song, e: React.MouseEvent) => {
@@ -173,6 +179,7 @@ export const QueueList: React.FC<Props> = ({ queue, currentSongIndex }) => {
     }, [downloadingIds, showToast]);
 
     const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
+        draggedIndex.current = index;
         setDraggedItemIndex(index);
         e.dataTransfer.effectAllowed = "move";
     }, []);
@@ -183,13 +190,16 @@ export const QueueList: React.FC<Props> = ({ queue, currentSongIndex }) => {
 
     const handleDrop = useCallback((e: React.DragEvent, index: number) => {
         e.preventDefault();
-        setDraggedItemIndex((dragged) => {
-            if (dragged !== null && dragged !== index) {
-                reorderQueue(dragged, index);
-            }
-            return null;
-        });
+        const dragged = draggedIndex.current;
+        draggedIndex.current = null;
+        setDraggedItemIndex(null);
+        if (dragged !== null && dragged !== index) reorderQueue(dragged, index);
     }, [reorderQueue]);
+
+    const handleDragEnd = useCallback(() => {
+        draggedIndex.current = null;
+        setDraggedItemIndex(null);
+    }, []);
 
     const handleContextMenu = useCallback((e: React.MouseEvent, song: Song, index: number) => {
         openContextMenu(e, ContextMenuType.QUEUE_ITEM, { song, index });
@@ -215,6 +225,7 @@ export const QueueList: React.FC<Props> = ({ queue, currentSongIndex }) => {
                         isDownloading={Boolean(song.spotifyId && downloadingIds.has(song.spotifyId))}
                         displayCover={song.coverUrl || albumCovers[song.album]}
                         onDragStart={handleDragStart}
+                        onDragEnd={handleDragEnd}
                         onDragOver={handleDragOver}
                         onDrop={handleDrop}
                         onPlay={playQueueItem}

@@ -110,7 +110,7 @@ export const Spotify: React.FC = () => {
     
     // Wrapper to persist search results
     const setSpotifyResults = (results: any) => {
-        const nextResults = typeof results === "function" ? results(spotifyResults) : results;
+        const nextResults = typeof results === "function" ? results(useStore.getState().spotifySearchResults) : results;
         setSpotifyResultsLocal(nextResults);
         setSpotifySearchResults(nextResults);
     };
@@ -228,8 +228,9 @@ export const Spotify: React.FC = () => {
         const state = useStore.getState();
         if (state.spotifyUser && state.spotifyCacheGeneration === spotifySessionGeneration) return;
         let active = true;
-        void getSpotifyProfileWithTimeout().then(profile => {if(active) setSpotifyUser(profile);}).catch(error => {
-            if(active) addLog('warn', 'Spotify profile unavailable', {status: error?.statusCode});
+        const current = () => active && useStore.getState().spotifySessionGeneration === spotifySessionGeneration;
+        void getSpotifyProfileWithTimeout().then(profile => {if(current()) setSpotifyUser(profile);}).catch(error => {
+            if(current()) addLog('warn', 'Spotify profile unavailable', {status: error?.statusCode});
         });
         return () => {active=false;};
     }, [spotifyConnected, spotifySessionGeneration, setSpotifyUser, addLog]);

@@ -31,7 +31,8 @@ import { SmartMixMenu } from './context-menus/SmartMixMenu';
 import { QueueItemMenu } from './context-menus/QueueItemMenu';
 
 export const ContextMenu: React.FC = () => {
-    const { contextMenu, closeContextMenu } = useStore();
+    const contextMenu = useStore(state => state.contextMenu);
+    const closeContextMenu = useStore(state => state.closeContextMenu);
     const { isOpen, x, y, type, data } = contextMenu;
     const menuRef = useRef<HTMLDivElement>(null);
 

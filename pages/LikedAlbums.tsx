@@ -55,7 +55,9 @@ const ItemContainer = forwardRef<HTMLDivElement, any>(({ children, ...props }, r
 
 export const LikedAlbums: React.FC = () => {
     const albums = useAlbums();
-    const { likedAlbumKeys, albumMetadata, openContextMenu } = useStore();
+    const likedAlbumKeys = useStore(state => state.likedAlbumKeys);
+    const albumMetadata = useStore(state => state.albumMetadata);
+    const openContextMenu = useStore(state => state.openContextMenu);
     const navigate = useNavigate();
     const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
     const [sortBy, setSortBy] = useState<LikedAlbumSortOption>('recent');

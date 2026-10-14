@@ -84,7 +84,10 @@ export interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onMobileClose }) => {
-  const { isScanning, scanProgress, downloadCount, enrichmentStatus } = useStore();
+  const isScanning = useStore(state => state.isScanning);
+  const scanProgress = useStore(state => state.scanProgress);
+  const downloadCount = useStore(state => state.downloadCount);
+  const enrichmentStatus = useStore(state => state.enrichmentStatus);
   const [collapsed, setCollapsed] = useState(false);
   const [jobs, setJobs] = useState<OperationJob[]>([]);
   const isMobile = useIsMobile();

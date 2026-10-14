@@ -97,7 +97,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
   // Play a specific track (with rest of playlist as context)
   const handlePlayTrack = (trackIndex: number) => {
     if (playlistSongs.length > 0 && trackIndex < playlistSongs.length) {
-      playSong(playlistSongs[trackIndex], playlistSongs);
+      playSong(playlistSongs[trackIndex], playlistSongs, undefined, trackIndex);
     }
   };
 

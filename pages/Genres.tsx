@@ -44,7 +44,8 @@ const genreSortLabels: Record<GenreSortOption, string> = {
  * - Auto-refresh on library updates
  */
 export const Genres: React.FC = () => {
-  const { songs, playSong } = useStore();
+  const songs = useStore(state => state.songs);
+  const playSong = useStore(state => state.playSong);
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<GenreSortOption>('count-desc');

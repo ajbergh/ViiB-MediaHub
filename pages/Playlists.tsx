@@ -27,7 +27,11 @@ import { getPlaylistArtwork } from '../lib/playlistArtwork';
 
 export const Playlists: React.FC = () => {
   const navigate = useNavigate();
-  const { playlists, createPlaylist, openContextMenu, refreshLibrary, showToast } = useStore();
+  const playlists = useStore(state => state.playlists);
+  const createPlaylist = useStore(state => state.createPlaylist);
+  const openContextMenu = useStore(state => state.openContextMenu);
+  const refreshLibrary = useStore(state => state.refreshLibrary);
+  const showToast = useStore(state => state.showToast);
   const songs = useStore(state => state.songs);
   const albumCovers = useAlbumCovers();
   const songsById = useMemo(() => new Map(songs.map(song => [song.id, song])), [songs]);

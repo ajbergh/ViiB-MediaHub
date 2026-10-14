@@ -926,19 +926,15 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
               newLikedIds.delete(songId);
           }
           
-          // Update local song metadata in place so we don't invalidate every
-          // songs-dependent selector (useAlbums, useArtists, sortedSongs) on a single like toggle
-          set((state) => {
-              const target = state.songs.find((s) => s.id === songId);
-              if (target) {
-                  target.liked = result.liked;
-                  target.likedAt = result.liked ? Date.now() : undefined;
-              }
-              return {
-                  likedSongIds: newLikedIds,
-              };
-          });
-          
+          // Publish immutable snapshots so selectors observing a song or the
+          // library array see the update; retain all unaffected song identities.
+          set((state) => ({
+              likedSongIds: newLikedIds,
+              songs: state.songs.map(song => song.id === songId
+                  ? { ...song, liked: result.liked, likedAt: result.liked ? Date.now() : undefined }
+                  : song),
+          }));
+
           console.log(`${result.liked ? '❤️' : '💔'} Song ${songId} ${result.liked ? 'liked' : 'unliked'}`);
       } catch (e) {
           console.error('Failed to toggle like:', e);

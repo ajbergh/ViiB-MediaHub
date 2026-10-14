@@ -99,50 +99,48 @@ export const SmartPlaylists: React.FC = () => {
       : 'Semantic matching will be used automatically after the index is configured and ready.';
   const semanticReason = semanticStatus?.reason || semanticStatus?.lastError;
 
-  const { 
-    spotifySessionGeneration,
-    playSong, 
-    showToast, 
-    createPlaylist,
+  const spotifySessionGeneration = useStore(state => state.spotifySessionGeneration);
+  const playSong = useStore(state => state.playSong);
+  const showToast = useStore(state => state.showToast);
+  const createPlaylist = useStore(state => state.createPlaylist);
     // AI Smart Mix state (existing persisted identifiers retained)
-    aiDjPrompt,
-    aiDjGeneratedSongs,
-    aiDjFilter,
-    aiDjValidation,
-    aiDjIsLoading,
-    aiDjDiscoverMode,
-    aiDjAvoidRecentlyHours,
-    aiDjOnePerArtist,
-    aiDjUseTimeContext,
-    aiDjSource,
+  const aiDjPrompt = useStore(state => state.aiDjPrompt);
+  const aiDjGeneratedSongs = useStore(state => state.aiDjGeneratedSongs);
+  const aiDjFilter = useStore(state => state.aiDjFilter);
+  const aiDjValidation = useStore(state => state.aiDjValidation);
+  const aiDjIsLoading = useStore(state => state.aiDjIsLoading);
+  const aiDjDiscoverMode = useStore(state => state.aiDjDiscoverMode);
+  const aiDjAvoidRecentlyHours = useStore(state => state.aiDjAvoidRecentlyHours);
+  const aiDjOnePerArtist = useStore(state => state.aiDjOnePerArtist);
+  const aiDjUseTimeContext = useStore(state => state.aiDjUseTimeContext);
+  const aiDjSource = useStore(state => state.aiDjSource);
     // DJ Mode state
-    aiDjMode,
-    aiDjPersona,
-    aiDjTargetDurationMinutes,
-    aiDjFlowStrictness,
-    aiDjTalkMode,
-    aiDjPlan,
-    aiDjPhases,
-    aiDjNarration,
+  const aiDjMode = useStore(state => state.aiDjMode);
+  const aiDjPersona = useStore(state => state.aiDjPersona);
+  const aiDjTargetDurationMinutes = useStore(state => state.aiDjTargetDurationMinutes);
+  const aiDjFlowStrictness = useStore(state => state.aiDjFlowStrictness);
+  const aiDjTalkMode = useStore(state => state.aiDjTalkMode);
+  const aiDjPlan = useStore(state => state.aiDjPlan);
+  const aiDjPhases = useStore(state => state.aiDjPhases);
+  const aiDjNarration = useStore(state => state.aiDjNarration);
     // AI Smart Mix actions
-    setAIDJPrompt,
-    setAIDJGeneratedSongs,
-    setAIDJFilter,
-    setAIDJValidation,
-    setAIDJIsLoading,
-    setAIDJDiscoverMode,
-    setAIDJAvoidRecentlyHours,
-    setAIDJOnePerArtist,
-    setAIDJUseTimeContext,
-    setAIDJSource,
+  const setAIDJPrompt = useStore(state => state.setAIDJPrompt);
+  const setAIDJGeneratedSongs = useStore(state => state.setAIDJGeneratedSongs);
+  const setAIDJFilter = useStore(state => state.setAIDJFilter);
+  const setAIDJValidation = useStore(state => state.setAIDJValidation);
+  const setAIDJIsLoading = useStore(state => state.setAIDJIsLoading);
+  const setAIDJDiscoverMode = useStore(state => state.setAIDJDiscoverMode);
+  const setAIDJAvoidRecentlyHours = useStore(state => state.setAIDJAvoidRecentlyHours);
+  const setAIDJOnePerArtist = useStore(state => state.setAIDJOnePerArtist);
+  const setAIDJUseTimeContext = useStore(state => state.setAIDJUseTimeContext);
+  const setAIDJSource = useStore(state => state.setAIDJSource);
     // DJ Mode actions
-    setAIDJMode,
-    setAIDJPersona,
-    setAIDJTargetDurationMinutes,
-    setAIDJFlowStrictness,
-    setAIDJTalkMode,
-    setAIDJDJResult,
-  } = useStore();
+  const setAIDJMode = useStore(state => state.setAIDJMode);
+  const setAIDJPersona = useStore(state => state.setAIDJPersona);
+  const setAIDJTargetDurationMinutes = useStore(state => state.setAIDJTargetDurationMinutes);
+  const setAIDJFlowStrictness = useStore(state => state.setAIDJFlowStrictness);
+  const setAIDJTalkMode = useStore(state => state.setAIDJTalkMode);
+  const setAIDJDJResult = useStore(state => state.setAIDJDJResult);
 
   useEffect(() => { setQueueAnalysis(undefined); }, [spotifySessionGeneration]);
   useEffect(() => () => {

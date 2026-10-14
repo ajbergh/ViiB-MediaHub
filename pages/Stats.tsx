@@ -116,7 +116,7 @@ const TopItem: React.FC<TopItemProps> = ({ rank, title, subtitle, plays, imageUr
 );
 
 export const Stats: React.FC = () => {
-    const { songs } = useStore();
+    const songs = useStore(state => state.songs);
     const albums = useAlbums();
     const artists = useArtists();
     const navigate = useNavigate();

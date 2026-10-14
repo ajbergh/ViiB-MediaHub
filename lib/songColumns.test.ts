@@ -15,5 +15,5 @@ it('loads defaults on malformed preferences and validates stored column names', 
 it('retains missing values and formats useful catalog fields', () => {
   const song = { genre: ['Rock','Alternative'], year: 2000, originalYear: 1995, source: 'plex', sourceName: 'Home server' } as Song;
   expect(songColumnValue('genre', song)).toBe('Rock, Alternative'); expect(songColumnValue('year', song)).toBe('1995'); expect(songColumnValue('source', song)).toBe('Home server');
-  expect(songColumnValue('key', song)).toBe('—'); expect(songColumnValue('lastPlayed', song)).toBe('—'); expect(songColumnValue('plays', song)).toBe('0');
+  expect(songColumnValue('key', song)).toBe('â€”'); expect(songColumnValue('lastPlayed', song)).toBe('â€”'); expect(songColumnValue('plays', song)).toBe('0');
 });
