@@ -44,14 +44,14 @@ interface StatCardProps {
     color?: 'brand' | 'accent-blue' | 'accent-green' | 'accent-orange' | 'accent-crimson' | 'success' | 'warning';
 }
 
-const STAT_CARD_COLORS: Record<NonNullable<StatCardProps['color']>, { icon: string; glow: string; glowHover: string }> = {
-    brand: { icon: 'text-brand', glow: 'bg-brand/10', glowHover: 'group-hover:bg-brand/20' },
-    'accent-blue': { icon: 'text-accent-blue', glow: 'bg-accent-blue/10', glowHover: 'group-hover:bg-accent-blue/20' },
-    'accent-green': { icon: 'text-accent-green', glow: 'bg-accent-green/10', glowHover: 'group-hover:bg-accent-green/20' },
-    'accent-orange': { icon: 'text-accent-orange', glow: 'bg-accent-orange/10', glowHover: 'group-hover:bg-accent-orange/20' },
-    'accent-crimson': { icon: 'text-accent-crimson', glow: 'bg-accent-crimson/10', glowHover: 'group-hover:bg-accent-crimson/20' },
-    success: { icon: 'text-success', glow: 'bg-success/10', glowHover: 'group-hover:bg-success/20' },
-    warning: { icon: 'text-warning', glow: 'bg-warning/10', glowHover: 'group-hover:bg-warning/20' }
+const STAT_CARD_COLORS: Record<NonNullable<StatCardProps['color']>, { icon: string }> = {
+    brand: { icon: 'text-brand' },
+    'accent-blue': { icon: 'text-accent-blue' },
+    'accent-green': { icon: 'text-accent-green' },
+    'accent-orange': { icon: 'text-accent-orange' },
+    'accent-crimson': { icon: 'text-accent-crimson' },
+    success: { icon: 'text-success' },
+    warning: { icon: 'text-warning' }
 };
 
 /**
@@ -65,14 +65,11 @@ const STAT_CARD_COLORS: Record<NonNullable<StatCardProps['color']>, { icon: stri
 const StatCard: React.FC<StatCardProps> = ({ icon, label, value, subtext, color = 'brand' }) => {
     const c = STAT_CARD_COLORS[color];
     return (
-        <div className="bg-surface-2 p-6 rounded-xl border border-surface-3 hover:bg-surface-hover transition-colors group relative overflow-hidden">
-            <div className="relative z-10">
-                <div className={`${c.icon} mb-3`}>{icon}</div>
-                <h3 className="text-section font-bold mb-1">{value}</h3>
-                <p className="text-text-secondary text-sm font-medium">{label}</p>
-                {subtext && <p className="text-text-subtle text-xs mt-1">{subtext}</p>}
-            </div>
-            <div className={`absolute top-0 right-0 w-24 h-24 ${c.glow} rounded-full -mr-4 -mt-4 blur-2xl transition-all ${c.glowHover}`}></div>
+        <div className="bg-surface-2 p-5 rounded-lg hover:bg-surface-hover transition-colors group">
+            <div className={`${c.icon} mb-3`}>{icon}</div>
+            <h3 className="text-section font-bold text-text-main mb-0.5">{value}</h3>
+            <p className="text-text-secondary text-sm font-medium">{label}</p>
+            {subtext && <p className="text-text-subtle text-xs mt-1">{subtext}</p>}
         </div>
     );
 };
@@ -93,33 +90,33 @@ interface TopItemProps {
  */
 const TopItem: React.FC<TopItemProps> = ({ rank, title, subtitle, plays, imageUrl, fallbackGradient, onClick }) => (
     <div 
-        className="flex items-center gap-4 p-3 hover:bg-surface-hover rounded-lg transition-colors cursor-pointer group"
+        className="flex items-center gap-4 p-2.5 hover:bg-surface-hover rounded-md transition-colors cursor-pointer group"
         onClick={onClick}
     >
-        <span className="w-6 text-center text-text-subtle font-bold">{rank}</span>
+        <span className="w-6 text-center text-text-subtle text-sm font-semibold">{rank}</span>
         <div 
-            className="w-12 h-12 rounded-md flex-shrink-0 bg-surface-3 flex items-center justify-center overflow-hidden"
+            className="w-11 h-11 rounded flex-shrink-0 bg-surface-3 flex items-center justify-center overflow-hidden shadow-sm"
             style={{ background: fallbackGradient }}
         >
             {imageUrl ? (
                 <img src={imageUrl} alt="" className="w-full h-full object-cover" />
             ) : (
-                <span className="text-xl font-bold text-white/30">{title.charAt(0)}</span>
+                <span className="text-lg font-bold text-text-main/30">{title.charAt(0)}</span>
             )}
         </div>
         <div className="flex-1 min-w-0">
-            <p className="font-medium text-text-main truncate group-hover:text-brand transition-colors">{title}</p>
-            <p className="text-sm text-text-secondary truncate">{subtitle}</p>
+            <p className="font-medium text-sm text-text-main truncate group-hover:text-brand transition-colors">{title}</p>
+            <p className="text-xs text-text-secondary truncate">{subtitle}</p>
         </div>
         <div className="text-right">
-            <p className="text-sm font-medium text-text-main">{plays}</p>
-            <p className="text-xs text-text-subtle">plays</p>
+            <p className="text-sm font-semibold text-text-main">{plays}</p>
+            <p className="text-[11px] text-text-subtle">plays</p>
         </div>
     </div>
 );
 
 export const Stats: React.FC = () => {
-    const { songs } = useStore();
+    const songs = useStore(state => state.songs);
     const albums = useAlbums();
     const artists = useArtists();
     const navigate = useNavigate();
@@ -234,13 +231,8 @@ export const Stats: React.FC = () => {
         return (
             <Page>
                 <PageHeader
-                    heading={
-                        <span className="flex items-center gap-3">
-                            <BarChart3 className="text-brand" size={32} />
-                            Listening Stats
-                        </span>
-                    }
-                    subtitle="Your music journey in numbers"
+                    heading="Listening Stats"
+                    subtitle="Your listening activity and top music"
                 />
                 <div className="flex items-center justify-center py-24">
                     <EmptyState
@@ -264,45 +256,39 @@ export const Stats: React.FC = () => {
         return (
                 <Page>
                         <PageHeader
-                            heading={
-                                <span className="flex items-center gap-3">
-                                    <BarChart3 className="text-brand" size={32} />
-                                    Listening Stats
-                                </span>
-                            }
-                            subtitle="Your music journey in numbers"
+                            heading="Listening Stats"
+                            subtitle="Your listening activity and top music"
                         />
 
             {/* Overview Stats Grid */}
-            <section className="mb-12">
-                <h2 className="text-section font-semibold mb-4 flex items-center gap-2">
-                    <TrendingUp size={20} className="text-accent-blue" />
+            <section className="mb-10">
+                <h2 className="text-section font-bold mb-4">
                     Overview
                 </h2>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <StatCard 
-                        icon={<Headphones size={24} />}
+                        icon={<Headphones size={22} />}
                         label="Total Listening Time"
                         value={formatDuration(stats.totalDuration)}
                         subtext="All time"
                         color="brand"
                     />
                     <StatCard 
-                        icon={<Play size={24} />}
+                        icon={<Play size={22} />}
                         label="Total Plays"
                         value={stats.totalPlays.toLocaleString()}
                         subtext={`${stats.avgPlaysPerSong} avg per song`}
                         color="brand"
                     />
                     <StatCard 
-                        icon={<Music size={24} />}
+                        icon={<Music size={22} />}
                         label="Songs Played"
                         value={stats.uniqueSongsPlayed}
                         subtext={`of ${stats.totalSongs} total`}
                         color="accent-blue"
                     />
                     <StatCard 
-                        icon={<Calendar size={24} />}
+                        icon={<Calendar size={22} />}
                         label="This Week"
                         value={stats.playsThisWeek.toLocaleString()}
                         subtext="plays"
@@ -313,15 +299,15 @@ export const Stats: React.FC = () => {
 
             {/* Most Played Song Highlight */}
             {stats.mostPlayedSong && stats.mostPlayedSong.playCount && stats.mostPlayedSong.playCount > 0 && (
-                <section className="mb-12">
-                    <div className="bg-gradient-to-r from-brand/20 to-brand/10 p-6 rounded-2xl border border-brand/30">
+                <section className="mb-10">
+                    <div className="bg-gradient-to-br from-surface-3 to-surface-2 p-6 rounded-lg">
                         <div className="flex items-center gap-2 mb-4">
-                            <Award size={20} className="text-accent-orange" />
-                            <h3 className="text-card font-semibold">Your #1 Song</h3>
+                            <Award size={18} className="text-brand" />
+                            <h3 className="text-xs font-bold uppercase tracking-widest text-text-secondary">Top Track</h3>
                         </div>
-                        <div className="flex items-center gap-6">
+                        <div className="flex items-center gap-5">
                             <div 
-                                className="w-24 h-24 rounded-lg bg-surface-3 flex-shrink-0 overflow-hidden shadow-lg"
+                                className="w-24 h-24 rounded-md bg-surface-3 flex-shrink-0 overflow-hidden shadow-xl"
                                 style={{ background: coverBackground(stats.mostPlayedSong.coverUrl, stats.mostPlayedSong.album) }}
                             >
                                 {stats.mostPlayedSong.coverUrl && (
@@ -329,11 +315,11 @@ export const Stats: React.FC = () => {
                                 )}
                             </div>
                             <div className="flex-1 min-w-0">
-                                <h4 className="text-section font-bold truncate">{stats.mostPlayedSong.title}</h4>
-                                <p className="text-text-secondary text-body">{stats.mostPlayedSong.artist}</p>
-                                <div className="flex items-center gap-4 mt-2">
-                                    <span className="flex items-center gap-1 text-brand font-bold">
-                                        <Play size={16} className="fill-current" />
+                                <h4 className="text-section font-bold text-text-main truncate">{stats.mostPlayedSong.title}</h4>
+                                <p className="text-text-secondary text-sm mt-0.5">{stats.mostPlayedSong.artist}</p>
+                                <div className="flex items-center gap-4 mt-2.5 text-sm">
+                                    <span className="flex items-center gap-1.5 text-brand font-bold">
+                                        <Play size={14} className="fill-current" />
                                         {stats.mostPlayedSong.playCount} plays
                                     </span>
                                     <span className="text-text-subtle">

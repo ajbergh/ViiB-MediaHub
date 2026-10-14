@@ -36,9 +36,9 @@ export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const variantStyles: Record<CardVariant, string> = {
-  default: 'bg-surface-2 p-6',
-  hero: 'bg-surface-2 p-8 shadow-lg',
-  utility: 'bg-surface-1 p-4',
+  default: 'bg-surface-2/80 p-4',
+  hero: 'bg-surface-2 p-6',
+  utility: 'bg-surface-2 p-4',
 };
 
 export const Card: React.FC<CardProps> = ({ 
@@ -48,14 +48,14 @@ export const Card: React.FC<CardProps> = ({
   ...rest 
 }) => {
   const base = cn(
-    'rounded-xl ring-1 ring-surface-3/70 text-text-main',
+    'rounded-lg text-text-main',
     variantStyles[variant]
   );
 
   const interactiveClasses =
-    'transition-all duration-150 ease-out ' +
-    'hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25 hover:ring-white/10 ' +
-    'motion-reduce:transition-none motion-reduce:hover:transform-none';
+    'transition-colors duration-150 ease-out ' +
+    'hover:bg-surface-hover ' +
+    'motion-reduce:transition-none';
 
   return (
     <div

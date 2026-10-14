@@ -27,24 +27,26 @@ export const HomeSearchBar: React.FC<HomeSearchBarProps> = ({ className, compact
   return (
     <TextInput
       className={cn(
-        'w-full rounded-full bg-surface-2 px-5 ring-surface-border shadow-lg shadow-black/10',
-        compact ? 'h-11' : 'h-12',
+        'w-full rounded-full bg-surface-3 px-4 ring-1 ring-transparent hover:bg-surface-highlight hover:ring-surface-border',
+        compact ? 'h-10' : 'h-11',
         className
       )}
-      inputClassName="text-base placeholder:text-text-secondary"
-      leftIcon={<Search size={20} className="text-text-secondary" aria-hidden="true" />}
+      inputClassName="text-sm placeholder:text-text-subtle"
+      leftIcon={<Search size={18} className="text-text-secondary" aria-hidden="true" />}
       rightIcon={
-        <button
-          type="button"
-          onClick={submitSearch}
-          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-brand text-black transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-2 motion-reduce:transition-none motion-reduce:hover:transform-none"
-          aria-label="Search"
-        >
-          <ArrowRight size={16} aria-hidden="true" />
-        </button>
+        searchQuery.trim() ? (
+          <button
+            type="button"
+            onClick={submitSearch}
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-brand text-surface-0 transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+            aria-label="Search"
+          >
+            <ArrowRight size={14} aria-hidden="true" />
+          </button>
+        ) : undefined
       }
       type="text"
-      placeholder="Search songs, albums, artists"
+      placeholder="What do you want to play?"
       aria-label="Search your library"
       value={searchQuery}
       onChange={(e) => setSearchQuery(e.target.value)}

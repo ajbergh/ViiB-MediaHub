@@ -31,7 +31,8 @@ import { SmartMixMenu } from './context-menus/SmartMixMenu';
 import { QueueItemMenu } from './context-menus/QueueItemMenu';
 
 export const ContextMenu: React.FC = () => {
-    const { contextMenu, closeContextMenu } = useStore();
+    const contextMenu = useStore(state => state.contextMenu);
+    const closeContextMenu = useStore(state => state.closeContextMenu);
     const { isOpen, x, y, type, data } = contextMenu;
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -236,7 +237,7 @@ export const ContextMenu: React.FC = () => {
             ref={menuRef}
             role="menu"
             aria-label="Context menu"
-            className="fixed z-[9999] w-56 bg-surface-2 ring-1 ring-surface-3 rounded-xl shadow-xl shadow-black/30 py-1 overflow-visible text-text-main animate-in fade-in duration-150 motion-reduce:transition-none"
+            className="fixed z-[9999] w-56 bg-surface-3 border border-surface-border rounded-md shadow-2xl shadow-black/60 p-1 overflow-visible text-text-main animate-in fade-in duration-100 motion-reduce:transition-none"
             style={{ top: adjustedPos.y, left: adjustedPos.x }}
         >
             {type === ContextMenuType.SONG && <SongMenu song={data} onClose={closeContextMenu} />}

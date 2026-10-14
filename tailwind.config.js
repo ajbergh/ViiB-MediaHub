@@ -11,54 +11,48 @@ export default {
     extend: {
       colors: {
         surface: {
-          // Viib Design System v1
-          0: '#0B0B0E', // Background
-          1: '#121216', // Surface Dark
-          2: '#18181E', // Surface Raised
-          3: '#24242B', // Dividers
-          // Back-compat aliases used throughout the app.
-          highlight: '#18181E',
-          hover: '#18181E',
-          border: '#24242B',
-          slider: '#24242B'
+          // Modern Spotify Desktop neutral dark hierarchy
+          0: '#000000', // Outer app frame / transport canvas
+          1: '#121212', // Primary island surface (Sidebar, Main view, Queue)
+          2: '#181818', // Elevated card / container surface
+          3: '#242424', // Interactive control / input / divider surface
+          highlight: '#2A2A2A', // Active nav / selected surface
+          hover: '#1F1F1F', // Card & track row hover
+          border: '#282828', // Subtle hairline divider
+          slider: '#4D4D4D' // Unfilled slider track
         },
         text: {
-          main: 'rgba(255,255,255,0.9)',
-          secondary: '#B8BAC6',
-          subtle: '#7A7D8C'
+          main: '#FFFFFF',
+          secondary: '#B3B3B3',
+          subtle: '#727272'
         },
         brand: {
-          // Viib Purple (Brand / AI DJ)
-          DEFAULT: '#9B5CFF',
-          hover: '#9B5CFF'
+          DEFAULT: '#1ED760',
+          hover: '#3BE477'
         },
         accent: {
-          // Accent Colors (max 2 per screen; use intentionally)
-          purple: '#9B5CFF',
-          green: '#3EE089',
-          orange: '#FF9F43',
-          blue: '#4EA1FF',
-          crimson: '#FF5D5D'
+          purple: '#8B5CF6',
+          green: '#1ED760',
+          orange: '#FFA42B',
+          blue: '#3D91F4',
+          crimson: '#E91429'
         },
-        // Status colors map to v1 accents
-        warning: '#FF9F43',
-        success: '#3EE089',
-        error: '#FF5D5D'
+        warning: '#FFA42B',
+        success: '#1ED760',
+        error: '#F15E6C'
       },
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
       },
       borderRadius: {
-        // Cards: 12px
-        xl: '12px'
+        xl: '8px'
       },
       fontSize: {
-        // Viib Type Scale
-        display: ['36px', { lineHeight: '1.25', fontWeight: '600' }],
-        section: ['24px', { lineHeight: '1.25', fontWeight: '500' }],
-        card: ['18px', { lineHeight: '1.25', fontWeight: '500' }],
-        body: ['15px', { lineHeight: '1.5', fontWeight: '400' }],
-        meta: ['13px', { lineHeight: '1.5', fontWeight: '400' }]
+        display: ['32px', { lineHeight: '1.2', fontWeight: '700', letterSpacing: '-0.02em' }],
+        section: ['22px', { lineHeight: '1.25', fontWeight: '700', letterSpacing: '-0.015em' }],
+        card: ['16px', { lineHeight: '1.35', fontWeight: '600' }],
+        body: ['14px', { lineHeight: '1.5', fontWeight: '400' }],
+        meta: ['12px', { lineHeight: '1.4', fontWeight: '400' }]
       },
       keyframes: {
         shimmer: {

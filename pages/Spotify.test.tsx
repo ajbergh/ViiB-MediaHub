@@ -66,6 +66,8 @@ beforeEach(() => {
     useStore.setState({
         spotifyConnected: false, spotifySessionGeneration: 0, spotifyAuthRequired: false,
         spotifyUser: null, spotifySearchQuery: '', spotifySearchResults: null,
+        spotifyLastSearchedQuery: '', spotifyRecentlyPlayed: null,
+        spotifySavedAlbums: null, spotifySavedPlaylists: null, spotifyCacheGeneration: -1,
         spotifyActiveTab: 'search',
     });
     profile = deferred<null>();
@@ -344,3 +346,81 @@ it('shows a current search failure, clears old results, and retries the same que
         expect(play).not.toHaveBeenCalled();
     });
  });
+
+describe('Spotify state persistence across navigation', () => {
+    it('does not publish a retiring account profile into the new session cache', async () => {
+        await mount();
+        await act(async () => {
+            useStore.getState().logoutSpotify();
+            profile.resolve({ id: 'retired-account', display_name: 'Retired Account' } as never);
+            await Promise.resolve();
+        });
+        expect(useStore.getState().spotifyUser).toBeNull();
+    });
+
+    it('merges search pagination into the latest enriched results', async () => {
+        await mount(); await typeQuery('paging'); await enter();
+        const catalog = results('First');
+        catalog.tracks.next = 'next' as never;
+        Object.assign(catalog.tracks, { offset: 0, limit: 1, total: 2 });
+        await act(async () => requests[0].options.onCatalogResults!(catalog));
+        await tab('Load More');
+        const page = requests[1];
+        const enriched = results('Enriched first');
+        Object.assign(enriched.tracks, { next: 'next', offset: 0, limit: 1, total: 2 });
+        await act(async () => requests[0].final.resolve(enriched));
+        await act(async () => page.final.resolve(results('Second')));
+        expect(host.textContent).toContain('Enriched first');
+        expect(host.textContent).toContain('Second');
+    });
+
+    it('does not reload saved albums, playlists, or completed search results when switching tabs or remounting', async () => {
+        mocks.albums.mockResolvedValue({
+            offset: 0,
+            total: 1,
+            next: null,
+            items: [{ album: { id: 'cached-album', name: 'Cached Album', images: [], artists: [{ name: 'Artist' }] } }],
+        });
+        mocks.playlists.mockResolvedValue({
+            offset: 0,
+            total: 1,
+            next: null,
+            items: [{ id: 'cached-pl', name: 'Cached Playlist', images: [], tracks: { total: 5 } }],
+        });
+
+        await mount();
+        await typeQuery('cached search');
+        await enter();
+        await act(async () => requests[0].final.resolve(results('Cached Track')));
+        expect(mocks.search).toHaveBeenCalledTimes(1);
+
+        await tab('Saved Albums');
+        expect(mocks.albums).toHaveBeenCalledTimes(1);
+        expect(host.textContent).toContain('Cached Album');
+
+        await tab('Saved Playlists');
+        expect(mocks.playlists).toHaveBeenCalledTimes(1);
+        expect(host.textContent).toContain('Cached Playlist');
+
+        // Unmount and remount Spotify page (simulating navigating to detail page and back)
+        await act(async () => root!.unmount());
+        root = createRoot(host);
+        await mount();
+
+        // Still on Saved Playlists without re-fetching
+        expect(mocks.playlists).toHaveBeenCalledTimes(1);
+        expect(host.textContent).toContain('Cached Playlist');
+
+        // Switch back to Saved Albums without re-fetching
+        await tab('Saved Albums');
+        expect(mocks.albums).toHaveBeenCalledTimes(1);
+        expect(host.textContent).toContain('Cached Album');
+
+        // Switch back to Search without re-fetching
+        await tab('Search');
+        await advance(200);
+        expect(mocks.search).toHaveBeenCalledTimes(1);
+        expect(host.textContent).toContain('Cached Track');
+    });
+});
+

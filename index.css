@@ -1,4 +1,4 @@
-/** Application theme tokens, shared styles, and DJ workstation presentation rules. */
+/** Application theme tokens, Spotify dark surface rules, and DJ workstation presentation rules. */
 
 @tailwind base;
 @tailwind components;
@@ -130,16 +130,18 @@
 }
 
 @layer base {
-  body {
+  html, body {
     font-family: 'Inter', sans-serif;
-    background-color: #0B0B0E;
-    color: rgba(255,255,255,0.9);
+    background-color: #000000;
+    color: rgba(255,255,255,0.95);
     overflow: hidden;
-    /* App-like feel */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color-scheme: dark;
   }
 
   :focus-visible {
-    outline: 2px solid rgba(155, 92, 255, 0.55);
+    outline: 2px solid rgba(30, 215, 96, 0.55);
     outline-offset: 2px;
   }
 
@@ -169,16 +171,25 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #121216;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #24242B;
+  background: #282828;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #24242B;
+  background: #3E3E3E;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* ═══════════════════════════════════════════════════════

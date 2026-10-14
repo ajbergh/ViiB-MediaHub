@@ -3,12 +3,23 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useStore } from '../store';
-import { Music, Search, ChevronRight, Play, Shuffle, Loader2 } from 'lucide-react';
-import { Song } from '../types';
+import { Music, Search, Play, Shuffle, Loader2, ArrowUpDown, ChevronDown } from 'lucide-react';
 import { api, GenreStat } from '../services/api';
+import { Button } from '../components/ui/Button';
+import { Menu, MenuItem } from '../components/ui/Menu';
 import { CardSizeSlider, MAX_CARD_COLUMNS } from '../components/ui/CardSizeSlider';
 import { LibraryListHeader, LibraryListRow } from '../components/ui/LibraryList';
 import { TextInput } from '../components/ui/TextInput';
+import { generateGradient } from '../utils';
+
+type GenreSortOption = 'count-desc' | 'count-asc' | 'name-asc' | 'name-desc';
+
+const genreSortLabels: Record<GenreSortOption, string> = {
+  'count-desc': 'Most Tracks',
+  'count-asc': 'Fewest Tracks',
+  'name-asc': 'Name (A-Z)',
+  'name-desc': 'Name (Z-A)',
+};
 
 /**
  * Genres Page Component
@@ -33,10 +44,14 @@ import { TextInput } from '../components/ui/TextInput';
  * - Auto-refresh on library updates
  */
 export const Genres: React.FC = () => {
-  const { songs, playSong } = useStore();
+  const songs = useStore(state => state.songs);
+  const playSong = useStore(state => state.playSong);
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<GenreSortOption>('count-desc');
+  const [showSortMenu, setShowSortMenu] = useState(false);
   const [genres, setGenres] = useState<GenreStat[]>([]);
+  const [failedCovers, setFailedCovers] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('genres-card-cols') ?? 4));
   const listView = cardCols === MAX_CARD_COLUMNS;
@@ -78,11 +93,27 @@ export const Genres: React.FC = () => {
     };
   }, []);
 
+  const sortedGenres = useMemo(() => {
+    const sorted = [...genres];
+    switch (sortBy) {
+      case 'count-desc':
+        return sorted.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+      case 'count-asc':
+        return sorted.sort((a, b) => a.count - b.count || a.name.localeCompare(b.name));
+      case 'name-asc':
+        return sorted.sort((a, b) => a.name.localeCompare(b.name));
+      case 'name-desc':
+        return sorted.sort((a, b) => b.name.localeCompare(a.name));
+      default:
+        return sorted;
+    }
+  }, [genres, sortBy]);
+
   const filteredGenres = useMemo(() => {
-    if (!searchQuery) return genres;
+    if (!searchQuery) return sortedGenres;
     const query = searchQuery.toLowerCase();
-    return genres.filter(g => g.name.toLowerCase().includes(query));
-  }, [genres, searchQuery]);
+    return sortedGenres.filter(g => g.name.toLowerCase().includes(query));
+  }, [sortedGenres, searchQuery]);
 
   const handlePlayGenre = (e: React.MouseEvent, genreName: string, shuffle: boolean) => {
     e.stopPropagation();
@@ -101,50 +132,88 @@ export const Genres: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="h-full flex items-center justify-center bg-surface-0">
+      <div className="h-full flex items-center justify-center bg-surface-1">
         <Loader2 className="animate-spin text-brand" size={48} />
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col bg-surface-0 overflow-hidden">
+    <div className="h-full flex flex-col bg-surface-1 overflow-hidden">
       {/* Header */}
-      <div className="p-8 pb-4">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-display text-text-main mb-2">Genres</h1>
-            <p className="text-text-secondary">
-              {genres.length} genres found in your library
-            </p>
-          </div>
-          <CardSizeSlider listAtMinimum value={cardCols} onChange={handleCardColsChange} />
+      <div className="px-6 md:px-8 pt-6 pb-4 flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-display font-bold tracking-tight text-text-main">Genres</h1>
+          <p className="text-sm text-text-secondary mt-1">
+            {filteredGenres.length}{searchQuery ? ` of ${genres.length}` : ''} categories in your library
+          </p>
         </div>
-
-        {/* Search */}
-        <div className="max-w-md">
-          <TextInput
-            leftIcon={<Search size={18} className="text-text-secondary" aria-hidden="true" />}
-            type="text"
-            placeholder="Search genres…"
-            aria-label="Search genres"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="rounded-full"
-          />
+        <div className="flex items-center gap-3">
+          <CardSizeSlider listAtMinimum value={cardCols} onChange={handleCardColsChange} />
+          <div className="relative">
+            <Button
+              variant="secondary"
+              onClick={() => setShowSortMenu(!showSortMenu)}
+              className="rounded-full whitespace-nowrap"
+              leftIcon={<ArrowUpDown size={16} className="text-text-secondary" aria-hidden="true" />}
+              rightIcon={<ChevronDown size={16} className={`text-text-secondary transition-transform ${showSortMenu ? 'rotate-180' : ''}`} aria-hidden="true" />}
+              aria-haspopup="menu"
+              aria-expanded={showSortMenu}
+            >
+              {genreSortLabels[sortBy]}
+            </Button>
+            {showSortMenu && (
+              <>
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  aria-label="Close sort menu"
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowSortMenu(false)}
+                />
+                <Menu
+                  className="absolute right-0 top-full mt-2 z-50 min-w-[180px]"
+                  onRequestClose={() => setShowSortMenu(false)}
+                >
+                  {(Object.keys(genreSortLabels) as GenreSortOption[]).map((option) => (
+                    <MenuItem
+                      key={option}
+                      onClick={() => { setSortBy(option); setShowSortMenu(false); }}
+                      active={sortBy === option}
+                    >
+                      {genreSortLabels[option]}
+                    </MenuItem>
+                  ))}
+                </Menu>
+              </>
+            )}
+          </div>
+          <div className="w-full md:w-72">
+            <TextInput
+              leftIcon={<Search size={18} className="text-text-secondary" aria-hidden="true" />}
+              type="text"
+              placeholder="Search genres…"
+              aria-label="Search genres"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="rounded-full"
+            />
+          </div>
         </div>
       </div>
 
       {/* Genre Grid */}
-      <div className="flex-1 overflow-y-auto p-8 pt-0">
+      <div className="flex-1 overflow-y-auto px-6 md:px-8 pb-24 pt-2">
         {listView && <LibraryListHeader title="Genre" detail="Top artists" stats="Tracks" />}
         <div
           className={listView ? 'grid gap-0' : 'grid gap-4'}
           style={{ gridTemplateColumns: `repeat(${listView ? 1 : cardCols}, minmax(0, 1fr))` }}
         >
-          {filteredGenres.map((genre, index) => listView ? (
+          {filteredGenres.map((genre, index) => {
+            const hasValidCover = Boolean(genre.coverUrl && !failedCovers[genre.coverUrl]);
+            return listView ? (
             <LibraryListRow key={genre.name} index={index} name={genre.name}
-              artwork={genre.coverUrl ? <img src={genre.coverUrl} alt="" className="w-full h-full object-cover" /> : <Music className="w-full h-full p-2 text-brand" />}
+              artwork={hasValidCover ? <img src={genre.coverUrl} alt="" onError={() => genre.coverUrl && setFailedCovers(prev => ({ ...prev, [genre.coverUrl!]: true }))} className="w-full h-full object-cover" /> : <Music className="w-full h-full p-2 text-brand" />}
               detail={genre.topArtists?.join(', ')} stats={String(genre.count)}
               onOpen={() => navigate(`/genres/${encodeURIComponent(genre.name)}`)}
               actions={<><button type="button" aria-label={`Play ${genre.name}`} className="p-2 rounded hover:bg-surface-3 text-brand" onClick={e => handlePlayGenre(e, genre.name, false)}><Play size={16} /></button><button type="button" aria-label={`Shuffle ${genre.name}`} className="p-2 rounded hover:bg-surface-3 text-text-secondary" onClick={e => handlePlayGenre(e, genre.name, true)}><Shuffle size={16} /></button></>} />
@@ -152,59 +221,72 @@ export const Genres: React.FC = () => {
             <div
               key={genre.name}
               onClick={() => navigate(`/genres/${encodeURIComponent(genre.name)}`)}
-              className="group bg-surface-1 hover:bg-surface-2 border border-surface-highlight rounded-xl p-4 transition-all cursor-pointer hover:shadow-lg hover:shadow-black/20 hover:-translate-y-1 relative overflow-hidden"
+              style={{ background: generateGradient(genre.name) }}
+              className="group relative h-40 rounded-lg p-4 cursor-pointer overflow-hidden shadow-md transition-transform duration-200 hover:scale-[1.01]"
             >
-              {/* Background Gradient based on cover or random color */}
-              <div className="absolute inset-0 bg-gradient-to-br from-brand/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="absolute inset-0 bg-surface-0/25 group-hover:bg-surface-0/15 transition-colors" />
 
-              <div className="flex items-start justify-between mb-4 relative z-10">
-                <div className="w-12 h-12 rounded-lg bg-surface-3 flex items-center justify-center overflow-hidden shadow-md">
-                  {genre.coverUrl ? (
-                    <img src={genre.coverUrl} alt={genre.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <Music size={24} className="text-brand" />
+              <div className="relative z-10 flex flex-col h-full justify-between">
+                <div className="max-w-[75%]">
+                  <h3 className="text-lg font-extrabold tracking-tight text-text-main leading-snug line-clamp-2 drop-shadow-sm" title={genre.name}>
+                    {genre.name}
+                  </h3>
+                  <p className="text-xs font-semibold text-text-main/80 mt-1">
+                    {genre.count} {genre.count === 1 ? 'track' : 'tracks'}
+                  </p>
+                  {genre.topArtists && genre.topArtists.length > 0 && (
+                    <p className="text-[11px] text-text-main/70 truncate mt-0.5">
+                      {genre.topArtists.join(', ')}
+                    </p>
                   )}
                 </div>
-                
-                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+
+                <div className="flex items-center gap-2 opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200">
                   <button
+                    type="button"
+                    aria-label={`Play ${genre.name}`}
                     onClick={(e) => handlePlayGenre(e, genre.name, false)}
-                    className="p-2 bg-brand text-white rounded-full hover:bg-brand-hover shadow-lg hover:scale-105 transition-all"
+                    className="w-9 h-9 bg-brand text-surface-0 rounded-full hover:bg-brand-hover flex items-center justify-center shadow-lg hover:scale-105 transition-all"
                     title="Play Genre"
                   >
-                    <Play size={16} fill="currentColor" />
+                    <Play size={16} className="fill-current ml-0.5" />
                   </button>
                   <button
+                    type="button"
+                    aria-label={`Shuffle ${genre.name}`}
                     onClick={(e) => handlePlayGenre(e, genre.name, true)}
-                    className="p-2 bg-surface-3 text-text-main rounded-full hover:bg-surface-4 shadow-lg hover:scale-105 transition-all"
+                    className="w-9 h-9 bg-surface-0/60 backdrop-blur-sm text-text-main rounded-full hover:bg-surface-0/80 flex items-center justify-center shadow-lg hover:scale-105 transition-all"
                     title="Shuffle Genre"
                   >
-                    <Shuffle size={16} />
+                    <Shuffle size={15} />
                   </button>
                 </div>
               </div>
 
-              <div className="relative z-10">
-                <h3 className="text-lg font-bold text-white mb-1 truncate" title={genre.name}>
-                  {genre.name}
-                </h3>
-                <p className="text-sm text-brand font-medium mb-2">
-                  {genre.count} tracks
-                </p>
-                <div className="text-xs text-text-subtle truncate">
-                  {genre.topArtists?.join(', ') || ''}
-                </div>
+              {/* Spotify-style rotated artwork in bottom-right corner */}
+              <div className="absolute -bottom-2 -right-2 w-24 h-24 rounded-md bg-surface-3/80 shadow-xl rotate-[25deg] translate-x-2 translate-y-1 overflow-hidden flex items-center justify-center pointer-events-none">
+                {hasValidCover ? (
+                  <img
+                    src={genre.coverUrl}
+                    alt=""
+                    onError={() => genre.coverUrl && setFailedCovers(prev => ({ ...prev, [genre.coverUrl!]: true }))}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <Music size={32} className="text-text-main/50" />
+                )}
               </div>
             </div>
-          ))}
+          );
+          })}
         </div>
 
         {filteredGenres.length === 0 && (
           <div className="text-center py-20">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-surface-1 mb-4">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-surface-2 mb-4">
               <Search size={32} className="text-text-subtle" />
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">No genres found</h3>
+            <h3 className="text-xl font-bold text-text-main mb-2">No genres found</h3>
             <p className="text-text-secondary">
               Try adjusting your search terms
             </p>

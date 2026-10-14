@@ -20,14 +20,14 @@ import { savedLibraryDownloadOrigins } from '../lib/spotifyDownloadOrigins';
 import {fetchSpotifyPlaylist} from '../services/spotifyPlaylist';
 import { backendSpotifyFetch } from '../services/spotifyBackend';
 import { SpotifyArtistLinks } from '../components/SpotifyArtistLinks';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router';
-import { ArrowLeft, Play, MoreHorizontal, Loader2, Clock, ExternalLink, Download } from 'lucide-react';
-import { SpotifyService } from '../services/spotifyService';
+import { ArrowLeft, Play, MoreHorizontal, Loader2, Clock, ExternalLink, Download, Shuffle, ListPlus, Music } from 'lucide-react';
 import { useStore } from '../store';
 import { formatTime } from '../utils';
 import { SpotifyAuthError, SpotifyRateLimitError, SpotifyApiError } from '../lib/spotifyErrors';
-import { spotifyPlaylistToSongs } from '../lib/spotifyHelpers';
+import { spotifyPlaylistToSongs, spotifyTrackToSong } from '../lib/spotifyHelpers';
+import { ContextMenuType } from '../types';
 import api from '../services/api';
 import { Button } from '../components/ui/Button';
 
@@ -66,40 +66,52 @@ export const SpotifyPlaylistDetail: React.FC = () => {
   const location = useLocation();
   const sessionGeneration = useStore(s => s.spotifySessionGeneration);
   const downloadOrigins = savedLibraryDownloadOrigins(location.state, id, sessionGeneration);
-  const { addLog, playSong, addToQueue, showToast } = useStore();
+  const addLog = useStore(s => s.addLog);
+  const playSong = useStore(s => s.playSong);
+  const addToQueue = useStore(s => s.addToQueue);
+  const showToast = useStore(s => s.showToast);
+  const openContextMenu = useStore(s => s.openContextMenu);
   
   const [playlist, setPlaylist] = useState<SpotifyPlaylistFull | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
 
+  const playlistSongs = useMemo(() => (playlist ? spotifyPlaylistToSongs(playlist) : []), [playlist]);
+
   // Play the entire playlist
   const handlePlayPlaylist = () => {
-    if (!playlist) return;
-    const songs = spotifyPlaylistToSongs(playlist);
-    if (songs.length > 0) {
-      playSong(songs[0], songs);
-      addLog('info', `▶ Playing playlist: ${playlist.name}`);
-    }
+    if (!playlist || playlistSongs.length === 0) return;
+    playSong(playlistSongs[0], playlistSongs);
+    addLog('info', `▶ Playing playlist: ${playlist.name}`);
+  };
+
+  // Shuffle play the playlist
+  const handleShufflePlaylist = () => {
+    if (!playlist || playlistSongs.length === 0) return;
+    const shuffled = [...playlistSongs].sort(() => Math.random() - 0.5);
+    playSong(shuffled[0], shuffled);
+    addLog('info', `🔀 Shuffling playlist: ${playlist.name}`);
   };
 
   // Play a specific track (with rest of playlist as context)
   const handlePlayTrack = (trackIndex: number) => {
-    if (!playlist) return;
-    const songs = spotifyPlaylistToSongs(playlist);
-    if (songs.length > 0 && trackIndex < songs.length) {
-      playSong(songs[trackIndex], songs);
+    if (playlistSongs.length > 0 && trackIndex < playlistSongs.length) {
+      playSong(playlistSongs[trackIndex], playlistSongs, undefined, trackIndex);
     }
   };
 
   // Add playlist to queue
   const handleAddToQueue = () => {
-    if (!playlist) return;
-    const songs = spotifyPlaylistToSongs(playlist);
-    if (songs.length > 0) {
-      addToQueue(songs);
-      showToast({ type: 'success', message: `Added ${songs.length} tracks to queue` });
-    }
+    if (!playlist || playlistSongs.length === 0) return;
+    addToQueue(playlistSongs);
+    showToast({ type: 'success', message: `Added ${playlistSongs.length} tracks to queue` });
+  };
+
+  const handleTrackContextMenu = (e: React.MouseEvent, track: SpotifyPlaylistFull['tracks']['items'][0]['track']) => {
+    e.preventDefault();
+    const song = spotifyTrackToSong(track);
+    openContextMenu(e, ContextMenuType.SONG, song);
   };
 
   const handleDownload = async () => {
@@ -117,10 +129,9 @@ export const SpotifyPlaylistDetail: React.FC = () => {
     }
   };
 
-  const spotifyGeneration = useStore(state => state.spotifySessionGeneration);
   useEffect(() => {
     let active = true;
-    const current = () => active && useStore.getState().spotifySessionGeneration === spotifyGeneration;
+    const current = () => active && useStore.getState().spotifySessionGeneration === sessionGeneration;
     setPlaylist(null);
     const fetchPlaylist = async () => {
       if (!id) return;
@@ -224,7 +235,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
 
     fetchPlaylist();
     return () => {active = false;};
-  }, [id, addLog, spotifyGeneration]);
+  }, [id, addLog, sessionGeneration]);
 
   if (isLoading) {
     return (
@@ -267,12 +278,16 @@ export const SpotifyPlaylistDetail: React.FC = () => {
           </Button>
 
           <div className="flex flex-col gap-6 sm:flex-row sm:gap-8 sm:items-end">
-            <div className="w-64 h-64 flex-shrink-0 shadow-2xl rounded-lg overflow-hidden">
-              <img 
-                src={playlist.images[0]?.url} 
-                alt={playlist.name}
-                className="w-full h-full object-cover"
-              />
+            <div className="w-64 h-64 flex-shrink-0 shadow-2xl rounded-lg overflow-hidden bg-surface-3 flex items-center justify-center">
+              {playlist.images[0]?.url ? (
+                <img 
+                  src={playlist.images[0].url} 
+                  alt={playlist.name}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <Music size={64} className="text-text-subtle" />
+              )}
             </div>
 
             <div className="min-w-0 w-full flex-1 pb-4">
@@ -303,10 +318,28 @@ export const SpotifyPlaylistDetail: React.FC = () => {
           variant="primary"
           accent="brand"
           onClick={handlePlayPlaylist}
-          className="w-14 h-14 p-0 rounded-full shadow-xl hover:scale-105 transition-all duration-200"
+          className="w-14 h-14 p-0 rounded-full shadow-xl hover:scale-105 transition-all duration-200 text-surface-0"
           aria-label="Play playlist"
         >
-          <Play size={24} fill="black" />
+          <Play size={24} fill="currentColor" />
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={handleShufflePlaylist}
+          className="w-10 h-10 p-0 rounded-full"
+          aria-label="Shuffle playlist"
+          title="Shuffle"
+        >
+          <Shuffle size={18} />
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={handleAddToQueue}
+          className="w-10 h-10 p-0 rounded-full"
+          aria-label="Add to queue"
+          title="Add to queue"
+        >
+          <ListPlus size={18} />
         </Button>
         <Button
           variant="secondary"
@@ -348,11 +381,12 @@ export const SpotifyPlaylistDetail: React.FC = () => {
             <div 
               key={item.track.id || idx}
               onClick={() => handlePlayTrack(idx)}
+              onContextMenu={(e) => handleTrackContextMenu(e, item.track)}
               className="grid grid-cols-[40px_60px_1fr_1fr_80px_40px] gap-4 px-4 py-3 hover:bg-surface-hover group transition-all duration-200 border-b border-surface-border last:border-0 cursor-pointer"
             >
               <div className="text-center text-text-subtle flex items-center justify-center">
                 <span className="group-hover:hidden">{idx + 1}</span>
-                <Play size={16} className="hidden group-hover:block text-text-main" />
+                <Play size={16} className="hidden group-hover:block text-brand fill-current" />
               </div>
               <div className="flex items-center">
                 <img 
@@ -382,7 +416,8 @@ export const SpotifyPlaylistDetail: React.FC = () => {
               <div className="flex items-center justify-center">
                 <Button
                   variant="ghost"
-                  className="p-2 text-text-subtle hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={(e) => { e.stopPropagation(); handleTrackContextMenu(e, item.track); }}
+                  className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity"
                   aria-label="More"
                 >
                   <MoreHorizontal size={18} />

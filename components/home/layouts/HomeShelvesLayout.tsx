@@ -17,33 +17,55 @@ interface HomeShelvesLayoutProps {
   content: HomeContent;
 }
 
+const getGreeting = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+};
+
 export const HomeShelvesLayout: React.FC<HomeShelvesLayoutProps> = ({ content }) => {
   const navigate = useNavigate();
 
   return (
     <div className="space-y-2">
-      <header className="mb-8">
-        <div className="mb-5 flex flex-col gap-2">
-          <p className="text-sm font-semibold uppercase tracking-wide text-brand">Home</p>
-          <h1 className="text-display text-text-main">Let's ViiB</h1>
-        </div>
-        <div className="max-w-3xl">
-          <HomeSearchBar />
+      <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-section font-bold tracking-tight text-text-main md:text-display">
+          {getGreeting()}
+        </h1>
+        <div className="w-full sm:w-80 md:w-96">
+          <HomeSearchBar compact />
         </div>
       </header>
 
-      <section className="mb-10 grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
-        <HomeSpotlight item={content.spotlightItem} className="h-full" />
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-          {content.quickTiles.slice(0, 4).map((tile) => (
-            <HomeQuickTile key={tile.id} item={tile} compact className="min-w-0" />
+      {content.quickTiles.length > 0 && (
+        <section className="mb-8 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+          {content.quickTiles.slice(0, 6).map((tile) => (
+            <HomeQuickTile key={tile.id} item={tile} compact />
           ))}
-        </div>
+        </section>
+      )}
+
+      <section className="mb-8">
+        <HomeSpotlight item={content.spotlightItem} compact />
       </section>
+
+      {content.showSmartMixes && content.smartMixes.length > 0 ? (
+        <HomeShelf title="Made For You" subtitle="Auto-generated mixes from your library">
+          {content.smartMixes.map((mix) => (
+            <SmartMixCard
+              key={mix.id}
+              mix={mix}
+              onPlay={() => content.playMix(mix)}
+              onClick={() => content.navigateToSmartMix(mix)}
+              onContextMenu={(e) => content.openSmartMixMenu(e, mix)}
+            />
+          ))}
+        </HomeShelf>
+      ) : null}
 
       <HomeShelf
         title="Recently Added Albums"
-        subtitle="Fresh from your library"
         actionLabel="Albums"
         onAction={() => navigate('/albums')}
       >
@@ -60,7 +82,6 @@ export const HomeShelvesLayout: React.FC<HomeShelvesLayoutProps> = ({ content })
 
       <HomeShelf
         title="Top Artists"
-        subtitle="Artists with the most music in your library"
         actionLabel="Artists"
         onAction={() => navigate('/artists')}
       >
@@ -82,20 +103,6 @@ export const HomeShelvesLayout: React.FC<HomeShelvesLayoutProps> = ({ content })
         onPlay={content.playTrack}
         onContextMenu={content.openSongMenu}
       />
-
-      {content.showSmartMixes && content.smartMixes.length > 0 ? (
-        <HomeShelf title="Smart Mixes" subtitle="Auto-generated starts for your next session">
-          {content.smartMixes.map((mix) => (
-            <SmartMixCard
-              key={mix.id}
-              mix={mix}
-              onPlay={() => content.playMix(mix)}
-              onClick={() => content.navigateToSmartMix(mix)}
-              onContextMenu={(e) => content.openSmartMixMenu(e, mix)}
-            />
-          ))}
-        </HomeShelf>
-      ) : null}
 
       <HomeStatsCompact
         songsCount={content.songs.length}

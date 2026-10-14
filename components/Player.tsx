@@ -290,8 +290,58 @@ export const Player: React.FC = () => {
       return (
           <>
             {audioElements}
-            <div className="h-24 bg-surface-1 border-t border-surface-3 flex items-center justify-center text-text-subtle">
-                <span className="text-sm">Select a song to start listening</span>
+            <div className="h-[84px] bg-surface-0 px-4 grid grid-cols-3 items-center z-50 relative gap-4 select-none">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-12 h-12 rounded bg-surface-2 flex items-center justify-center flex-shrink-0 border border-surface-border">
+                  <ListMusic size={18} className="text-text-subtle" aria-hidden="true" />
+                </div>
+                <span className="text-xs md:text-sm text-text-subtle truncate">Select a song to start listening</span>
+              </div>
+
+              <div className="flex flex-col items-center gap-1.5 opacity-45 pointer-events-none" aria-hidden="true">
+                <div className="flex items-center gap-5">
+                  <Shuffle size={16} className="text-text-subtle" />
+                  <SkipBack size={18} className="text-text-subtle fill-current" />
+                  <div className="w-8 h-8 rounded-full bg-text-secondary/40 text-surface-0 flex items-center justify-center">
+                    <Play size={16} className="fill-current ml-0.5" />
+                  </div>
+                  <SkipForward size={18} className="text-text-subtle fill-current" />
+                  <Repeat size={16} className="text-text-subtle" />
+                </div>
+                <div className="w-full max-w-md flex items-center gap-2 text-[11px] text-text-subtle font-mono">
+                  <span>0:00</span>
+                  <div className="h-1 w-64 rounded-full bg-surface-3" />
+                  <span>0:00</span>
+                </div>
+              </div>
+
+              <div className="hidden md:flex items-center justify-end gap-2">
+                <Button
+                  onClick={toggleEqPanel}
+                  title="Equalizer"
+                  aria-label={`Equalizer ${audioSettings.eqEnabled ? 'enabled' : 'disabled'}`}
+                  aria-pressed={audioSettings.eqEnabled}
+                  variant="ghost"
+                  className={`rounded-full p-2 ${audioSettings.eqEnabled ? 'text-brand' : 'text-text-secondary hover:text-text-main'}`}
+                >
+                  <SlidersHorizontal size={17} />
+                </Button>
+                <Button
+                  onClick={() => setQueueOpen(!isQueueOpen)}
+                  title="Queue"
+                  aria-label={`Queue, ${queue.length} ${queue.length === 1 ? 'track' : 'tracks'}`}
+                  aria-pressed={isQueueOpen}
+                  aria-expanded={isQueueOpen}
+                  variant="ghost"
+                  className={`relative rounded-full p-2 ${isQueueOpen ? 'text-brand' : 'text-text-secondary hover:text-text-main'}`}
+                >
+                  <ListMusic size={18} aria-hidden="true" />
+                </Button>
+                <div className="flex items-center gap-2 w-28 opacity-50 pointer-events-none" aria-hidden="true">
+                  <Volume2 size={18} className="text-text-subtle" />
+                  <div className="h-1 w-full rounded-full bg-surface-3" />
+                </div>
+              </div>
             </div>
             <EqualizerPanel />
           </>
@@ -300,12 +350,12 @@ export const Player: React.FC = () => {
 
   return (
     <>
-                {audioElements}
-                <div className="h-24 bg-surface-1 border-t border-surface-3 px-2 md:px-4 grid grid-cols-[1fr_auto_1fr] md:grid-cols-3 items-center z-50 relative gap-2 md:gap-4">
+        {audioElements}
+        <div className="h-[84px] bg-surface-0 px-3 md:px-4 grid grid-cols-[1fr_auto_1fr] md:grid-cols-3 items-center z-50 relative gap-2 md:gap-4">
         {/* Song Info */}
-        <div className="flex items-center gap-2 md:gap-4 min-w-0">
+        <div className="flex items-center gap-3 min-w-0">
             <div 
-                className="w-12 h-12 md:w-14 md:h-14 rounded overflow-hidden flex-shrink-0 shadow-lg cursor-pointer group relative"
+                className="w-12 h-12 md:w-14 md:h-14 rounded-md overflow-hidden flex-shrink-0 shadow-md cursor-pointer group relative bg-surface-2"
                 style={{ background: !currentSong.coverUrl ? generateGradient(currentSong.album) : undefined }}
                 onClick={() => setNowPlayingOpen(true)}
                 onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, currentSong)}
@@ -313,20 +363,20 @@ export const Player: React.FC = () => {
                 {!currentSong.coverUrl && <div className="w-full h-full opacity-30"></div>}
                 {currentSong.coverUrl && <img src={currentSong.coverUrl} alt="Cover" className="w-full h-full object-cover" />}
                 
-                <div className="absolute inset-0 bg-surface-0/70 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                    <Maximize2 size={20} className="text-text-main" />
+                <div className="absolute inset-0 bg-surface-0/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                    <Maximize2 size={18} className="text-text-main" />
                 </div>
             </div>
             <div className="flex flex-col min-w-0">
             <span 
-                className="text-text-main font-medium truncate text-xs md:text-sm hover:underline cursor-pointer"
+                className="text-text-main font-semibold truncate text-xs md:text-sm hover:underline cursor-pointer"
                 onClick={() => setNowPlayingOpen(true)}
                 onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, currentSong)}
             >
                 {currentSong.title}
             </span>
             <span 
-                className="text-text-secondary text-xs truncate hover:underline cursor-pointer hidden sm:block"
+                className="text-text-secondary text-xs truncate hover:underline hover:text-text-main cursor-pointer hidden sm:block"
                 onContextMenu={(e) => openContextMenu(e, ContextMenuType.ARTIST, { name: currentSong.artist })}
             >
                 {currentSong.artist}
@@ -368,44 +418,43 @@ export const Player: React.FC = () => {
         </div>
 
         {/* Controls */}
-        <div className="flex flex-col items-center gap-1 md:gap-2">
-            <div className="flex items-center gap-3 md:gap-6">
-            <Button variant="ghost" className="hidden md:inline-flex rounded-full p-2" title="Shuffle" aria-label="Shuffle">
-                <Shuffle size={18} />
+        <div className="flex flex-col items-center gap-1.5">
+            <div className="flex items-center gap-3 md:gap-5">
+            <Button variant="ghost" className="hidden md:inline-flex rounded-full p-1.5 text-text-secondary hover:text-text-main" title="Shuffle" aria-label="Shuffle">
+                <Shuffle size={16} />
             </Button>
-            <Button onClick={prevSong} variant="ghost" className="rounded-full p-2" aria-label="Previous track">
-                <SkipBack size={20} className="md:w-6 md:h-6 fill-current" />
+            <Button onClick={prevSong} variant="ghost" className="rounded-full p-1.5 text-text-secondary hover:text-text-main" aria-label="Previous track">
+                <SkipBack size={19} className="fill-current" />
             </Button>
             
             <div className="relative">
                 {/* Buffering indicator */}
                 {isBuffering && currentSong.isStreaming && (
                     <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-11 h-11 md:w-12 md:h-12 rounded-full border-2 border-accent-green/30 border-t-accent-green animate-spin" />
+                        <div className="w-10 h-10 rounded-full border-2 border-brand/30 border-t-brand animate-spin" />
                     </div>
                 )}
-                <Button
+                <button
+                    type="button"
                     onClick={togglePlay}
-                    variant="primary"
-                    accent="playback"
-                    className="w-9 h-9 md:w-10 md:h-10 rounded-full p-0 hover:scale-105 transition-transform z-10 relative"
+                    className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-text-main text-surface-0 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform z-10 relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                     aria-label={isPlaying ? 'Pause' : 'Play'}
                 >
                     {isBuffering && currentSong.isStreaming ? (
-                        <Loader2 size={18} className="md:w-5 md:h-5 animate-spin text-surface-0/70" />
+                        <Loader2 size={17} className="animate-spin text-surface-0/70" />
                     ) : isPlaying ? (
-                        <Pause size={18} className="md:w-5 md:h-5 fill-current" />
+                        <Pause size={17} className="fill-current" />
                     ) : (
-                        <Play size={18} className="md:w-5 md:h-5 fill-current ml-0.5" />
+                        <Play size={17} className="fill-current ml-0.5" />
                     )}
-                </Button>
+                </button>
             </div>
 
-            <Button onClick={nextSong} variant="ghost" className="rounded-full p-2" aria-label="Next track">
-                <SkipForward size={20} className="md:w-6 md:h-6 fill-current" />
+            <Button onClick={nextSong} variant="ghost" className="rounded-full p-1.5 text-text-secondary hover:text-text-main" aria-label="Next track">
+                <SkipForward size={19} className="fill-current" />
             </Button>
-            <Button variant="ghost" className="hidden md:inline-flex rounded-full p-2" title="Repeat" aria-label="Repeat">
-                <Repeat size={18} />
+            <Button variant="ghost" className="hidden md:inline-flex rounded-full p-1.5 text-text-secondary hover:text-text-main" title="Repeat" aria-label="Repeat">
+                <Repeat size={16} />
             </Button>
             </div>
             

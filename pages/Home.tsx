@@ -29,13 +29,10 @@ export const Home: React.FC = () => {
   if (content.songs.length === 0) {
     return (
       <Page>
-        <header className="mb-8">
-          <div className="mb-5 flex flex-col gap-2">
-            <p className="text-sm font-semibold uppercase tracking-wide text-brand">Home</p>
-            <h1 className="text-display text-text-main">Let's ViiB</h1>
-          </div>
-          <div className="max-w-3xl">
-            <HomeSearchBar />
+        <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <h1 className="text-section font-bold tracking-tight text-text-main md:text-display">Home</h1>
+          <div className="w-full sm:w-80 md:w-96">
+            <HomeSearchBar compact />
           </div>
         </header>
         {isLibraryInitializing || isScanning ? (

@@ -232,7 +232,7 @@ export const Search: React.FC = () => {
               role="tab"
               aria-selected={tab === item}
               onClick={() => selectTab(item)}
-              className={`px-3 py-1.5 rounded-full text-sm transition-colors ${tab === item ? 'bg-brand text-black' : 'bg-surface-2 text-text-secondary hover:text-text-main'}`}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors ${tab === item ? 'bg-text-main text-surface-0 font-bold' : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-hover'}`}
             >
               {item[0].toUpperCase() + item.slice(1)} ({counts[item]})
             </button>
@@ -241,10 +241,12 @@ export const Search: React.FC = () => {
       )}
 
       {!query ? (
-        <div className="flex flex-col items-center justify-center mt-12 opacity-60">
-          <SearchIcon size={72} className="mb-4" />
-          <h2 className="text-xl font-bold">Search your library</h2>
-          <p className="text-sm">Backend mode uses the indexed, paginated search API.</p>
+        <div className="flex flex-col items-center justify-center mt-16 text-center">
+          <div className="w-16 h-16 rounded-full bg-surface-2 flex items-center justify-center mb-4 text-text-subtle">
+            <SearchIcon size={32} />
+          </div>
+          <h2 className="text-lg font-bold text-text-main mb-1">Search your library</h2>
+          <p className="text-sm text-text-secondary max-w-sm">Find songs, albums, artists, genres, and playlists across your catalog.</p>
         </div>
       ) : loading && totalResults === 0 ? (
         <div className="text-text-secondary py-10" role="status">Searching…</div>
@@ -254,17 +256,17 @@ export const Search: React.FC = () => {
         <div className="flex-1 overflow-y-auto pb-32 space-y-8">
           {(tab === 'all' || tab === 'artists') && results.artists.length > 0 && (
             <section>
-              <h2 className="text-xl font-bold mb-4">Artists</h2>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              <h2 className="text-section font-bold tracking-tight mb-4">Artists</h2>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
                 {(tab === 'all' ? results.artists.slice(0, 5) : results.artists).map(artist => (
                   <button
                     key={artist.name}
                     onClick={() => navigate(`/artist/${encodeURIComponent(artist.name)}`)}
-                    className="text-left bg-surface-1 hover:bg-surface-2 rounded-lg p-4 transition-colors"
+                    className="text-left bg-transparent hover:bg-surface-hover rounded-lg p-3 transition-colors"
                   >
                     <ArtistResultArtwork name={artist.name} imageUrl={artistImages.get(artist.name.toLocaleLowerCase())} />
-                    <div className="font-semibold truncate">{artist.name}</div>
-                    <div className="text-sm text-text-secondary">{artist.songCount} tracks · {artist.albumCount} albums</div>
+                    <div className="font-bold text-sm truncate text-text-main">{artist.name}</div>
+                    <div className="text-xs text-text-secondary mt-0.5">{artist.songCount} tracks · {artist.albumCount} albums</div>
                   </button>
                 ))}
               </div>
@@ -273,20 +275,20 @@ export const Search: React.FC = () => {
 
           {(tab === 'all' || tab === 'albums') && results.albums.length > 0 && (
             <section>
-              <h2 className="text-xl font-bold mb-4">Albums</h2>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              <h2 className="text-section font-bold tracking-tight mb-4">Albums</h2>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
                 {(tab === 'all' ? results.albums.slice(0, 5) : results.albums).map(album => (
-                  <div key={`${album.name}\u0000${album.artist}`} className="bg-surface-1 rounded-lg p-3 group">
+                  <div key={`${album.name}\u0000${album.artist}`} className="bg-transparent hover:bg-surface-hover rounded-lg p-3 group transition-colors">
                     <button className="w-full text-left" onClick={() => navigate(`/album/${encodeURIComponent(album.name)}/${encodeURIComponent(album.artist)}`)}>
-                      <div className="aspect-square rounded-md overflow-hidden mb-3" style={{ background: generateGradient(album.name) }}>
+                      <div className="aspect-square rounded-md overflow-hidden mb-3 shadow-lg" style={{ background: generateGradient(album.name) }}>
                         {album.coverPath && <img src={album.coverPath} alt="" className="w-full h-full object-cover" />}
                       </div>
-                      <div className="font-semibold truncate">{album.name}</div>
-                      <div className="text-sm text-text-secondary truncate">{album.artist} · {album.songCount}</div>
+                      <div className="font-bold text-sm truncate text-text-main">{album.name}</div>
+                      <div className="text-xs text-text-secondary truncate mt-0.5">{album.artist} · {album.songCount}</div>
                     </button>
                     <div className="flex gap-2 mt-3">
-                      <button onClick={() => playAlbum(album.name, album.artist)} className="p-2 rounded-full bg-brand text-black" aria-label={`Play ${album.name}`}><Play size={15} fill="currentColor" /></button>
-                      <button onClick={() => addAlbum(album.name, album.artist)} className="p-2 rounded-full bg-surface-3" aria-label={`Add ${album.name} to queue`}><ListPlus size={15} /></button>
+                      <button onClick={() => playAlbum(album.name, album.artist)} className="p-2 rounded-full bg-brand text-surface-0 hover:bg-brand-hover transition-colors" aria-label={`Play ${album.name}`}><Play size={15} fill="currentColor" /></button>
+                      <button onClick={() => addAlbum(album.name, album.artist)} className="p-2 rounded-full bg-surface-3 hover:bg-surface-highlight transition-colors" aria-label={`Add ${album.name} to queue`}><ListPlus size={15} /></button>
                     </div>
                   </div>
                 ))}
@@ -296,17 +298,17 @@ export const Search: React.FC = () => {
 
           {(tab === 'all' || tab === 'tracks') && results.tracks.length > 0 && (
             <section>
-              <h2 className="text-xl font-bold mb-3">Tracks</h2>
-              <div className="divide-y divide-border-subtle rounded-lg overflow-hidden bg-surface-1">
+              <h2 className="text-section font-bold tracking-tight mb-3">Tracks</h2>
+              <div className="space-y-0.5">
                 {(tab === 'all' ? results.tracks.slice(0, 12) : results.tracks).map(track => (
-                  <div key={track.id} className="flex items-center gap-3 px-4 py-3 hover:bg-surface-2">
-                    <button onClick={() => playSong(track, results.tracks)} className="p-2 rounded-full hover:bg-surface-3" aria-label={`Play ${track.title}`}><Play size={16} fill="currentColor" /></button>
+                  <div key={track.id} className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-surface-hover transition-colors">
+                    <button onClick={() => playSong(track, results.tracks)} className="p-2 rounded-full hover:bg-surface-3 text-text-secondary hover:text-text-main" aria-label={`Play ${track.title}`}><Play size={16} fill="currentColor" /></button>
                     <div className="min-w-0 flex-1">
-                      <div className="font-medium truncate">{track.title}</div>
-                      <div className="text-sm text-text-secondary truncate">{track.artist} — {track.album}</div>
+                      <div className="font-semibold text-sm text-text-main truncate">{track.title}</div>
+                      <div className="text-xs text-text-secondary truncate">{track.artist} — {track.album}</div>
                     </div>
-                    <div className="text-sm text-text-secondary tabular-nums">{formatTime(track.duration)}</div>
-                    <button onClick={() => addToQueue(track)} className="p-2 rounded-full hover:bg-surface-3" aria-label={`Add ${track.title} to queue`}><ListPlus size={16} /></button>
+                    <div className="text-xs text-text-secondary tabular-nums">{formatTime(track.duration)}</div>
+                    <button onClick={() => addToQueue(track)} className="p-2 rounded-full hover:bg-surface-3 text-text-secondary hover:text-text-main" aria-label={`Add ${track.title} to queue`}><ListPlus size={16} /></button>
                   </div>
                 ))}
               </div>
@@ -315,12 +317,12 @@ export const Search: React.FC = () => {
 
           {(tab === 'all' || tab === 'playlists') && results.playlists.length > 0 && (
             <section>
-              <h2 className="text-xl font-bold mb-3">Playlists</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <h2 className="text-section font-bold tracking-tight mb-3">Playlists</h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {results.playlists.map(playlist => (
-                  <button key={playlist.id} onClick={() => navigate(`/playlist/${playlist.id}`)} className="text-left bg-surface-1 hover:bg-surface-2 rounded-lg p-4">
-                    <div className="font-semibold truncate">{playlist.name}</div>
-                    <div className="text-sm text-text-secondary">{playlist.songCount} tracks</div>
+                  <button key={playlist.id} onClick={() => navigate(`/playlist/${playlist.id}`)} className="text-left bg-surface-2/70 hover:bg-surface-hover rounded-lg p-4 transition-colors">
+                    <div className="font-bold text-sm text-text-main truncate">{playlist.name}</div>
+                    <div className="text-xs text-text-secondary mt-0.5">{playlist.songCount} tracks</div>
                   </button>
                 ))}
               </div>

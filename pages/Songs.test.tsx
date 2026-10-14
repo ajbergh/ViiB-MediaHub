@@ -46,7 +46,7 @@ it('opens from the header, aligns selected columns, preserves actions and prefer
     const row = container.querySelector<HTMLElement>('[data-song-id="a"]')!;
     expect(cells(header).map(cell => cell[0])).toEqual(cells(row).map(cell => cell[0]));
     expect(cells(row)).toEqual(expect.arrayContaining([['bpm', '123.5'], ['key', 'C minor'], ['genre', 'Rock'], ['year', '1995'], ['energy', '0']]));
-    expect(cells(container.querySelector('[data-song-id="b"]')!)).toContainEqual(['key', '—']);
+    expect(cells(container.querySelector('[data-song-id="b"]')!)).toContainEqual(['key', 'â€”']);
     expect(container.querySelectorAll('[style]')[0].getAttribute('style')).toContain('--song-columns:');
     expect(JSON.parse(localStorage.getItem(SONG_COLUMNS_STORAGE_KEY)!)).toContain('key');
     await act(async () => document.querySelector('[aria-label="Track columns"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
@@ -56,7 +56,7 @@ it('opens from the header, aligns selected columns, preserves actions and prefer
     await act(async () => row.querySelector<HTMLButtonElement>('[aria-label="More options"]')!.click());
     await act(async () => row.querySelector<HTMLButtonElement>('[aria-label="Like"]')!.click());
     expect(mocks.info).toHaveBeenCalledWith(mocks.state.songs[0]); expect(mocks.context).toHaveBeenCalled(); expect(mocks.like).toHaveBeenCalled(); expect(mocks.play).not.toHaveBeenCalled();
-    await act(async () => row.click()); expect(mocks.play).toHaveBeenCalledWith(mocks.state.songs[0], mocks.state.songs);
+    await act(async () => row.click()); expect(mocks.play).toHaveBeenCalledWith(mocks.state.songs[0], mocks.state.songs, undefined, 0);
     await act(async () => root.unmount()); root = createRoot(container); await render();
     expect(cells(container.querySelector('[data-song-id="a"]')!)).toContainEqual(['key', 'C minor']);
     await openChooser(container);
@@ -72,7 +72,7 @@ it('uses metadata BPM and unknown Key if analysis fails, then refreshes when the
   try {
     await act(async () => root.render(<Songs/>));
     expect(container.querySelector('[data-song-id="a"] [data-column=bpm]')?.textContent).toBe('110');
-    expect(container.querySelector('[data-song-id="a"] [data-column=key]')?.textContent).toBe('—');
+    expect(container.querySelector('[data-song-id="a"] [data-column=key]')?.textContent).toBe('â€”');
     await act(async () => window.dispatchEvent(new Event('library_updated')));
     expect(container.querySelector('[data-song-id="a"] [data-column=key]')?.textContent).toBe('D major');
   } finally { await act(async () => root.unmount()); container.remove(); }
@@ -88,5 +88,44 @@ it('refreshes Energy Level on a successful manual metadata event', async () => {
     expect(container.querySelector('[data-song-id="a"] [data-column=energy]')?.textContent).toBe('4');
     await act(async () => window.dispatchEvent(new CustomEvent('library_updated', { detail: { source: 'manual_audio_metadata', songId: 'a', sourceFingerprint: 'fp', field: 'local_energy_level' } })));
     expect(container.querySelector('[data-song-id="a"] [data-column=energy]')?.textContent).toBe('9');
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
+import { getCamelotColor } from '../lib/camelotColors';
+
+it('plays a filtered row using its displayed queue position', async () => {
+  const { root, container } = setup();
+  try {
+    await act(async () => root.render(<Songs/>));
+    const input = container.querySelector<HTMLInputElement>('input')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Beta');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(container.querySelector('[data-song-id="a"]')).toBeNull();
+    await act(async () => container.querySelector<HTMLElement>('[data-song-id="b"]')!.click());
+    expect(mocks.play).toHaveBeenCalledWith(mocks.state.songs[1], [mocks.state.songs[1]], undefined, 0);
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
+it('renders Camelot Key column values with their deterministic Camelot wheel color', async () => {
+  localStorage.setItem(SONG_COLUMNS_STORAGE_KEY, JSON.stringify(['camelot']));
+  mocks.analysis.mockResolvedValue([{ songId: 'a', camelotKey: '5A' }]);
+  const { root, container } = setup();
+  try {
+    await act(async () => root.render(<Songs/>));
+    const expected = getCamelotColor('5A')!;
+    const badge = container.querySelector<HTMLElement>('[data-song-id="a"] [data-column="camelot"] span');
+    expect(badge).not.toBeNull();
+    expect(badge?.textContent).toBe('5A');
+    const probe = document.createElement('span');
+    probe.style.backgroundColor = expected.background;
+    probe.style.borderColor = expected.border;
+    probe.style.color = expected.foreground;
+    expect(badge?.style.backgroundColor).toBe(probe.style.backgroundColor);
+    expect(badge?.style.borderColor).toBe(probe.style.borderColor);
+    expect(badge?.style.color).toBe(probe.style.color);
+    const missingCell = container.querySelector<HTMLElement>('[data-song-id="b"] [data-column="camelot"]');
+    expect(missingCell?.querySelector('span')).toBeNull();
   } finally { await act(async () => root.unmount()); container.remove(); }
 });

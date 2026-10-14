@@ -127,90 +127,123 @@ export const useStore = create<AppState>()(
 
 type DerivedAlbum = Album & { plexBacked?: boolean };
 
-export const useAlbums = () => {
-  const songs = useStore((state) => state.songs);
-  return useMemo(() => {
-    const albumsMap = new Map<string, DerivedAlbum>();
+let cachedAlbumsSongsRef: AppState['songs'] | null = null;
+let cachedAlbumsResult: DerivedAlbum[] = [];
 
-    songs.forEach((song) => {
-      const artist = song.albumArtist || song.artist || 'Unknown Artist';
-      const key = `${song.album}::${artist}`;
-      const plexBacked = isPlexSourcePath(song.path);
-      const existing = albumsMap.get(key);
-      if (existing) {
-        existing.songCount += 1;
-        existing.addedAt = Math.max(existing.addedAt || 0, song.addedAt || 0);
-        if (plexBacked) {
-          // Once a logical album has a Plex source, Plex's artwork decision is
-          // authoritative. The first Plex row deliberately clears a local cover
-          // if PMS has no artwork; later Plex rows may supply that PMS cover.
-          if (!existing.plexBacked) {
-            existing.coverUrl = song.coverUrl;
-          } else if (song.coverUrl && (!existing.coverUrl || isAuthoritativePlexArtwork(song.coverUrl))) {
-            existing.coverUrl = song.coverUrl;
-          }
-          existing.plexBacked = true;
-        } else if (!existing.plexBacked && !existing.coverUrl && song.coverUrl) {
+const computeAlbums = (songs: AppState['songs']): DerivedAlbum[] => {
+  if (songs === cachedAlbumsSongsRef) {
+    return cachedAlbumsResult;
+  }
+
+  const albumsMap = new Map<string, DerivedAlbum>();
+
+  for (let i = 0; i < songs.length; i++) {
+    const song = songs[i];
+    const artist = song.albumArtist || song.artist || 'Unknown Artist';
+    const key = `${song.album}::${artist}`;
+    const plexBacked = isPlexSourcePath(song.path);
+    const existing = albumsMap.get(key);
+    if (existing) {
+      existing.songCount += 1;
+      existing.addedAt = Math.max(existing.addedAt || 0, song.addedAt || 0);
+      if (plexBacked) {
+        // Once a logical album has a Plex source, Plex's artwork decision is
+        // authoritative. The first Plex row deliberately clears a local cover
+        // if PMS has no artwork; later Plex rows may supply that PMS cover.
+        if (!existing.plexBacked) {
+          existing.coverUrl = song.coverUrl;
+        } else if (song.coverUrl && (!existing.coverUrl || isAuthoritativePlexArtwork(song.coverUrl))) {
           existing.coverUrl = song.coverUrl;
         }
-        return;
+        existing.plexBacked = true;
+      } else if (!existing.plexBacked && !existing.coverUrl && song.coverUrl) {
+        existing.coverUrl = song.coverUrl;
       }
-      albumsMap.set(key, {
-        name: song.album || 'Unknown Album',
-        artist,
-        songCount: 1,
-        coverUrl: song.coverUrl,
-        addedAt: song.addedAt || 0,
-        plexBacked,
-      });
+      continue;
+    }
+    albumsMap.set(key, {
+      name: song.album || 'Unknown Album',
+      artist,
+      songCount: 1,
+      coverUrl: song.coverUrl,
+      addedAt: song.addedAt || 0,
+      plexBacked,
     });
+  }
 
-    return Array.from(albumsMap.values()).sort(
-      (a, b) => (b.addedAt || 0) - (a.addedAt || 0) || a.name.localeCompare(b.name) || a.artist.localeCompare(b.artist),
-    );
-  }, [songs]);
+  cachedAlbumsSongsRef = songs;
+  cachedAlbumsResult = Array.from(albumsMap.values()).sort(
+    (a, b) => (b.addedAt || 0) - (a.addedAt || 0) || a.name.localeCompare(b.name) || a.artist.localeCompare(b.artist),
+  );
+  return cachedAlbumsResult;
 };
 
+export const useAlbums = () => {
+  const songs = useStore((state) => state.songs);
+  return useMemo(() => computeAlbums(songs), [songs]);
+};
+
+let cachedArtistsSongsRef: AppState['songs'] | null = null;
+let cachedArtistsResult: Artist[] = [];
+
+const computeArtists = (songs: AppState['songs']): Artist[] => {
+  if (songs === cachedArtistsSongsRef) {
+    return cachedArtistsResult;
+  }
+
+  const artistMap = new Map<string, Artist & { albums: Set<string> }>();
+
+  for (let i = 0; i < songs.length; i++) {
+    const song = songs[i];
+    const artistNames = splitArtistNames(song.artist);
+
+    for (const artistName of artistNames) {
+      let artist = artistMap.get(artistName);
+      if (!artist) {
+        artist = {
+          name: artistName,
+          songCount: 0,
+          albumCount: 0,
+          albums: new Set(),
+          imageUrl: song.coverUrl,
+        };
+        artistMap.set(artistName, artist);
+      }
+      artist.songCount++;
+      artist.albums.add(song.album);
+      if (!artist.imageUrl && song.coverUrl) {
+        artist.imageUrl = song.coverUrl;
+      }
+    }
+  }
+
+  cachedArtistsSongsRef = songs;
+  cachedArtistsResult = Array.from(artistMap.values())
+    .map((a) => ({
+      ...a,
+      albumCount: a.albums.size,
+    }))
+    .sort((a, b) => b.songCount - a.songCount);
+  return cachedArtistsResult;
+};
 
 export const useArtists = () => {
   const songs = useStore((state) => state.songs);
-  return useMemo(() => {
-    const artistMap = new Map<string, Artist & { albums: Set<string> }>();
-
-    songs.forEach(song => {
-      // Split artist field into individual artists
-      const artistNames = splitArtistNames(song.artist);
-      
-      for (const artistName of artistNames) {
-        if (!artistMap.has(artistName)) {
-          artistMap.set(artistName, {
-            name: artistName,
-            songCount: 0,
-            albumCount: 0,
-            albums: new Set(),
-            imageUrl: song.coverUrl
-          });
-        }
-        const artist = artistMap.get(artistName)!;
-        artist.songCount++;
-        artist.albums.add(song.album);
-        if (!artist.imageUrl && song.coverUrl) {
-          artist.imageUrl = song.coverUrl;
-        }
-      }
-    });
-
-    // Sort by song count (most popular first)
-    return Array.from(artistMap.values())
-      .map(a => ({
-        ...a,
-        albumCount: a.albums.size
-      }))
-      .sort((a, b) => b.songCount - a.songCount);
-  }, [songs]);
+  return useMemo(() => computeArtists(songs), [songs]);
 };
+
+let cachedCoversAlbumsRef: DerivedAlbum[] | null = null;
+let cachedCoversResult: Record<string, string> = {};
 
 export const useAlbumCovers = () => {
   const albums = useAlbums();
-  return useMemo(() => buildAlbumCoverIndex(albums), [albums]);
+  return useMemo(() => {
+    if (albums === cachedCoversAlbumsRef) {
+      return cachedCoversResult;
+    }
+    cachedCoversAlbumsRef = albums;
+    cachedCoversResult = buildAlbumCoverIndex(albums);
+    return cachedCoversResult;
+  }, [albums]);
 };
+

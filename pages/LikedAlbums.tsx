@@ -39,7 +39,7 @@ const ListContainer = forwardRef<HTMLDivElement, any>(({ style, children, ...pro
           ...style,
           display: 'grid',
           gridTemplateColumns: 'repeat(var(--card-cols, 4), minmax(0, 1fr))',
-          gap: '1.5rem',
+          gap: '0.5rem',
           paddingBottom: '8rem',
         }}
     >
@@ -55,7 +55,9 @@ const ItemContainer = forwardRef<HTMLDivElement, any>(({ children, ...props }, r
 
 export const LikedAlbums: React.FC = () => {
     const albums = useAlbums();
-    const { likedAlbumKeys, albumMetadata, openContextMenu } = useStore();
+    const likedAlbumKeys = useStore(state => state.likedAlbumKeys);
+    const albumMetadata = useStore(state => state.albumMetadata);
+    const openContextMenu = useStore(state => state.openContextMenu);
     const navigate = useNavigate();
     const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
     const [sortBy, setSortBy] = useState<LikedAlbumSortOption>('recent');
@@ -96,13 +98,13 @@ export const LikedAlbums: React.FC = () => {
     if (sortedLikedAlbums.length === 0) {
         return (
             <Page withPlayerPadding={false}>
-                <div className="flex items-end gap-6 mb-8">
-                    <div className="w-48 h-48 rounded-lg bg-gradient-to-br from-brand/40 to-surface-1 flex items-center justify-center shadow-2xl">
-                        <Heart size={80} className="text-white/50" />
+                <div className="flex flex-col sm:flex-row items-start sm:items-end gap-6 mb-8">
+                    <div className="w-40 h-40 sm:w-48 sm:h-48 rounded-md bg-gradient-to-br from-brand/60 via-surface-3 to-surface-2 flex items-center justify-center shadow-2xl flex-shrink-0">
+                        <Heart size={72} className="text-text-main/70" />
                     </div>
-                    <div className="flex-1">
-                        <p className="text-xs uppercase tracking-widest text-text-secondary mb-2 font-semibold">Collection</p>
-                        <h1 className="text-display font-bold text-text-main mb-4">Liked Albums</h1>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-xs uppercase tracking-widest text-text-secondary mb-1.5 font-bold">Collection</p>
+                        <h1 className="text-display font-extrabold tracking-tight text-text-main mb-3">Liked Albums</h1>
                         <p className="text-text-secondary text-sm">No liked albums yet</p>
                     </div>
                 </div>
@@ -127,14 +129,14 @@ export const LikedAlbums: React.FC = () => {
 
     return (
         <Page withPlayerPadding={false}>
-            <div className="flex items-end gap-6 mb-8">
-                <div className="w-48 h-48 rounded-lg bg-gradient-to-br from-brand to-surface-1 flex items-center justify-center shadow-2xl shadow-brand/30">
-                    <Heart size={80} className="text-white fill-current" />
+            <div className="flex flex-col sm:flex-row items-start sm:items-end gap-6 mb-6">
+                <div className="w-40 h-40 sm:w-48 sm:h-48 rounded-md bg-gradient-to-br from-brand via-accent-green to-surface-2 flex items-center justify-center shadow-2xl flex-shrink-0">
+                    <Heart size={72} className="text-text-main fill-current drop-shadow-md" />
                 </div>
-                <div className="flex-1">
-                    <p className="text-xs uppercase tracking-widest text-text-secondary mb-2 font-semibold">Collection</p>
-                    <h1 className="text-display font-bold text-text-main mb-4">Liked Albums</h1>
-                    <p className="text-text-secondary text-sm">
+                <div className="flex-1 min-w-0">
+                    <p className="text-xs uppercase tracking-widest text-text-secondary mb-1.5 font-bold">Collection</p>
+                    <h1 className="text-display font-extrabold tracking-tight text-text-main mb-3">Liked Albums</h1>
+                    <p className="text-text-secondary text-sm font-medium">
                         {sortedLikedAlbums.length} album{sortedLikedAlbums.length !== 1 ? 's' : ''}
                     </p>
                 </div>
@@ -146,7 +148,7 @@ export const LikedAlbums: React.FC = () => {
                     <button
                         type="button"
                         onClick={() => setShowSortMenu(!showSortMenu)}
-                        className="flex items-center gap-2 px-4 py-2 bg-surface-highlight hover:bg-surface-hover rounded-full text-sm text-text-main transition-colors border border-transparent hover:border-surface-slider"
+                        className="flex items-center gap-2 px-4 py-2 bg-surface-3 hover:bg-surface-highlight rounded-full text-sm text-text-main transition-colors"
                         aria-haspopup="menu"
                         aria-expanded={showSortMenu}
                     >
@@ -163,7 +165,7 @@ export const LikedAlbums: React.FC = () => {
                               className="fixed inset-0 z-40"
                               onClick={() => setShowSortMenu(false)}
                             />
-                            <div className="absolute right-0 top-full mt-2 bg-surface-2 border border-surface-3 rounded-lg shadow-xl z-50 py-1 min-w-[180px]">
+                            <div className="absolute right-0 top-full mt-2 bg-surface-2 border border-surface-border rounded-md shadow-xl z-50 py-1 min-w-[180px]">
                                 {(Object.keys(sortLabels) as LikedAlbumSortOption[]).map((option) => (
                                     <button
                                         type="button"
@@ -193,7 +195,7 @@ export const LikedAlbums: React.FC = () => {
 
                     return (
                         <div
-                            className="bg-surface-2 p-4 rounded-lg hover:bg-surface-3 transition-all group cursor-pointer border border-transparent hover:border-surface-border h-full flex flex-col relative"
+                            className="bg-transparent p-3 rounded-lg hover:bg-surface-hover transition-colors group cursor-pointer h-full flex flex-col relative"
                             onClick={() => navigate(`/album/${encodeURIComponent(album.name)}/${encodeURIComponent(album.artist)}`)}
                             onContextMenu={(e) => openContextMenu(e, ContextMenuType.ALBUM, album)}
                             role="button"
@@ -206,25 +208,23 @@ export const LikedAlbums: React.FC = () => {
                                 }
                             }}
                         >
-                            <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="absolute top-5 right-5 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <AlbumLikeButton albumKey={metadataKey} size={20} />
                             </div>
                             <div
-                                className="w-full aspect-square rounded-md mb-4 shadow-lg flex items-center justify-center text-display font-bold text-white/20 relative overflow-hidden bg-surface-3"
+                                className="w-full aspect-square rounded-md mb-3 shadow-xl flex items-center justify-center text-display font-bold text-text-main/20 relative overflow-hidden bg-surface-3"
                                 style={{ background: coverBackground(coverUrl, album.name) }}
                             >
                                 {!coverUrl && <span className="z-10">{album.name.charAt(0)}</span>}
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                    <div className="w-12 h-12 bg-brand rounded-full flex items-center justify-center shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
-                                        <svg className="w-6 h-6 text-black fill-current ml-1" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                                    </div>
+                                <div className="absolute bottom-2 right-2 w-11 h-11 bg-brand rounded-full flex items-center justify-center shadow-xl translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-200">
+                                    <svg className="w-5 h-5 text-surface-0 fill-current ml-0.5" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                                 </div>
                             </div>
-                            <h4 className="font-bold truncate text-text-main mb-1">{album.name}</h4>
+                            <h4 className="font-semibold text-sm truncate text-text-main mb-1">{album.name}</h4>
                             <div className="flex justify-between items-center mt-auto">
-                                <p className="text-sm text-text-secondary truncate max-w-[70%]">{album.artist}</p>
+                                <p className="text-xs text-text-secondary truncate max-w-[75%]">{album.artist}</p>
                                 {metadata?.releaseDate && (
-                                    <span className="text-[10px] text-text-subtle font-mono">{new Date(metadata.releaseDate).getFullYear()}</span>
+                                    <span className="text-[11px] text-text-subtle">{new Date(metadata.releaseDate).getFullYear()}</span>
                                 )}
                             </div>
                         </div>

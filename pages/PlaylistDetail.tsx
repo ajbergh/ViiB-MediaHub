@@ -1,7 +1,8 @@
 /** Displays and edits playlist metadata and contents with playback/queue actions. */
 
-import React, { useMemo, useState } from 'react';
+import React, { useDeferredValue, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
+import { Virtuoso } from 'react-virtuoso';
 import { ArrowDown, ArrowUp, Play, Plus, Search, Trash2 } from 'lucide-react';
 import { useAlbumCovers, useStore } from '../store';
 import { Playlist, Song } from '../types';
@@ -22,6 +23,7 @@ const PlaylistEditor: React.FC<{ playlist: Playlist }> = ({ playlist }) => {
   const [draft, setDraft] = useState<string[] | null>(null);
   const [baseIds, setBaseIds] = useState<string[] | null>(null);
   const [query, setQuery] = useState('');
+  const deferredQuery = useDeferredValue(query);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
@@ -30,14 +32,14 @@ const PlaylistEditor: React.FC<{ playlist: Playlist }> = ({ playlist }) => {
   const songsById = useMemo(() => new Map(songs.map(song => [song.id, song])), [songs]);
   const covers = useMemo(() => getPlaylistArtwork(songIds, songsById, albumCovers), [songIds, songsById, albumCovers]);
   const matches = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase();
+    const normalized = deferredQuery.trim().toLocaleLowerCase();
     const result: Song[] = [];
     for (const song of songs) {
       if (!normalized || [song.title, song.artist, song.album].some(value => value.toLocaleLowerCase().includes(normalized))) result.push(song);
       if (result.length === 50) break;
     }
     return result;
-  }, [query, songs]);
+  }, [deferredQuery, songs]);
   const edit = (ids: string[]) => {
     if (baseIds === null) setBaseIds([...playlist.songIds]);
     setDraft(ids); setError(''); setSaved(false);
@@ -55,7 +57,22 @@ const PlaylistEditor: React.FC<{ playlist: Playlist }> = ({ playlist }) => {
       setError(failure instanceof Error ? failure.message : 'Unable to save playlist. Please try again.');
     } finally { setSaving(false); }
   };
-  const availableSongs = resolvePlaylistSongs(songIds, songsById);
+  const availableSongs = useMemo(() => resolvePlaylistSongs(songIds, songsById), [songIds, songsById]);
+
+  const renderTrackRow = (id: string, index: number) => {
+    const song = songsById.get(id);
+    const title = song?.title || 'Unavailable track';
+    return (
+      <div className="flex items-center gap-3 p-3 bg-surface-1 border-b border-surface-border last:border-b-0">
+        <span className="w-6 shrink-0 text-sm text-text-subtle">{index + 1}</span>
+        <div className="min-w-0 flex-1"><p className="truncate font-medium">{title}</p><p className="truncate text-sm text-text-secondary">{song ? `${song.artist} · ${song.album}` : 'This track is not currently in your library.'}</p></div>
+        {song && <span className="hidden sm:block text-sm text-text-secondary">{formatTime(song.duration)}</span>}
+        <button type="button" className={buttonClass} aria-label={`Move track ${index + 1} up`} disabled={index === 0} onClick={() => move(index, index - 1)}><ArrowUp size={16} /></button>
+        <button type="button" className={buttonClass} aria-label={`Move track ${index + 1} down`} disabled={index === songIds.length - 1} onClick={() => move(index, index + 1)}><ArrowDown size={16} /></button>
+        <button type="button" className={`${buttonClass} text-error`} aria-label={`Remove track ${index + 1}: ${title}`} onClick={() => edit(songIds.filter((_, i) => i !== index))}><Trash2 size={16} /></button>
+      </div>
+    );
+  };
 
   return (
     <Page>
@@ -77,20 +94,22 @@ const PlaylistEditor: React.FC<{ playlist: Playlist }> = ({ playlist }) => {
       <fieldset disabled={saving} className="min-w-0">
         <legend className="text-lg font-semibold mb-3">Playlist contents</legend>
         <p className="mb-3 text-sm text-text-secondary">Use the arrows to reorder tracks. Removing a track only removes it from this playlist.</p>
-        {songIds.length === 0 ? <p className="py-6 text-text-secondary">No tracks yet. Add tracks from your library below.</p> : (
+        {songIds.length === 0 ? <p className="py-6 text-text-secondary">No tracks yet. Add tracks from your library below.</p> : songIds.length > 100 ? (
+          <div className="h-[50vh] rounded-lg border border-surface-border overflow-hidden" aria-label="Playlist tracks">
+            <Virtuoso
+              data={songIds}
+              style={{ height: '100%' }}
+              computeItemKey={(index, id) => `${index}:${id}`}
+              itemContent={(index, id) => renderTrackRow(id, index)}
+            />
+          </div>
+        ) : (
           <ol className="max-h-[50vh] overflow-y-auto rounded-lg border border-surface-border divide-y divide-surface-border" aria-label="Playlist tracks">
-            {songIds.map((id, index) => {
-              const song = songsById.get(id);
-              const title = song?.title || 'Unavailable track';
-              return <li key={`${index}:${id}`} className="flex items-center gap-3 p-3 bg-surface-1">
-                <span className="w-6 shrink-0 text-sm text-text-subtle">{index + 1}</span>
-                <div className="min-w-0 flex-1"><p className="truncate font-medium">{title}</p><p className="truncate text-sm text-text-secondary">{song ? `${song.artist} · ${song.album}` : 'This track is not currently in your library.'}</p></div>
-                {song && <span className="hidden sm:block text-sm text-text-secondary">{formatTime(song.duration)}</span>}
-                <button type="button" className={buttonClass} aria-label={`Move track ${index + 1} up`} disabled={index === 0} onClick={() => move(index, index - 1)}><ArrowUp size={16} /></button>
-                <button type="button" className={buttonClass} aria-label={`Move track ${index + 1} down`} disabled={index === songIds.length - 1} onClick={() => move(index, index + 1)}><ArrowDown size={16} /></button>
-                <button type="button" className={`${buttonClass} text-error`} aria-label={`Remove track ${index + 1}: ${title}`} onClick={() => edit(songIds.filter((_, i) => i !== index))}><Trash2 size={16} /></button>
-              </li>;
-            })}
+            {songIds.map((id, index) => (
+              <li key={`${index}:${id}`}>
+                {renderTrackRow(id, index)}
+              </li>
+            ))}
           </ol>
         )}
         <h2 className="mt-8 mb-3 text-lg font-semibold">Add tracks</h2>

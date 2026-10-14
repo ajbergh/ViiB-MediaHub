@@ -86,14 +86,28 @@ async function main() {
     if (msg.type() === 'error') return;
   });
 
+  let initialized = false;
+  async function navigateTo(pagePath) {
+    if (!initialized) {
+      await page.goto(`${BASE_URL}${pagePath}`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await waitForContentLoaded(page);
+      await dismissFirstLaunchDialog(page);
+      initialized = true;
+    } else {
+      await page.evaluate((targetPath) => {
+        window.history.pushState({}, '', targetPath);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }, pagePath);
+      await page.waitForTimeout(800);
+    }
+  }
+
   for (const { name, path: pagePath, label } of PAGES) {
     const url = `${BASE_URL}${pagePath}`;
     const outFile = path.join(SCREENSHOTS_DIR, `${name}.png`);
     console.log(`📸 ${label} — ${url}`);
     try {
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
-      await waitForContentLoaded(page);
-      await dismissFirstLaunchDialog(page);
+      await navigateTo(pagePath);
       await page.screenshot({ path: outFile, fullPage: false });
       console.log(`   ✓ Saved: assets/screenshots/${name}.png`);
     } catch (err) {
@@ -104,12 +118,10 @@ async function main() {
   // Settings has one documented screenshot for each visible tab.
   try {
     console.log('📸 Settings tabs');
-    await page.goto(`${BASE_URL}/settings`, { waitUntil: 'domcontentloaded', timeout: 15000 });
-    await waitForContentLoaded(page);
-    await dismissFirstLaunchDialog(page);
+    await navigateTo('/settings');
     for (const { name, label } of SETTINGS_TABS) {
       await page.getByRole('button', { name: label, exact: true }).click();
-      await waitForContentLoaded(page);
+      await page.waitForTimeout(500);
       const outFile = path.join(SCREENSHOTS_DIR, `${name}.png`);
       await page.screenshot({ path: outFile, fullPage: false });
       console.log(`   ✓ Saved: assets/screenshots/${name}.png`);
@@ -120,11 +132,10 @@ async function main() {
 
   // ── Special panel screenshots ──────────────────────────────────────────────
 
-  // Queue panel open (navigate to songs, play a song to populate state, open queue)
+  // Queue panel open (navigate to songs, open queue)
   try {
     console.log('📸 Player — Queue panel open');
-    await page.goto(`${BASE_URL}/songs`, { waitUntil: 'domcontentloaded', timeout: 15000 });
-    await waitForContentLoaded(page);
+    await navigateTo('/songs');
     // Press Q to open queue
     await page.keyboard.press('q');
     await page.waitForTimeout(600);
@@ -137,8 +148,7 @@ async function main() {
   // EQ panel open
   try {
     console.log('📸 Player — Equalizer panel open');
-    await page.goto(`${BASE_URL}/songs`, { waitUntil: 'domcontentloaded', timeout: 15000 });
-    await waitForContentLoaded(page);
+    await navigateTo('/songs');
     // Close queue if open, then open EQ
     await page.keyboard.press('q');
     await page.waitForTimeout(300);

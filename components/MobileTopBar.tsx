@@ -41,19 +41,19 @@ export const MobileTopBar: React.FC<MobileTopBarProps> = ({ onOpenMenu }) => {
   const title = titleForPath(location.pathname);
 
   return (
-    <header className="md:hidden flex-shrink-0 h-14 bg-surface-0 border-b border-surface-3 flex items-center justify-between px-3 z-30">
+    <header className="md:hidden flex-shrink-0 h-12 bg-surface-1 border-b border-surface-border flex items-center justify-between px-3 z-30">
       <button
         onClick={onOpenMenu}
-        className="p-2 rounded-lg text-text-main hover:bg-surface-2/60 transition-colors"
+        className="p-1.5 rounded-md text-text-main hover:bg-surface-hover transition-colors"
         aria-label="Open navigation menu"
       >
-        <Menu size={22} />
+        <Menu size={20} />
       </button>
       <div className="flex items-center gap-2 min-w-0">
-        <img src={SmallLogo} alt="" aria-hidden="true" className="h-7 w-7 object-contain" />
-        <span className="text-sm font-semibold text-text-main truncate">{title}</span>
+        <img src={SmallLogo} alt="" aria-hidden="true" className="h-5 w-5 object-contain" />
+        <span className="text-sm font-bold text-text-main truncate">{title}</span>
       </div>
-      <div className="w-10" aria-hidden="true" />
+      <div className="w-8" aria-hidden="true" />
     </header>
   );
 };

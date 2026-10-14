@@ -54,20 +54,20 @@ interface EmptyStateProps {
  * Generic empty state component
  */
 export const EmptyState: React.FC<EmptyStateProps> = ({ icon, title, description, action, secondaryAction }) => (
-  <div className="flex flex-col items-center justify-center py-20 px-4 text-center animate-in fade-in duration-500 motion-reduce:animate-none motion-reduce:transition-none">
-    <div className="w-24 h-24 rounded-full bg-surface-2 flex items-center justify-center mb-6">
+  <div className="flex flex-col items-center justify-center py-16 px-4 text-center animate-in fade-in duration-300 motion-reduce:animate-none motion-reduce:transition-none">
+    <div className="w-16 h-16 rounded-full bg-surface-2 flex items-center justify-center mb-4">
       <div className="text-text-subtle">
         {icon}
       </div>
     </div>
-    <h3 className="text-xl font-bold text-text-main mb-2">{title}</h3>
-    <p className="text-text-secondary max-w-sm mb-6">{description}</p>
+    <h3 className="text-lg font-bold text-text-main mb-1.5">{title}</h3>
+    <p className="text-sm text-text-secondary max-w-sm mb-6">{description}</p>
     {(action || secondaryAction) && (
       <div className="flex items-center gap-3">
         {action && (
           <button
             onClick={action.onClick}
-            className="bg-brand hover:bg-brand-hover text-black font-bold py-3 px-8 rounded-full transition-all duration-200 hover:scale-105 motion-reduce:transition-none motion-reduce:hover:transform-none"
+            className="bg-brand hover:bg-brand-hover text-surface-0 text-sm font-bold py-2.5 px-6 rounded-full transition-all duration-150 hover:scale-105 motion-reduce:transition-none motion-reduce:hover:transform-none"
           >
             {action.label}
           </button>
@@ -75,7 +75,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ icon, title, description
         {secondaryAction && (
           <button
             onClick={secondaryAction.onClick}
-            className="text-text-secondary hover:text-text-main font-medium py-3 px-6 rounded-full transition-colors duration-200 hover:bg-surface-2"
+            className="text-text-main bg-surface-3 hover:bg-surface-highlight text-sm font-semibold py-2.5 px-6 rounded-full transition-colors duration-150"
           >
             {secondaryAction.label}
           </button>
@@ -95,7 +95,7 @@ export const EmptyLibrary: React.FC<{ onAddMusic?: () => void; onOpenSettings?: 
   const copy = EMPTY_STATE.library;
   return (
     <EmptyState
-      icon={<copy.icon size={48} />}
+      icon={<copy.icon size={32} />}
       title={copy.title}
       description={copy.description}
       action={onAddMusic && copy.primaryAction ? { label: copy.primaryAction, onClick: onAddMusic } : undefined}
@@ -111,7 +111,7 @@ export const EmptyPlaylists: React.FC<{ onCreate?: () => void }> = ({ onCreate }
   const copy = EMPTY_STATE.playlists;
   return (
     <EmptyState
-      icon={<copy.icon size={48} />}
+      icon={<copy.icon size={32} />}
       title={copy.title}
       description={copy.description}
       action={onCreate && copy.primaryAction ? { label: copy.primaryAction, onClick: onCreate } : undefined}
@@ -130,12 +130,12 @@ export const EmptySearchResults: React.FC<{ query?: string; onClear?: () => void
 }) => {
   const copy = EMPTY_STATE.search;
   const description = query 
-    ? `We couldn't find anything matching "${query}". ${copy.description}` 
+    ? `No matches found for "${query}". ${copy.description}` 
     : copy.description;
   
   return (
     <EmptyState
-      icon={<copy.icon size={48} />}
+      icon={<copy.icon size={32} />}
       title={copy.title}
       description={description}
       action={onClear && copy.primaryAction ? { label: copy.primaryAction, onClick: onClear } : undefined}

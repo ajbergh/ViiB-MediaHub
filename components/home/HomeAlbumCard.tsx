@@ -38,42 +38,36 @@ export const HomeAlbumCard: React.FC<HomeAlbumCardProps> = ({
         }
       }}
       className={cn(
-        'group relative flex-shrink-0 cursor-pointer rounded-lg bg-surface-2 text-left ring-1 ring-transparent transition-all hover:bg-surface-3 hover:ring-surface-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70',
-        compact ? 'w-40 p-3' : 'w-48 p-4',
+        'group relative flex-shrink-0 cursor-pointer rounded-lg bg-transparent p-3 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70',
+        compact ? 'w-40' : 'w-44',
         className
       )}
     >
       <div
-        className="relative mb-3 aspect-square w-full overflow-hidden rounded-md bg-surface-3 shadow-lg"
+        className="relative mb-3 aspect-square w-full overflow-hidden rounded-md bg-surface-3 shadow-xl"
         style={{ background: coverBackground(album.coverUrl, album.name) }}
       >
         {!album.coverUrl && (
-          <span className="flex h-full w-full items-center justify-center text-display font-bold text-white/20">
+          <span className="flex h-full w-full items-center justify-center text-display font-bold text-text-main/20">
             {album.name.charAt(0)}
           </span>
         )}
-        <span className="absolute inset-0 bg-black/30 opacity-0 transition-opacity group-hover:opacity-100" />
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             onPlay();
           }}
-          className="absolute bottom-2 right-2 flex h-10 w-10 translate-y-2 items-center justify-center rounded-full bg-brand text-black opacity-0 shadow-xl transition-all group-hover:translate-y-0 group-hover:opacity-100 hover:scale-105 focus-visible:translate-y-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-2"
+          className="absolute bottom-2 right-2 flex h-11 w-11 translate-y-2 items-center justify-center rounded-full bg-brand text-surface-0 opacity-0 shadow-xl transition-all group-hover:translate-y-0 group-hover:opacity-100 hover:scale-105 hover:bg-brand-hover focus-visible:translate-y-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
           aria-label={`Play ${album.name}`}
         >
-          <Play size={18} className="ml-0.5 fill-current" aria-hidden="true" />
+          <Play size={20} className="ml-0.5 fill-current" aria-hidden="true" />
         </button>
       </div>
-      <h3 className={cn('truncate font-semibold text-text-main', compact ? 'text-sm' : 'text-base')}>
+      <h3 className="truncate text-sm font-semibold text-text-main">
         {album.name}
       </h3>
-      <p className="mt-1 truncate text-sm text-text-secondary">{album.artist}</p>
-      {!compact && (
-        <p className="mt-2 text-xs text-text-subtle">
-          {album.songCount} {album.songCount === 1 ? 'track' : 'tracks'}
-        </p>
-      )}
+      <p className="mt-1 truncate text-xs text-text-secondary">{album.artist}</p>
     </div>
   );
 };

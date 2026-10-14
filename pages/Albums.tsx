@@ -13,7 +13,7 @@
  * @module Albums
  */
 
-import React, { useEffect, useState, forwardRef, useMemo } from 'react';
+import React, { useEffect, useState, forwardRef, useMemo, useDeferredValue } from 'react';
 import { useAlbums, useStore } from '../store';
 import { coverBackground } from '../utils';
 import { useNavigate } from 'react-router';
@@ -66,12 +66,15 @@ const ItemContainer = forwardRef<HTMLDivElement, any>(({ children, ...props }, r
 
 export const Albums: React.FC = () => {
   const albums = useAlbums();
-  const { openContextMenu, fetchAlbumMetadata, albumMetadata } = useStore();
+  const openContextMenu = useStore((state) => state.openContextMenu);
+  const fetchAlbumMetadata = useStore((state) => state.fetchAlbumMetadata);
+  const albumMetadata = useStore((state) => state.albumMetadata);
   const navigate = useNavigate();
   const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
   const [sortBy, setSortBy] = useState<AlbumSortOption>('recent');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [filter, setFilter] = useState('');
+  const deferredFilter = useDeferredValue(filter);
   const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('albums-card-cols') ?? 4));
   const listView = cardCols === MAX_CARD_COLUMNS;
   const handleCardColsChange = (v: number) => { setCardCols(v); localStorage.setItem('albums-card-cols', String(v)); };
@@ -121,12 +124,12 @@ export const Albums: React.FC = () => {
   }, [albums, sortBy]);
 
   const filteredAlbums = useMemo(() => {
-    if (!filter.trim()) return sortedAlbums;
-    const query = filter.toLowerCase();
+    if (!deferredFilter.trim()) return sortedAlbums;
+    const query = deferredFilter.toLowerCase();
     return sortedAlbums.filter(
       album => album.name.toLowerCase().includes(query) || album.artist.toLowerCase().includes(query)
     );
-  }, [sortedAlbums, filter]);
+  }, [sortedAlbums, deferredFilter]);
 
   return (
     <Page withPlayerPadding={false}>
@@ -193,7 +196,7 @@ export const Albums: React.FC = () => {
         {filteredAlbums.length === 0 ? (
           <EmptyAlbums />
         ) : (
-          <div style={{ '--card-cols': listView ? 1 : cardCols, '--card-gap': listView ? '0px' : '1.5rem' } as React.CSSProperties}>
+          <div style={{ '--card-cols': listView ? 1 : cardCols, '--card-gap': listView ? '0px' : '0.5rem' } as React.CSSProperties}>
             {listView && <LibraryListHeader title="Album" detail="Artist" stats="Tracks" />}
             <VirtuosoGrid
               key={listView ? 'list' : 'tiles'}
@@ -215,7 +218,7 @@ export const Albums: React.FC = () => {
                 return (
                   <Card
                     interactive
-                    className="p-4 h-full flex flex-col cursor-pointer"
+                    className="group p-3 h-full flex flex-col cursor-pointer bg-transparent hover:bg-surface-hover"
                     onClick={() => navigate(`/album/${encodeURIComponent(album.name)}/${encodeURIComponent(album.artist)}`)}
                     onContextMenu={(e) => openContextMenu(e, ContextMenuType.ALBUM, album)}
                     role="button"
@@ -228,25 +231,23 @@ export const Albums: React.FC = () => {
                     }}
                   >
                     <div
-                      className="w-full aspect-square rounded-md mb-4 shadow-lg flex items-center justify-center text-display font-bold text-white/20 relative overflow-hidden bg-surface-3"
+                      className="w-full aspect-square rounded-md mb-3 shadow-xl flex items-center justify-center text-display font-bold text-text-main/20 relative overflow-hidden bg-surface-3"
                       style={{ background: coverBackground(coverUrl, album.name) }}
                     >
                       {!coverUrl && <span className="z-10">{album.name.charAt(0)}</span>}
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <Button
-                          variant="primary"
-                          className="w-12 h-12 rounded-full p-0 translate-y-4 group-hover:translate-y-0 transition-transform duration-200"
-                          aria-label="Open album"
-                        >
-                          <svg className="w-6 h-6 text-black fill-current ml-0.5" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
-                        </Button>
-                      </div>
+                      <Button
+                        variant="primary"
+                        className="absolute bottom-2 right-2 w-11 h-11 rounded-full p-0 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 shadow-xl transition-all duration-200"
+                        aria-label="Open album"
+                      >
+                        <svg className="w-5 h-5 text-surface-0 fill-current ml-0.5" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+                      </Button>
                     </div>
-                    <h4 className="font-bold truncate text-text-main mb-1">{album.name}</h4>
+                    <h4 className="font-semibold text-sm truncate text-text-main mb-1">{album.name}</h4>
                     <div className="flex justify-between items-center mt-auto">
-                      <p className="text-sm text-text-secondary truncate max-w-[70%]">{album.artist}</p>
+                      <p className="text-xs text-text-secondary truncate max-w-[75%]">{album.artist}</p>
                       {metadata?.releaseDate && (
-                        <span className="text-[10px] text-text-subtle font-mono">{new Date(metadata.releaseDate).getFullYear()}</span>
+                        <span className="text-[11px] text-text-subtle">{new Date(metadata.releaseDate).getFullYear()}</span>
                       )}
                     </div>
                   </Card>

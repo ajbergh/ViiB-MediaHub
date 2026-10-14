@@ -31,14 +31,18 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   }, []);
 
   return (
-    <div className="flex h-screen flex-col bg-surface-0 text-text-main" onContextMenu={(event) => event.preventDefault()}>
+    <div className="flex h-screen flex-col bg-surface-0 text-text-main select-none" onContextMenu={(event) => event.preventDefault()}>
       {!isSkinnyMode && (
         <>
           <DesktopTitleBar />
           {!isDJRoute && <MobileTopBar onOpenMenu={() => setMobileNavOpen(true)} />}
-          <div className="relative flex flex-1 overflow-hidden">
+          <div className={`relative flex flex-1 overflow-hidden ${isDJRoute ? '' : 'md:gap-2 md:px-2 md:pt-2'}`}>
             <Sidebar mobileOpen={mobileNavOpen} onMobileClose={() => setMobileNavOpen(false)} />
-            <main className="relative flex-1 overflow-y-auto bg-surface-0">
+            <main
+              className={`relative flex-1 overflow-y-auto ${
+                isDJRoute ? 'bg-surface-0' : 'bg-surface-1 md:rounded-lg'
+              }`}
+            >
               {children}
             </main>
             {!isDJRoute && <Queue />}

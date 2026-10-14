@@ -19,10 +19,10 @@ export const TextInput: React.FC<TextInputProps> = ({
   return (
     <div
       className={cn(
-        'flex items-center gap-2 rounded-lg bg-surface-1 ring-1 ring-surface-3/80 ' +
-          'px-3 py-2 text-body text-text-main ' +
-          'transition-all duration-150 ease-out ' +
-          'focus-within:ring-2 focus-within:ring-brand/40 focus-within:ring-offset-2 focus-within:ring-offset-surface-0 ' +
+        'flex items-center gap-2.5 rounded-full bg-surface-3 hover:bg-surface-highlight ' +
+          'px-3.5 py-2 text-body text-text-main border border-transparent ' +
+          'transition-colors duration-150 ease-out ' +
+          'focus-within:bg-surface-3 focus-within:border-text-main/50 ' +
           'motion-reduce:transition-none',
         className
       )}
@@ -30,7 +30,7 @@ export const TextInput: React.FC<TextInputProps> = ({
       {leftIcon}
       <input
         className={cn(
-          'w-full bg-transparent outline-none placeholder:text-text-subtle/90 text-body',
+          'w-full bg-transparent outline-none placeholder:text-text-subtle text-body',
           inputClassName
         )}
         {...rest}

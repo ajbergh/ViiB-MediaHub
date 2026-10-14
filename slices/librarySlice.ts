@@ -926,16 +926,15 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
               newLikedIds.delete(songId);
           }
           
-          // Update local song object as well
+          // Publish immutable snapshots so selectors observing a song or the
+          // library array see the update; retain all unaffected song identities.
           set((state) => ({
               likedSongIds: newLikedIds,
-              songs: state.songs.map(s => 
-                  s.id === songId 
-                      ? { ...s, liked: result.liked, likedAt: result.liked ? Date.now() : undefined }
-                      : s
-              )
+              songs: state.songs.map(song => song.id === songId
+                  ? { ...song, liked: result.liked, likedAt: result.liked ? Date.now() : undefined }
+                  : song),
           }));
-          
+
           console.log(`${result.liked ? '❤️' : '💔'} Song ${songId} ${result.liked ? 'liked' : 'unliked'}`);
       } catch (e) {
           console.error('Failed to toggle like:', e);

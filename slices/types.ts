@@ -238,20 +238,29 @@ export interface SpotifySlice {
   spotifyTokenExpiry: number;
   spotifyUser: SpotifyProfile | null;
   
-  // Search persistence
+  // Search & library persistence (in-memory across route changes within the same session generation)
   spotifySearchQuery: string;
+  spotifyLastSearchedQuery: string;
   spotifySearchResults: any | null;
   spotifyActiveTab: 'search' | 'recent' | 'albums' | 'playlists';
+  spotifyRecentlyPlayed: any | null;
+  spotifySavedAlbums: any | null;
+  spotifySavedPlaylists: any | null;
+  spotifyCacheGeneration: number;
   
   setSpotifyCredentials: (clientId: string, clientSecret: string) => void;
   setSpotifyTokens: (accessToken: string, refreshToken: string, expiry: number) => void;
   setSpotifyUser: (user: SpotifyProfile | null) => void;
   logoutSpotify: () => void;
   
-  // Search persistence actions
+  // Search & library persistence actions
   setSpotifySearchQuery: (query: string) => void;
+  setSpotifyLastSearchedQuery: (query: string) => void;
   setSpotifySearchResults: (results: any | null) => void;
   setSpotifyActiveTab: (tab: 'search' | 'recent' | 'albums' | 'playlists') => void;
+  setSpotifyRecentlyPlayed: (data: any | null) => void;
+  setSpotifySavedAlbums: (data: any | null) => void;
+  setSpotifySavedPlaylists: (data: any | null) => void;
   
   // Download state
   downloadCount: number;

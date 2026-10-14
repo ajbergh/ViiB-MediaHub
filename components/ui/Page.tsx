@@ -17,8 +17,8 @@ export const Page: React.FC<PageProps> = ({
   return (
     <div
       className={cn(
-        'p-4 sm:p-6 lg:p-8 h-full',
-        withPlayerPadding && 'pb-32',
+        'px-4 py-5 sm:px-6 lg:px-7 h-full',
+        withPlayerPadding && 'pb-24',
         withFadeIn && 'animate-fade-in',
         className
       )}
@@ -45,29 +45,23 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   return (
     <div
       className={cn(
-        'mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4',
+        'mb-6 flex flex-col md:flex-row md:items-end md:justify-between gap-4',
         className
       )}
       {...rest}
     >
       <div>
-        <h1 className={cn('text-display mb-2', titleClassName)}>{heading}</h1>
-        {subtitle ? <p className="text-text-secondary">{subtitle}</p> : null}
+        <h1 className={cn('text-display tracking-tight text-text-main', titleClassName)}>{heading}</h1>
+        {subtitle ? <p className="text-sm text-text-secondary mt-1">{subtitle}</p> : null}
       </div>
 
-      {actions ? <div className="flex items-center gap-3">{actions}</div> : null}
+      {actions ? <div className="flex items-center gap-2.5 flex-wrap">{actions}</div> : null}
     </div>
   );
 };
 
 export interface ListHeaderProps extends React.HTMLAttributes<HTMLDivElement> {}
 
-/**
- * ListHeader
- *
- * Standard header wrapper for virtualized lists (e.g., react-virtuoso Header)
- * to keep consistent padding without repeating one-off classes.
- */
 export const ListHeader: React.FC<ListHeaderProps> = ({ className, ...rest }) => {
-  return <div className={cn('p-4 sm:p-6 lg:p-8 pb-0', className)} {...rest} />;
+  return <div className={cn('px-4 pt-5 sm:px-6 lg:px-7 pb-0', className)} {...rest} />;
 };
