@@ -282,6 +282,40 @@ func TestLoopbackTrustBoundaryAllowsApprovedClientsAndNormalizesSSEHeaders(t *te
 			}
 		}
 	})
+
+	t.Run("CORS preflight allows If-Match and exposes ETag for approved origins", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodOptions, "http://127.0.0.1:34115/api/v2/analysis/song1/bpm", nil)
+		req.Host = "127.0.0.1:34115"
+		req.Header.Set("Origin", "wails://wails")
+		req.Header.Set("Access-Control-Request-Method", "PUT")
+		req.Header.Set("Access-Control-Request-Headers", "Content-Type, If-Match, X-Request-ID")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK && rec.Code != http.StatusNoContent {
+			t.Fatalf("preflight status = %d, want 200/204", rec.Code)
+		}
+		if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "wails://wails" {
+			t.Fatalf("preflight Access-Control-Allow-Origin = %q, want wails://wails", got)
+		}
+		allowHeaders := strings.ToLower(rec.Header().Get("Access-Control-Allow-Headers"))
+		if !strings.Contains(allowHeaders, "if-match") {
+			t.Fatalf("preflight Access-Control-Allow-Headers = %q, want If-Match included", allowHeaders)
+		}
+	})
+
+	t.Run("IPv6 loopback [::1] Host and Origin matching", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "http://[::1]:34115/api/health", nil)
+		req.Host = "[::1]:34115"
+		req.Header.Set("Origin", "http://[::1]:34115")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("IPv6 loopback status = %d, want 200", rec.Code)
+		}
+		if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "http://[::1]:34115" {
+			t.Fatalf("IPv6 Access-Control-Allow-Origin = %q, want http://[::1]:34115", got)
+		}
+	})
 }
 
 func httpTestRequestWithCancel(method, target string) (*http.Request, func()) {
