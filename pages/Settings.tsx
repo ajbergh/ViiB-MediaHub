@@ -1,3 +1,4 @@
+import { isBrowserImportSupportedFile } from '../services/mediaCapabilities';
 /**
  * ViiB MediaHub - Settings Page
  * 
@@ -812,7 +813,7 @@ export const Settings: React.FC = () => {
         // 1. First Pass: Collect Handles
         for await (const { handle, path } of getFilesRecursively(dirHandle)) {
             const lowerName = handle.name.toLowerCase();
-            if (lowerName.endsWith('.mp3') || lowerName.endsWith('.ogg')) {
+            if (isBrowserImportSupportedFile(lowerName)) {
                 audioHandles.push({ handle, path });
             } else if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.png')) {
                 const file = await handle.getFile();
@@ -881,7 +882,7 @@ export const Settings: React.FC = () => {
           const file = files[i];
           const lowerName = file.name.toLowerCase();
           
-          if (lowerName.endsWith('.mp3') || lowerName.endsWith('.ogg')) {
+          if (isBrowserImportSupportedFile(lowerName)) {
               audioFiles.push(file);
           } else if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.png')) {
               const path = file.webkitRelativePath || '';
