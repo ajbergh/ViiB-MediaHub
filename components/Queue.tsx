@@ -16,11 +16,11 @@
  * @module Queue
  */
 
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { useStore, useAlbumCovers } from '../store';
 import { X, Trash2, GripVertical, Play, LocateFixed } from 'lucide-react';
-import { generateGradient, formatTime, cssUrl } from '../utils';
+import { generateGradient, formatTime, coverBackground } from '../utils';
 import { ContextMenuType, Song } from '../types';
 import { EmptyQueue } from './EmptyState';
 
@@ -42,6 +42,15 @@ const QueueRow = React.memo<QueueRowProps>(({
   song, index, isCurrent, isDragging, cover,
   onDragStart, onDragOver, onDrop, onPlay, onRemove, onContextMenu,
 }) => {
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [cover]);
+
+  const hasValidCover = Boolean(cover && !imgError);
+  const fallbackSeed = song.album || song.title;
+
   return (
     <div
       draggable
@@ -49,7 +58,7 @@ const QueueRow = React.memo<QueueRowProps>(({
       onDragOver={(e) => onDragOver(e, index)}
       onDrop={(e) => onDrop(e, index)}
       onContextMenu={(e) => onContextMenu(e, song, index)}
-      className={`group flex items-center gap-3 p-2 mb-0.5 rounded-md transition-colors ${
+      className={`group flex items-center gap-3 p-2 mx-2 mb-0.5 rounded-md transition-colors ${
         isCurrent ? 'bg-surface-highlight' : 'hover:bg-surface-hover'
       } ${isDragging ? 'opacity-50' : ''}`}
     >
@@ -59,8 +68,17 @@ const QueueRow = React.memo<QueueRowProps>(({
 
       <div
         className="w-10 h-10 rounded bg-surface-3 bg-center bg-cover flex-shrink-0 relative overflow-hidden"
-        style={{ background: cover ? cssUrl(cover) : generateGradient(song.album) }}
+        style={{ background: hasValidCover ? coverBackground(cover, fallbackSeed) : generateGradient(fallbackSeed) }}
       >
+        {hasValidCover && (
+          <img
+            src={cover}
+            alt=""
+            loading="lazy"
+            onError={() => setImgError(true)}
+            className="w-full h-full object-cover block"
+          />
+        )}
         <button
           type="button"
           onClick={() => onPlay(index)}
@@ -232,8 +250,11 @@ export const Queue: React.FC = () => {
           <Virtuoso
             ref={virtuosoRef}
             data={queue}
-            className="h-full"
-            style={{ paddingLeft: 8, paddingRight: 8, paddingTop: 8 }}
+            className="h-full overflow-x-hidden"
+            components={{
+              Header: () => <div className="h-2" />,
+              Footer: () => <div className="h-2" />,
+            }}
             computeItemKey={(idx, song) => `${song.id}-${idx}`}
             itemContent={(idx, song) => (
               <QueueRow

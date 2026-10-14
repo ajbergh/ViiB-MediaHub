@@ -87,13 +87,17 @@ export const QueueList: React.FC<Props> = ({ queue, currentSongIndex }) => {
                             <GripVertical size={20} />
                         </div>
                         
-                        <div className="w-12 h-12 rounded bg-surface-3 relative flex-shrink-0 overflow-hidden">
-                                <img 
-                                src={displayCover || ''} 
-                                className="w-full h-full object-cover"
-                                style={{ background: !displayCover ? generateGradient(song.album) : undefined }}
-                                alt="" 
-                                />
+                        <div
+                            className="w-12 h-12 rounded bg-surface-3 relative flex-shrink-0 overflow-hidden"
+                            style={{ background: !displayCover ? generateGradient(song.album || song.title) : undefined }}
+                        >
+                                {displayCover && (
+                                  <img 
+                                    src={displayCover} 
+                                    className="w-full h-full object-cover block"
+                                    alt="" 
+                                  />
+                                )}
                                 <div 
                                 className="absolute inset-0 bg-surface-0/60 hidden group-hover:flex items-center justify-center cursor-pointer"
                                 onClick={() => playQueueItem(idx)}
