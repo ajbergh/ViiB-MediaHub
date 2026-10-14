@@ -13,13 +13,10 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
-	"github.com/ajbergh/viib-mediahub/internal/semantic"
 )
 
 // LLMSettingsResponse is the API response for LLM settings.
@@ -125,106 +122,36 @@ func (a *API) updateLLMSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Save settings
-	if err := a.db.SetSetting("llm_provider", req.Provider); err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to save provider: "+err.Error())
+	previousProvider, err := a.db.GetSetting("llm_provider")
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to read provider")
 		return
 	}
-
-	if req.Model != "" {
-		if err := a.db.SetSetting("llm_model", req.Model); err != nil {
-			respondError(w, http.StatusInternalServerError, "Failed to save model: "+err.Error())
-			return
-		}
+	changed := previousProvider != req.Provider
+	values := map[string]string{"llm_provider": req.Provider}
+	if changed || req.Model != "" {
+		values["llm_model"] = req.Model
 	}
-
-	// Only update API key if provided (not masked value)
 	if req.APIKey != "" && !ismaskedAPIKey(req.APIKey) {
-		if err := a.db.SetSetting("llm_api_key", req.APIKey); err != nil {
-			respondError(w, http.StatusInternalServerError, "Failed to save API key: "+err.Error())
-			return
+		values["llm_api_key"] = req.APIKey
+		if req.Provider == llm.ProviderGemini {
+			values["gemini_api_key"] = req.APIKey
 		}
-		// Also sync to gemini_api_key if provider is Gemini for enrichment compatibility
-		if req.Provider == "gemini" {
-			if err := a.db.SetSetting("gemini_api_key", req.APIKey); err != nil {
-				// Log but don't fail - enrichment key sync is best-effort
-				logger.API("Warning: Failed to sync gemini_api_key: %v", err)
-			}
-		}
+	} else if changed {
+		values["llm_api_key"] = ""
 	}
-
-	// Custom endpoints are only supported for Ollama. Clearing the persisted
-	// value for cloud providers prevents a stale localhost URL from overriding
-	// OpenRouter (or another cloud provider) after a provider switch.
 	baseURL := req.BaseURL
 	if req.Provider != llm.ProviderOllama {
 		baseURL = ""
 	}
-	if err := a.db.SetSetting("llm_base_url", baseURL); err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to save base URL: "+err.Error())
+	values["llm_base_url"] = baseURL
+	if err := a.db.SetSettingsBatch(values); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to save AI settings")
 		return
 	}
-
-	semanticChanged, err := a.initializeSemanticProviderFromLLM(req.Provider, baseURL)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to initialize semantic provider: "+err.Error())
-		return
-	}
-	if semanticChanged {
-		go a.restartSemanticService()
-	}
+	// Chat changes never restart semantic retrieval or alter its vector identity.
 
 	respondJSON(w, map[string]string{"status": "ok"})
-}
-
-// initializeSemanticProviderFromLLM gives a new installation a usable semantic
-// configuration that matches its selected AI provider. It only replaces an
-// unset/auto semantic provider, so a later explicit semantic choice remains
-// independent from chat configuration.
-func (a *API) initializeSemanticProviderFromLLM(provider, ollamaBaseURL string) (bool, error) {
-	currentProvider, err := a.db.GetSetting(semantic.SemanticEmbeddingProviderSetting)
-	if err != nil {
-		return false, fmt.Errorf("read semantic provider: %w", err)
-	}
-	currentProvider = strings.ToLower(strings.TrimSpace(currentProvider))
-	if currentProvider != "" && currentProvider != semantic.EmbeddingProviderAuto {
-		return false, nil
-	}
-
-	model := ""
-	dimensions := ""
-	baseURL := ""
-	switch provider {
-	case llm.ProviderOllama:
-		model = semantic.DefaultOllamaEmbeddingModel
-		baseURL = strings.TrimSpace(ollamaBaseURL)
-		if baseURL == "" {
-			baseURL = llm.DefaultOllamaEndpoint
-		}
-	case llm.ProviderOpenAI:
-		model = semantic.DefaultOpenAIEmbeddingModel
-		dimensions = fmt.Sprint(semantic.DefaultOpenAIEmbeddingDimensions)
-	case llm.ProviderOpenRouter:
-		model = semantic.DefaultOpenRouterEmbeddingModel
-		dimensions = fmt.Sprint(semantic.DefaultOpenRouterEmbeddingDimensions)
-	case llm.ProviderGemini:
-		model = semantic.DefaultGeminiEmbeddingModel
-		dimensions = fmt.Sprint(semantic.DefaultGeminiEmbeddingDimensions)
-	default:
-		return false, nil
-	}
-
-	if err := a.db.SetSettingsBatch(map[string]string{
-		semantic.SemanticEmbeddingProviderSetting:          provider,
-		semantic.SemanticEmbeddingModelSetting:             model,
-		semantic.SemanticEmbeddingDimensionsSetting:        dimensions,
-		semantic.SemanticEmbeddingBaseURLSetting:           baseURL,
-		semantic.SemanticEmbeddingAPIKeySetting:            "",
-		semantic.SemanticEmbeddingCloudConfirmationSetting: "",
-	}); err != nil {
-		return false, fmt.Errorf("save matching semantic provider: %w", err)
-	}
-	return true, nil
 }
 
 // ismaskedAPIKey checks if the API key is a masked value (starts with ****)

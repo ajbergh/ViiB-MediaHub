@@ -195,19 +195,8 @@ export const Settings: React.FC = () => {
   const [llmTestStatus, setLlmTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [llmTestMessage, setLlmTestMessage] = useState('');
 
-  // Semantic retrieval settings stay separate from the chat provider because
-  // changing a chat model must never silently change the vector space.
-  const [semanticProvider, setSemanticProvider] = useState<'auto' | 'ollama' | 'openai' | 'openrouter' | 'gemini' | 'disabled'>('auto');
-  const [semanticModel, setSemanticModel] = useState('');
-  const [semanticBaseURL, setSemanticBaseURL] = useState('http://localhost:11434');
-  const [semanticDimensions, setSemanticDimensions] = useState(0);
-  const [semanticAPIKey, setSemanticAPIKey] = useState('');
-  const [semanticCloudCost, setSemanticCloudCost] = useState<import('../services/api').SemanticCloudCost | null>(null);
-  const [semanticCloudConfirmation, setSemanticCloudConfirmation] = useState<import('../services/api').SemanticCloudConfirmation | null>(null);
-  const [semanticCloudConfirmed, setSemanticCloudConfirmed] = useState(false);
   const [semanticStatus, setSemanticStatus] = useState<import('../services/api').SemanticStatus | null>(null);
   const [semanticLoading, setSemanticLoading] = useState(false);
-  const [semanticSaveStatus, setSemanticSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [semanticActionStatus, setSemanticActionStatus] = useState<'idle' | 'working' | 'success' | 'error'>('idle');
   const [semanticActionMessage, setSemanticActionMessage] = useState('');
 
@@ -270,19 +259,8 @@ export const Settings: React.FC = () => {
       const loadSemanticSettings = async () => {
           try {
               setSemanticLoading(true);
-              const [settings, status] = await Promise.all([
-                  api.getSemanticSettings(),
-                  api.getSemanticStatus(),
-              ]);
+              const status = await api.getSemanticStatus();
               if (!active) return;
-              setSemanticProvider(settings.provider);
-              setSemanticModel(settings.model || '');
-              setSemanticBaseURL(settings.baseURL || 'http://localhost:11434');
-              setSemanticDimensions(settings.dimensions || (settings.provider === 'gemini' ? 768 : settings.provider === 'openai' || settings.provider === 'openrouter' ? 512 : 0));
-              setSemanticAPIKey('');
-              setSemanticCloudCost(settings.cloudCost || null);
-              setSemanticCloudConfirmation(settings.cloudConfirmation || null);
-              setSemanticCloudConfirmed(false);
               setSemanticStatus(status);
           } catch (e) {
               console.error('Failed to load semantic index settings:', e);
@@ -2068,6 +2046,8 @@ export const Settings: React.FC = () => {
                           onChange={(e) => {
                             const newProvider = e.target.value;
                             setLlmProvider(newProvider);
+                            setLlmApiKey('');
+                            setLlmModel(llmModels[newProvider]?.[0]?.id || '');
                             const providerModels = llmModels[newProvider];
                             if (providerModels && providerModels.length > 0) {
                               setLlmModel(providerModels[0].id);
@@ -2182,17 +2162,6 @@ export const Settings: React.FC = () => {
                               const settings = await api.getLLMSettings();
                               setLlmModels(settings.models || {});
                             }
-                            // A new installation links an unset/auto semantic
-                            // provider to the selected embedding-capable chat
-                            // provider. Reflect that backend initialization
-                            // immediately without requiring a page reload.
-                            const semanticSettings = await api.getSemanticSettings();
-                            setSemanticProvider(semanticSettings.provider);
-                            setSemanticModel(semanticSettings.model || '');
-                            setSemanticBaseURL(semanticSettings.baseURL || 'http://localhost:11434');
-                            setSemanticDimensions(semanticSettings.dimensions || (semanticSettings.provider === 'gemini' ? 768 : semanticSettings.provider === 'openai' || semanticSettings.provider === 'openrouter' ? 512 : 0));
-                            setSemanticCloudCost(semanticSettings.cloudCost || null);
-                            setSemanticCloudConfirmed(false);
                             setLlmSaveStatus('saved');
                             setTimeout(() => setLlmSaveStatus('idle'), 3000);
                           } catch (e) {
@@ -2244,9 +2213,9 @@ export const Settings: React.FC = () => {
               <div className="bg-surface-1 rounded-lg p-4 border border-surface-border">
                 <div className="flex items-start justify-between gap-4 mb-4">
                   <div>
-                    <h3 className="text-lg font-bold text-text-main mb-1">Semantic Retrieval Index</h3>
+                    <h3 className="text-lg font-bold text-text-main mb-1">Smart Playlist Library</h3>
                     <p className="text-text-subtle text-sm">
-                      Builds a separate meaning-based index for AI Smart Mix retrieval. It never changes your chat provider or library metadata.
+                      Music matching runs locally and works with any supported AI provider.
                     </p>
                   </div>
                   <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${semanticStatus?.state === 'ready' ? 'bg-success/20 text-success' : semanticStatus?.state === 'error' ? 'bg-error/20 text-error' : 'bg-surface-3 text-text-subtle'}`}>
@@ -2257,121 +2226,13 @@ export const Settings: React.FC = () => {
                 {semanticLoading ? (
                   <div className="flex items-center gap-2 text-text-subtle text-sm">
                     <Loader2 size={16} className="animate-spin" />
-                    Loading semantic index settings...
+                    Loading Smart Playlist status...
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium text-text-subtle uppercase tracking-wider mb-1">Embedding provider</label>
-                        <select
-                          value={semanticProvider}
-                          onChange={(e) => {
-                            const provider = e.target.value as 'auto' | 'ollama' | 'openai' | 'openrouter' | 'gemini' | 'disabled';
-                            setSemanticProvider(provider);
-                            setSemanticCloudCost(null);
-                            setSemanticCloudConfirmation(null);
-                            if (provider === 'openai') {
-                              setSemanticModel('text-embedding-3-small');
-                              setSemanticDimensions(512);
-                            }
-                            if (provider === 'gemini') {
-                              setSemanticModel('gemini-embedding-2');
-                              setSemanticDimensions(768);
-                            }
-                            if (provider === 'openrouter') {
-                              setSemanticModel('openai/text-embedding-3-small');
-                              setSemanticDimensions(512);
-                            }
-                            setSemanticCloudConfirmed(false);
-							setSemanticCloudCost(null);
-                            setSemanticSaveStatus('idle');
-                          }}
-                          className="w-full px-3 py-2 rounded-lg bg-surface-3 border border-surface-border text-text-main focus:outline-none focus:ring-2 focus:ring-brand"
-                        >
-                          <option value="auto">Auto (configured chat provider, then local Ollama)</option>
-                          <option value="ollama">Ollama (local)</option>
-                          <option value="openai">OpenAI (cloud embeddings)</option>
-                          <option value="gemini">Google Gemini (cloud embeddings)</option>
-                          <option value="openrouter">OpenRouter (cloud embeddings)</option>
-                          <option value="disabled">Disabled</option>
-                        </select>
-                      </div>
-                      {semanticProvider !== 'disabled' && (
-                        <div>
-                          <label className="block text-xs font-medium text-text-subtle uppercase tracking-wider mb-1">Embedding model</label>
-                          <TextInput
-                            value={semanticModel}
-                            onChange={(e) => {
-                              setSemanticModel(e.target.value);
-                              setSemanticSaveStatus('idle');
-                            }}
-                            placeholder="nomic-embed-text"
-                            className="w-full bg-surface-3"
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    {semanticProvider === 'ollama' && (
-                      <div>
-                        <label className="block text-xs font-medium text-text-subtle uppercase tracking-wider mb-1">Ollama server URL</label>
-                        <TextInput
-                          value={semanticBaseURL}
-                          onChange={(e) => {
-                            setSemanticBaseURL(e.target.value);
-                            setSemanticSaveStatus('idle');
-                          }}
-                          placeholder="http://localhost:11434"
-                          className="w-full bg-surface-3"
-                        />
-                      </div>
-                    )}
-
-                    {(semanticProvider === 'openai' || semanticProvider === 'gemini' || semanticProvider === 'openrouter') && (
-                      <div className="space-y-3 rounded-lg border border-surface-border bg-surface-2 p-3">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-medium text-text-subtle uppercase tracking-wider mb-1">Embedding dimensions</label>
-                            <TextInput type="number" min="1" value={String(semanticDimensions || (semanticProvider === 'gemini' ? 768 : 512))} onChange={(e) => { setSemanticDimensions(Number(e.target.value) || 0); setSemanticCloudConfirmed(false); setSemanticSaveStatus('idle'); }} className="w-full bg-surface-3" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-text-subtle uppercase tracking-wider mb-1">{semanticProvider === 'gemini' ? 'Gemini' : semanticProvider === 'openrouter' ? 'OpenRouter' : 'OpenAI'} API key</label>
-                            <TextInput type="password" value={semanticAPIKey} onChange={(e) => { setSemanticAPIKey(e.target.value); setSemanticSaveStatus('idle'); }} placeholder="Leave blank to use this provider's saved chat or embedding key" className="w-full bg-surface-3" />
-                          </div>
-                        </div>
-                        <p className="text-xs text-warning">{semanticProvider === 'gemini' ? 'Gemini' : semanticProvider === 'openrouter' ? 'OpenRouter' : 'OpenAI'} receives deterministic semantic document text, but never file paths, internal song IDs, or listening history.</p>
-                        {semanticProvider === 'openai' && semanticCloudCost ? (
-                          <div className="space-y-2 text-sm text-text-subtle">
-							<p>
-							  Current catalog: {semanticCloudCost.documents.toLocaleString()} semantic documents
-							  {semanticCloudCost.pricingKnown
-								? `; one-time input estimate: about $${semanticCloudCost.typicalUSD.toFixed(2)}, with a conservative maximum of $${semanticCloudCost.maximumUSD.toFixed(2)}.`
-								: `. Estimated input: ${semanticCloudCost.typicalInputTokens.toLocaleString()} tokens (up to ${semanticCloudCost.maximumInputTokens.toLocaleString()}); actual ${semanticProvider} billing applies.`}
-							</p>
-                            <label className="flex items-start gap-2 cursor-pointer text-text-main">
-                              <input type="checkbox" checked={semanticCloudConfirmed} onChange={(e) => setSemanticCloudConfirmed(e.target.checked)} className="mt-1" />
-                              <span>I understand this starts a paid {semanticProvider === 'openai' ? 'OpenAI' : semanticProvider === 'openrouter' ? 'OpenRouter' : 'Gemini'} embedding build for this catalog.</span>
-                            </label>
-                            {semanticCloudCost.confirmed && <p className="text-success text-xs">This current estimate has already been confirmed.</p>}
-                          </div>
-                        ) : semanticCloudConfirmation && semanticCloudConfirmation.provider === semanticProvider ? (
-                          <div className="space-y-2 text-sm text-text-subtle">
-                            <p>Current catalog: {semanticCloudConfirmation.documents.toLocaleString()} semantic documents. Provider pricing and supported models can vary by account or route, so ViiB cannot calculate a reliable local estimate.</p>
-                            <label className="flex items-start gap-2 cursor-pointer text-text-main">
-                              <input type="checkbox" checked={semanticCloudConfirmed} onChange={(e) => setSemanticCloudConfirmed(e.target.checked)} className="mt-1" />
-                              <span>I understand this sends semantic document text to {semanticCloudConfirmation.provider === 'gemini' ? 'Gemini' : 'OpenRouter'} and may incur provider charges.</span>
-                            </label>
-                            {semanticCloudConfirmation.confirmed && <p className="text-success text-xs">This current provider, model, dimensions, and catalog have already been confirmed.</p>}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-text-subtle">Save this cloud configuration once to review the current catalog data notice before confirming it.</p>
-                        )}
-                      </div>
-                    )}
-
-                    <p className="text-xs text-text-subtle">
-                      Ollama uses <code>POST /api/embed</code> and never downloads a model automatically. OpenAI, OpenRouter, and Gemini will not index until their displayed estimate or data notice is explicitly confirmed.
+                    <p className="text-sm text-text-subtle">
+                      ViiB prepares meaning-based music matching automatically on this device. Switching your AI model keeps the index ready.
+                      Initial setup downloads about 31 MB once; indexing and search then work offline. Your selected AI provider handles playlist reasoning; cloud AI receives your prompt and candidate track metadata.
                     </p>
 
                     {(semanticStatus?.reason || semanticStatus?.lastError) && (
@@ -2389,75 +2250,20 @@ export const Settings: React.FC = () => {
 
                     <div className="flex flex-wrap gap-2">
                       <Button
-                        variant="primary"
-                        onClick={async () => {
-                          try {
-                            setSemanticSaveStatus('saving');
-                            await api.updateSemanticSettings({
-                              provider: semanticProvider,
-                              model: semanticModel,
-                              dimensions: semanticProvider === 'openai' || semanticProvider === 'gemini' || semanticProvider === 'openrouter' ? semanticDimensions : undefined,
-                              baseURL: semanticProvider === 'ollama' ? semanticBaseURL : '',
-                              apiKey: (semanticProvider === 'openai' || semanticProvider === 'gemini' || semanticProvider === 'openrouter') && semanticAPIKey ? semanticAPIKey : undefined,
-                              confirmCloudCost: (semanticProvider === 'openai' || semanticProvider === 'gemini' || semanticProvider === 'openrouter') && semanticCloudConfirmed,
-                            });
-                            const settings = await api.getSemanticSettings();
-                            setSemanticCloudCost(settings.cloudCost || null);
-                            setSemanticCloudConfirmation(settings.cloudConfirmation || null);
-                            setSemanticCloudConfirmed(false);
-                            setSemanticAPIKey('');
-                            setSemanticSaveStatus('saved');
-                            await refreshSemanticStatus();
-                            setTimeout(() => setSemanticSaveStatus('idle'), 3000);
-                          } catch (e) {
-                            console.error('Failed to save semantic index settings:', e);
-                            setSemanticSaveStatus('error');
-                          }
-                        }}
-                        disabled={semanticSaveStatus === 'saving'}
-                        leftIcon={semanticSaveStatus === 'saving' ? <Loader2 size={16} className="animate-spin" /> : undefined}
-                        className="text-sm font-bold"
-                      >
-                        {semanticSaveStatus === 'saved' ? 'Saved!' : semanticSaveStatus === 'saving' ? 'Saving...' : 'Save Index Settings'}
-                      </Button>
-
-                      <Button
-                        variant="secondary"
-                        onClick={async () => {
-                          try {
-                            setSemanticActionStatus('working');
-                            setSemanticActionMessage('');
-                            const result = await api.testSemanticEmbeddingProvider();
-                            setSemanticActionStatus(result.success ? 'success' : 'error');
-                            setSemanticActionMessage(result.success ? `Connected to ${result.provider} / ${result.model} (${result.dimensions} dimensions).` : result.message || 'Provider test failed.');
-                            await refreshSemanticStatus();
-                          } catch (e) {
-                            setSemanticActionStatus('error');
-                            setSemanticActionMessage(e instanceof Error ? e.message : 'Provider test failed.');
-                          }
-                        }}
-                        disabled={semanticActionStatus === 'working' || semanticStatus?.state === 'disabled' || semanticStatus?.state === 'needs_configuration'}
-                        leftIcon={semanticActionStatus === 'working' ? <Loader2 size={16} className="animate-spin" /> : undefined}
-                        className="text-sm font-bold"
-                      >
-                        Test Embedding Provider
-                      </Button>
-
-                      <Button
                         variant="secondary"
                         onClick={async () => {
                           try {
                             setSemanticActionStatus('working');
                             await api.rebuildSemanticIndex();
                             setSemanticActionStatus('success');
-                            setSemanticActionMessage('Semantic reindex started in the background.');
+                            setSemanticActionMessage('Library matching update started in the background.');
                             await refreshSemanticStatus();
                           } catch (e) {
                             setSemanticActionStatus('error');
-                            setSemanticActionMessage(e instanceof Error ? e.message : 'Could not start the semantic reindex.');
+                            setSemanticActionMessage(e instanceof Error ? e.message : 'Could not update library matching.');
                           }
                         }}
-                        disabled={semanticActionStatus === 'working' || semanticStatus?.state === 'disabled' || semanticStatus?.state === 'needs_configuration'}
+                        disabled={semanticActionStatus === 'working' || semanticStatus?.state === 'preparing'}
                         leftIcon={<RefreshCw size={16} />}
                         className="text-sm font-bold"
                       >
@@ -2471,14 +2277,14 @@ export const Settings: React.FC = () => {
                             setSemanticActionStatus('working');
                             await api.retrySemanticErrors();
                             setSemanticActionStatus('success');
-                            setSemanticActionMessage('Eligible semantic embedding errors were queued for retry.');
+                            setSemanticActionMessage('Library matching preparation will retry.');
                             await refreshSemanticStatus();
                           } catch (e) {
                             setSemanticActionStatus('error');
-                            setSemanticActionMessage(e instanceof Error ? e.message : 'Could not queue semantic retries.');
+                            setSemanticActionMessage(e instanceof Error ? e.message : 'Could not retry library matching.');
                           }
                         }}
-                        disabled={semanticActionStatus === 'working' || (semanticStatus?.documentsByStatus.error || 0) === 0}
+                        disabled={semanticActionStatus === 'working' || (semanticStatus?.state !== 'error' && (semanticStatus?.documentsByStatus.error || 0) === 0)}
                         className="text-sm font-bold"
                       >
                         Retry Errors

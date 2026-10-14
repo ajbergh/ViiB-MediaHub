@@ -83,12 +83,12 @@ export const SmartPlaylists: React.FC = () => {
 
   const semanticState = semanticStatus?.state;
   const semanticReady = semanticState === 'ready';
-  const semanticIndexing = semanticState === 'indexing';
+  const semanticIndexing = semanticState === 'indexing' || semanticState === 'preparing';
   const semanticProgress = Math.round((semanticStatus?.progress || 0) * 100);
   const semanticLabel = semanticReady
     ? 'Semantic matching ready'
     : semanticIndexing
-      ? `Semantic index building${semanticProgress > 0 ? ` (${semanticProgress}%)` : ''}`
+      ? semanticState === 'preparing' ? 'Preparing Smart Playlists' : `Semantic index building${semanticProgress > 0 ? ` (${semanticProgress}%)` : ''}`
       : semanticState === 'error'
         ? 'Semantic index needs attention'
         : 'Standard matching active';
@@ -96,7 +96,7 @@ export const SmartPlaylists: React.FC = () => {
     ? 'AI Smart Mix will use meaning-based retrieval when indexed tracks are available for the selected source.'
     : semanticIndexing
       ? 'Standard matching remains available while the background index finishes.'
-      : 'Semantic matching will be used automatically after the index is configured and ready.';
+      : 'Music matching is prepared automatically on this device.';
   const semanticReason = semanticStatus?.reason || semanticStatus?.lastError;
 
   const spotifySessionGeneration = useStore(state => state.spotifySessionGeneration);

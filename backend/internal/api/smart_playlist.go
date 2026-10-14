@@ -114,24 +114,33 @@ func (a *API) filterSongsForAIDJ(songs []any, source string) ([]any, error) {
 	return result, nil
 }
 
-// getLLMSettings retrieves the LLM configuration from the database.
-// Falls back to default settings (Ollama) if not configured.
+// getLLMSettings honors an explicitly selected provider. Legacy Gemini
+// credentials are used only when unified provider settings have never been set.
 func getLLMSettings(a *API) llm.Settings {
 	settings := llm.DefaultSettings()
-
-	if provider, err := a.db.GetSetting("llm_provider"); err == nil && provider != "" {
-		settings.Provider = provider
+	provider, _ := a.db.GetSetting("llm_provider")
+	if provider == "" {
+		if key, err := a.db.GetSetting("gemini_api_key"); err == nil && key != "" {
+			settings.Provider = llm.ProviderGemini
+			settings.Model = llm.DefaultGeminiModel
+			settings.APIKey = key
+			settings.BaseURL = ""
+		}
+		return settings
 	}
-	if model, err := a.db.GetSetting("llm_model"); err == nil && model != "" {
-		settings.Model = model
+	settings.Provider = provider
+	settings.Model, _ = a.db.GetSetting("llm_model")
+	if settings.Model == "" {
+		settings.Model = getDefaultModelForProvider(provider)
 	}
-	if apiKey, err := a.db.GetSetting("llm_api_key"); err == nil && apiKey != "" {
-		settings.APIKey = apiKey
+	settings.APIKey, _ = a.db.GetSetting("llm_api_key")
+	settings.BaseURL = ""
+	if provider == llm.ProviderOllama {
+		settings.BaseURL, _ = a.db.GetSetting("llm_base_url")
+		if settings.BaseURL == "" {
+			settings.BaseURL = llm.DefaultOllamaEndpoint
+		}
 	}
-	if baseURL, err := a.db.GetSetting("llm_base_url"); err == nil && baseURL != "" {
-		settings.BaseURL = baseURL
-	}
-
 	return settings
 }
 
@@ -1635,15 +1644,10 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 
 	// Validate we have the required API key (Ollama doesn't need one)
 	if llmSettings.Provider != llm.ProviderOllama && llmSettings.APIKey == "" {
-		// Fall back to Gemini API key if LLM not configured
-		geminiKey, err := a.db.GetSetting("gemini_api_key")
-		if err != nil || geminiKey == "" {
-			http.Error(w, "AI provider not configured. Set up Ollama locally or add an API key in Settings.", http.StatusServiceUnavailable)
-			return
-		}
-		llmSettings.Provider = llm.ProviderGemini
-		llmSettings.APIKey = geminiKey
-		llmSettings.Model = llm.DefaultGeminiModel
+		// Legacy defaults are resolved by getLLMSettings only when no provider
+		// was selected. Never silently substitute another vendor after a switch.
+		http.Error(w, "Add an API key for the selected AI provider in Settings.", http.StatusServiceUnavailable)
+		return
 	}
 
 	// Enhance prompt with time context if enabled
@@ -1949,15 +1953,10 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 
 	// Validate we have the required API key (Ollama doesn't need one)
 	if llmSettings.Provider != llm.ProviderOllama && llmSettings.APIKey == "" {
-		// Fall back to Gemini API key if LLM not configured
-		geminiKey, err := a.db.GetSetting("gemini_api_key")
-		if err != nil || geminiKey == "" {
-			http.Error(w, "AI provider not configured. Set up Ollama locally or add an API key in Settings.", http.StatusServiceUnavailable)
-			return
-		}
-		llmSettings.Provider = llm.ProviderGemini
-		llmSettings.APIKey = geminiKey
-		llmSettings.Model = llm.DefaultGeminiModel
+		// Legacy defaults are resolved by getLLMSettings only when no provider
+		// was selected. Never silently substitute another vendor after a switch.
+		http.Error(w, "Add an API key for the selected AI provider in Settings.", http.StatusServiceUnavailable)
+		return
 	}
 
 	// Create the LLM planner

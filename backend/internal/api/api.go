@@ -84,6 +84,11 @@ type API struct {
 	semanticError          string
 	semanticClosed         bool
 	semanticGeneration     uint64
+	semanticContext        context.Context
+	semanticCancel         context.CancelFunc
+	semanticWorkers        sync.WaitGroup
+	semanticInitializing   bool
+	semanticWake           chan struct{}
 	jobSchedulerMu         sync.Mutex
 	jobSchedulerOn         bool
 	jobWake                chan struct{}

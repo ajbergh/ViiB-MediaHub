@@ -24,9 +24,13 @@ func (a *API) close() {
 	}
 	a.semanticMu.Lock()
 	a.semanticClosed = true
+	if a.semanticCancel != nil {
+		a.semanticCancel()
+	}
 	semanticService := a.semanticService
 	a.semanticService = nil
 	a.semanticMu.Unlock()
+	a.semanticWorkers.Wait()
 	if semanticService != nil {
 		_ = semanticService.Close()
 	}

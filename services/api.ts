@@ -1158,15 +1158,6 @@ export const api = {
     return handleResponse<SemanticSettings>(response);
   },
 
-  async updateSemanticSettings(settings: SemanticSettingsRequest): Promise<{ status: string }> {
-    const response = await fetch(`${API_BASE}/semantic/settings`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings),
-    });
-    return handleResponse<{ status: string }>(response);
-  },
-
   async getSemanticStatus(): Promise<SemanticStatus> {
     const response = await fetch(`${API_BASE}/semantic/status`);
     return handleResponse<SemanticStatus>(response);
@@ -2059,46 +2050,11 @@ export interface LLMTestResponse {
 // ==================== Semantic Index Types ====================
 
 export interface SemanticSettings {
-  provider: 'auto' | 'ollama' | 'openai' | 'openrouter' | 'gemini' | 'disabled';
+  provider: 'local';
   model: string;
   dimensions: number;
-  baseURL: string;
-  apiKeyConfigured: boolean;
+  managed: true;
   status: string;
-  reason?: string;
-  cloudCost?: SemanticCloudCost;
-  cloudConfirmation?: SemanticCloudConfirmation;
-}
-
-export interface SemanticSettingsRequest {
-  provider: 'auto' | 'ollama' | 'openai' | 'openrouter' | 'gemini' | 'disabled';
-  model: string;
-  dimensions?: number;
-  baseURL: string;
-  apiKey?: string;
-  confirmCloudCost?: boolean;
-}
-
-export interface SemanticCloudCost {
-  provider: 'openai' | 'openrouter' | 'gemini';
-  model: string;
-  dimensions: number;
-  documents: number;
-  typicalInputTokens: number;
-  maximumInputTokens: number;
-  usdPerMillionInputTokens: number;
-  typicalUSD: number;
-  maximumUSD: number;
-  pricingKnown: boolean;
-  confirmed: boolean;
-}
-
-export interface SemanticCloudConfirmation {
-  provider: 'gemini' | 'openrouter';
-  model: string;
-  dimensions: number;
-  documents: number;
-  confirmed: boolean;
 }
 
 export interface SemanticIndexState {

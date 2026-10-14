@@ -221,17 +221,44 @@ func TestServiceResetsWhenProviderIdentityChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = service.Close()
-	second := &fakeEmbeddingProvider{model: "two"}
+	playlist := &db.Playlist{ID: "saved-mix", Name: "Saved mix", SongIDs: []string{"song"}}
+	if err := database.SavePlaylist(playlist); err != nil {
+		t.Fatal(err)
+	}
+	second := &fakeEmbeddingProvider{model: LocalEmbeddingModel, dimensions: 3}
 	service, err = NewService(database, second)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer service.Close()
+	if err := service.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	if err := service.Reindex(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if second.callCount() != 3 {
 		t.Fatalf("new identity calls=%d, want full reindex", second.callCount())
+	}
+	preserved, err := database.GetPlaylistByID("saved-mix")
+	if err != nil || len(preserved.SongIDs) != 1 || preserved.SongIDs[0] != "song" {
+		t.Fatalf("playlist lost: %v %v", preserved, err)
+	}
+	_ = service.Close()
+	unchanged := &fakeEmbeddingProvider{model: LocalEmbeddingModel, dimensions: 3}
+	restarted, err := NewService(database, unchanged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restarted.Close()
+	if err := restarted.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.Reindex(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if unchanged.callCount() != 0 {
+		t.Fatal("same managed model re-embedded on restart")
 	}
 }
 
