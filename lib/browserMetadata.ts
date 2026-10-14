@@ -13,7 +13,7 @@ const ARTWORK_FILENAMES = [
  */
 export async function parseBrowserSongMetadata(file: File, path: string, relevantImages: File[] = []) {
     const fileName = file.name.replace(/\.[^/.]+$/, ""); // remove extension
-    
+
     let title = fileName;
     let artist = "Unknown Artist";
     let album = "Unknown Album";
@@ -45,7 +45,7 @@ export async function parseBrowserSongMetadata(file: File, path: string, relevan
         if (trackMatch) {
             const num = parseInt(trackMatch[1], 10);
             const cleanTitle = trackMatch[2];
-            
+
             if (!trackNumber) trackNumber = num;
             if (title === fileName) title = cleanTitle;
         } else {
@@ -62,12 +62,12 @@ export async function parseBrowserSongMetadata(file: File, path: string, relevan
         // Parse metadata
         const metadata = await parseBlob(file, { duration: true, skipCovers: false });
         const { common, format } = metadata;
-        
+
         if (common.title && common.title.trim().length > 0) title = common.title;
         if (common.artist && common.artist.trim().length > 0) artist = common.artist;
         if (common.album && common.album.trim().length > 0) album = common.album;
         if (common.albumartist && common.albumartist.trim().length > 0) albumArtist = common.albumartist;
-        
+
         if (common.track.no) trackNumber = common.track.no;
         if (common.disk.no) discNumber = common.disk.no;
         if (common.genre) genre = common.genre;
@@ -99,7 +99,7 @@ export async function parseBrowserSongMetadata(file: File, path: string, relevan
                 break;
             }
         }
-        
+
         // Fallback to any valid image in the folder
         if (!coverData) {
              const validImage = relevantImages.find(img => /\.(jpg|jpeg|png)$/i.test(img.name));
@@ -123,4 +123,3 @@ export async function parseBrowserSongMetadata(file: File, path: string, relevan
         // We do NOT return URLs here. URLs created in Worker are not valid in Main Thread.
     };
 }
-
