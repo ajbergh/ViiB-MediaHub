@@ -1,5 +1,5 @@
 /** Browses Spotify artist top tracks and bounded discography with account-isolated loading and playback actions. */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import {
     ArrowLeft,
@@ -44,7 +44,9 @@ export const SpotifyArtistDetail: React.FC = () => {
     const { id = '' } = useParams<{ id: string }>();
     const connected = useStore((state) => state.spotifyConnected);
     const generation = useStore((state) => state.spotifySessionGeneration);
-    const { playSong, addToQueue, showToast } = useStore();
+    const playSong = useStore((state) => state.playSong);
+    const addToQueue = useStore((state) => state.addToQueue);
+    const showToast = useStore((state) => state.showToast);
     const [retry, setRetry] = useState(0);
     const [view, setView] = useState<ArtistView>({
         id,
@@ -104,7 +106,7 @@ export const SpotifyArtistDetail: React.FC = () => {
     const releases = current
         ? view.releases.data?.items.filter((item) => item?.id) || []
         : [];
-    const songs = spotifyTracksToSongs(tracks);
+    const songs = useMemo(() => spotifyTracksToSongs(tracks), [tracks]);
     const play = (index = 0, shuffle = false) => {
         assertSpotifySession(generation);
         if (!songs.length) return;

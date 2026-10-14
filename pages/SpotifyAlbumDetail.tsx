@@ -19,10 +19,9 @@ import { savedLibraryDownloadOrigins } from '../lib/spotifyDownloadOrigins';
 
 import {fetchSpotifyAlbum} from '../services/spotifyAlbum';
 import { SpotifyArtistLinks } from '../components/SpotifyArtistLinks';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router';
-import { ArrowLeft, Play, MoreHorizontal, Loader2, Clock, ExternalLink, Download, Shuffle, ListPlus, CheckCircle } from 'lucide-react';
-import { SpotifyService } from '../services/spotifyService';
+import { ArrowLeft, Play, MoreHorizontal, Loader2, Clock, ExternalLink, Download, Shuffle, ListPlus, CheckCircle, Music } from 'lucide-react';
 import { useStore } from '../store';
 import { formatTime } from '../utils';
 import { SpotifyAuthError, SpotifyRateLimitError, SpotifyApiError } from '../lib/spotifyErrors';
@@ -62,14 +61,28 @@ export const SpotifyAlbumDetail: React.FC = () => {
   const location = useLocation();
   const sessionGeneration = useStore(s => s.spotifySessionGeneration);
   const downloadOrigins = savedLibraryDownloadOrigins(location.state, id, sessionGeneration);
-  const { addLog, playSong, addToQueue, showToast, openContextMenu } = useStore();
+  const addLog = useStore(s => s.addLog);
+  const playSong = useStore(s => s.playSong);
+  const addToQueue = useStore(s => s.addToQueue);
+  const showToast = useStore(s => s.showToast);
+  const openContextMenu = useStore(s => s.openContextMenu);
+  const librarySongs = useStore(s => s.songs);
   
   const [album, setAlbum] = useState<SpotifyAlbumFull | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadingTracks, setDownloadingTracks] = useState<Set<string>>(new Set());
-  const [downloadedSpotifyIds, setDownloadedSpotifyIds] = useState<Set<string>>(new Set());
+
+  const downloadedSpotifyIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const song of librarySongs) {
+      if (song.spotifyId) ids.add(song.spotifyId);
+    }
+    return ids;
+  }, [librarySongs]);
+
+  const albumSongs = useMemo(() => (album ? spotifyAlbumToSongs(album) : []), [album]);
 
   const handleDownload = async () => {
     if (!album) return;
@@ -88,41 +101,30 @@ export const SpotifyAlbumDetail: React.FC = () => {
 
   // Play the entire album
   const handlePlayAlbum = () => {
-    if (!album) return;
-    const songs = spotifyAlbumToSongs(album);
-    if (songs.length > 0) {
-      playSong(songs[0], songs);
-      addLog('info', `▶ Playing album: ${album.name}`);
-    }
+    if (!album || albumSongs.length === 0) return;
+    playSong(albumSongs[0], albumSongs);
+    addLog('info', `▶ Playing album: ${album.name}`);
   };
 
   // Shuffle play the album
   const handleShuffleAlbum = () => {
-    if (!album) return;
-    const songs = spotifyAlbumToSongs(album);
-    if (songs.length > 0) {
-      const shuffled = [...songs].sort(() => Math.random() - 0.5);
-      playSong(shuffled[0], shuffled);
-      addLog('info', `🔀 Shuffling album: ${album.name}`);
-    }
+    if (!album || albumSongs.length === 0) return;
+    const shuffled = [...albumSongs].sort(() => Math.random() - 0.5);
+    playSong(shuffled[0], shuffled);
+    addLog('info', `🔀 Shuffling album: ${album.name}`);
   };
 
   // Add album to queue
   const handleAddAlbumToQueue = () => {
-    if (!album) return;
-    const songs = spotifyAlbumToSongs(album);
-    if (songs.length > 0) {
-      addToQueue(songs);
-      showToast({ type: 'success', message: `Added ${songs.length} tracks to queue` });
-    }
+    if (!album || albumSongs.length === 0) return;
+    addToQueue(albumSongs);
+    showToast({ type: 'success', message: `Added ${albumSongs.length} tracks to queue` });
   };
 
   // Play a specific track (with rest of album as context)
   const handlePlayTrack = (trackIndex: number) => {
-    if (!album) return;
-    const songs = spotifyAlbumToSongs(album);
-    if (songs.length > 0 && trackIndex < songs.length) {
-      playSong(songs[trackIndex], songs);
+    if (albumSongs.length > 0 && trackIndex < albumSongs.length) {
+      playSong(albumSongs[trackIndex], albumSongs);
     }
   };
 
@@ -164,10 +166,9 @@ export const SpotifyAlbumDetail: React.FC = () => {
     openContextMenu(e, ContextMenuType.SONG, song);
   };
 
-  const spotifyGeneration = useStore(state => state.spotifySessionGeneration);
   useEffect(() => {
     let active = true;
-    const current = () => active && useStore.getState().spotifySessionGeneration === spotifyGeneration;
+    const current = () => active && useStore.getState().spotifySessionGeneration === sessionGeneration;
     setAlbum(null);
     const fetchAlbum = async () => {
       if (!id) return;
@@ -201,7 +202,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
 
     fetchAlbum();
     return () => {active = false;};
-  }, [id, addLog, spotifyGeneration]);
+  }, [id, addLog, sessionGeneration]);
 
   if (isLoading) {
     return (
@@ -245,12 +246,16 @@ export const SpotifyAlbumDetail: React.FC = () => {
           </Button>
 
           <div className="flex flex-col gap-6 sm:flex-row sm:gap-8 sm:items-end">
-            <div className="w-64 h-64 flex-shrink-0 shadow-2xl rounded-lg overflow-hidden">
-              <img 
-                src={album.images[0]?.url} 
-                alt={album.name}
-                className="w-full h-full object-cover"
-              />
+            <div className="w-64 h-64 flex-shrink-0 shadow-2xl rounded-lg overflow-hidden bg-surface-3 flex items-center justify-center">
+              {album.images[0]?.url ? (
+                <img 
+                  src={album.images[0].url} 
+                  alt={album.name}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <Music size={64} className="text-text-subtle" />
+              )}
             </div>
 
             <div className="min-w-0 w-full flex-1 pb-4">
@@ -281,10 +286,10 @@ export const SpotifyAlbumDetail: React.FC = () => {
           variant="primary"
           accent="brand"
           onClick={handlePlayAlbum}
-          className="w-14 h-14 p-0 rounded-full shadow-xl hover:scale-105 transition-all duration-200"
+          className="w-14 h-14 p-0 rounded-full shadow-xl hover:scale-105 transition-all duration-200 text-surface-0"
           aria-label="Play album"
         >
-          <Play size={24} fill="black" />
+          <Play size={24} fill="currentColor" />
         </Button>
         <Button
           variant="secondary"
@@ -378,7 +383,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
                     variant="ghost"
                     onClick={(e) => { e.stopPropagation(); handleDownloadTrack(track); }}
                     disabled={downloadingTracks.has(track.id)}
-                    className="p-2 text-text-subtle hover:text-white opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                    className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
                     title="Download"
                     aria-label="Download"
                   >
@@ -392,7 +397,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
                 <Button
                   variant="ghost"
                   onClick={(e) => { e.stopPropagation(); handleTrackContextMenu(e, track); }}
-                  className="p-2 text-text-subtle hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity"
                   aria-label="More"
                 >
                   <MoreHorizontal size={18} />

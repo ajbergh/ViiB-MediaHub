@@ -1,4 +1,4 @@
-import { savedLibraryDownloadState } from '../lib/spotifyDownloadOrigins';
+import { savedLibraryDownloadOrigins, savedLibraryDownloadState } from '../lib/spotifyDownloadOrigins';
 /**
  * ViiB MediaHub - Spotify Page
  * 
@@ -23,18 +23,16 @@ import { appendSpotifyLibraryPage } from '../lib/spotifyLibraryPaging';
 import {fetchSpotifyPlaylist} from '../services/spotifyPlaylist';
 import {fetchSpotifyAlbum} from '../services/spotifyAlbum';
 import { nextSpotifySearchOffset } from '../lib/spotifySearchPaging';
-import { backendSpotifyFetch } from '../services/spotifyBackend';
 import { SpotifySessionConnect } from '../components/SpotifySessionConnect';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SpotifyArtistLinks } from '../components/SpotifyArtistLinks';
 import { Link, useNavigate } from 'react-router';
-import { Wifi, LogOut, ExternalLink, CheckCircle, Search as SearchIcon, Loader2, Play, MoreHorizontal, User, Music, Shuffle, ListPlus, Download, Mic2, Copy } from 'lucide-react';
+import { LogOut, ExternalLink, CheckCircle, Search as SearchIcon, Loader2, Play, MoreHorizontal, User, Music, Shuffle, ListPlus, Download, Mic2, Disc, ListMusic } from 'lucide-react';
 import { formatTime } from '../utils';
 import { useStore } from '../store';
 import { SpotifyService } from '../services/spotifyService';
 import { SpotifyAuthError, SpotifyRateLimitError, SpotifyApiError } from '../lib/spotifyErrors';
-import { api } from '../services/api';
-import { libraryService } from '../services/libraryService';
+import { api, type SpotifyDownloadOrigin } from '../services/api';
 import { spotifyTrackToSong, spotifyTracksToSongs, spotifyAlbumToSongs } from '../lib/spotifyHelpers';
 import { ContextMenuType } from '../types';
 import { Button } from '../components/ui/Button';
@@ -53,17 +51,36 @@ const getSpotifyProfileWithTimeout = async () => {
 
 export const Spotify: React.FC = () => {
     const navigate = useNavigate();
-    const {
-        spotifyConnected, spotifySessionGeneration, setSpotifyConnected, spotifyUser,
-        logoutSpotify, setSpotifyUser, addLog,
-        playSong, addToQueue, showToast, openContextMenu,
-        // Search persistence from store
-        spotifySearchQuery, spotifySearchResults, spotifyActiveTab,
-        setSpotifySearchQuery, setSpotifySearchResults, setSpotifyActiveTab
-    } = useStore();
+    const spotifyConnected = useStore(s => s.spotifyConnected);
+    const spotifySessionGeneration = useStore(s => s.spotifySessionGeneration);
+    const setSpotifyConnected = useStore(s => s.setSpotifyConnected);
+    const spotifyUser = useStore(s => s.spotifyUser);
+    const logoutSpotify = useStore(s => s.logoutSpotify);
+    const setSpotifyUser = useStore(s => s.setSpotifyUser);
+    const addLog = useStore(s => s.addLog);
+    const playSong = useStore(s => s.playSong);
+    const addToQueue = useStore(s => s.addToQueue);
+    const showToast = useStore(s => s.showToast);
+    const openContextMenu = useStore(s => s.openContextMenu);
+    const songs = useStore(s => s.songs);
 
-    // Session restoration state
-    const [isRestoringSession, setIsRestoringSession] = useState(false);
+    // Search & library persistence from store
+    const spotifySearchQuery = useStore(s => s.spotifySearchQuery);
+    const spotifySearchResults = useStore(s => s.spotifySearchResults);
+    const spotifyActiveTab = useStore(s => s.spotifyActiveTab);
+    const recentlyPlayed = useStore(s => s.spotifyRecentlyPlayed);
+    const savedAlbums = useStore(s => s.spotifySavedAlbums);
+    const savedPlaylists = useStore(s => s.spotifySavedPlaylists);
+    const setSpotifySearchQuery = useStore(s => s.setSpotifySearchQuery);
+    const setSpotifyLastSearchedQuery = useStore(s => s.setSpotifyLastSearchedQuery);
+    const setSpotifySearchResults = useStore(s => s.setSpotifySearchResults);
+    const setSpotifyActiveTab = useStore(s => s.setSpotifyActiveTab);
+    const setRecentlyPlayed = useStore(s => s.setSpotifyRecentlyPlayed);
+    const setSavedAlbums = useStore(s => s.setSpotifySavedAlbums);
+    const setSavedPlaylists = useStore(s => s.setSpotifySavedPlaylists);
+
+    // Session restoration state - only block the UI if not already connected
+    const [isRestoringSession, setIsRestoringSession] = useState(() => !useStore.getState().spotifyConnected);
 
     // Tab State - initialize from persisted store
     const [activeTab, setActiveTabLocal] = useState<'search' | 'recent' | 'albums' | 'playlists'>(spotifyActiveTab);
@@ -76,7 +93,11 @@ export const Spotify: React.FC = () => {
     const [searchError, setSearchError] = useState('');
     const [searchRetry, setSearchRetry] = useState(0);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
-    const [hasMore, setHasMore] = useState(false);
+    const [hasMore, setHasMore] = useState(() =>
+        spotifySearchResults
+            ? ['albums', 'playlists', 'tracks', 'artists'].some(category => Boolean(spotifySearchResults[category]?.next))
+            : false
+    );
     
     // Search result category filter (Tracks, Albums, Artists, Playlists)
     const [searchResultTab, setSearchResultTab] = useState<'tracks' | 'albums' | 'artists' | 'playlists'>('tracks');
@@ -94,10 +115,7 @@ export const Spotify: React.FC = () => {
         setSpotifySearchResults(nextResults);
     };
 
-    // Library State
-    const [recentlyPlayed, setRecentlyPlayed] = useState<any>(null);
-    const [savedAlbums, setSavedAlbums] = useState<any>(null);
-    const [savedPlaylists, setSavedPlaylists] = useState<any>(null);
+    // Library loading UI state
     const [isLoadingLibrary, setIsLoadingLibrary] = useState(false);
     const [libraryLoadError, setLibraryLoadError] = useState('');
     const [libraryReload, setLibraryReload] = useState(0);
@@ -161,35 +179,44 @@ export const Spotify: React.FC = () => {
     const [downloadingAlbums, setDownloadingAlbums] = useState<Set<string>>(new Set());
     const [downloadingPlaylists, setDownloadingPlaylists] = useState<Set<string>>(new Set());
     
-    // Downloaded tracks - Set of Spotify IDs that have been downloaded locally
-    const [downloadedSpotifyIds, setDownloadedSpotifyIds] = useState<Set<string>>(new Set());
+    // Downloaded tracks - derived in-memory from Zustand songs without IndexedDB dump
+    const downloadedSpotifyIds = useMemo(() => {
+        const ids = new Set<string>();
+        for (let i = 0; i < songs.length; i++) {
+            const sid = songs[i].spotifyId;
+            if (sid) ids.add(sid);
+        }
+        return ids;
+    }, [songs]);
 
-    // Load downloaded Spotify track IDs on mount
+    const prevSessionGenerationRef = useRef(spotifySessionGeneration);
+    const prevConnectedRef = useRef(spotifyConnected);
     useEffect(() => {
-        const loadDownloadedIds = async () => {
-            try {
-                const allSongs = await libraryService.getAllSongs();
-                const spotifyIds = allSongs
-                    .filter(song => song.spotifyId)
-                    .map(song => song.spotifyId!);
-                setDownloadedSpotifyIds(new Set(spotifyIds));
-                console.log('[Spotify] Loaded downloaded track IDs:', spotifyIds.length);
-            } catch (error) {
-                console.error('[Spotify] Failed to load downloaded track IDs:', error);
-            }
-        };
-        loadDownloadedIds();
-    }, []);
-
-    useEffect(() => {
-        setRecentlyPlayed(null);setSavedAlbums(null);setSavedPlaylists(null);setSpotifyResultsLocal(null);
-        setIsSearching(false);setIsLoadingMore(false);setIsLoadingLibrary(false);setHasMore(false);
-    }, [spotifySessionGeneration]);
+        const genChanged = prevSessionGenerationRef.current !== spotifySessionGeneration;
+        const wasConnected = prevConnectedRef.current;
+        prevSessionGenerationRef.current = spotifySessionGeneration;
+        prevConnectedRef.current = spotifyConnected;
+        // Clear cached results when disconnecting or switching accounts, not on route remount
+        if (genChanged && (!spotifyConnected || wasConnected)) {
+            setRecentlyPlayed(null);
+            setSavedAlbums(null);
+            setSavedPlaylists(null);
+            setSpotifyResultsLocal(null);
+            setSpotifySearchResults(null);
+            setSpotifyLastSearchedQuery('');
+            setIsSearching(false);
+            setIsLoadingMore(false);
+            setIsLoadingLibrary(false);
+            setHasMore(false);
+        }
+    }, [spotifySessionGeneration, spotifyConnected, setRecentlyPlayed, setSavedAlbums, setSavedPlaylists, setSpotifySearchResults, setSpotifyLastSearchedQuery]);
 
     useEffect(() => {
         let active = true;
         const generation = useStore.getState().spotifySessionGeneration;
-        setIsRestoringSession(true);
+        if (!useStore.getState().spotifyConnected) {
+            setIsRestoringSession(true);
+        }
         void api.getSpotifyAuthStatus().then(status => {
             if(active && generation === useStore.getState().spotifySessionGeneration) setSpotifyConnected(status.connected && !status.authRequired);
         }).catch(() => {if(active && generation === useStore.getState().spotifySessionGeneration) setSpotifyConnected(false);}).finally(() => {if(active) setIsRestoringSession(false);});
@@ -198,6 +225,8 @@ export const Spotify: React.FC = () => {
 
     useEffect(() => {
         if (!spotifyConnected) return;
+        const state = useStore.getState();
+        if (state.spotifyUser && state.spotifyCacheGeneration === spotifySessionGeneration) return;
         let active = true;
         void getSpotifyProfileWithTimeout().then(profile => {if(active) setSpotifyUser(profile);}).catch(error => {
             if(active) addLog('warn', 'Spotify profile unavailable', {status: error?.statusCode});
@@ -217,19 +246,39 @@ export const Spotify: React.FC = () => {
         };
     }, [inputValue, setSpotifySearchQuery]);
 
+    const lastSearchRetryRef = useRef(0);
     // Search Effect
     useEffect(() => {
         let active = true;
         const controller = new AbortController();
         const current = () => active && useStore.getState().spotifySessionGeneration === spotifySessionGeneration;
-        if (debouncedQuery.trim() && debouncedQuery === inputValue && spotifyConnected && activeTab === 'search') {
+        const trimmedQuery = debouncedQuery.trim();
+        const retryChanged = searchRetry !== lastSearchRetryRef.current;
+        lastSearchRetryRef.current = searchRetry;
+
+        if (trimmedQuery && debouncedQuery === inputValue && spotifyConnected && activeTab === 'search') {
+            const state = useStore.getState();
+            if (
+                !retryChanged &&
+                state.spotifySearchResults &&
+                state.spotifyLastSearchedQuery === trimmedQuery &&
+                state.spotifyCacheGeneration === spotifySessionGeneration
+            ) {
+                setSpotifyResultsLocal(state.spotifySearchResults);
+                setHasMore(['albums', 'playlists', 'tracks', 'artists'].some(category => Boolean(state.spotifySearchResults[category]?.next)));
+                setIsSearching(false);
+                return () => { active = false; controller.abort(); };
+            }
+
             const searchSpotify = async () => {
                 setIsSearching(true);
                 setSearchError('');
                 setSpotifyResults(null);
+                setSpotifyLastSearchedQuery('');
                 const publishResults = (results: any) => {
                     if (!current()) return;
                     setSpotifyResults(results);
+                    setSpotifyLastSearchedQuery(trimmedQuery);
                     setHasMore(['albums', 'playlists', 'tracks', 'artists'].some(category => Boolean(results[category]?.next)));
                     setIsSearching(false);
                 };
@@ -262,6 +311,7 @@ export const Spotify: React.FC = () => {
             searchSpotify();
         } else if (!inputValue.trim()) {
             setSpotifyResults(null);
+            setSpotifyLastSearchedQuery('');
             setSearchError('');
             setHasMore(false);
             setIsSearching(false);
@@ -318,7 +368,16 @@ export const Spotify: React.FC = () => {
 
     // Load library data when tabs change
     useEffect(() => {
-        if (!spotifyConnected) return;
+        if (!spotifyConnected || activeTab === 'search') return;
+        const alreadyLoaded =
+            (activeTab === 'recent' && Boolean(recentlyPlayed)) ||
+            (activeTab === 'albums' && Boolean(savedAlbums)) ||
+            (activeTab === 'playlists' && Boolean(savedPlaylists));
+        if (alreadyLoaded) {
+            setIsLoadingLibrary(false);
+            return;
+        }
+
         let active = true;
         const current = () => active && useStore.getState().spotifySessionGeneration === spotifySessionGeneration;
 
@@ -357,11 +416,18 @@ export const Spotify: React.FC = () => {
             if (current()) setIsLoadingLibrary(false);
         };
 
-        if (activeTab !== 'search') {
-            loadLibraryData();
-        }
-    return () => { active = false; };
+        loadLibraryData();
+        return () => { active = false; };
     }, [activeTab, spotifyConnected, spotifySessionGeneration, recentlyPlayed, savedAlbums, savedPlaylists, libraryReload, addLog]);
+
+    const searchTracks = useMemo(
+        () => spotifyResults?.tracks?.items?.filter((t: any) => t) ?? [],
+        [spotifyResults]
+    );
+    const recentTracks = useMemo(
+        () => recentlyPlayed?.items?.map((i: any) => i?.track).filter(Boolean) ?? [],
+        [recentlyPlayed]
+    );
 
     // Backend session logout
     const handleLogout = async () => {
@@ -454,9 +520,8 @@ export const Spotify: React.FC = () => {
 
     // Play all search result tracks  
     const handlePlayAllTracks = () => {
-        const tracks = spotifyResults?.tracks?.items?.filter((t: any) => t);
-        if (tracks && tracks.length > 0) {
-            handlePlayTrack(tracks[0], tracks);
+        if (searchTracks.length > 0) {
+            handlePlayTrack(searchTracks[0], searchTracks);
         }
     };
 
@@ -669,7 +734,7 @@ export const Spotify: React.FC = () => {
         return (
             <div className="h-full flex flex-col items-center justify-center p-8 text-center">
                 <div className="w-24 h-24 bg-brand rounded-full flex items-center justify-center mb-6 shadow-lg shadow-brand/20">
-                    <Loader2 size={48} className="text-black animate-spin" />
+                    <Loader2 size={48} className="text-surface-0 animate-spin" />
                 </div>
                 <h1 className="text-section font-semibold mb-2">Restoring Session</h1>
                 <p className="text-text-secondary">Connecting to Spotify...</p>
@@ -692,6 +757,11 @@ export const Spotify: React.FC = () => {
             </div>
         );
     }
+
+    const showCardSizeSlider =
+        activeTab === 'albums' ||
+        activeTab === 'playlists' ||
+        (activeTab === 'search' && Boolean(spotifyResults) && searchResultTab !== 'tracks');
 
     return (
         <div className="p-8 h-full overflow-y-auto">
@@ -792,7 +862,7 @@ export const Spotify: React.FC = () => {
                     Saved Playlists
                 </Button>
                 </div>
-                <CardSizeSlider value={cardCols} onChange={handleCardColsChange} />
+                {showCardSizeSlider && <CardSizeSlider value={cardCols} onChange={handleCardColsChange} />}
             </div>
 
             {/* Search Section */}
@@ -884,11 +954,17 @@ export const Spotify: React.FC = () => {
                                                 }}
                                             >
                                                     <div className="aspect-square mb-4 relative shadow-lg rounded-md overflow-hidden">
-                                                        <img src={album.images?.[0]?.url} alt={album.name} className="w-full h-full object-cover" />
+                                                        {album.images?.[0]?.url ? (
+                                                            <img src={album.images[0].url} alt={album.name} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="w-full h-full bg-surface-3 flex items-center justify-center">
+                                                                <Music size={40} className="text-text-subtle" />
+                                                            </div>
+                                                        )}
                                                         <div className="absolute right-2 bottom-2 flex gap-1 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-200">
                                                             <button 
                                                                 onClick={(e) => { e.stopPropagation(); handleShuffleAlbum(album); }}
-                                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-white" 
+                                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main" 
                                                                 aria-label="Shuffle album"
                                                                 title="Shuffle"
                                                             >
@@ -896,7 +972,7 @@ export const Spotify: React.FC = () => {
                                                             </button>
                                                             <button 
                                                                 onClick={(e) => { e.stopPropagation(); handleAddAlbumToQueue(album); }}
-                                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-white" 
+                                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main" 
                                                                 aria-label="Add to queue"
                                                                 title="Add to queue"
                                                             >
@@ -904,10 +980,10 @@ export const Spotify: React.FC = () => {
                                                             </button>
                                                             <button 
                                                                 onClick={(e) => { e.stopPropagation(); handlePlayAlbum(album); }}
-                                                                className="w-10 h-10 bg-brand rounded-full flex items-center justify-center shadow-xl hover:scale-105 text-black" 
+                                                                className="w-10 h-10 bg-brand rounded-full flex items-center justify-center shadow-xl hover:scale-105 text-surface-0" 
                                                                 aria-label="Play album"
                                                             >
-                                                                <Play size={20} fill="black" />
+                                                                <Play size={20} fill="currentColor" />
                                                             </button>
                                                         </div>
                                                     </div>
@@ -922,9 +998,9 @@ export const Spotify: React.FC = () => {
                                                     aria-label="Download album"
                                                 >
                                                     {downloadingAlbums.has(album.id) ? (
-                                                        <Loader2 className="w-4 h-4 text-white animate-spin" />
+                                                        <Loader2 className="w-4 h-4 text-text-main animate-spin" />
                                                     ) : (
-                                                        <Download className="w-4 h-4 text-white" />
+                                                        <Download className="w-4 h-4 text-text-main" />
                                                     )}
                                                 </button>
                                             </div>
@@ -951,7 +1027,7 @@ export const Spotify: React.FC = () => {
                                                     <div className="absolute z-20 right-2 bottom-2 flex gap-1 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100 transition-all duration-200">
                                                         <button 
                                                             onClick={(e) => { e.stopPropagation(); handleShuffleArtistTopTracks(artist); }}
-                                                            className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-white" 
+                                                            className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main" 
                                                             aria-label="Shuffle artist's top tracks"
                                                             title="Shuffle top tracks"
                                                         >
@@ -959,7 +1035,7 @@ export const Spotify: React.FC = () => {
                                                         </button>
                                                         <button 
                                                             onClick={(e) => { e.stopPropagation(); handleAddArtistToQueue(artist); }}
-                                                            className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-white" 
+                                                            className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main" 
                                                             aria-label="Add artist's top tracks to queue"
                                                             title="Add to queue"
                                                         >
@@ -967,11 +1043,11 @@ export const Spotify: React.FC = () => {
                                                         </button>
                                                         <button 
                                                             onClick={(e) => { e.stopPropagation(); handlePlayArtistTopTracks(artist); }}
-                                                            className="w-10 h-10 bg-brand rounded-full flex items-center justify-center shadow-xl hover:scale-105 text-black" 
+                                                            className="w-10 h-10 bg-brand rounded-full flex items-center justify-center shadow-xl hover:scale-105 text-surface-0" 
                                                             aria-label="Play artist's top tracks"
                                                             title="Play top tracks"
                                                         >
-                                                            <Play size={20} fill="black" />
+                                                            <Play size={20} fill="currentColor" />
                                                         </button>
                                                     </div>
                                                 </div>
@@ -1005,11 +1081,17 @@ export const Spotify: React.FC = () => {
                                                 }}
                                             >
                                                     <div className="aspect-square mb-4 relative shadow-lg rounded-md overflow-hidden">
-                                                        <img src={playlist.images?.[0]?.url} alt={playlist.name} className="w-full h-full object-cover" />
+                                                        {playlist.images?.[0]?.url ? (
+                                                            <img src={playlist.images[0].url} alt={playlist.name} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="w-full h-full bg-surface-3 flex items-center justify-center">
+                                                                <Music size={40} className="text-text-subtle" />
+                                                            </div>
+                                                        )}
                                                         <div className="absolute right-2 bottom-2 flex gap-1 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-200">
                                                             <button 
                                                                 onClick={(e) => { e.stopPropagation(); handleShufflePlaylist(playlist); }}
-                                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-white" 
+                                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main" 
                                                                 aria-label="Shuffle playlist"
                                                                 title="Shuffle"
                                                             >
@@ -1017,7 +1099,7 @@ export const Spotify: React.FC = () => {
                                                             </button>
                                                             <button 
                                                                 onClick={(e) => { e.stopPropagation(); handleAddPlaylistToQueue(playlist); }}
-                                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-white" 
+                                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main" 
                                                                 aria-label="Add to queue"
                                                                 title="Add to queue"
                                                             >
@@ -1025,10 +1107,10 @@ export const Spotify: React.FC = () => {
                                                             </button>
                                                             <button 
                                                                 onClick={(e) => { e.stopPropagation(); handlePlayPlaylist(playlist); }}
-                                                                className="w-10 h-10 bg-brand rounded-full flex items-center justify-center shadow-xl hover:scale-105 text-black" 
+                                                                className="w-10 h-10 bg-brand rounded-full flex items-center justify-center shadow-xl hover:scale-105 text-surface-0" 
                                                                 aria-label="Play playlist"
                                                             >
-                                                                <Play size={20} fill="black" />
+                                                                <Play size={20} fill="currentColor" />
                                                             </button>
                                                         </div>
                                                     </div>
@@ -1042,9 +1124,9 @@ export const Spotify: React.FC = () => {
                                                     aria-label="Download playlist"
                                                 >
                                                     {downloadingPlaylists.has(playlist.id) ? (
-                                                        <Loader2 className="w-4 h-4 text-white animate-spin" />
+                                                        <Loader2 className="w-4 h-4 text-text-main animate-spin" />
                                                     ) : (
-                                                        <Download className="w-4 h-4 text-white" />
+                                                        <Download className="w-4 h-4 text-text-main" />
                                                     )}
                                                 </button>
                                             </div>
@@ -1054,17 +1136,17 @@ export const Spotify: React.FC = () => {
                             )}
 
                             {/* Tracks - only show when tracks tab selected */}
-                            {searchResultTab === 'tracks' && spotifyResults.tracks?.items && Array.isArray(spotifyResults.tracks.items) && spotifyResults.tracks.items.length > 0 && (
+                            {searchResultTab === 'tracks' && searchTracks.length > 0 && (
                                 <section>
                                     <div className="bg-surface-1 rounded-xl overflow-hidden">
-                                        {spotifyResults.tracks.items.filter((t: any) => t).map((track: any, idx: number) => {
+                                        {searchTracks.map((track: any, idx: number) => {
                                             const isDownloaded = downloadedSpotifyIds.has(track.id);
                                             const song = spotifyTrackToSong(track);
                                             return (
                                             <div 
                                                 key={track.id} 
                                                 className="flex items-center gap-4 p-3 hover:bg-surface-hover group transition-colors border-b border-surface-border last:border-0 cursor-pointer" 
-                                                onClick={() => handlePlayTrack(track, spotifyResults.tracks.items.filter((t: any) => t))}
+                                                onClick={() => handlePlayTrack(track, searchTracks)}
                                                 onContextMenu={(e) => {
                                                     e.preventDefault();
                                                     openContextMenu(e, ContextMenuType.SONG, song);
@@ -1084,7 +1166,7 @@ export const Spotify: React.FC = () => {
                                                     <img src={track.album?.images?.[2]?.url || track.album?.images?.[0]?.url} alt={track.name} className="w-full h-full object-cover" />
                                                     {isDownloaded && (
                                                         <div className="absolute -bottom-1 -right-1 bg-brand rounded-full p-0.5" title="Downloaded">
-                                                            <CheckCircle size={12} className="text-black" />
+                                                            <CheckCircle size={12} className="text-surface-0" />
                                                         </div>
                                                     )}
                                                 </div>
@@ -1110,7 +1192,7 @@ export const Spotify: React.FC = () => {
                                                 {/* Add to Queue button */}
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleAddTrackToQueue(track); }}
-                                                    className="p-2 text-text-subtle hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity"
                                                     title="Add to queue"
                                                 >
                                                     <ListPlus size={16} />
@@ -1125,7 +1207,7 @@ export const Spotify: React.FC = () => {
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleDownloadTrack(track); }}
                                                     disabled={downloadingTracks.has(track.id)}
-                                                    className="p-2 text-text-subtle hover:text-white opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                                                     title={downloadingTracks.has(track.id) ? "Queueing..." : "Download for offline"}
                                                 >
                                                     {downloadingTracks.has(track.id) ? (
@@ -1211,13 +1293,12 @@ export const Spotify: React.FC = () => {
                     ) : recentlyPlayed?.items && recentlyPlayed.items.length > 0 ? (
                         <div className="bg-surface-1 rounded-xl overflow-hidden">
                             {recentlyPlayed.items.map((item: any, idx: number) => {
-                                const allTracks = recentlyPlayed.items.map((i: any) => i.track);
                                 const isDownloaded = downloadedSpotifyIds.has(item.track.id);
                                 return (
                                 <div 
                                     key={`${item.track.id}-${idx}`} 
                                     className="flex items-center gap-4 p-3 hover:bg-surface-hover group transition-all duration-200 border-b border-surface-border last:border-0 cursor-pointer"
-                                    onClick={() => handlePlayTrack(item.track, allTracks)}
+                                    onClick={() => handlePlayTrack(item.track, recentTracks)}
                                     onContextMenu={(e) => {
                                         e.preventDefault();
                                         const song = spotifyTrackToSong(item.track);
@@ -1232,7 +1313,7 @@ export const Spotify: React.FC = () => {
                                         <img src={item.track.album?.images?.[2]?.url || item.track.album?.images?.[0]?.url} alt={item.track.name} className="w-full h-full object-cover" />
                                         {isDownloaded && (
                                             <div className="absolute -bottom-1 -right-1 bg-brand rounded-full p-0.5" title="Downloaded">
-                                                <CheckCircle size={12} className="text-black" />
+                                                <CheckCircle size={12} className="text-surface-0" />
                                             </div>
                                         )}
                                     </div>
@@ -1253,7 +1334,7 @@ export const Spotify: React.FC = () => {
                                     {/* Add to Queue button */}
                                     <button
                                         onClick={(e) => { e.stopPropagation(); handleAddTrackToQueue(item.track); }}
-                                        className="p-2 text-text-subtle hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                        className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity"
                                         title="Add to queue"
                                     >
                                         <ListPlus size={16} />
@@ -1268,7 +1349,7 @@ export const Spotify: React.FC = () => {
                                         <button
                                             onClick={(e) => { e.stopPropagation(); handleDownloadTrack(item.track); }}
                                             disabled={downloadingTracks.has(item.track.id)}
-                                            className="p-2 text-text-subtle hover:text-white opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                                            className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
                                             title="Download for offline"
                                         >
                                             {downloadingTracks.has(item.track.id) ? (
@@ -1285,7 +1366,7 @@ export const Spotify: React.FC = () => {
                                             const song = spotifyTrackToSong(item.track);
                                             openContextMenu(e, ContextMenuType.SONG, song);
                                         }}
-                                        className="p-2 text-text-subtle hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                        className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity"
                                     >
                                         <MoreHorizontal size={18} />
                                     </button>
@@ -1315,7 +1396,7 @@ export const Spotify: React.FC = () => {
                                 <div
                                     key={`${item.album.id}:${index}`}
                                     onClick={() => navigate(`/spotify/album/${item.album.id}`, { state: savedLibraryDownloadState('saved_albums', item.album.id, spotifySessionGeneration) })}
-                                    className="bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-all duration-200 group cursor-pointer"
+                                    className="bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-all duration-200 group relative cursor-pointer"
                                     role="link"
                                     tabIndex={0}
                                     aria-label={`Open Spotify album ${item.album.name}`}
@@ -1327,19 +1408,55 @@ export const Spotify: React.FC = () => {
                                     }}
                                 >
                                     <div className="aspect-square mb-4 relative shadow-lg rounded-md overflow-hidden">
-                                        <img src={item.album.images?.[0]?.url} alt={item.album.name} className="w-full h-full object-cover" />
-                                        <Button
-                                            variant="primary"
-                                            accent="brand"
-                                            className="absolute right-2 bottom-2 w-10 h-10 p-0 rounded-full shadow-xl translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-200 hover:scale-105"
-                                            aria-label="Open album"
-                                        >
-                                            <Play size={20} fill="black" />
-                                        </Button>
+                                        {item.album.images?.[0]?.url ? (
+                                            <img src={item.album.images[0].url} alt={item.album.name} className="w-full h-full object-cover" />
+                                        ) : (
+                                            <div className="w-full h-full bg-surface-3 flex items-center justify-center">
+                                                <Music size={40} className="text-text-subtle" />
+                                            </div>
+                                        )}
+                                        <div className="absolute right-2 bottom-2 flex gap-1 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-200">
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleShuffleAlbum(item.album); }}
+                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main"
+                                                aria-label="Shuffle album"
+                                                title="Shuffle"
+                                            >
+                                                <Shuffle size={14} />
+                                            </button>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleAddAlbumToQueue(item.album); }}
+                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main"
+                                                aria-label="Add to queue"
+                                                title="Add to queue"
+                                            >
+                                                <ListPlus size={14} />
+                                            </button>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handlePlayAlbum(item.album); }}
+                                                className="w-10 h-10 bg-brand rounded-full flex items-center justify-center shadow-xl hover:scale-105 text-surface-0"
+                                                aria-label="Play album"
+                                            >
+                                                <Play size={20} fill="currentColor" />
+                                            </button>
+                                        </div>
                                     </div>
                                     <h3 className="font-bold truncate text-text-main">{item.album.name}</h3>
                                     <p className="text-sm text-text-secondary truncate"><SpotifyArtistLinks artists={item.album.artists || []} /></p>
                                     <p className="text-xs text-text-subtle mt-1">{item.album.release_date?.split('-')[0]} • {item.album.total_tracks} tracks</p>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); handleDownloadAlbum(item.album); }}
+                                        disabled={downloadingAlbums.has(item.album.id)}
+                                        className="absolute top-2 right-2 p-2 bg-surface-3 hover:bg-brand rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        title={downloadingAlbums.has(item.album.id) ? "Queueing..." : "Download album"}
+                                        aria-label="Download album"
+                                    >
+                                        {downloadingAlbums.has(item.album.id) ? (
+                                            <Loader2 className="w-4 h-4 text-text-main animate-spin" />
+                                        ) : (
+                                            <Download className="w-4 h-4 text-text-main" />
+                                        )}
+                                    </button>
                                 </div>
                             ))}
                         </div>
@@ -1366,7 +1483,7 @@ export const Spotify: React.FC = () => {
                                 <div
                                     key={`${playlist.id}:${index}`}
                                     onClick={() => navigate(`/spotify/playlist/${playlist.id}`, { state: savedLibraryDownloadState('saved_playlists', playlist.id, spotifySessionGeneration) })}
-                                    className="bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-all duration-200 group cursor-pointer"
+                                    className="bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-all duration-200 group relative cursor-pointer"
                                     role="link"
                                     tabIndex={0}
                                     aria-label={`Open Spotify playlist ${playlist.name || 'Untitled playlist'}`}
@@ -1378,19 +1495,55 @@ export const Spotify: React.FC = () => {
                                     }}
                                 >
                                     <div className="aspect-square mb-4 relative shadow-lg rounded-md overflow-hidden">
-                                        <img src={playlist.images?.[0]?.url} alt={playlist.name} className="w-full h-full object-cover" />
-                                        <Button
-                                            variant="primary"
-                                            accent="brand"
-                                            className="absolute right-2 bottom-2 w-10 h-10 p-0 rounded-full shadow-xl translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-200 hover:scale-105"
-                                            aria-label="Open playlist"
-                                        >
-                                            <Play size={20} fill="black" />
-                                        </Button>
+                                        {playlist.images?.[0]?.url ? (
+                                            <img src={playlist.images[0].url} alt={playlist.name} className="w-full h-full object-cover" />
+                                        ) : (
+                                            <div className="w-full h-full bg-surface-3 flex items-center justify-center">
+                                                <Music size={40} className="text-text-subtle" />
+                                            </div>
+                                        )}
+                                        <div className="absolute right-2 bottom-2 flex gap-1 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-200">
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleShufflePlaylist(playlist); }}
+                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main"
+                                                aria-label="Shuffle playlist"
+                                                title="Shuffle"
+                                            >
+                                                <Shuffle size={14} />
+                                            </button>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleAddPlaylistToQueue(playlist); }}
+                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main"
+                                                aria-label="Add to queue"
+                                                title="Add to queue"
+                                            >
+                                                <ListPlus size={14} />
+                                            </button>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handlePlayPlaylist(playlist); }}
+                                                className="w-10 h-10 bg-brand rounded-full flex items-center justify-center shadow-xl hover:scale-105 text-surface-0"
+                                                aria-label="Play playlist"
+                                            >
+                                                <Play size={20} fill="currentColor" />
+                                            </button>
+                                        </div>
                                     </div>
                                     <h3 className="font-bold truncate text-text-main">{playlist.name || 'Untitled playlist'}</h3>
                                     <p className="text-sm text-text-secondary truncate">By {playlist.owner?.display_name}</p>
                                     <p className="text-xs text-text-subtle mt-1">{playlist.tracks.total} tracks</p>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); handleDownloadPlaylist(playlist); }}
+                                        disabled={downloadingPlaylists.has(playlist.id)}
+                                        className="absolute top-2 right-2 p-2 bg-surface-3 hover:bg-brand rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        title={downloadingPlaylists.has(playlist.id) ? "Queueing..." : "Download playlist"}
+                                        aria-label="Download playlist"
+                                    >
+                                        {downloadingPlaylists.has(playlist.id) ? (
+                                            <Loader2 className="w-4 h-4 text-text-main animate-spin" />
+                                        ) : (
+                                            <Download className="w-4 h-4 text-text-main" />
+                                        )}
+                                    </button>
                                 </div>
                             ))}
                         </div>

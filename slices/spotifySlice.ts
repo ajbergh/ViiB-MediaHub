@@ -15,20 +15,39 @@ export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = 
   spotifyConnected: false,
   spotifySessionGeneration: 0,
   spotifyAuthRequired: false,
-  setSpotifyConnected: (connected) => set(state => ({
-    spotifyConnected: connected,
-    spotifyAuthRequired: connected ? false : state.spotifyAuthRequired,
-    spotifySessionGeneration: state.spotifySessionGeneration + (state.spotifyConnected !== connected ? 1 : 0),
-    ...(!connected ? {spotifyUser: null, spotifySearchResults: null} : {})
-  })),
+  setSpotifyConnected: (connected) => set(state => {
+    const nextGeneration = state.spotifySessionGeneration + (state.spotifyConnected !== connected ? 1 : 0);
+    return {
+      spotifyConnected: connected,
+      spotifyAuthRequired: connected ? false : state.spotifyAuthRequired,
+      spotifySessionGeneration: nextGeneration,
+      ...(!connected ? {
+        spotifyUser: null,
+        spotifySearchResults: null,
+        spotifyLastSearchedQuery: '',
+        spotifyRecentlyPlayed: null,
+        spotifySavedAlbums: null,
+        spotifySavedPlaylists: null,
+        spotifyCacheGeneration: nextGeneration,
+      } : {})
+    };
+  }),
   markSpotifyAuthRequired: () => {
     get().retireSpotifyPlayback();
-    set(state => ({
-      spotifyConnected: false, spotifyAuthRequired: true,
-      spotifySessionGeneration: state.spotifySessionGeneration + 1,
-      spotifyUser: null, spotifySearchResults: null,
-      spotifyAccessToken: null, spotifyRefreshToken: null, spotifyTokenExpiry: 0
-    }));
+    set(state => {
+      const nextGeneration = state.spotifySessionGeneration + 1;
+      return {
+        spotifyConnected: false, spotifyAuthRequired: true,
+        spotifySessionGeneration: nextGeneration,
+        spotifyUser: null, spotifySearchResults: null,
+        spotifyLastSearchedQuery: '',
+        spotifyRecentlyPlayed: null,
+        spotifySavedAlbums: null,
+        spotifySavedPlaylists: null,
+        spotifyCacheGeneration: nextGeneration,
+        spotifyAccessToken: null, spotifyRefreshToken: null, spotifyTokenExpiry: 0
+      };
+    });
   },
   spotifyClientId: '',
   spotifyClientSecret: '',
@@ -37,10 +56,15 @@ export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = 
   spotifyTokenExpiry: 0,
   spotifyUser: null,
   
-  // Search persistence state
+  // Search & library persistence state
   spotifySearchQuery: '',
+  spotifyLastSearchedQuery: '',
   spotifySearchResults: null,
   spotifyActiveTab: 'search',
+  spotifyRecentlyPlayed: null,
+  spotifySavedAlbums: null,
+  spotifySavedPlaylists: null,
+  spotifyCacheGeneration: 0,
   
   setSpotifyCredentials: (id, _secret) => set({ spotifyClientId: id, spotifyClientSecret: '' }),
   setSpotifyTokens: (accessToken, refreshToken, expiry) => set({ 
@@ -48,25 +72,55 @@ export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = 
       spotifyRefreshToken: refreshToken, 
       spotifyTokenExpiry: expiry 
   }),
-  setSpotifyUser: (user) => set({ spotifyUser: user }),
+  setSpotifyUser: (user) => set(state => ({
+    spotifyUser: user,
+    spotifyCacheGeneration: state.spotifySessionGeneration,
+  })),
   logoutSpotify: () => {
     get().retireSpotifyPlayback();
-    set(state => ({
-      spotifySessionGeneration: state.spotifySessionGeneration + 1,
-      spotifyAuthRequired: false,
-      spotifyConnected: false,
-      spotifySearchResults: null,
-      spotifyAccessToken: null, 
-      spotifyRefreshToken: null, 
-      spotifyTokenExpiry: 0, 
-      spotifyUser: null 
-    }));
+    set(state => {
+      const nextGeneration = state.spotifySessionGeneration + 1;
+      return {
+        spotifySessionGeneration: nextGeneration,
+        spotifyAuthRequired: false,
+        spotifyConnected: false,
+        spotifySearchResults: null,
+        spotifyLastSearchedQuery: '',
+        spotifyRecentlyPlayed: null,
+        spotifySavedAlbums: null,
+        spotifySavedPlaylists: null,
+        spotifyCacheGeneration: nextGeneration,
+        spotifyAccessToken: null, 
+        spotifyRefreshToken: null, 
+        spotifyTokenExpiry: 0, 
+        spotifyUser: null 
+      };
+    });
   },
   
-  // Search persistence actions
+  // Search & library persistence actions
   setSpotifySearchQuery: (query) => set({ spotifySearchQuery: query }),
-  setSpotifySearchResults: (results) => set({ spotifySearchResults: results }),
+  setSpotifyLastSearchedQuery: (query) => set(state => ({
+    spotifyLastSearchedQuery: query,
+    spotifyCacheGeneration: state.spotifySessionGeneration,
+  })),
+  setSpotifySearchResults: (results) => set(state => ({
+    spotifySearchResults: results,
+    spotifyCacheGeneration: state.spotifySessionGeneration,
+  })),
   setSpotifyActiveTab: (tab) => set({ spotifyActiveTab: tab }),
+  setSpotifyRecentlyPlayed: (data) => set(state => ({
+    spotifyRecentlyPlayed: data,
+    spotifyCacheGeneration: state.spotifySessionGeneration,
+  })),
+  setSpotifySavedAlbums: (data) => set(state => ({
+    spotifySavedAlbums: data,
+    spotifyCacheGeneration: state.spotifySessionGeneration,
+  })),
+  setSpotifySavedPlaylists: (data) => set(state => ({
+    spotifySavedPlaylists: data,
+    spotifyCacheGeneration: state.spotifySessionGeneration,
+  })),
   
   downloadCount: 0,
   setDownloadCount: (count) => set({ downloadCount: count }),
