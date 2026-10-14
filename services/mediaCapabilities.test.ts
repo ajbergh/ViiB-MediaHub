@@ -14,7 +14,7 @@ describe('mediaCapabilities', () => {
   it('defines canonical capabilities for MP3, OGG Vorbis, WAV, FLAC, M4A/AAC, Opus, and WMA with consistent browser import support', () => {
     expect(CANONICAL_MEDIA_CAPABILITIES.version).toBe(CAPABILITY_MATRIX_VERSION);
     const ids = CANONICAL_MEDIA_CAPABILITIES.formats.map(f => f.id);
-    expect(ids).toEqual(['mp3', 'ogg_vorbis', 'wav', 'flac', 'm4a_aac', 'opus', 'wma']);
+    expect(ids).toEqual(['mp3', 'ogg_vorbis', 'wav', 'flac', 'm4a_aac', 'aac', 'opus', 'wma']);
 
     for (const format of CANONICAL_MEDIA_CAPABILITIES.formats) {
       expect(format.sources.browser.ingestion).toBe(format.browserImportSupported ? 'supported' : 'unsupported');
@@ -58,7 +58,7 @@ describe('mediaCapabilities', () => {
     expect(analysisUnsupported.supportState).toBe('unsupported');
     expect(analysisUnsupported.formatId).toBe('m4a_aac');
 
-    const browserImportUnsupported = createMediaCapabilityError('browser_import', 'track.flac')!;
+    const browserImportUnsupported = createMediaCapabilityError('browser_import', 'track.aac')!;
     expect(browserImportUnsupported.code).toBe('browser_import_format_unsupported');
     expect(browserImportUnsupported.fallbackAvailable).toBe(true);
   });
@@ -68,4 +68,13 @@ it('does not manufacture capability errors for supported operations', () => {
   for (const operation of ['browser_import', 'backend_waveform', 'backend_analysis'] as const) {
     expect(createMediaCapabilityError(operation, 'track.mp3')).toBeNull();
   }
+});
+
+it('admits FLAC and M4A without advertising raw AAC browser import', () => {
+  for (const extension of ['.mp3', '.ogg', '.oga', '.flac', '.m4a']) {
+    expect(isBrowserImportSupportedFile(`TRACK${extension.toUpperCase()}`)).toBe(true);
+    expect(createMediaCapabilityError('browser_import', `track${extension}`)).toBeNull();
+  }
+  expect(isBrowserImportSupportedFile('track.aac')).toBe(false);
+  expect(lookupFormatCapability('.aac')?.sources.browser.ingestion).toBe('unsupported');
 });

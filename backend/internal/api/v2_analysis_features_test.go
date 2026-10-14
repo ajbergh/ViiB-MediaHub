@@ -1720,3 +1720,28 @@ func TestLegacyEnergyFallbackSettledStates(t *testing.T) {
 		}
 	}
 }
+
+// Unsupported decoder status must not hide a separately saved manual grid.
+func TestUnsupportedAnalysisReportsManualBeatGridPresence(t *testing.T) {
+	record := db.TrackAnalysis{SongID: "song", Status: db.TrackAnalysisUnsupported, SourceFingerprint: "source-v1"}
+	result := trackAnalysisFeatureResponseWithCurrentSource(record, db.TrackAnalysisOverride{}, "source-v1")
+	if result.HasManualBeatGrid {
+		t.Fatal("unexpected grid presence")
+	}
+	id := "manual-grid"
+	result = trackAnalysisFeatureResponseWithCurrentSource(record, db.TrackAnalysisOverride{BeatgridArtifactID: &id}, "source-v1")
+	if !result.HasManualBeatGrid {
+		t.Fatal("saved manual grid hidden by unsupported analysis")
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(encoded, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["hasManualBeatGrid"] != true {
+		t.Fatal("grid presence missing from API contract")
+	}
+}

@@ -71,7 +71,7 @@ const DeckHeader = React.memo(function DeckHeader({ deck }: { deck: DeckId }) {
   const [inspectorTab, setInspectorTab] = useState<DJDeckInspectorTab>('analysis');
   const triggerRef = useRef<HTMLButtonElement>(null);
   const closeInspector = useCallback(() => setInspectorOpen(false), []);
-  const needsAttention = !!track && (analysisStatus === 'not_analyzed' || analysisStatus === 'error');
+  const needsAttention = !!track && (analysisStatus === 'not_analyzed' || analysisStatus === 'unsupported' || analysisStatus === 'error');
 
   return (
     <header className='dj-deck-header'>

@@ -357,11 +357,22 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
           if (isTrackStillLoaded()) useStore.getState().setDeckAnalysisStatus(deck, 'not_analyzed');
         } else {
           if (!isTrackStillLoaded()) return;
-          const grid = await api.getTrackBeatGrid(track.id).catch(() => null);
+          const grid = feature.status === 'unsupported' && feature.hasManualBeatGrid === false
+            ? null
+            : await api.getTrackBeatGrid(track.id).catch(() => null);
           if (isTrackStillLoaded()) {
             const loadedDeck = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-            setDeckAnalysis(deck, resolvedGridPatch(feature, grid, loadedDeck.duration || track.duration || 0));
-            useStore.getState().setDeckAnalysisStatus(deck, 'available');
+            const patch = resolvedGridPatch(feature, grid, loadedDeck.duration || track.duration || 0);
+            setDeckAnalysis(deck, patch);
+            const hasResolvedScalarOrGrid = Boolean(
+              (typeof patch.bpm === 'number' && Number.isFinite(patch.bpm) && patch.bpm > 0)
+              || patch.key
+              || (patch.beatGrid && patch.beatGrid.length > 0),
+            );
+            useStore.getState().setDeckAnalysisStatus(
+              deck,
+              feature.status === 'unsupported' && !hasResolvedScalarOrGrid ? 'unsupported' : 'available',
+            );
           }
         }
       } catch (analysisErr) {
@@ -1141,11 +1152,22 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
         if (isTrackStillLoaded()) useStore.getState().setDeckAnalysisStatus(deck, 'not_analyzed');
       } else {
         if (!isTrackStillLoaded()) return;
-        const grid = await api.getTrackBeatGrid(track.id).catch(() => null);
+        const grid = feature.status === 'unsupported' && feature.hasManualBeatGrid === false
+          ? null
+          : await api.getTrackBeatGrid(track.id).catch(() => null);
         if (isTrackStillLoaded()) {
           const loadedDeck = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-          useStore.getState().setDeckAnalysis(deck, resolvedGridPatch(feature, grid, loadedDeck.duration || track.duration || 0));
-          useStore.getState().setDeckAnalysisStatus(deck, 'available');
+          const patch = resolvedGridPatch(feature, grid, loadedDeck.duration || track.duration || 0);
+          useStore.getState().setDeckAnalysis(deck, patch);
+          const hasResolvedScalarOrGrid = Boolean(
+            (typeof patch.bpm === 'number' && Number.isFinite(patch.bpm) && patch.bpm > 0)
+            || patch.key
+            || (patch.beatGrid && patch.beatGrid.length > 0),
+          );
+          useStore.getState().setDeckAnalysisStatus(
+            deck,
+            feature.status === 'unsupported' && !hasResolvedScalarOrGrid ? 'unsupported' : 'available',
+          );
         }
       }
     } catch (analysisErr) {

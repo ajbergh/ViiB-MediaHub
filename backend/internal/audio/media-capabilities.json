@@ -164,7 +164,7 @@
         "audio/x-flac"
       ],
       "scannerSupported": true,
-      "browserImportSupported": false,
+      "browserImportSupported": true,
       "metadataExtractor": "taglib+dhowden",
       "backendWaveform": "client_fallback",
       "clientWaveform": "runtime_dependent",
@@ -172,13 +172,13 @@
       "playback": "runtime_dependent",
       "sources": {
         "browser": {
-          "ingestion": "unsupported",
+          "ingestion": "supported",
           "metadata": "supported",
           "playback": "runtime_dependent",
           "backendWaveform": "unsupported",
           "clientWaveform": "runtime_dependent",
           "backendAnalysis": "unsupported",
-          "fallbackBehavior": "Browser-only folder import currently filters to .mp3 and .ogg (tracked in P1.2)."
+          "fallbackBehavior": "Browser import uses bundled music-metadata extraction; playback and client waveform depend on runtime decoder support."
         },
         "local": {
           "ingestion": "supported",
@@ -203,18 +203,16 @@
     },
     {
       "id": "m4a_aac",
-      "label": "M4A / AAC (MP4 Audio)",
+      "label": "M4A (MP4 Audio / AAC)",
       "extensions": [
-        ".m4a",
-        ".aac"
+        ".m4a"
       ],
       "mimeTypes": [
         "audio/mp4",
-        "audio/x-m4a",
-        "audio/aac"
+        "audio/x-m4a"
       ],
       "scannerSupported": true,
-      "browserImportSupported": false,
+      "browserImportSupported": true,
       "metadataExtractor": "taglib+dhowden",
       "backendWaveform": "client_fallback",
       "clientWaveform": "runtime_dependent",
@@ -222,13 +220,13 @@
       "playback": "runtime_dependent",
       "sources": {
         "browser": {
-          "ingestion": "unsupported",
+          "ingestion": "supported",
           "metadata": "supported",
           "playback": "runtime_dependent",
           "backendWaveform": "unsupported",
           "clientWaveform": "runtime_dependent",
           "backendAnalysis": "unsupported",
-          "fallbackBehavior": "Browser-only folder import currently filters to .mp3 and .ogg (tracked in P1.2)."
+          "fallbackBehavior": "Browser import uses bundled music-metadata extraction; playback and client waveform depend on runtime decoder support."
         },
         "local": {
           "ingestion": "supported",
@@ -249,7 +247,54 @@
           "fallbackBehavior": "Direct-play stream; DJ waveform uses client Web Audio fallback and backend analysis marks unsupported_codec."
         }
       },
-      "notes": "M4A tags are extracted via TagLib/dhowden; raw ADTS .aac files fall back to TagLib or filename metadata. Backend DSP analysis is unsupported."
+      "notes": "M4A metadata and artwork are extracted by TagLib/dhowden on the backend and music-metadata in browser mode. Backend DSP analysis is unsupported."
+    },
+    {
+      "id": "aac",
+      "label": "AAC (raw ADTS)",
+      "extensions": [
+        ".aac"
+      ],
+      "mimeTypes": [
+        "audio/aac"
+      ],
+      "scannerSupported": true,
+      "browserImportSupported": false,
+      "metadataExtractor": "taglib+filename",
+      "backendWaveform": "client_fallback",
+      "clientWaveform": "runtime_dependent",
+      "backendAnalysis": "unsupported",
+      "playback": "runtime_dependent",
+      "sources": {
+        "browser": {
+          "ingestion": "unsupported",
+          "metadata": "unsupported",
+          "playback": "runtime_dependent",
+          "backendWaveform": "unsupported",
+          "clientWaveform": "runtime_dependent",
+          "backendAnalysis": "unsupported",
+          "fallbackBehavior": "Use the desktop/server folder scanner for raw ADTS AAC files."
+        },
+        "local": {
+          "ingestion": "supported",
+          "metadata": "supported",
+          "playback": "runtime_dependent",
+          "backendWaveform": "client_fallback",
+          "clientWaveform": "runtime_dependent",
+          "backendAnalysis": "unsupported",
+          "fallbackBehavior": "DJ waveform falls back to client Web Audio decode; backend BPM/key/beatgrid analysis is explicitly unsupported."
+        },
+        "plex": {
+          "ingestion": "supported",
+          "metadata": "supported",
+          "playback": "runtime_dependent",
+          "backendWaveform": "client_fallback",
+          "clientWaveform": "runtime_dependent",
+          "backendAnalysis": "unsupported",
+          "fallbackBehavior": "Direct-play stream; DJ waveform uses client Web Audio fallback and backend analysis marks unsupported_codec."
+        }
+      },
+      "notes": "Raw ADTS AAC is accepted by the native scanner with TagLib or filename metadata; browser folder import and backend DSP analysis are unsupported."
     },
     {
       "id": "opus",

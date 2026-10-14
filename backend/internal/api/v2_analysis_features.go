@@ -31,6 +31,8 @@ import (
 // snapshot for one song. It intentionally omits diagnostic and source-path
 // fields, leaving the library UI with only values it can safely display.
 type TrackAnalysisFeatureResponse struct {
+	// Presence hint only; the beatgrid endpoint validates source identity and contents.
+	HasManualBeatGrid        bool                              `json:"hasManualBeatGrid"`
 	EffectiveFields          []db.EffectiveScalar              `json:"effectiveFields,omitempty"`
 	ProviderScores           map[string]db.SpotifyScoreSummary `json:"providerScores,omitempty"`
 	ProviderScoresUnverified bool                              `json:"providerScoresUnverified,omitempty"`
@@ -793,15 +795,16 @@ func compatibilityScalarSource(source string) string {
 }
 func trackAnalysisFeatureResponseResolved(analysis db.TrackAnalysis, override db.TrackAnalysisOverride, effectiveBPM db.EffectiveBPM, effectiveKey db.EffectiveKey) TrackAnalysisFeatureResponse {
 	response := TrackAnalysisFeatureResponse{
-		SongID:      analysis.SongID,
-		Status:      analysis.Status,
-		AnalyzedAt:  analysis.AnalyzedAt,
-		BPM:         effectiveBPM.Value,
-		BPMSource:   effectiveBPM.Source,
-		SyncAllowed: effectiveBPM.SyncAllowed,
-		KeySource:   effectiveKey.Source,
-		KeyTonic:    effectiveKey.Tonic,
-		KeyMode:     effectiveKey.Mode,
+		HasManualBeatGrid: override.BeatgridArtifactID != nil && *override.BeatgridArtifactID != "",
+		SongID:            analysis.SongID,
+		Status:            analysis.Status,
+		AnalyzedAt:        analysis.AnalyzedAt,
+		BPM:               effectiveBPM.Value,
+		BPMSource:         effectiveBPM.Source,
+		SyncAllowed:       effectiveBPM.SyncAllowed,
+		KeySource:         effectiveKey.Source,
+		KeyTonic:          effectiveKey.Tonic,
+		KeyMode:           effectiveKey.Mode,
 	}
 	if effectiveBPM.Source == db.EffectiveBPMMeasured {
 		response.BPMConfidence = analysis.BPMConfidence

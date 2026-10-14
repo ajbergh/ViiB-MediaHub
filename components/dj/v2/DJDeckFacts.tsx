@@ -13,10 +13,13 @@ export const DeckFacts = React.memo(function DeckFacts({ deck }: { deck: DeckId 
   const bpm = validBpm(effectiveBpm) ? effectiveBpm : validBpm(originalBpm) ? originalBpm : null;
   const described = describeKey(key);
 
-  if (bpm === null && (analysisStatus === 'not_analyzed' || analysisStatus === 'error')) {
+  if (bpm === null && (analysisStatus === 'not_analyzed' || analysisStatus === 'unsupported' || analysisStatus === 'error')) {
+    const title = analysisStatus === 'unsupported'
+      ? 'Backend BPM and beat-grid analysis is not supported for this audio format'
+      : 'Analyze this track to enable measured BPM and beat-grid features';
     return (
-      <div className='dj-deck-facts dj-deck-facts-warn' title='Analyze this track to enable measured BPM and beat-grid features'>
-        {analysisStatus === 'error' ? 'Analysis unavailable' : 'Not analysed'}
+      <div className='dj-deck-facts dj-deck-facts-warn' title={title}>
+        {analysisStatus === 'error' ? 'Analysis unavailable' : analysisStatus === 'unsupported' ? 'Unsupported format' : 'Not analysed'}
       </div>
     );
   }

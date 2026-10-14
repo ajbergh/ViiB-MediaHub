@@ -143,15 +143,25 @@ export const DeckBpmBadge = React.memo<DeckBpmBadgeProps>(({ deck, large = false
   const accent = deck === 'A' ? '#3b82f6' : '#8b5cf6';
 
   if (!bpm) {
+    const statusLabel = analysisStatus === 'not_analyzed'
+      ? 'Not analysed'
+      : analysisStatus === 'unsupported'
+      ? 'Unsupported format'
+      : analysisStatus === 'error'
+      ? 'Unavailable'
+      : '--.--';
+    const statusTitle = analysisStatus === 'unsupported'
+      ? 'Backend BPM and beat-grid analysis is not supported for this audio format'
+      : 'Analyze this track to enable measured BPM and beat-grid features';
     return large ? (
       <div className='flex flex-col items-center'>
         <span className='text-[10px] text-[#666] font-bold uppercase tracking-widest leading-none'>{hasTrack && analysisStatus !== 'available' ? 'ANALYSIS' : 'BPM'}</span>
-        <span className='text-[11px] font-semibold text-amber-400 leading-tight' title="Analyze this track to enable measured BPM and beat-grid features">
-          {hasTrack && analysisStatus === 'not_analyzed' ? 'Not analysed' : hasTrack && analysisStatus === 'error' ? 'Unavailable' : '--.--'}
+        <span className='text-[11px] font-semibold text-amber-400 leading-tight' title={statusTitle}>
+          {hasTrack ? statusLabel : '--.--'}
         </span>
       </div>
-    ) : hasTrack && (analysisStatus === 'not_analyzed' || analysisStatus === 'error') ? (
-      <span className='text-[10px] font-semibold text-amber-400' title="Analyze this track to enable measured BPM and beat-grid features">{analysisStatus === 'not_analyzed' ? 'Not analysed' : 'Unavailable'}</span>
+    ) : hasTrack && (analysisStatus === 'not_analyzed' || analysisStatus === 'unsupported' || analysisStatus === 'error') ? (
+      <span className='text-[10px] font-semibold text-amber-400' title={statusTitle}>{statusLabel}</span>
     ) : null;
   }
 

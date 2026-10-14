@@ -1,4 +1,3 @@
-import { isBrowserImportSupportedFile } from '../services/mediaCapabilities';
 /**
  * ViiB MediaHub - Settings Page
  * 
@@ -50,6 +49,7 @@ import { PlexMusicSourceSettings } from '../components/PlexMusicSourceSettings';
 import { LibraryMonitoringPanel, LibraryOperationsPanel } from './LibraryOperations';
 import { isMacOSWails } from '../lib/webglSafety';
 import { closeNativeWindow, persistNativeWindowCloseAction } from '../services/skinnyWindowService';
+import { isBrowserImportSupportedFile } from '../services/mediaCapabilities';
 
 const HOME_LAYOUT_OPTIONS: Array<{
   value: HomeLayoutVariant;
@@ -1125,7 +1125,7 @@ export const Settings: React.FC = () => {
             {!backendAvailable && (
                 <div className="flex flex-col gap-4">
                     <p className="text-sm text-text-secondary">
-                        Import music from your local folders. Supported formats: MP3, OGG, FLAC.
+                        Import music from your local folders. Supported formats: MP3, OGG, FLAC, M4A.
                     </p>
                     
                     <div className="flex items-center gap-4">
