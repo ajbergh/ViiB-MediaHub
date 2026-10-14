@@ -46,6 +46,9 @@ func (d *DB) StartJob(id, message string) error {
 		    started_at = ?, completed_at = NULL, error_code = NULL,
 		    error_message = NULL, updated_at = ?
 		WHERE id = ? AND status IN (?, ?, ?)
+          AND (type != 'analyze_tracks' OR NOT EXISTS (
+              SELECT 1 FROM operation_jobs active WHERE active.type='analyze_tracks'
+              AND active.status IN ('running','canceling')))
 	`, JobStatusRunning, message, now, now, id,
 		JobStatusQueued, JobStatusFailed, JobStatusInterrupted)
 	if err != nil {
@@ -74,7 +77,10 @@ func (d *DB) ClaimNextQueuedJob(message string) (Job, error) {
 	row := d.conn.QueryRow(`
 		UPDATE operation_jobs SET status = ?, message = ?, attempts = attempts + 1,
 		started_at = ?, completed_at = NULL, error_code = NULL, error_message = NULL, updated_at = ?
-		WHERE id = (SELECT id FROM operation_jobs WHERE status = ? AND available_at <= ?
+		WHERE id = (SELECT id FROM operation_jobs q WHERE status = ? AND available_at <= ?
+                      AND (q.type != 'analyze_tracks' OR NOT EXISTS (
+                          SELECT 1 FROM operation_jobs active WHERE active.type='analyze_tracks'
+                          AND active.status IN ('running','canceling')))
 		            ORDER BY priority DESC, created_at ASC LIMIT 1)
 		  AND status = ?
 		RETURNING id, type, status, progress_current, progress_total, message, parameters, result,

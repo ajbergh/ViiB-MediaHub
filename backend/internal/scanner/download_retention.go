@@ -69,3 +69,20 @@ func (s *Scanner) maintainPrivateSpotifyCache() {
 		logger.Scanner("Collected %d orphan Spotify download lineage rows", result.StagingCollected)
 	}
 }
+
+// Compact a bounded batch at scan boundaries, outside startup and UI reads.
+func (s *Scanner) compactAnalysisArtifacts() {
+	parent := s.ctx
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
+	defer cancel()
+	count, err := s.db.CompactLegacyThreeBandArtifacts(ctx, 128)
+	if count > 0 {
+		logger.Scanner("Compacted %d legacy three-band artifacts", count)
+	}
+	if err != nil {
+		logger.Scanner("Analysis artifact compaction deferred: %v", err)
+	}
+}

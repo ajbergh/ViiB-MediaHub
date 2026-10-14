@@ -1,39 +1,90 @@
-// metadata_executor.go bounds concurrent native metadata extraction globally.
+// metadata_executor.go bounds parser work, including operations whose callers timed out.
 package scanner
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"runtime"
-	"sync"
+	"runtime/debug"
 	"sync/atomic"
+	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 )
 
-var (
-	metadataLimitOnce sync.Once
-	metadataSlots     chan struct{}
-	metadataActive    int64
-	metadataPeak      int64
-)
+var errMetadataCapacity = errors.New("metadata parser capacity exhausted")
+var errMetadataTimeout = errors.New("metadata parser timed out")
+
+type metadataExecutor struct {
+	slots  chan struct{}
+	active int64
+	peak   int64
+}
+
+var sharedMetadataExecutor = metadataExecutor{slots: make(chan struct{}, metadataConcurrency())}
 
 func metadataConcurrency() int {
-	workers := runtime.NumCPU() / 4
-	if workers < 1 { workers = 1 }
-	if workers > 4 { workers = 4 }
-	return workers
+	return min(4, max(1, runtime.NumCPU()/4))
 }
 
-func initializeMetadataSlots() {
-	metadataSlots = make(chan struct{}, metadataConcurrency())
+// extract retains the slot until the parser really exits. TagLib has no caller
+// cancellation API; returning a timeout must never admit more abandoned work.
+func (e *metadataExecutor) extract(ctx context.Context, timeout time.Duration, parse func() (*SongMetadata, error)) (*SongMetadata, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	acquire := time.NewTimer(min(timeout, time.Second))
+	defer acquire.Stop()
+	select {
+	case e.slots <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-acquire.C:
+		return nil, errMetadataCapacity
+	}
+	active := atomic.AddInt64(&e.active, 1)
+	for {
+		peak := atomic.LoadInt64(&e.peak)
+		if active <= peak || atomic.CompareAndSwapInt64(&e.peak, peak, active) {
+			break
+		}
+	}
+	type result struct {
+		metadata *SongMetadata
+		err      error
+	}
+	done := make(chan result, 1)
+	go func() {
+		var r result
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				r = result{err: fmt.Errorf("metadata parser panic: %v", recovered)}
+				logger.Scanner("%v\n%s", r.err, debug.Stack())
+			}
+			atomic.AddInt64(&e.active, -1)
+			<-e.slots
+			done <- r
+		}()
+		r.metadata, r.err = parse()
+	}()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case r := <-done:
+		return r.metadata, r.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-timer.C:
+		return nil, errMetadataTimeout
+	}
 }
 
-// extractMetadataBounded prevents a background scanner from opening and parsing
-// an unbounded number of media files concurrently. Files with repeated native
-// parser timeouts are quarantined with exponential retry delay.
 func (s *Scanner) extractMetadataBounded(filePath string) (*SongMetadata, error) {
-	metadataLimitOnce.Do(initializeMetadataSlots)
 	cleanPath := filepath.Clean(filePath)
 	allowed, err := s.db.ScannerFailureRetryAllowed(cleanPath)
 	if err != nil {
@@ -41,34 +92,22 @@ func (s *Scanner) extractMetadataBounded(filePath string) (*SongMetadata, error)
 	} else if !allowed {
 		return nil, fmt.Errorf("media file is temporarily quarantined: %s", cleanPath)
 	}
-
-	select {
-	case metadataSlots <- struct{}{}:
-	case <-s.ctx.Done():
-		return nil, s.ctx.Err()
-	}
-	active := atomic.AddInt64(&metadataActive, 1)
-	for {
-		peak := atomic.LoadInt64(&metadataPeak)
-		if active <= peak || atomic.CompareAndSwapInt64(&metadataPeak, peak, active) { break }
-	}
-	defer func() {
-		atomic.AddInt64(&metadataActive, -1)
-		<-metadataSlots
-	}()
-
 	metadata, err := s.extractMetadata(cleanPath)
 	if err != nil {
-		_ = s.db.RecordScannerFailure(cleanPath, "metadata_error", err.Error())
+		// Capacity and cancellation are transient process conditions, not bad files.
+		if !errors.Is(err, errMetadataCapacity) && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			code := "metadata_error"
+			if errors.Is(err, errMetadataTimeout) {
+				code = "metadata_timeout"
+			}
+			_ = s.db.RecordScannerFailure(cleanPath, code, err.Error())
+		}
 		return nil, err
 	}
-	// The legacy timeout fallback intentionally returns minimal metadata with an
-	// empty stable fingerprint. Treat that as a quarantinable timeout rather than
-	// persisting a path-only identity.
 	if metadata == nil || metadata.FileHash == "" {
-		timeoutErr := fmt.Errorf("metadata extraction did not produce a stable fingerprint")
-		_ = s.db.RecordScannerFailure(cleanPath, "metadata_timeout", timeoutErr.Error())
-		return nil, timeoutErr
+		err := fmt.Errorf("metadata extraction did not produce a stable fingerprint")
+		_ = s.db.RecordScannerFailure(cleanPath, "metadata_error", err.Error())
+		return nil, err
 	}
 	if err := s.db.ClearScannerFailure(cleanPath); err != nil {
 		logger.Scanner("Unable to clear scanner failure for %s: %v", cleanPath, err)
@@ -76,8 +115,6 @@ func (s *Scanner) extractMetadataBounded(filePath string) (*SongMetadata, error)
 	return metadata, nil
 }
 
-// MetadataExecutorStats reports the configured concurrency and current/peak use.
 func MetadataExecutorStats() (limit int, active int64, peak int64) {
-	metadataLimitOnce.Do(initializeMetadataSlots)
-	return cap(metadataSlots), atomic.LoadInt64(&metadataActive), atomic.LoadInt64(&metadataPeak)
+	return cap(sharedMetadataExecutor.slots), atomic.LoadInt64(&sharedMetadataExecutor.active), atomic.LoadInt64(&sharedMetadataExecutor.peak)
 }

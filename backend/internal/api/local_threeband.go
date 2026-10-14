@@ -30,7 +30,7 @@ func (a *API) getLocalThreeBand(w http.ResponseWriter, r *http.Request) {
 		respondError(w, 500, "local waveform unavailable")
 		return
 	}
-	if artifact.SourceFingerprint != fp || artifact.Provenance != "measured" || artifact.Encoding != threeband.Encoding {
+	if artifact.SourceFingerprint != fp || artifact.Provenance != "measured" || !threeband.SupportsEncoding(artifact.Encoding) {
 		respondError(w, 404, "local three-band waveform not current")
 		return
 	}

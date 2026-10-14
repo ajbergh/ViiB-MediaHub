@@ -3,6 +3,7 @@
 package threeband
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"math"
@@ -13,7 +14,16 @@ import (
 const Kind = "local_three_band_estimate"
 const AlgorithmVersion = localcontract.ThreeBandAlgorithmVersion
 const FormatVersion = 1
-const Encoding = "local-threeband-json-v1"
+
+// FormatVersion describes the logical envelope; encoding identifies its bytes.
+const Encoding = "local-threeband-f32-le-v1"
+const LegacyEncoding = "local-threeband-json-v1"
+const HeaderBytes = 24
+
+func SupportsEncoding(encoding string) bool {
+	return encoding == Encoding || encoding == LegacyEncoding
+}
+
 const MaxWindows = 100000
 const MaxBytes = 8 << 20
 
@@ -119,22 +129,52 @@ func (o Overview) Validate() error {
 	}
 	return nil
 }
+
+// Encode uses bounded float32 peaks, matching source PCM precision.
 func Encode(o Overview) ([]byte, error) {
 	if err := o.Validate(); err != nil {
 		return nil, err
 	}
-	raw, err := json.Marshal(o)
-	if len(raw) > MaxBytes {
-		return nil, errors.New("three-band artifact too large")
+	raw := make([]byte, HeaderBytes+12*len(o.Low))
+	copy(raw, "TBP1")
+	binary.LittleEndian.PutUint32(raw[4:], uint32(o.SampleRate))
+	binary.LittleEndian.PutUint64(raw[8:], uint64(o.Frames))
+	binary.LittleEndian.PutUint32(raw[16:], uint32(o.Resolution))
+	binary.LittleEndian.PutUint32(raw[20:], uint32(len(o.Low)))
+	offset := HeaderBytes
+	for _, band := range [][]float64{o.Low, o.Mid, o.High} {
+		for _, value := range band {
+			binary.LittleEndian.PutUint32(raw[offset:], math.Float32bits(float32(value)))
+			offset += 4
+		}
 	}
-	return raw, err
+	return raw, nil
 }
+
+// Decode retains legacy JSON compatibility without reopening the audio source.
 func Decode(raw []byte) (Overview, error) {
 	var o Overview
 	if len(raw) > MaxBytes {
 		return o, errors.New("three-band artifact too large")
 	}
-	if err := json.Unmarshal(raw, &o); err != nil {
+	if len(raw) >= 4 && string(raw[:4]) == "TBP1" {
+		if len(raw) < HeaderBytes {
+			return o, errors.New("truncated three-band header")
+		}
+		count := binary.LittleEndian.Uint32(raw[20:])
+		frames := binary.LittleEndian.Uint64(raw[8:])
+		if count == 0 || count > MaxWindows || len(raw) != HeaderBytes+12*int(count) || frames > math.MaxInt64 {
+			return o, errors.New("invalid three-band payload size")
+		}
+		o = Overview{SampleRate: int(binary.LittleEndian.Uint32(raw[4:])), Frames: int64(frames), Resolution: int(binary.LittleEndian.Uint32(raw[16:])), Low: make([]float64, int(count)), Mid: make([]float64, int(count)), High: make([]float64, int(count)), Units: "filtered_pcm_absolute_peak", Filter: "one_pole_250_4000_hz_residual_v1", Normalization: "none_equal_channel_mono"}
+		offset := HeaderBytes
+		for _, band := range [][]float64{o.Low, o.Mid, o.High} {
+			for i := range band {
+				band[i] = float64(math.Float32frombits(binary.LittleEndian.Uint32(raw[offset:])))
+				offset += 4
+			}
+		}
+	} else if err := json.Unmarshal(raw, &o); err != nil {
 		return o, err
 	}
 	return o, o.Validate()

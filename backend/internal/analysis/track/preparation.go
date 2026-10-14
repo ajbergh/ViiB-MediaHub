@@ -53,7 +53,7 @@ func missingPreparation(database *db.DB, source analysis.ResolvedSource, record 
 	versions := preparationVersions()
 	artifactValid := func(kind string, format int, algorithm, encoding string, maxBytes int64, decode func([]byte) bool) bool {
 		a, err := database.GetTrackAnalysisArtifactBounded(source.SongID, kind, format, algorithm, maxBytes)
-		return err == nil && a.SourceFingerprint == source.Fingerprint && a.Encoding == encoding && a.Provenance != "unknown" && decode(a.Data)
+		return err == nil && a.SourceFingerprint == source.Fingerprint && (a.Encoding == encoding || kind == threeband.Kind && threeband.SupportsEncoding(a.Encoding)) && a.Provenance != "unknown" && decode(a.Data)
 	}
 	durationAvailable := db.HasCurrentLocalScalarField(record.Local, source.Fingerprint, "local_duration_seconds")
 	localScalarsAvailable := record.Local != nil && record.Local.AlgorithmVersion == AlgorithmVersion && db.ValidLocalScalarObservation(record.Local, source.Fingerprint)

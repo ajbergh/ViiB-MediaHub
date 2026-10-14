@@ -3,9 +3,11 @@ package track
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/threeband"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/waveformartifact"
 	"github.com/ajbergh/viib-mediahub/internal/analysisbench"
 	"github.com/ajbergh/viib-mediahub/internal/db"
@@ -318,5 +320,44 @@ func TestProviderDurationCannotBecomeDecodedDuration(t *testing.T) {
 	states, err := database.GetTrackCapabilityStatuses(ids[0], record.SourceFingerprint)
 	if err != nil || states["local_duration"].State == "available" {
 		t.Fatalf("provider duration settled local measurement: %+v %v", states, err)
+	}
+}
+
+func TestLegacyThreeBandRemainsPreparedWithoutAudioDecode(t *testing.T) {
+	database, ids := runnerCatalog(t, 1)
+	registry := analysis.NewDefaultDecoderRegistry()
+	if _, err := Run(t.Context(), database, registry, ids, RunOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := database.GetTrackAnalysisArtifact(ids[0], threeband.Kind, threeband.FormatVersion, threeband.AlgorithmVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o, err := threeband.Decode(artifact.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact.Data, err = json.Marshal(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact.Encoding = threeband.LegacyEncoding
+	if err := database.UpsertTrackAnalysisArtifact(artifact); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := database.ExpandAnalysisSelection(db.AnalysisSelection{Mode: db.AnalysisSelectionMissing}, AnalysisVersion, AlgorithmVersion)
+	if err != nil || len(selected) != 0 {
+		t.Fatalf("legacy selected for reanalysis: %v %v", selected, err)
+	}
+	options := RunOptions{ResolveSource: func(ctx context.Context, id string) (analysis.ResolvedSource, error) {
+		source, err := analysis.ResolveLocalSource(database, id)
+		source.OpenStream = func() (io.ReadCloser, error) {
+			t.Error("legacy artifact caused audio decode")
+			return nil, errors.New("unexpected decode")
+		}
+		return source, err
+	}}
+	if progress, err := Run(t.Context(), database, registry, ids, options); err != nil || progress.Skipped != 1 {
+		t.Fatalf("legacy not current: %+v %v", progress, err)
 	}
 }

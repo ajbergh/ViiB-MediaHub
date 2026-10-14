@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -762,6 +763,7 @@ func (s *Scanner) ScanAll() (*ScanResult, error) {
 	s.maintainDownloadedEvidence(retentionRoots, nil, startTime)
 	if result.Errors == 0 {
 		s.maintainPrivateSpotifyCache()
+		s.compactAnalysisArtifacts()
 	}
 
 	result.Duration = time.Since(startTime)
@@ -858,6 +860,13 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 	folderPath = resolvedFolderPath
 
 	result := &ScanResult{}
+	// Direct directory scans also refresh committed batches if traversal fails.
+	// ScanAll performs its own final refresh after enrichment.
+	defer func() {
+		if result.NewSongs+result.UpdatedSongs > 0 && !s.IsScanning() {
+			s.scheduleAggregateRefresh()
+		}
+	}()
 	var songs []db.Song
 	var scannedPaths []string
 	ignoredPathSet := make(map[string]struct{})
@@ -906,9 +915,12 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 
 		scannedPaths = append(scannedPaths, path)
 
-		song, err := s.extractMetadata(path)
+		song, err := s.extractMetadataBounded(path)
 		if err != nil {
 			logger.Scanner("Failed to extract metadata from %s: %v", path, err)
+			if errors.Is(err, errMetadataCapacity) || errors.Is(err, context.Canceled) {
+				return err
+			}
 			result.Errors++
 			return nil
 		}
@@ -972,9 +984,6 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 					NewSongs:     upsert.Inserted,
 					UpdatedSongs: upsert.Updated,
 				})
-
-				// Update genre stats periodically during scan
-				go s.db.UpdateGenreStats()
 			}
 			// Reset batch
 			songs = []db.Song{}
@@ -1126,7 +1135,6 @@ func (s *Scanner) enrichWithLastFM() {
 			},
 		})
 		logger.Scanner("Last.FM enrichment complete: %d songs enriched", totalEnriched)
-		s.db.UpdateGenreStats()
 	}
 }
 
@@ -1248,12 +1256,6 @@ func (s *Scanner) enrichWithLLM() {
 		moodUpdated += applied.Mood
 		yearsUpdated += applied.Years
 
-		if applied.Genres > 0 {
-			if err := s.db.UpdateGenreStats(); err != nil {
-				logger.Scanner("Failed to refresh genre aggregates after AI batch %d: %v", batch+1, err)
-			}
-		}
-
 		completedMessage := fmt.Sprintf("AI batch %d/%d complete: changed=%d, no metadata=%d, genres=%d, mood/BPM=%d, years=%d", batch+1, totalBatches, applied.Songs, batchEmptyResults, applied.Genres, applied.Mood, applied.Years)
 		s.setProgress(completedMessage)
 		logger.Scanner("%s (processed: %d/%d)", completedMessage, processedSongs, totalToEnrich)
@@ -1325,193 +1327,165 @@ type SongMetadata struct {
 	FileHash     string
 }
 
-// extractMetadata extracts metadata from an audio file using taglib
-// Uses a timeout to prevent hanging on inaccessible or problematic files
+// extractMetadata bounds parser work even when TagLib cannot be canceled.
 func (s *Scanner) extractMetadata(filePath string) (*SongMetadata, error) {
-	// Use a channel to handle timeouts
-	type metadataResult struct {
-		metadata *SongMetadata
-		err      error
+	return sharedMetadataExecutor.extract(s.ctx, 30*time.Second, func() (*SongMetadata, error) {
+		return s.readMetadata(filePath)
+	})
+}
+
+// readMetadata runs only inside the executor's panic and resource boundary.
+func (s *Scanner) readMetadata(filePath string) (*SongMetadata, error) {
+	// Get file info for ID generation
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat file: %w", err)
 	}
-	resultChan := make(chan metadataResult, 1)
 
-	// Run metadata extraction in a goroutine with timeout
-	go func() {
-		// Get file info for ID generation
-		info, err := os.Stat(filePath)
-		if err != nil {
-			resultChan <- metadataResult{nil, fmt.Errorf("failed to stat file: %w", err)}
-			return
-		}
+	fingerprint, err := computeMediaFingerprint(filePath, info)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fingerprint file: %w", err)
+	}
+	id := proposedSongID(fingerprint, filePath)
 
-		fingerprint, err := computeMediaFingerprint(filePath, info)
-		if err != nil {
-			resultChan <- metadataResult{nil, fmt.Errorf("failed to fingerprint file: %w", err)}
-			return
-		}
-		id := proposedSongID(fingerprint, filePath)
-
-		// Try to read tags with taglib
-		tags, err := taglib.ReadTags(filePath)
-		if err != nil {
-			// If we can't read tags, create minimal metadata from filename
-			baseName := filepath.Base(filePath)
-			title := strings.TrimSuffix(baseName, filepath.Ext(baseName))
-
-			resultChan <- metadataResult{&SongMetadata{
-				ID:       id,
-				Title:    title,
-				Artist:   "Unknown Artist",
-				Album:    "Unknown Album",
-				FilePath: filePath,
-				FileHash: fingerprint,
-			}, nil}
-			return
-		}
-
-		// Read properties for duration
-		props, err := taglib.ReadProperties(filePath)
-		if err != nil {
-			// Continue without duration
-			props = taglib.Properties{}
-		}
-
-		// Helper to get first tag value
-		getTag := func(key string) string {
-			if vals, ok := tags[key]; ok && len(vals) > 0 {
-				return vals[0]
-			}
-			return ""
-		}
-
-		getTagFold := func(keys ...string) string {
-			for actualKey, values := range tags {
-				for _, key := range keys {
-					if strings.EqualFold(actualKey, key) && len(values) > 0 {
-						return values[0]
-					}
-				}
-			}
-			return ""
-		}
-		parseReplayValue := func(value string) float64 {
-			value = strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(value, " dB"), "dB"))
-			parsed, _ := strconv.ParseFloat(value, 64)
-			return parsed
-		}
-
-		// Get basic metadata
-		song := &SongMetadata{
-			ID:       id,
-			FileHash: fingerprint,
-			Title:    getTag(taglib.Title),
-			Artist:   getTag(taglib.Artist),
-			Album:    getTag(taglib.Album),
-			Duration: float64(props.Length) / float64(time.Second),
-			FilePath: filePath,
-		}
-
-		if value := getTagFold("REPLAYGAIN_TRACK_GAIN"); value != "" {
-			song.ReplayGainDB = parseReplayValue(value)
-		} else if value := getTagFold("R128_TRACK_GAIN"); value != "" {
-			// Opus R128 gain is stored in Q7.8 dB units.
-			song.ReplayGainDB = parseReplayValue(value) / 256
-		}
-		if value := getTagFold("REPLAYGAIN_TRACK_PEAK"); value != "" {
-			song.ReplayPeak = parseReplayValue(value)
-		}
-
-		// Year
-		if yearStr := getTag(taglib.Date); yearStr != "" {
-			// Parse year from date (might be YYYY or YYYY-MM-DD)
-			if len(yearStr) >= 4 {
-				if y, err := strconv.Atoi(yearStr[:4]); err == nil {
-					song.Year = y
-				}
-			}
-		}
-
-		// Fallback title to filename
-		if song.Title == "" {
-			baseName := filepath.Base(filePath)
-			song.Title = strings.TrimSuffix(baseName, filepath.Ext(baseName))
-		}
-
-		// Fallback artist/album
-		if song.Artist == "" {
-			song.Artist = "Unknown Artist"
-		}
-		if song.Album == "" {
-			song.Album = "Unknown Album"
-		}
-
-		// Album artist
-		if aa := getTag(taglib.AlbumArtist); aa != "" {
-			song.AlbumArtist = aa
-		}
-
-		// Track number
-		if trackStr := getTag(taglib.TrackNumber); trackStr != "" {
-			// Handle "1/12" format
-			if idx := strings.Index(trackStr, "/"); idx > 0 {
-				trackStr = trackStr[:idx]
-			}
-			if t, err := strconv.Atoi(trackStr); err == nil {
-				song.TrackNumber = t
-			}
-		}
-
-		// Disc number
-		if discStr := getTag(taglib.DiscNumber); discStr != "" {
-			// Handle "1/2" format
-			if idx := strings.Index(discStr, "/"); idx > 0 {
-				discStr = discStr[:idx]
-			}
-			if d, err := strconv.Atoi(discStr); err == nil {
-				song.DiscNumber = d
-			}
-		}
-
-		// Genre - split comma-separated genres into individual elements
-		// Many audio files store genres as "Rock, Alternative Rock, Grunge" in a single tag
-		// We split these into separate array elements for proper individual genre tracking
-		if genre := getTag(taglib.Genre); genre != "" {
-			// Split by comma and trim whitespace from each genre
-			genreParts := strings.Split(genre, ",")
-			genres := make([]string, 0, len(genreParts))
-			for _, g := range genreParts {
-				trimmed := strings.TrimSpace(g)
-				if trimmed != "" {
-					genres = append(genres, trimmed)
-				}
-			}
-			if len(genres) > 0 {
-				song.Genre = genres
-			}
-		}
-
-		resultChan <- metadataResult{song, nil}
-	}()
-
-	// Wait for result or timeout (30 seconds per file)
-	select {
-	case result := <-resultChan:
-		return result.metadata, result.err
-	case <-time.After(30 * time.Second):
-		logger.Scanner("Timeout reading metadata from %s (30s), skipping file", filePath)
-		// Return minimal metadata to allow scan to continue
+	// Try to read tags with taglib
+	tags, err := taglib.ReadTags(filePath)
+	if err != nil {
+		// If we can't read tags, create minimal metadata from filename
 		baseName := filepath.Base(filePath)
 		title := strings.TrimSuffix(baseName, filepath.Ext(baseName))
-		hash := sha256.Sum256([]byte(fmt.Sprintf("%s:timeout", filePath)))
-		id := hex.EncodeToString(hash[:8])
+
 		return &SongMetadata{
 			ID:       id,
 			Title:    title,
 			Artist:   "Unknown Artist",
 			Album:    "Unknown Album",
 			FilePath: filePath,
+			FileHash: fingerprint,
 		}, nil
 	}
+
+	// Read properties for duration
+	props, err := taglib.ReadProperties(filePath)
+	if err != nil {
+		// Continue without duration
+		props = taglib.Properties{}
+	}
+
+	// Helper to get first tag value
+	getTag := func(key string) string {
+		if vals, ok := tags[key]; ok && len(vals) > 0 {
+			return vals[0]
+		}
+		return ""
+	}
+
+	getTagFold := func(keys ...string) string {
+		for actualKey, values := range tags {
+			for _, key := range keys {
+				if strings.EqualFold(actualKey, key) && len(values) > 0 {
+					return values[0]
+				}
+			}
+		}
+		return ""
+	}
+	parseReplayValue := func(value string) float64 {
+		value = strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(value, " dB"), "dB"))
+		parsed, _ := strconv.ParseFloat(value, 64)
+		return parsed
+	}
+
+	// Get basic metadata
+	song := &SongMetadata{
+		ID:       id,
+		FileHash: fingerprint,
+		Title:    getTag(taglib.Title),
+		Artist:   getTag(taglib.Artist),
+		Album:    getTag(taglib.Album),
+		Duration: float64(props.Length) / float64(time.Second),
+		FilePath: filePath,
+	}
+
+	if value := getTagFold("REPLAYGAIN_TRACK_GAIN"); value != "" {
+		song.ReplayGainDB = parseReplayValue(value)
+	} else if value := getTagFold("R128_TRACK_GAIN"); value != "" {
+		// Opus R128 gain is stored in Q7.8 dB units.
+		song.ReplayGainDB = parseReplayValue(value) / 256
+	}
+	if value := getTagFold("REPLAYGAIN_TRACK_PEAK"); value != "" {
+		song.ReplayPeak = parseReplayValue(value)
+	}
+
+	// Year
+	if yearStr := getTag(taglib.Date); yearStr != "" {
+		// Parse year from date (might be YYYY or YYYY-MM-DD)
+		if len(yearStr) >= 4 {
+			if y, err := strconv.Atoi(yearStr[:4]); err == nil {
+				song.Year = y
+			}
+		}
+	}
+
+	// Fallback title to filename
+	if song.Title == "" {
+		baseName := filepath.Base(filePath)
+		song.Title = strings.TrimSuffix(baseName, filepath.Ext(baseName))
+	}
+
+	// Fallback artist/album
+	if song.Artist == "" {
+		song.Artist = "Unknown Artist"
+	}
+	if song.Album == "" {
+		song.Album = "Unknown Album"
+	}
+
+	// Album artist
+	if aa := getTag(taglib.AlbumArtist); aa != "" {
+		song.AlbumArtist = aa
+	}
+
+	// Track number
+	if trackStr := getTag(taglib.TrackNumber); trackStr != "" {
+		// Handle "1/12" format
+		if idx := strings.Index(trackStr, "/"); idx > 0 {
+			trackStr = trackStr[:idx]
+		}
+		if t, err := strconv.Atoi(trackStr); err == nil {
+			song.TrackNumber = t
+		}
+	}
+
+	// Disc number
+	if discStr := getTag(taglib.DiscNumber); discStr != "" {
+		// Handle "1/2" format
+		if idx := strings.Index(discStr, "/"); idx > 0 {
+			discStr = discStr[:idx]
+		}
+		if d, err := strconv.Atoi(discStr); err == nil {
+			song.DiscNumber = d
+		}
+	}
+
+	// Genre - split comma-separated genres into individual elements
+	// Many audio files store genres as "Rock, Alternative Rock, Grunge" in a single tag
+	// We split these into separate array elements for proper individual genre tracking
+	if genre := getTag(taglib.Genre); genre != "" {
+		// Split by comma and trim whitespace from each genre
+		genreParts := strings.Split(genre, ",")
+		genres := make([]string, 0, len(genreParts))
+		for _, g := range genreParts {
+			trimmed := strings.TrimSpace(g)
+			if trimmed != "" {
+				genres = append(genres, trimmed)
+			}
+		}
+		if len(genres) > 0 {
+			song.Genre = genres
+		}
+	}
+	return song, nil
 }
 
 // getAlbumCover gets or creates album artwork for a song
@@ -1634,12 +1608,15 @@ func (s *Scanner) findLocalCover(folderPath string) string {
 
 // extractEmbeddedArtwork extracts cover art embedded in the audio file
 func (s *Scanner) extractEmbeddedArtwork(filePath string) []byte {
-	// Use taglib.ReadImage to get embedded artwork
-	imageData, err := taglib.ReadImage(filePath)
-	if err != nil || len(imageData) == 0 {
+	result, err := sharedMetadataExecutor.extract(s.ctx, 30*time.Second, func() (*SongMetadata, error) {
+		data, err := taglib.ReadImage(filePath)
+		return &SongMetadata{CoverData: data}, err
+	})
+	if err != nil {
+		logger.Scanner("Embedded artwork unavailable for %s: %v", filePath, err)
 		return nil
 	}
-	return imageData
+	return result.CoverData
 }
 
 // createAlbumMetadataEntries creates album_metadata entries for albums found during scan

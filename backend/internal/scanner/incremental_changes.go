@@ -119,6 +119,7 @@ func (s *Scanner) ProcessChanges(changes []FileChange) (*ScanResult, error) {
 	if result.Errors == 0 {
 		s.maintainDownloadedEvidence(nil, append(retentionPaths, filesToDelete...), startTime)
 		s.maintainPrivateSpotifyCache()
+		s.compactAnalysisArtifacts()
 	}
 
 	if result.NewSongs > 0 || result.UpdatedSongs > 0 || result.RemovedSongs > 0 {
