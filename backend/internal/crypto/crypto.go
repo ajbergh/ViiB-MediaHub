@@ -49,9 +49,6 @@ const (
 	// encryptionPrefixV2 identifies current v2 relocation-safe ciphertexts.
 	encryptionPrefixV2 = "enc:v2:"
 
-	// encryptionPrefix is retained as an alias for the active prefix (enc:v2:).
-	encryptionPrefix = encryptionPrefixV2
-
 	// masterKeyFileName is the 0600 keyfile inside the configured data directory.
 	masterKeyFileName = "credentials.key"
 
