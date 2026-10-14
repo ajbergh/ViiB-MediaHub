@@ -10,8 +10,54 @@ import (
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/llm"
+	"github.com/ajbergh/viib-mediahub/internal/playlist"
 	"github.com/ajbergh/viib-mediahub/internal/semantic"
 )
+
+func TestAdaptivePlaylistAudioRequirementsSurviveRefill(t *testing.T) {
+	api, _ := adaptivePlaylistFixture(t, 360, nil)
+	metadata := newPlaylistMetadataSnapshot(api)
+	for i := 0; i < 360; i++ {
+		value := playlist.AudioFeatures{}
+		if i >= 300 {
+			value.BPM = &playlist.Observation{Value: 125, Confidence: 1, Source: "manual"}
+			value.EnergyLevel = &playlist.Observation{Value: 8, Confidence: 1, Source: "manual"}
+		}
+		metadata.audio[fmt.Sprintf("song-%04d", i)] = value
+	}
+	intent := llm.PlaylistIntent{SemanticQuery: "jazz", AudioIntent: playlist.AudioIntent{MinBPM: 120, MaxBPM: 128, BPMConstraintHard: true, MinEnergyLevel: 7, EnergyConstraintHard: true}}
+	audit := func(_ context.Context, _ string, _ llm.PlaylistIntent, songs []db.Song) ([]db.Song, playlistValidationDiagnostics) {
+		accepted := make([]db.Song, 0, len(songs))
+		for _, song := range songs {
+			if song.ID >= "song-0310" {
+				accepted = append(accepted, song)
+			}
+		}
+		return accepted, playlistValidationDiagnostics{AuditStatus: "passed", AuditReviewed: len(songs), AuditRejected: len(songs) - len(accepted)}
+	}
+	result, handled, err := api.retrieveSemanticPlaylistWithAudit(context.Background(), intent, semanticPlaylistRequest{TargetSongs: 50, Source: "local", Metadata: metadata}, audit)
+	if err != nil || !handled || len(result.Songs) != 50 || result.Diagnostics.SearchPasses != 2 {
+		t.Fatalf("handled=%v count=%d err=%v diagnostics=%+v", handled, len(result.Songs), err, result.Diagnostics)
+	}
+	for _, song := range result.Songs {
+		if song.ID < "song-0310" || !playlist.Allowed(intent.AudioIntent, metadata.audio[song.ID]) {
+			t.Fatalf("constraint lost: %s", song.ID)
+		}
+	}
+}
+
+func TestAdaptivePlaylistDurationUsesActualTrackLengths(t *testing.T) {
+	api, _ := adaptivePlaylistFixture(t, 50, nil)
+	metadata := newPlaylistMetadataSnapshot(api)
+	for i := 0; i < 50; i++ {
+		metadata.audio[fmt.Sprintf("song-%04d", i)] = playlist.AudioFeatures{DurationSeconds: 60}
+	}
+	intent := llm.PlaylistIntent{SemanticQuery: "jazz", AudioIntent: playlist.AudioIntent{TargetDurationMinutes: 45}}
+	result, handled, err := api.retrieveSemanticPlaylistWithAudit(context.Background(), intent, semanticPlaylistRequest{TargetSongs: 50, Source: "local", Metadata: metadata}, acceptingPlaylistAudit)
+	if err != nil || !handled || len(result.Songs) != 45 || result.DurationSeconds != 2700 || result.DurationEstimated || result.Diagnostics.Validation.Shortened {
+		t.Fatalf("handled=%v count=%d duration=%f estimated=%v err=%v diagnostics=%+v", handled, len(result.Songs), result.DurationSeconds, result.DurationEstimated, err, result.Diagnostics)
+	}
+}
 
 func TestRetrieveSemanticPlaylistUsesBoundedRankAndPreservesResponseFilter(t *testing.T) {
 	database, err := db.New(filepath.Join(t.TempDir(), "semantic-playlist.db"))

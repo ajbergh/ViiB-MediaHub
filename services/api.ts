@@ -1943,7 +1943,27 @@ export interface SmartPlaylistRetrieval {
 /**
  * Response from the smart playlist API.
  */
+export interface SmartPlaylistAudioIntent {
+  minBPM?: number;
+  maxBPM?: number;
+  bpmConstraintHard?: boolean;
+  minEnergyLevel?: number;
+  maxEnergyLevel?: number;
+  energyConstraintHard?: boolean;
+  targetEnergy?: 'low' | 'medium' | 'high';
+  preferredMoods?: string[];
+  camelotKeys?: string[];
+  keyConstraintHard?: boolean;
+  harmonicMix?: boolean;
+  energyDirection?: 'steady' | 'build' | 'cooldown' | 'arc';
+  targetDurationMinutes?: number;
+  providerPreferences?: Record<string, number>;
+}
+
 export interface SmartPlaylistResponse {
+  audioIntent?: SmartPlaylistAudioIntent;
+  durationSeconds?: number;
+  durationEstimated?: boolean;
   filter: SmartPlaylistFilter;
   songs: ApiSong[];
   dj?: DJModeResponse; // Present when mode === 'dj'

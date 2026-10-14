@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/playlist"
 )
 
 // ============================================================================
@@ -69,9 +70,19 @@ func (s *Sequencer) BuildQueueFromPhasePools(
 
 	var queue []db.Song
 	var phaseResults []PhaseResult
+	plannedCount := 0
+	for _, phase := range plan.Phases {
+		plannedCount += max(1, phase.TargetCount)
+	}
+	previousDuration := ctx.PhaseDurationSeconds
+	defer func() { ctx.PhaseDurationSeconds = previousDuration }()
 
 	// Process each phase
 	for i, phase := range plan.Phases {
+		ctx.PhaseDurationSeconds = 0
+		if ctx.AudioFeatures != nil && plan.TargetDurationMin > 0 {
+			ctx.PhaseDurationSeconds = float64(plan.TargetDurationMin*60) * float64(max(1, phase.TargetCount)) / float64(plannedCount)
+		}
 		pool := pools[i]
 		if len(pool.Songs) == 0 {
 			return nil, nil, fmt.Errorf("phase %q has no candidates", phase.Name)
@@ -87,7 +98,7 @@ func (s *Sequencer) BuildQueueFromPhasePools(
 		ctx.SemanticScores = previousScores
 
 		// Apply micro-shuffle within phase if low flow strictness
-		if ctx.FlowStrictness < FlowStrictnessNormal && len(phaseSongs) > 3 {
+		if ctx.AudioFeatures == nil && ctx.FlowStrictness < FlowStrictnessNormal && len(phaseSongs) > 3 {
 			phaseSongs = s.microShuffle(phaseSongs, 3)
 		}
 
@@ -201,6 +212,12 @@ func (s *Sequencer) selectForPhase(
 	if len(candidates) < targetCount {
 		candidates = eligible(allCandidates)
 	}
+	if ctx.PhaseDurationSeconds > 0 {
+		if seconds, _ := playlist.Duration(playlistTracks(candidates, ctx)); seconds < ctx.PhaseDurationSeconds {
+			candidates = eligible(allCandidates)
+		}
+		targetCount = min(1000, len(candidates))
+	}
 
 	// Score all candidates
 	scored := ScoreAllCandidates(candidates, phase, ctx, persona)
@@ -212,14 +229,56 @@ func (s *Sequencer) selectForPhase(
 
 	// Select top candidates with stochastic sampling
 	selected := s.selectWithStochasticity(scored, targetCount, persona.Weights.OnePerArtistStrictness, ctx)
+	if ctx.PhaseDurationSeconds > 0 {
+		selected = selected[:len(playlist.ClosestDurationPrefix(playlistTracks(selected, ctx), ctx.PhaseDurationSeconds))]
+	}
 
 	// Sort selected by BPM for smooth transitions within phase
-	s.sortByBPM(selected, ctx)
+	if ctx.AudioFeatures == nil {
+		s.sortByBPM(selected, ctx)
+	} else {
+		intent := ctx.AudioIntent
+		if intent.EnergyDirection == "" {
+			if phase.TargetEnergy == EnergyHigh {
+				intent.EnergyDirection = "build"
+			} else if phase.TargetEnergy == EnergyLow {
+				intent.EnergyDirection = "cooldown"
+			} else {
+				intent.EnergyDirection = "steady"
+			}
+		}
+		tracks := make([]playlist.Track, 0, len(selected))
+		byID := make(map[string]db.Song)
+		for _, song := range selected {
+			tracks = append(tracks, playlist.Track{ID: song.ID, Artist: song.Artist, Album: song.Album, Mood: song.Mood, Features: ctx.AudioFeatures[song.ID], Relevance: ctx.SemanticScores[song.ID]})
+			byID[song.ID] = song
+		}
+		var predecessor *playlist.Track
+		if ctx.LastSongID != "" {
+			predecessor = &playlist.Track{ID: ctx.LastSongID, Features: ctx.AudioFeatures[ctx.LastSongID]}
+		}
+		ordered := playlist.OrderAfter(tracks, intent, ctx.TransitionScorer, predecessor)
+		for i, track := range ordered {
+			selected[i] = byID[track.ID]
+		}
+	}
 
 	// Build phase result
 	result := s.buildPhaseResult(phase, selected, ctx)
 
 	return result, selected
+}
+
+func playlistTracks(songs []db.Song, ctx *ScoreContext) []playlist.Track {
+	tracks := make([]playlist.Track, 0, len(songs))
+	for _, song := range songs {
+		value := ctx.AudioFeatures[song.ID]
+		if value.DurationSeconds <= 0 {
+			value.DurationSeconds = song.Duration
+		}
+		tracks = append(tracks, playlist.Track{ID: song.ID, Features: value})
+	}
+	return tracks
 }
 
 // getCandidatesForPhase gets candidates from buckets matching the phase.
@@ -321,6 +380,7 @@ func (s *Sequencer) selectWithStochasticity(
 	selected := make([]db.Song, 0, targetCount)
 	artistsInPhase := make(map[string]bool)
 	usedIDs := make(map[string]bool)
+	duration := 0.0
 
 	// Copy eligible candidates before sampling. The window is replenished after
 	// each pick so phases can consume more than 50 without mutating caller data.
@@ -384,6 +444,13 @@ func (s *Sequencer) selectWithStochasticity(
 		// Add selected song
 		song := pool[selectedIdx].Song
 		selected = append(selected, song)
+		if ctx.PhaseDurationSeconds > 0 {
+			seconds, _ := playlist.Duration(playlistTracks([]db.Song{song}, ctx))
+			duration += seconds
+			if duration >= ctx.PhaseDurationSeconds {
+				break
+			}
+		}
 		usedIDs[song.ID] = true
 		artistsInPhase[strings.ToLower(song.Artist)] = true
 

@@ -18,6 +18,17 @@ func TestParsePlaylistIntentResponseNormalizesAndBoundsValues(t *testing.T) {
 	}
 }
 
+func TestPlaylistAudioIntentSurvivesFallbackAndModelCorrections(t *testing.T) {
+	intent, err := ParsePlaylistIntentResponse(`{"semanticQuery":"dance","minBPM":90,"maxBPM":100,"bpmConstraintHard":false,"minEnergyLevel":7,"maxEnergyLevel":9,"energyConstraintHard":true,"harmonicMix":true,"energyDirection":"build","targetDurationMinutes":45}`, "between 120 and 128 BPM")
+	if err != nil || intent.MinBPM != 120 || intent.MaxBPM != 128 || !intent.BPMConstraintHard || !intent.EnergyConstraintHard || !intent.HarmonicMix || intent.TargetDurationMinutes != 45 {
+		t.Fatalf("intent=%+v err=%v", intent, err)
+	}
+	fallback := FallbackPlaylistIntent("45 minutes of calm music around 100 BPM, energy level 2–4")
+	if fallback.MinBPM != 100 || fallback.BPMConstraintHard || !fallback.EnergyConstraintHard || fallback.TargetDurationMinutes != 45 || len(fallback.PreferredMoods) == 0 {
+		t.Fatalf("fallback=%+v", fallback)
+	}
+}
+
 func TestParsePlaylistIntentResponseFallsBackForEmptyRequiredText(t *testing.T) {
 	intent, err := ParsePlaylistIntentResponse(`{"semanticQuery":""}`, "  Quiet  Sunday  music ")
 	if err != nil {

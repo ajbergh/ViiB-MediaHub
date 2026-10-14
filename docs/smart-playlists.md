@@ -21,7 +21,13 @@ upbeat morning run
 jazz standards for dinner
 ```
 
-Generation can use semantic document context, artist/album/genre metadata, enriched mood/energy/tempo information, and listening history. Listening behaviour stays a ranking signal; it is not added to embedding text.
+Generation combines semantic relevance with source-current audio metadata and listening history. The AI model interprets the request; local code enforces numeric requirements, ranks eligible tracks, and orders the result. Listening behaviour stays a ranking signal; it is not added to embedding text.
+
+Requests can include BPM ranges, local energy levels (1–10), Camelot keys, moods, an energy progression, and duration. For example: `45 minutes of instrumental jazz between 90 and 110 BPM, building gradually`. Explicit numeric requirements exclude tracks with unknown or unqualified measurements. Approximate preferences such as `around 100 BPM` rank known matches higher while keeping missing data neutral. Adaptive retrieval refills rejected candidates without relaxing requirements or semantic quality floors.
+
+Manual overrides, admitted current Spotify metadata, and qualified local analysis use the existing source-aware resolver. Local energy levels, Spotify energy/danceability/valence scores, and native energy curves remain distinct metrics. Provider scores are optional preference signals. Tempo continuity, requested Camelot compatibility, mood, artist spacing, and energy progression guide ordering; current local structure/energy artifacts add transition evidence where available. Missing artifacts never become fabricated measurements. This ordering does not authorize beat synchronization.
+
+Duration requests select the closest whole-track duration. Missing durations use a three-minute estimate, disclosed through the response's `durationEstimated` field. The response also includes interpreted `audioIntent` and `durationSeconds`. Selection and ordering are bounded, and genuine shortages are reported rather than filled with unrelated tracks. Source and scalar changes before publication require a fresh recommendation.
 
 Generated results use normal ViiB song IDs, so a result can contain both local and Plex-backed catalog tracks without a Plex-specific playback path in the UI.
 
@@ -29,12 +35,11 @@ Generated results use normal ViiB song IDs, so a result can contain both local a
 
 ## Semantic retrieval
 
-Configure the separate **Semantic Retrieval Index** in **Settings → AI & Enrichment**. It is independent of the chat/LLM provider and does not modify source-media metadata.
+The **Semantic Retrieval Index** in **Settings → AI & Enrichment** uses a fixed, managed local embedding model (Model2Vec `minishlab/potion-base-8M`). ViiB automatically downloads and verifies pinned model files on first use, then computes embeddings and stores vectors in local SQLite. There are no embedding provider or model choices.
 
-- **Ollama** can build embeddings locally. ViiB never downloads a model automatically.
-- **OpenAI**, **Google Gemini**, and **OpenRouter** can use their respective embeddings APIs only after ViiB presents the provider-specific data/cost notice and the user explicitly confirms it.
-- ViiB indexes deterministic track, album, and artist descriptions in SQLite. File paths, internal song IDs, listening history, and embedding vectors are not sent to the cloud provider or returned to the UI.
-- Indexing runs in the background. The Smart Playlists page displays whether semantic matching is ready, indexing, or using the standard fallback, and links to Index Settings when action is needed.
+The index is independent of the selected chat provider. Switching between OpenAI, OpenRouter, Gemini, Anthropic, and Ollama does not change the vector space or require reindexing. The selected AI model interprets requests and audits candidates; the semantic index remains local. No embedding API or Ollama embedding model is required.
+
+Indexing runs in the background. The Smart Playlists page displays whether semantic matching is ready, indexing, or using the standard fallback. File paths, internal IDs, listening history, and vectors are excluded from semantic document text sent to the AI model. Strict numeric audio requests require the semantic metadata path; if it is unavailable, generation reports that limitation instead of bypassing those requirements.
 
 After a semantic result is generated, **Semantic retrieval details** can be expanded for count-only troubleshooting information such as candidate and track/album/artist-match counts. It is collapsed by default and never exposes document text or vectors.
 
@@ -44,9 +49,9 @@ Semantic matching is selected automatically when the chosen source has a searcha
 
 ## DJ Mode
 
-DJ Mode compiles a set plan with semantic intent for every phase, then retrieves bounded candidate pools for those phases before applying persona/selection bias, duration targets, transition/flow constraints, and energy progression.
+DJ Mode compiles a set plan with semantic intent for every phase, then retrieves bounded candidate pools for those phases before applying persona/selection bias, duration targets, transition/flow constraints, and energy progression. Actual track durations determine selection within each phase's share of the set duration; planner song counts provide the phase proportions. Whole tracks and limited matching pools can make the final duration approximate.
 
-The resulting set is still built from the ViiB catalog and handed to the normal player/queue. ViiB does not send the full library or local genre taxonomy to the LLM. If a semantic index is unavailable or cannot fill every planned phase with distinct songs, DJ Mode deterministically uses the legacy full-catalog fallback instead.
+The resulting set is still built from the ViiB catalog and handed to the normal player/queue. ViiB does not send the full library or local genre taxonomy to the LLM. If the semantic index is unavailable, DJ Mode uses the legacy catalog path with the same resolved audio requirements. A shortage in a searchable semantic phase remains a reported shortage; it does not trigger unrelated catalog backfill. DJ ordering uses the shared audio features and transition scorer, including continuity across phase boundaries. Harmonic compatibility is an automatic advisory signal in DJ Mode.
 
 Generated DJ rows display the fractional BPM and source used to sequence the set: Spotify, Manual, Measured, or Unknown. This analysis snapshot stays in page memory, is cleared when the Spotify session changes, and is omitted from saved song copies. A newer generation supersedes an older pending request. These scalar values do not authorize beat-phase sync or qualify analysis accuracy. Further local scanning/DSP improvements are [deferred to a future branch](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
 

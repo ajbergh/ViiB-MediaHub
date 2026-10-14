@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/playlist"
 )
 
 const (
@@ -23,6 +24,8 @@ const (
 // HybridRankingOptions contains request-scoped policy that is deliberately
 // kept out of semantic documents and embeddings.
 type HybridRankingOptions struct {
+	AudioIntent       playlist.AudioIntent
+	AudioFeatures     map[string]playlist.AudioFeatures
 	DiscoverMode      string
 	RecentlyPlayedIDs map[string]bool
 	RejectedSongIDs   map[string]bool
@@ -43,7 +46,7 @@ type RankedSemanticCandidate struct {
 	MetadataScore float64
 }
 
-// RankSemanticCandidates applies the Phase 1 70/20/10 hybrid model to a
+// RankSemanticCandidates applies semantic, behavioral and metadata scoring to a
 // bounded semantic candidate pool. It removes recent tracks, honours an
 // optional one-per-artist rule, and applies a small dynamic artist repetition
 // penalty while selecting the final order. The function is deterministic.
@@ -58,9 +61,22 @@ func RankSemanticCandidates(candidates []SemanticCandidate, options HybridRankin
 		bestSemanticScore = max(bestSemanticScore, semanticScore)
 		behaviorScore := semanticBehaviorScore(candidate.Song, options.DiscoverMode)
 		metadataScore := semanticMetadataFit(candidate.Song, options)
+		semanticWeight, behaviorWeight, metadataWeight := semanticRelevanceWeight, behaviorPreferenceWeight, metadataFitWeight
+		if options.AudioIntent.HasPreferences() {
+			audioFit := playlist.PreferenceScore(options.AudioIntent, options.AudioFeatures[candidate.Song.ID], candidate.Song.Mood, candidate.Song.Energy)
+			metadataScore = (metadataScore + 2*audioFit) / 3
+			semanticWeight, behaviorWeight, metadataWeight = .55, .15, .30
+		}
+		switch options.DiscoverMode {
+		case "favorites":
+			if options.AudioIntent.HasPreferences() {
+				semanticWeight, behaviorWeight, metadataWeight = .50, .25, .25
+			}
+		}
+
 		eligible = append(eligible, RankedSemanticCandidate{
 			Candidate:     candidate,
-			Score:         semanticRelevanceWeight*semanticScore + behaviorPreferenceWeight*behaviorScore + metadataFitWeight*metadataScore,
+			Score:         semanticWeight*semanticScore + behaviorWeight*behaviorScore + metadataWeight*metadataScore,
 			SemanticScore: semanticScore,
 			BehaviorScore: behaviorScore,
 			MetadataScore: metadataScore,

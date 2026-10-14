@@ -372,6 +372,9 @@ func semanticCandidateAllowed(candidate SemanticCandidate, options SemanticRetri
 		if year == 0 {
 			year = song.Year
 		}
+		if year == 0 && (options.MinYear > 0 || options.MaxYear > 0) {
+			return false, "year"
+		}
 		if options.MinYear > 0 && year < options.MinYear {
 			return false, "year"
 		}

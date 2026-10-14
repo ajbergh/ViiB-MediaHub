@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ajbergh/viib-mediahub/internal/playlist"
+	"math"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/llm"
@@ -18,6 +20,9 @@ const semanticPlaylistRankingLimit = 120
 // shape retrieval and ranking. It is deliberately internal so the public HTTP
 // request and response contracts remain backward compatible.
 type semanticPlaylistRequest struct {
+	Metadata          *playlistMetadataSnapshot
+	SkipAudioOrdering bool
+	SkipDuration      bool
 	Prompt            string
 	TargetSongs       int
 	DiscoverMode      string
@@ -44,10 +49,14 @@ type semanticRetrievalDiagnostics struct {
 }
 
 type semanticPlaylistResult struct {
-	Filter         llm.PlaylistFilter
-	Songs          []db.Song
-	SemanticScores map[string]float64
-	Diagnostics    semanticRetrievalDiagnostics
+	Metadata          *playlistMetadataSnapshot
+	AudioIntent       playlist.AudioIntent
+	DurationSeconds   float64
+	DurationEstimated bool
+	Filter            llm.PlaylistFilter
+	Songs             []db.Song
+	SemanticScores    map[string]float64
+	Diagnostics       semanticRetrievalDiagnostics
 }
 
 // compileSemanticPlaylistIntent prefers the dedicated compiler prompt. If a
@@ -87,11 +96,43 @@ func (a *API) retrieveSemanticPlaylistWithAudit(ctx context.Context, intent llm.
 		intent.MaxYear = request.PromptMaxYear
 		intent.YearConstraintHard = true
 	}
+	intent.AudioIntent = playlist.MergeAudioIntent(intent.AudioIntent, request.Prompt)
+	metadata := request.Metadata
+	if metadata == nil {
+		metadata = newPlaylistMetadataSnapshot(a)
+	}
 	target := request.TargetSongs
 	if target <= 0 {
 		target = 50
 	}
 	target = min(target, maximumPlaylistRefillCandidates)
+	durationTarget := 0.0
+	if !request.SkipDuration && intent.TargetDurationMinutes > 0 {
+		durationTarget = float64(intent.TargetDurationMinutes * 60)
+		summary, err := a.db.GetAIDJLibrarySummary(ctx, request.Source)
+		if err != nil {
+			return semanticPlaylistResult{}, false, err
+		}
+		average := summary.AverageDurationSec
+		if average <= 0 {
+			average = 180
+		}
+		target = min(maximumPlaylistRefillCandidates, max(1, int(math.Ceil(durationTarget/float64(average)))+2))
+	}
+	enough := func(songs []db.Song) bool {
+		if durationTarget <= 0 {
+			return len(songs) >= target
+		}
+		sum := 0.0
+		for _, song := range songs {
+			seconds := metadata.audio[song.ID].DurationSeconds
+			if seconds <= 0 {
+				seconds = 180
+			}
+			sum += seconds
+		}
+		return sum >= durationTarget
+	}
 	session := newPlaylistAuditSession()
 	var retrieval semantic.SemanticRetrievalResult
 	var songs []db.Song
@@ -124,12 +165,27 @@ func (a *API) retrieveSemanticPlaylistWithAudit(ctx context.Context, intent llm.
 			}
 			return semanticPlaylistResult{}, false, fmt.Errorf("semantic retrieval: %w", err)
 		}
+		candidateSongs := make([]db.Song, 0, len(retrieval.Candidates))
+		for _, candidate := range retrieval.Candidates {
+			candidateSongs = append(candidateSongs, candidate.Song)
+		}
+		if err := metadata.load(ctx, candidateSongs); err != nil {
+			return semanticPlaylistResult{}, false, fmt.Errorf("resolve playlist metadata: %w", err)
+		}
+		eligible := make([]semantic.SemanticCandidate, 0, len(retrieval.Candidates))
+		for _, candidate := range retrieval.Candidates {
+			if playlist.Allowed(intent.AudioIntent, metadata.audio[candidate.Song.ID]) {
+				eligible = append(eligible, candidate)
+			}
+		}
+		audioExcluded := len(retrieval.Candidates) - len(eligible)
 		searchPasses++
 		for {
 			if err := ctx.Err(); err != nil {
 				return semanticPlaylistResult{}, false, err
 			}
-			ranked := semantic.RankSemanticCandidates(retrieval.Candidates, semantic.HybridRankingOptions{
+			ranked := semantic.RankSemanticCandidates(eligible, semantic.HybridRankingOptions{
+				AudioIntent: intent.AudioIntent, AudioFeatures: metadata.audio,
 				DiscoverMode: request.DiscoverMode, RecentlyPlayedIDs: request.RecentlyPlayedIDs,
 				RejectedSongIDs: session.rejected, OnePerArtist: request.OnePerArtist,
 				Limit: max(semanticPlaylistRankingLimit, target*2), PreferredGenres: intent.PreferredGenres,
@@ -137,9 +193,9 @@ func (a *API) retrieveSemanticPlaylistWithAudit(ctx context.Context, intent llm.
 			})
 			validation = playlistValidationDiagnostics{
 				RequiredStyles: intent.RequiredStyles, ExcludedTerms: intent.ExcludedTerms,
-				HardExcluded: retrieval.Diagnostics.HardExcluded, StyleMismatches: retrieval.Diagnostics.StyleMismatches,
+				HardExcluded: retrieval.Diagnostics.HardExcluded + audioExcluded, StyleMismatches: retrieval.Diagnostics.StyleMismatches,
 				NegativeRejected: retrieval.Diagnostics.NegativeRejected,
-				RankingFiltered:  max(0, len(retrieval.Candidates)-len(ranked)),
+				RankingFiltered:  max(0, len(eligible)-len(ranked)),
 			}
 			selected, err := service.ApplyMMRDiversity(ctx, ranked, semantic.DiversityOptions{DiscoverMode: request.DiscoverMode, Limit: max(auditReserveLimit(target), target)})
 			if err != nil {
@@ -157,13 +213,20 @@ func (a *API) retrieveSemanticPlaylistWithAudit(ctx context.Context, intent llm.
 			if err := ctx.Err(); err != nil {
 				return semanticPlaylistResult{}, false, err
 			}
-			if len(songs) >= target || session.attempted == before || session.attempted >= maximumPlaylistRefillCandidates {
+			if enough(songs) || session.attempted >= maximumPlaylistRefillCandidates {
+				break
+			}
+			if durationTarget > 0 && len(songs) >= target && target < maximumPlaylistRefillCandidates {
+				target = min(maximumPlaylistRefillCandidates, target*2)
+				continue
+			}
+			if session.attempted == before {
 				break
 			}
 			// Rerank without rejected tracks, exposing replacements beyond the
 			// previous MMR window and alternate songs by a rejected artist.
 		}
-		if len(songs) >= target || session.attempted >= maximumPlaylistRefillCandidates || !retrieval.MoreAvailable {
+		if enough(songs) || session.attempted >= maximumPlaylistRefillCandidates || !retrieval.MoreAvailable {
 			break
 		}
 		if breadth == semantic.MaxSemanticSearchBreadth {
@@ -173,10 +236,33 @@ func (a *API) retrieveSemanticPlaylistWithAudit(ctx context.Context, intent llm.
 	validation.AuditStatus = session.diagnostics.AuditStatus
 	validation.AuditReviewed = session.diagnostics.AuditReviewed
 	validation.AuditRejected = session.diagnostics.AuditRejected
-	if len(songs) > target {
+	if durationTarget <= 0 && len(songs) > target {
 		songs = songs[:target]
 	}
-	validation.Shortened = len(songs) < target
+	tracks := make([]playlist.Track, 0, len(songs))
+	byID := make(map[string]db.Song)
+	for _, song := range songs {
+		tracks = append(tracks, playlist.Track{ID: song.ID, Artist: song.Artist, Album: song.Album, Mood: song.Mood, Features: metadata.audio[song.ID], Relevance: scores[song.ID]})
+		byID[song.ID] = song
+	}
+	if durationTarget > 0 {
+		tracks = playlist.ClosestDurationPrefix(tracks, durationTarget)
+	}
+	if !request.SkipAudioOrdering {
+		if err := metadata.loadArtifacts(songs); err != nil {
+			return semanticPlaylistResult{}, false, err
+		}
+		tracks = playlist.Order(tracks, intent.AudioIntent, metadata.transition)
+	}
+	songs = make([]db.Song, len(tracks))
+	for i, track := range tracks {
+		songs[i] = byID[track.ID]
+	}
+	duration, estimated := playlist.Duration(tracks)
+	validation.Shortened = !enough(songs)
+	if durationTarget > 0 {
+		validation.Shortened = duration < durationTarget*.95
+	}
 	if validation.Shortened {
 		switch {
 		case session.attempted >= maximumPlaylistRefillCandidates:
@@ -188,6 +274,7 @@ func (a *API) retrieveSemanticPlaylistWithAudit(ctx context.Context, intent llm.
 		}
 	}
 	return semanticPlaylistResult{
+		Metadata: metadata, AudioIntent: intent.AudioIntent, DurationSeconds: duration, DurationEstimated: estimated,
 		Filter: llm.PlaylistFilter{
 			Genres:       intent.PreferredGenres,
 			Artists:      intent.IncludeArtists,

@@ -21,6 +21,7 @@ type semanticDJRequest struct {
 }
 
 type semanticDJRetrievalResult struct {
+	Metadata            *playlistMetadataSnapshot
 	Pools               []dj.PhaseCandidatePool
 	CandidateCount      int
 	PhaseCandidateCount []int
@@ -42,7 +43,8 @@ func (a *API) retrieveSemanticDJPhasePoolsWithAudit(ctx context.Context, plan *d
 	if a.currentSemanticService() == nil || plan == nil || len(plan.Phases) == 0 {
 		return semanticDJRetrievalResult{}, false, nil
 	}
-	result := semanticDJRetrievalResult{Pools: make([]dj.PhaseCandidatePool, len(plan.Phases)), PhaseCandidateCount: make([]int, len(plan.Phases))}
+	metadata := newPlaylistMetadataSnapshot(a)
+	result := semanticDJRetrievalResult{Metadata: metadata, Pools: make([]dj.PhaseCandidatePool, len(plan.Phases)), PhaseCandidateCount: make([]int, len(plan.Phases))}
 	totalTarget := 0
 	for _, phase := range plan.Phases {
 		totalTarget += max(phase.TargetCount, 1)
@@ -58,6 +60,18 @@ func (a *API) retrieveSemanticDJPhasePoolsWithAudit(ctx context.Context, plan *d
 	}
 	for index, phase := range plan.Phases {
 		intent := request.Intent
+		// Planner phase targets are soft preferences; explicit user bounds win.
+		if intent.MinBPM == 0 && intent.MaxBPM == 0 {
+			intent.MinBPM, intent.MaxBPM = float64(phase.MinBPM), float64(phase.MaxBPM)
+			intent.BPMConstraintHard = false
+		}
+		if intent.TargetEnergy == "" {
+			intent.TargetEnergy = phase.TargetEnergy
+		}
+		if len(intent.PreferredMoods) == 0 {
+			intent.PreferredMoods = phase.TargetMoods
+		}
+		intent.AudioIntent = intent.AudioIntent.Normalize()
 		intent.SemanticQuery = strings.TrimSpace(phase.SemanticQuery)
 		if intent.SemanticQuery == "" {
 			intent.SemanticQuery = strings.TrimSpace(plan.IntentSummary)
@@ -72,6 +86,7 @@ func (a *API) retrieveSemanticDJPhasePoolsWithAudit(ctx context.Context, plan *d
 		// a song in an earlier phase does not exhaust later phase pools.
 		reserve := min(maximumPlaylistRefillCandidates, max(semanticDJMinimumPhasePool, max(phase.TargetCount*5, totalTarget)))
 		playlist, handled, err := a.retrieveSemanticPlaylistWithAudit(ctx, intent, semanticPlaylistRequest{
+			Metadata: metadata, SkipAudioOrdering: true, SkipDuration: true,
 			Prompt: request.Prompt, TargetSongs: reserve, Source: request.Source,
 			DiscoverMode: request.DiscoverMode, RecentlyPlayedIDs: request.RecentlyPlayedIDs,
 		}, sharedAudit)

@@ -181,7 +181,7 @@ export const SmartPlaylists: React.FC = () => {
         // DJ Mode options
         mode: aiDjMode ? 'dj' : 'playlist',
         persona: aiDjPersona,
-        targetDurationMinutes: aiDjTargetDurationMinutes,
+        targetDurationMinutes: aiDjMode ? aiDjTargetDurationMinutes : undefined,
         talkMode: aiDjTalkMode,
         flowStrictness: aiDjFlowStrictness,
         source: aiDjSource,

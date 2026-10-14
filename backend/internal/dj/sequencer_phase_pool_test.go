@@ -8,7 +8,38 @@ import (
 	"testing"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/playlist"
 )
+
+func TestAudioOrderingSurvivesLowStrictnessAndUsesActualDuration(t *testing.T) {
+	for iteration := 0; iteration < 12; iteration++ {
+		ctx := NewScoreContext()
+		ctx.FlowStrictness = 0
+		ctx.AudioIntent = playlist.AudioIntent{EnergyDirection: "build"}
+		ctx.AudioFeatures = map[string]playlist.AudioFeatures{}
+		var songs []db.Song
+		for i := 0; i < 10; i++ {
+			id := fmt.Sprint(i)
+			songs = append(songs, db.Song{ID: id, Artist: id, Duration: 60})
+			ctx.AudioFeatures[id] = playlist.AudioFeatures{DurationSeconds: 60, EnergyLevel: &playlist.Observation{Value: float64(i + 1), Confidence: 1, Source: "manual"}}
+		}
+		plan := &DJSetPlan{TargetDurationMin: 6, Phases: []DJPhase{{Name: "Build", TargetCount: 2, TargetEnergy: EnergyHigh}}}
+		queue, phases, err := NewSequencer().BuildQueue(songs, plan, GetPersona(PersonaFlowMaster), ctx)
+		if err != nil || len(queue) != 6 || phases[0].SongCount != 6 {
+			t.Fatalf("queue=%v phases=%v err=%v", queue, phases, err)
+		}
+		for i := 1; i < len(queue); i++ {
+			if ctx.AudioFeatures[queue[i].ID].EnergyLevel.Value < ctx.AudioFeatures[queue[i-1].ID].EnergyLevel.Value {
+				t.Fatal("post-selection shuffle broke energy build")
+			}
+		}
+		for i, id := range phases[0].SongIDs {
+			if id != queue[i].ID {
+				t.Fatal("phase order differs from queue")
+			}
+		}
+	}
+}
 
 func TestBuildQueueFromPhasePoolsUsesEachSemanticPoolAndPreventsReuse(t *testing.T) {
 	plan := &DJSetPlan{Phases: []DJPhase{

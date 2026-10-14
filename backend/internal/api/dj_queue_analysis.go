@@ -19,6 +19,15 @@ func (a *API) resolveDJQueueAnalysis(fingerprints map[string]string, provider ma
 	if err != nil {
 		return nil, nil, err
 	}
+	manualFields, err := a.db.ListTrackMetadataOverrides()
+	if err != nil {
+		return nil, nil, err
+	}
+	for id, fields := range manualFields {
+		override := overrides[id]
+		override.Fields = fields
+		overrides[id] = override
+	}
 	byID := make(map[string]db.TrackAnalysis, len(analyses))
 	for _, row := range analyses {
 		byID[row.SongID] = row

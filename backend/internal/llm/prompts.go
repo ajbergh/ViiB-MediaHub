@@ -138,6 +138,11 @@ OUTPUT FORMAT (output ONLY this JSON, no other text):
   "maxYear": 0,
   "yearConstraintHard": false,
   "instrumentalOnly": false,
+  "minBPM": 0, "maxBPM": 0, "bpmConstraintHard": false,
+  "minEnergyLevel": 0, "maxEnergyLevel": 0, "energyConstraintHard": false,
+  "targetEnergy": "", "preferredMoods": [],
+  "camelotKeys": [], "keyConstraintHard": false, "harmonicMix": false,
+  "energyDirection": "", "targetDurationMinutes": 0, "providerPreferences": {},
   "discoveryBias": 0.5,
   "familiarityBias": 0.5
 }
@@ -150,6 +155,12 @@ RULES:
 - Put every explicit no/without/exclude/avoid concept in excludedTerms. These are hard constraints.
 - Never include excludedTerms or negated phrases in semanticQuery; put fuzzy avoidance meaning in negativeSemanticQuery.
 - Set yearConstraintHard true only when the user makes the date range mandatory.
+- BPM is numeric (20–400). Explicit ranges/exact/at least/at most are hard; around/about/roughly are soft preferences. Leave unspecified bounds zero.
+- Energy Level means local/manual 1–10 only. Never substitute Spotify energy (0–1) or energy curves. Use targetEnergy low/medium/high for qualitative requests.
+- Use preferredMoods for positive mood preferences. Only explicitly requested Camelot keys belong in camelotKeys (1A–12B); exact keys are hard, harmonic compatibility is a soft harmonicMix preference.
+- energyDirection is empty, steady, build, cooldown, or arc. targetDurationMinutes is an approximate whole-track playlist duration (1–1440).
+- providerPreferences may contain only explicitly relevant unit-interval targets for spotify_energy_score, spotify_danceability_score, spotify_valence_score, spotify_acousticness_score, spotify_instrumentalness_score, spotify_liveness_score, spotify_speechiness_score. Never invent measured facts.
+- Keep numeric restrictions out of semanticQuery; describe the positive musical character there.
 - Clamp discoveryBias and familiarityBias between 0 and 1.
 - Output only valid JSON with exactly these fields.`
 

@@ -28,6 +28,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/dj"
 	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
+	"github.com/ajbergh/viib-mediahub/internal/playlist"
 	"github.com/ajbergh/viib-mediahub/internal/semantic"
 	spotifyauth "github.com/ajbergh/viib-mediahub/internal/spotify/auth"
 )
@@ -1450,7 +1451,7 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	if req.Persona == "" {
 		req.Persona = dj.PersonaFlowMaster
 	}
-	if req.TargetDurationMinutes <= 0 {
+	if req.TargetDurationMinutes <= 0 && req.Mode == dj.ModeDJ {
 		req.TargetDurationMinutes = 45
 	}
 	if req.FlowStrictness <= 0 || req.FlowStrictness > 100 {
@@ -1490,6 +1491,9 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 	if a.currentSemanticService() != nil {
 		semanticPrompt := enhancePromptWithTimeContext(req.Prompt, req.UseTimeContext)
 		intent := a.compileSemanticPlaylistIntent(r.Context(), semanticPrompt)
+		if req.TargetDurationMinutes > 0 {
+			intent.TargetDurationMinutes = min(req.TargetDurationMinutes, 1440)
+		}
 		logger.API("AI DJ Intent: query=%q required_styles=%v excluded_terms=%v negative_query=%q", intent.SemanticQuery, intent.RequiredStyles, intent.ExcludedTerms, intent.NegativeSemanticQuery)
 		semanticResult, handled, semanticErr := a.retrieveSemanticPlaylist(r.Context(), intent, semanticPlaylistRequest{
 			Prompt:            req.Prompt,
@@ -1502,6 +1506,10 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 			PromptMaxYear:     promptMaxYear,
 		})
 		if semanticErr != nil {
+			if intent.AudioIntent.Hard() {
+				http.Error(w, "Could not verify the requested audio constraints; regenerate the playlist", http.StatusServiceUnavailable)
+				return
+			}
 			logger.API("Semantic playlist retrieval failed; using legacy matching: %v", semanticErr)
 		} else if handled {
 			logger.API("Semantic playlist retrieval returned %d songs from %d candidates", semanticResult.Diagnostics.ReturnedCount, semanticResult.Diagnostics.CandidateCount)
@@ -1509,14 +1517,28 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 			for index, song := range semanticResult.Songs {
 				songsAny[index] = song
 			}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"filter":    semanticResult.Filter,
-				"songs":     transformSongsForAPI(songsAny),
-				"retrieval": semanticResult.Diagnostics,
-			})
+			emit := func() error {
+				w.Header().Set("Content-Type", "application/json")
+				return json.NewEncoder(w).Encode(map[string]interface{}{
+					"filter": semanticResult.Filter, "songs": transformSongsForAPI(songsAny), "retrieval": semanticResult.Diagnostics,
+					"audioIntent": semanticResult.AudioIntent, "durationSeconds": semanticResult.DurationSeconds, "durationEstimated": semanticResult.DurationEstimated,
+				})
+			}
+			if err := semanticResult.Metadata.publish(r.Context(), emit); err != nil {
+				http.Error(w, "Playlist metadata or provider session changed; regenerate the playlist", http.StatusConflict)
+			}
+
 			return
 		}
+		if intent.AudioIntent.Hard() {
+			http.Error(w, "Audio-constrained playlists require a ready music matching index", http.StatusServiceUnavailable)
+			return
+		}
+	}
+
+	if deterministicIntent.AudioIntent.Hard() {
+		http.Error(w, "Audio-constrained playlists require a ready music matching index", http.StatusServiceUnavailable)
+		return
 	}
 
 	// First, try artist-based matching for "more like [artist]" prompts
@@ -1550,9 +1572,10 @@ func (a *API) handleGenerateSmartPlaylist(w http.ResponseWriter, r *http.Request
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"filter":     filter,
-			"songs":      songs,
-			"validation": validation,
+			"filter":      filter,
+			"songs":       songs,
+			"validation":  validation,
+			"audioIntent": deterministicIntent.AudioIntent,
 		})
 		return
 	}
@@ -1905,6 +1928,9 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 	// Compile semantic intent without sending the catalog taxonomy to the LLM.
 	// A raw-prompt fallback still allows local embeddings to serve a DJ request.
 	intent := a.compileSemanticPlaylistIntent(ctx, enhancePromptWithTimeContext(prompt, useTimeContext))
+	if intent.TargetDurationMinutes > 0 {
+		durationMinutes = intent.TargetDurationMinutes
+	}
 	logger.API("AI DJ Intent: query=%q required_styles=%v excluded_terms=%v negative_query=%q", intent.SemanticQuery, intent.RequiredStyles, intent.ExcludedTerms, intent.NegativeSemanticQuery)
 	if len(seedGenres) == 0 {
 		seedGenres = intent.PreferredGenres
@@ -2067,6 +2093,10 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 	}
 	currentFingerprints, fingerprintErr := a.currentAnalysisSourceFingerprints(sortedSongIDs(candidateIDs))
 	if fingerprintErr != nil {
+		if intent.AudioIntent.Hard() {
+			http.Error(w, "Audio metadata is unavailable; retry the recommendation", http.StatusServiceUnavailable)
+			return
+		}
 		logger.API("DJ Mode: failed to resolve current candidate source identities; BPM remains unknown: %v", fingerprintErr)
 		currentFingerprints = map[string]string{}
 	}
@@ -2079,6 +2109,10 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 	}
 	localAnalysis, localBPM, bpmErr := a.resolveDJQueueAnalysis(currentFingerprints, nil)
 	if bpmErr != nil {
+		if intent.AudioIntent.Hard() {
+			http.Error(w, "Audio metadata is unavailable; retry the recommendation", http.StatusServiceUnavailable)
+			return
+		}
 		logger.API("DJ Mode: failed to load local BPM; tracks without tempo remain unknown: %v", bpmErr)
 		localBPM = map[string]int{}
 		localAnalysis = map[string]TrackAnalysisFeatureResponse{}
@@ -2101,20 +2135,66 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 		if len(providerFields) > 0 {
 			features, effectiveBPM, effectiveErr := a.resolveDJQueueAnalysis(currentFingerprints, providerFields)
 			if effectiveErr != nil {
+				if intent.AudioIntent.Hard() {
+					return nil, http.StatusServiceUnavailable, "Audio metadata is unavailable; retry the recommendation"
+				}
 				logger.API("DJ Mode: failed to resolve provider BPM; retaining local/manual tempo: %v", effectiveErr)
 			} else {
 				scoreCtx.EffectiveBPM = effectiveBPM
 				resolvedAnalysis = features
 			}
 		}
+		// Apply the same current numeric facts to eligibility and sequencing.
+		scoreCtx.AudioIntent = intent.AudioIntent
+		scoreCtx.AudioIntent.HarmonicMix = true // Advisory harmonic flow is automatic in DJ mode.
+		scoreCtx.AudioFeatures = make(map[string]playlist.AudioFeatures, len(resolvedAnalysis))
+		poolSongs := make([]db.Song, 0)
+		if semanticUsed {
+			for _, pool := range semanticDJ.Pools {
+				poolSongs = append(poolSongs, pool.Songs...)
+			}
+		} else {
+			poolSongs = append(poolSongs, candidates...)
+		}
+		for _, song := range poolSongs {
+			scoreCtx.AudioFeatures[song.ID] = playlistAudioFeatures(resolvedAnalysis[song.ID], song.Duration)
+		}
+		metadata := semanticDJ.Metadata
+		if metadata == nil {
+			metadata = newPlaylistMetadataSnapshot(a)
+			metadata.fingerprints = currentFingerprints
+		}
+		metadata.audio = scoreCtx.AudioFeatures
+		if artifactErr := metadata.loadArtifacts(poolSongs); artifactErr != nil {
+			logger.API("Optional playlist transition artifacts unavailable: %v", artifactErr)
+		}
+		scoreCtx.TransitionScorer = metadata.transition
+		eligibleSongs := func(values []db.Song) []db.Song {
+			eligible := make([]db.Song, 0, len(values))
+			for _, song := range values {
+				if playlist.Allowed(intent.AudioIntent, scoreCtx.AudioFeatures[song.ID]) {
+					eligible = append(eligible, song)
+				}
+			}
+			return eligible
+		}
+		phasePools := append([]dj.PhaseCandidatePool(nil), semanticDJ.Pools...)
+		for i := range phasePools {
+			phasePools[i].Songs = eligibleSongs(phasePools[i].Songs)
+		}
+		candidates = eligibleSongs(candidates)
 		sequencer := dj.NewSequencer()
 		var queue []db.Song
 		var phaseResults []dj.PhaseResult
 		var buildErr error
 		if semanticUsed {
-			queue, phaseResults, buildErr = sequenceAvailableSemanticPhases(semanticDJ.Pools, plan, personaDef, scoreCtx)
+			queue, phaseResults, buildErr = sequenceAvailableSemanticPhases(phasePools, plan, personaDef, scoreCtx)
 		} else {
-			queue, phaseResults, buildErr = sequencer.BuildQueue(candidates, plan, personaDef, scoreCtx)
+			if len(candidates) == 0 {
+				queue, phaseResults, buildErr = sequenceAvailableSemanticPhases(make([]dj.PhaseCandidatePool, len(plan.Phases)), plan, personaDef, scoreCtx)
+			} else {
+				queue, phaseResults, buildErr = sequencer.BuildQueue(candidates, plan, personaDef, scoreCtx)
+			}
 		}
 		if buildErr != nil {
 			logger.API("DJ Mode: Failed to build queue: %v", buildErr)
@@ -2142,6 +2222,14 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 			plannedSongCount += max(phase.TargetCount, 1)
 		}
 		validation.Shortened = len(queue) < plannedSongCount
+		queueTracks := make([]playlist.Track, 0, len(queue))
+		for _, song := range queue {
+			queueTracks = append(queueTracks, playlist.Track{ID: song.ID, Features: scoreCtx.AudioFeatures[song.ID]})
+		}
+		actualDuration, durationEstimated := playlist.Duration(queueTracks)
+		if plan.TargetDurationMin > 0 {
+			validation.Shortened = actualDuration < float64(plan.TargetDurationMin*60)*.95
+		}
 		if validation.Shortened && semanticUsed {
 			switch {
 			case semanticDJ.AuditLimitReached:
@@ -2179,9 +2267,11 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 				"mode": "dj", "persona": persona, "prompt": prompt, "genres": seedGenres,
 				"artists": seedArtists, "minYear": promptMinYear, "maxYear": promptMaxYear, "source": source,
 			},
-			"songs":      songsAny,
-			"dj":         dj.DJResponse{Plan: plan, Phases: phaseResults, Narration: narration},
-			"validation": validation,
+			"songs":           songsAny,
+			"dj":              dj.DJResponse{Plan: plan, Phases: phaseResults, Narration: narration},
+			"validation":      validation,
+			"audioIntent":     scoreCtx.AudioIntent,
+			"durationSeconds": actualDuration, "durationEstimated": durationEstimated,
 		}
 		if semanticUsed {
 			response["retrieval"] = map[string]interface{}{

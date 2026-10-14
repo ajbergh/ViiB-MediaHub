@@ -3,6 +3,7 @@
 package dj
 
 import (
+	"github.com/ajbergh/viib-mediahub/internal/playlist"
 	"math"
 	"strings"
 	"time"
@@ -152,6 +153,15 @@ func ScoreSongForPhase(song db.Song, phase DJPhase, ctx *ScoreContext, persona P
 		totalScore = 1
 	}
 
+	if ctx.AudioFeatures != nil {
+		intent := ctx.AudioIntent
+		if intent.TargetEnergy == "" {
+			intent.TargetEnergy = phase.TargetEnergy
+		}
+		if intent.HasPreferences() {
+			totalScore = .85*totalScore + .15*playlist.PreferenceScore(intent, ctx.AudioFeatures[song.ID], song.Mood, song.Energy)
+		}
+	}
 	breakdown.TotalScore = totalScore
 	return totalScore, breakdown
 }
@@ -431,6 +441,7 @@ func (ctx *ScoreContext) MarkArtistSeen(artist string) {
 
 // UpdateLastSong updates the context with the last selected song's properties.
 func (ctx *ScoreContext) UpdateLastSong(song db.Song) {
+	ctx.LastSongID = song.ID
 	ctx.LastSongBPM = getSongBPM(song, ctx)
 	ctx.LastSongMood = song.Mood
 	ctx.LastSongEnergy = song.Energy
