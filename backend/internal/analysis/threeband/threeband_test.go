@@ -1,6 +1,8 @@
 package threeband
 
 import (
+	"encoding/binary"
+	"encoding/json"
 	"math"
 	"reflect"
 	"testing"
@@ -36,8 +38,37 @@ func TestChunkingTailAndArtifact(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := Decode(raw)
-	if err != nil || !reflect.DeepEqual(want, got) {
+	if err != nil {
+		t.Fatal(err)
+	}
+	quantized := want
+	quantized.Low = append([]float64(nil), want.Low...)
+	quantized.Mid = append([]float64(nil), want.Mid...)
+	quantized.High = append([]float64(nil), want.High...)
+	for _, band := range [][]float64{quantized.Low, quantized.Mid, quantized.High} {
+		for i := range band {
+			band[i] = float64(float32(band[i]))
+		}
+	}
+	if !reflect.DeepEqual(quantized, got) {
 		t.Fatal("artifact round trip")
+	}
+	legacy, _ := json.Marshal(want)
+	if len(raw)*3 >= len(legacy) {
+		t.Fatalf("insufficient reduction: binary=%d JSON=%d", len(raw), len(legacy))
+	}
+	if decoded, err := Decode(legacy); err != nil || !reflect.DeepEqual(want, decoded) {
+		t.Fatal("legacy round trip", err)
+	}
+	for _, bad := range [][]byte{raw[:4], append(append([]byte(nil), raw...), 0)} {
+		if _, err := Decode(bad); err == nil {
+			t.Fatal("malformed artifact accepted")
+		}
+	}
+	bad := append([]byte(nil), raw...)
+	binary.LittleEndian.PutUint32(bad[20:], MaxWindows+1)
+	if _, err := Decode(bad); err == nil {
+		t.Fatal("unbounded count accepted")
 	}
 	if want.Frames != 48007 || len(want.Low) != 51 {
 		t.Fatal("tail lost")

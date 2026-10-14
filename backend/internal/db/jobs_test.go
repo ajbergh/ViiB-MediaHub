@@ -258,3 +258,68 @@ func TestRestartRequeuesAnalysisButPreservesCancellationAndLeases(t *testing.T) 
 		t.Fatal("canceled job resumed", err)
 	}
 }
+
+func TestConcurrentAnalysisClaimsSerializeAndAllowOtherJobs(t *testing.T) {
+	d, err := New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	for _, job := range []Job{{ID: "a", Type: "analyze_tracks", Priority: 10}, {ID: "b", Type: "analyze_tracks", Priority: 10}, {ID: "scan", Type: "quick_scan"}} {
+		if err := d.CreateJob(job); err != nil {
+			t.Fatal(err)
+		}
+	}
+	type result struct {
+		job Job
+		err error
+	}
+	start := make(chan struct{})
+	results := make(chan result, 3)
+	for i := 0; i < 3; i++ {
+		go func() { <-start; j, e := d.ClaimNextQueuedJob("test"); results <- result{j, e} }()
+	}
+	close(start)
+	active := ""
+	scans, empty := 0, 0
+	for i := 0; i < 3; i++ {
+		r := <-results
+		if r.err == sql.ErrNoRows {
+			empty++
+			continue
+		}
+		if r.err != nil {
+			t.Fatal(r.err)
+		}
+		if r.job.Type == "analyze_tracks" {
+			if active != "" {
+				t.Fatal("two analyses claimed")
+			}
+			active = r.job.ID
+		} else {
+			scans++
+		}
+	}
+	if active == "" || scans != 1 || empty != 1 {
+		t.Fatalf("active=%s scans=%d empty=%d", active, scans, empty)
+	}
+	pending := "a"
+	if active == pending {
+		pending = "b"
+	}
+	if err := d.StartJob(pending, "bypass"); err != sql.ErrNoRows {
+		t.Fatalf("StartJob bypass: %v", err)
+	}
+	if changed, err := d.RequestJobCancellation(active); err != nil || !changed {
+		t.Fatalf("cancel: %v", err)
+	}
+	if _, err := d.ClaimNextQueuedJob("test"); err != sql.ErrNoRows {
+		t.Fatalf("canceling failed to block: %v", err)
+	}
+	if _, err := d.conn.Exec(`UPDATE operation_jobs SET status='canceled' WHERE id=?`, active); err != nil {
+		t.Fatal(err)
+	}
+	if next, err := d.ClaimNextQueuedJob("test"); err != nil || next.ID != pending {
+		t.Fatalf("follow-up: %+v %v", next, err)
+	}
+}

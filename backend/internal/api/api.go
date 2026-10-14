@@ -2268,11 +2268,6 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			batchGenres, batchMood, batchYears := applied.Genres, applied.Mood, applied.Years
-			if batchGenres > 0 {
-				if aggregateErr := a.db.UpdateGenreStats(); aggregateErr != nil {
-					logger.API("enrichAllMetadataStream: Batch %d committed but genre aggregate refresh failed: %v", job.batchNum+1, aggregateErr)
-				}
-			}
 
 			// Update totals thread-safely
 			mu.Lock()
@@ -2328,7 +2323,19 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 
 	// Start workers
 	var wg sync.WaitGroup
-	defer wg.Wait()
+	aggregatesRefreshed := false
+	refreshAggregates := func() {
+		if aggregatesRefreshed {
+			return
+		}
+		aggregatesRefreshed = true
+		if genresUpdated > 0 {
+			if err := a.db.UpdateGenreStats(); err != nil {
+				logger.API("Enrichment genre aggregate refresh failed: %v", err)
+			}
+		}
+	}
+	defer func() { wg.Wait(); refreshAggregates() }()
 	for w := 0; w < concurrency; w++ {
 		wg.Add(1)
 		go func(workerID int) {
@@ -2386,6 +2393,8 @@ func (a *API) enrichAllMetadataStream(w http.ResponseWriter, r *http.Request) {
 	// Stop keepalive and wait for workers
 	close(keepaliveDone)
 	wg.Wait()
+
+	refreshAggregates()
 
 	// Build completion message
 	completionMsg := fmt.Sprintf("Enrichment complete! Changed songs: %d, no metadata: %d, Genres: %d, Mood: %d, Years: %d", changedSongs, emptyResults, genresUpdated, moodUpdated, yearsUpdated)

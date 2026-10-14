@@ -44,6 +44,15 @@ func TestLocalThreeBandReadFencesSourceAndPayload(t *testing.T) {
 	if json.Unmarshal(w.Body.Bytes(), &response) != nil || w.Code != 200 || response.Representation != threeband.Kind || response.Overview.Frames != 3 || w.Header().Get("ETag") == "" {
 		t.Fatalf("waveform response: %d %s", w.Code, w.Body.String())
 	}
+	artifact.Data, _ = json.Marshal(o)
+	artifact.Encoding = threeband.LegacyEncoding
+	if err := a.db.UpsertTrackAnalysisArtifact(artifact); err != nil {
+		t.Fatal(err)
+	}
+	if w := call(); w.Code != 200 {
+		t.Fatalf("legacy response: %d %s", w.Code, w.Body.String())
+	}
+	artifact.Encoding = threeband.Encoding
 	artifact.Data = []byte("broken")
 	if err := a.db.UpsertTrackAnalysisArtifact(artifact); err != nil {
 		t.Fatal(err)
