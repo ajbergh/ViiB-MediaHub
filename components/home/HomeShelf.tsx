@@ -1,7 +1,6 @@
 /** Lays out a titled horizontal content shelf on Home. */
 
 import React from 'react';
-import { ChevronRight } from 'lucide-react';
 import { cn } from '../ui/cn';
 
 interface HomeShelfProps {
@@ -24,25 +23,24 @@ export const HomeShelf: React.FC<HomeShelfProps> = ({
   contentClassName,
 }) => {
   return (
-    <section className={cn('mb-10', className)}>
-      <div className="mb-4 flex items-end justify-between gap-4">
+    <section className={cn('mb-8', className)}>
+      <div className="mb-3 flex items-end justify-between gap-4">
         <div className="min-w-0">
-          <h2 className="text-section font-semibold text-text-main">{title}</h2>
-          {subtitle ? <p className="mt-1 text-sm text-text-subtle">{subtitle}</p> : null}
+          {subtitle ? <p className="mb-0.5 text-xs font-medium text-text-secondary">{subtitle}</p> : null}
+          <h2 className="text-section font-bold tracking-tight text-text-main">{title}</h2>
         </div>
         {actionLabel && onAction ? (
           <button
             type="button"
             onClick={onAction}
-            className="inline-flex flex-shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-main"
+            className="flex-shrink-0 text-xs font-bold uppercase tracking-wider text-text-secondary transition-colors hover:text-text-main hover:underline"
           >
-            {actionLabel}
-            <ChevronRight size={15} aria-hidden="true" />
+            Show all
           </button>
         ) : null}
       </div>
 
-      <div className={cn('flex gap-5 overflow-x-auto pb-3 scrollbar-hide', contentClassName)}>
+      <div className={cn('-mx-3 flex gap-1 overflow-x-auto px-3 pb-2 scrollbar-hide', contentClassName)}>
         {children}
       </div>
     </section>

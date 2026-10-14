@@ -290,18 +290,18 @@ export const Downloads: React.FC = () => {
   if (downloads.length === 0) {
     return (
       <div className="p-8 pb-32 flex flex-col items-center justify-center min-h-[60vh]">
-        <div className="mb-6 opacity-20">
-          <Download size={80} />
+        <div className="w-16 h-16 rounded-full bg-surface-2 flex items-center justify-center mb-4 text-text-subtle">
+          <Download size={32} />
         </div>
-        <h1 className="text-2xl font-bold mb-2">No Downloads Yet</h1>
-        <p className="text-text-subtle text-center max-w-sm mb-6">
+        <h1 className="text-xl font-bold text-text-main mb-2">No Downloads Yet</h1>
+        <p className="text-text-secondary text-sm text-center max-w-sm mb-6">
           Download songs, albums, or playlists from Spotify to listen offline. Look for the download button on any track.
         </p>
         <button
           onClick={() => setShowDirectDownload(true)}
-          className="px-6 py-3 bg-brand hover:bg-brand/90 text-white font-semibold rounded-lg transition-colors flex items-center gap-2"
+          className="px-6 py-2.5 bg-brand hover:bg-brand-hover text-surface-0 font-bold text-sm rounded-full transition-all flex items-center gap-2"
         >
-          <Link2 size={20} />
+          <Link2 size={18} />
           Download from URL
         </button>
         <DirectDownloadDialog

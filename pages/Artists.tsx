@@ -110,7 +110,7 @@ export const Artists: React.FC = () => {
         {artists.length === 0 ? (
             <EmptyArtists />
         ) : (
-             <div style={{ '--card-cols': listView ? 1 : cardCols, '--card-gap': listView ? '0px' : '1.5rem' } as React.CSSProperties}>
+             <div style={{ '--card-cols': listView ? 1 : cardCols, '--card-gap': listView ? '0px' : '0.5rem' } as React.CSSProperties}>
              {listView && <LibraryListHeader title="Artist" detail="Albums" stats="Tracks" />}
              <VirtuosoGrid
                 key={listView ? 'list' : 'tiles'}
@@ -124,11 +124,6 @@ export const Artists: React.FC = () => {
                 itemContent={(index, artist) => {
                     const metadata = artistMetadata[artist.name];
                     const displayImage = metadata?.imageUrl || artist.imageUrl;
-                    
-                    // Debug first few artists
-                    if (index < 3) {
-                        console.log(`🎨 Artist "${artist.name}": metadata=${!!metadata}, imageUrl=${displayImage?.substring(0, 50)}...`);
-                    }
 
                     if (listView) return <LibraryListRow index={index} name={artist.name}
                       artwork={<div className="w-full h-full rounded-full flex items-center justify-center" style={{ background: displayImage ? `${cssUrl(displayImage)} center/cover no-repeat` : generateGradient(artist.name) }}>{!displayImage && artist.name.charAt(0)}</div>}
@@ -137,30 +132,27 @@ export const Artists: React.FC = () => {
 
                     return (
                         <div 
-                            className="bg-surface-2 p-6 rounded-lg hover:bg-surface-3 transition-all group cursor-pointer flex flex-col items-center text-center relative overflow-hidden h-full"
+                            className="bg-transparent p-3 rounded-lg hover:bg-surface-hover transition-colors group cursor-pointer flex flex-col items-start text-left relative overflow-hidden h-full"
                             onClick={() => handleArtistClick(artist.name)}
                             onContextMenu={(e) => openContextMenu(e, ContextMenuType.ARTIST, artist)}
                         >
-                            {/* Background blur effect for metadata enhancement hint */}
-                            {metadata?.imageUrl && (
-                                <div className="absolute inset-0 bg-brand/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
-                            )}
-
-                            <div 
-                              className="w-40 h-40 rounded-full mb-4 shadow-lg flex items-center justify-center text-display font-bold text-white/20 relative overflow-hidden border-4 border-surface-3 group-hover:border-surface-border transition-colors flex-shrink-0"
-                                style={{ 
-                                    background: displayImage
-                                        ? `${cssUrl(displayImage)} center/cover no-repeat` 
-                                        : generateGradient(artist.name)
-                                }}
-                            >
-                                {!displayImage && artist.name.charAt(0)}
+                            <div className="relative w-full aspect-square mb-3">
+                                <div 
+                                  className="w-full h-full rounded-full shadow-xl flex items-center justify-center text-display font-bold text-text-main/30 overflow-hidden bg-surface-3"
+                                    style={{ 
+                                        background: displayImage
+                                            ? `${cssUrl(displayImage)} center/cover no-repeat` 
+                                            : generateGradient(artist.name)
+                                    }}
+                                >
+                                    {!displayImage && artist.name.charAt(0)}
+                                </div>
+                                <div className="absolute bottom-1 right-1 w-11 h-11 rounded-full bg-brand text-surface-0 flex items-center justify-center shadow-xl translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-200">
+                                    <svg className="w-5 h-5 fill-current ml-0.5" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+                                </div>
                             </div>
-                            <h4 className="font-bold truncate text-text-main mb-1 w-full text-lg">{artist.name}</h4>
-                            <p className="text-sm text-text-secondary">Artist</p>
-                            <div className="mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <span className="text-xs bg-surface-border px-3 py-1 rounded-full text-white">{artist.songCount} songs • {artist.albumCount} albums</span>
-                            </div>
+                            <h4 className="font-semibold text-sm truncate text-text-main mb-1 w-full">{artist.name}</h4>
+                            <p className="text-xs text-text-secondary">Artist • {artist.songCount} songs</p>
                         </div>
                     );
                 }}

@@ -271,12 +271,11 @@ export const SmartPlaylists: React.FC = () => {
   };
 
   return (
-    <div className="h-full flex flex-col bg-surface-0 overflow-hidden">
+    <div className="h-full flex flex-col bg-surface-1 overflow-hidden">
       {/* Header & Input */}
-      <div className="p-8 pb-4">
+      <div className="px-6 md:px-8 pt-6 pb-4">
         <div className="flex items-center gap-3 mb-4">
-          <Sparkles className="text-brand" size={32} />
-          <h1 className="text-display text-text-main">AI Smart Mix</h1>
+          <h1 className="text-display font-bold tracking-tight text-text-main">Smart Mix</h1>
         </div>
 
         {/* Mode Toggle */}
@@ -285,36 +284,36 @@ export const SmartPlaylists: React.FC = () => {
             selected={!aiDjMode}
             accent="brand"
             onClick={() => setAIDJMode(false)}
-            className="rounded-full px-4 py-2 text-body font-medium"
+            className="rounded-full px-4 py-1.5 text-sm"
           >
-            <Music size={16} className="mr-2" />
+            <Music size={15} className="mr-1.5" />
             Playlist
           </Chip>
           <Chip
             selected={aiDjMode}
             accent="brand"
             onClick={() => setAIDJMode(true)}
-            className="rounded-full px-4 py-2 text-body font-medium"
+            className="rounded-full px-4 py-1.5 text-sm"
           >
-            <Radio size={16} className="mr-2" />
+            <Radio size={15} className="mr-1.5" />
             DJ Mode
           </Chip>
         </div>
         
-        <p className="text-body text-text-secondary mb-4 max-w-2xl">
+        <p className="text-sm text-text-secondary mb-4 max-w-2xl">
           {aiDjMode 
-            ? "Describe your vibe and I'll build a structured DJ set with deliberate energy flow and phase progression."
-            : "Describe the vibe, genre, era, or mood you're looking for, and I'll build a custom playlist from your library."
+            ? "Build a structured DJ set with deliberate energy flow and phase progression."
+            : "Generate a custom playlist from your library by mood, genre, era, or tempo."
           }
         </p>
 
         <div
-          className={`mb-4 flex max-w-3xl items-center justify-between gap-3 rounded-xl border px-4 py-3 ${
+          className={`mb-4 flex max-w-3xl items-center justify-between gap-3 rounded-lg border px-4 py-3 ${
             semanticReady
               ? 'border-success/30 bg-success/10'
               : semanticIndexing
                 ? 'border-brand/30 bg-brand/10'
-                : 'border-surface-highlight bg-surface-1'
+                : 'border-surface-border bg-surface-2'
           }`}
           aria-live="polite"
         >
@@ -322,7 +321,7 @@ export const SmartPlaylists: React.FC = () => {
             {semanticIndexing ? (
               <RefreshCw size={18} className="mt-0.5 shrink-0 animate-spin text-brand" />
             ) : (
-              <Sparkles size={18} className={`mt-0.5 shrink-0 ${semanticReady ? 'text-success' : 'text-text-subtle'}`} />
+              <Zap size={18} className={`mt-0.5 shrink-0 ${semanticReady ? 'text-success' : 'text-text-subtle'}`} />
             )}
             <div>
               <p className={`text-meta font-semibold ${semanticReady ? 'text-success' : semanticIndexing ? 'text-brand' : 'text-text-main'}`}>
@@ -338,14 +337,14 @@ export const SmartPlaylists: React.FC = () => {
             <Button
               onClick={() => navigate('/settings', { state: { tab: 'ai' } })}
               variant="secondary"
-              className="shrink-0 rounded-lg px-3 py-1.5 text-meta"
+              className="shrink-0 rounded-full px-3.5 py-1.5 text-meta"
             >
               Index settings
             </Button>
           )}
         </div>
 
-        <div className="flex gap-4 max-w-3xl">
+        <div className="flex gap-3 max-w-3xl">
           <TextInput
             type="text"
             placeholder={aiDjMode 
@@ -356,15 +355,15 @@ export const SmartPlaylists: React.FC = () => {
             value={aiDjPrompt}
             onChange={(e) => setAIDJPrompt(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
-            className="flex-1 rounded-xl px-6 py-4 ring-1 ring-surface-highlight"
+            className="flex-1 rounded-full px-5 py-3"
           />
           <Button
             onClick={handleGenerate}
             disabled={aiDjIsLoading || !aiDjPrompt.trim()}
             variant="primary"
             accent="brand"
-            leftIcon={aiDjIsLoading ? <RefreshCw className="animate-spin" /> : <Sparkles />}
-            className="px-8 py-4 rounded-xl text-body font-semibold"
+            leftIcon={aiDjIsLoading ? <RefreshCw className="animate-spin" size={16} /> : <Play size={16} fill="currentColor" />}
+            className="px-6 py-3 rounded-full text-sm font-bold"
           >
             {aiDjMode ? 'Start Set' : 'Generate'}
           </Button>

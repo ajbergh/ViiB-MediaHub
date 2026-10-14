@@ -40,43 +40,38 @@ export const HomeArtistCard: React.FC<HomeArtistCardProps> = ({
         }
       }}
       className={cn(
-        'group relative flex-shrink-0 cursor-pointer rounded-lg bg-surface-2 text-center ring-1 ring-transparent transition-all hover:bg-surface-3 hover:ring-surface-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70',
-        compact ? 'w-40 p-3' : 'w-48 p-4',
+        'group relative flex-shrink-0 cursor-pointer rounded-lg bg-transparent p-3 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70',
+        compact ? 'w-40' : 'w-44',
         className
       )}
     >
-      <div
-        className="relative mx-auto mb-3 aspect-square w-full max-w-[152px] overflow-hidden rounded-full bg-surface-3 shadow-lg"
-        style={{ background: imageUrl ? `${cssUrl(imageUrl)} center/cover no-repeat` : generateGradient(artist.name) }}
-      >
-        {!imageUrl && (
-          <span className="flex h-full w-full items-center justify-center text-white/60">
-            <UserRound size={compact ? 36 : 44} aria-hidden="true" />
-          </span>
-        )}
-        <span className="absolute inset-0 bg-black/30 opacity-0 transition-opacity group-hover:opacity-100" />
+      <div className="relative mx-auto mb-3 aspect-square w-full">
+        <div
+          className="h-full w-full overflow-hidden rounded-full bg-surface-3 shadow-xl"
+          style={{ background: imageUrl ? `${cssUrl(imageUrl)} center/cover no-repeat` : generateGradient(artist.name) }}
+        >
+          {!imageUrl && (
+            <span className="flex h-full w-full items-center justify-center text-text-main/60">
+              <UserRound size={compact ? 36 : 44} aria-hidden="true" />
+            </span>
+          )}
+        </div>
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             onPlay();
           }}
-          className="absolute bottom-2 right-2 flex h-10 w-10 translate-y-2 items-center justify-center rounded-full bg-brand text-black opacity-0 shadow-xl transition-all group-hover:translate-y-0 group-hover:opacity-100 hover:scale-105 focus-visible:translate-y-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-2"
+          className="absolute bottom-1 right-1 flex h-11 w-11 translate-y-2 items-center justify-center rounded-full bg-brand text-surface-0 opacity-0 shadow-xl transition-all group-hover:translate-y-0 group-hover:opacity-100 hover:scale-105 hover:bg-brand-hover focus-visible:translate-y-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
           aria-label={`Play ${artist.name}`}
         >
-          <Play size={18} className="ml-0.5 fill-current" aria-hidden="true" />
+          <Play size={20} className="ml-0.5 fill-current" aria-hidden="true" />
         </button>
       </div>
-      <h3 className={cn('truncate font-semibold text-text-main', compact ? 'text-sm' : 'text-base')}>
+      <h3 className="truncate text-sm font-semibold text-text-main">
         {artist.name}
       </h3>
-      <p className="mt-1 truncate text-sm text-text-secondary">Artist</p>
-      {!compact && (
-        <p className="mt-2 text-xs text-text-subtle">
-          {artist.songCount} {artist.songCount === 1 ? 'song' : 'songs'} • {artist.albumCount}{' '}
-          {artist.albumCount === 1 ? 'album' : 'albums'}
-        </p>
-      )}
+      <p className="mt-1 truncate text-xs text-text-secondary">Artist</p>
     </div>
   );
 };

@@ -54,40 +54,41 @@ export const SmartMixCard: React.FC<SmartMixCardProps> = ({
 
   return (
     <div
-      className="flex-shrink-0 w-80 bg-surface-2 rounded-xl overflow-hidden group cursor-pointer border border-transparent hover:border-surface-border transition-all relative snap-start"
+      className="group relative w-44 flex-shrink-0 cursor-pointer snap-start rounded-lg bg-transparent p-3 transition-colors hover:bg-surface-hover"
       onClick={onClick}
       onContextMenu={onContextMenu}
     >
-      {/* Gradient Header with Title and Play Button */}
+      {/* Square Cover Artwork with Spotify Mix Badge and Play Button */}
       <div
-        className="h-40 p-6 flex flex-col justify-end relative"
+        className="relative mb-3 flex aspect-square w-full flex-col justify-between overflow-hidden rounded-md p-3.5 shadow-xl"
         style={{
-          background: `linear-gradient(135deg, ${mix.coverColors[0]}, ${mix.coverColors[1]})`,
+          background: `linear-gradient(145deg, ${mix.coverColors[0]}, ${mix.coverColors[1]})`,
         }}
       >
-        <h3 className="text-2xl font-bold text-white shadow-black drop-shadow-md">
+        <span className="w-fit rounded bg-surface-0/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-text-main backdrop-blur-sm">
+          Mix • {mix.songIds.length}
+        </span>
+
+        <h3 className="line-clamp-2 text-lg font-extrabold leading-tight tracking-tight text-text-main drop-shadow">
           {mix.name}
         </h3>
-        <p className="text-white/80 text-sm font-medium drop-shadow">
-          {mix.songIds.length} tracks
-        </p>
 
         {/* Play Button - Appears on Hover */}
         <button
+          type="button"
           onClick={handlePlayClick}
-          className="absolute bottom-4 right-4 w-12 h-12 bg-brand text-black rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transform translate-y-4 group-hover:translate-y-0 transition-all shadow-xl hover:scale-105 hover:bg-brand-hover"
+          className="absolute bottom-2 right-2 flex h-11 w-11 translate-y-2 items-center justify-center rounded-full bg-brand text-surface-0 opacity-0 shadow-xl transition-all group-hover:translate-y-0 group-hover:opacity-100 hover:scale-105 hover:bg-brand-hover"
           aria-label={`Play ${mix.name}`}
         >
-          <Play size={24} className="fill-current ml-1" />
+          <Play size={20} className="ml-0.5 fill-current" />
         </button>
       </div>
 
-      {/* Description Section */}
-      <div className="p-4">
-        <p className="text-text-secondary text-sm line-clamp-2">
-          {mix.description}
-        </p>
-      </div>
+      {/* Title & Description */}
+      <h4 className="truncate text-sm font-semibold text-text-main">{mix.name}</h4>
+      <p className="mt-1 line-clamp-2 text-xs text-text-secondary">
+        {mix.description}
+      </p>
     </div>
   );
 };

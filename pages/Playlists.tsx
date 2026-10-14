@@ -74,8 +74,9 @@ export const Playlists: React.FC = () => {
     <Page>
       <PageHeader
         heading="Playlists"
+        subtitle={`${playlists.length} ${playlists.length === 1 ? 'playlist' : 'playlists'}`}
         actions={
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
           <input
             ref={importInputRef}
             type="file"
@@ -85,15 +86,15 @@ export const Playlists: React.FC = () => {
           />
           <button
             onClick={() => importInputRef.current?.click()}
-            className="flex items-center gap-2 bg-surface-hover hover:bg-surface-border text-text-main px-4 py-2 rounded-full font-medium transition-colors text-sm"
+            className="flex items-center gap-2 bg-surface-3 hover:bg-surface-highlight text-text-main px-4 py-2 rounded-full font-semibold transition-colors text-xs"
           >
-            <FileUp size={16} /> Import M3U
+            <FileUp size={15} /> Import M3U
           </button>
           <button
             onClick={() => setShowInput(true)}
-            className="flex items-center gap-2 bg-surface-hover hover:bg-surface-border text-text-main px-4 py-2 rounded-full font-medium transition-colors text-sm"
+            className="flex items-center gap-2 bg-brand hover:bg-brand-hover text-surface-0 px-4 py-2 rounded-full font-bold transition-transform hover:scale-[1.02] text-xs"
           >
-            <Plus size={16} /> Create Playlist
+            <Plus size={15} /> Create Playlist
           </button>
           <CardSizeSlider listAtMinimum value={cardCols} onChange={handleCardColsChange} />
           </div>
@@ -101,18 +102,18 @@ export const Playlists: React.FC = () => {
       />
 
       {showInput && (
-        <div className="mb-8 p-6 bg-surface-2 rounded-xl border border-surface-border flex gap-4 items-center">
+        <div className="mb-6 p-4 bg-surface-2 rounded-lg border border-surface-border flex gap-3 items-center">
           <input 
             type="text" 
-            placeholder="My Cool Playlist" 
-            className="flex-1 bg-black border border-surface-border rounded px-4 py-2 text-white focus:border-brand outline-none"
+            placeholder="My Playlist #1" 
+            className="flex-1 bg-surface-3 border border-transparent focus:border-surface-slider rounded-full px-4 py-2 text-sm text-text-main outline-none"
             value={newPlaylistName}
             onChange={(e) => setNewPlaylistName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
             autoFocus
           />
-          <button onClick={handleCreate} className="bg-brand text-black font-bold px-4 py-2 rounded hover:bg-brand-hover">Save</button>
-          <button onClick={() => setShowInput(false)} className="text-text-secondary hover:text-text-main">Cancel</button>
+          <button onClick={handleCreate} className="bg-brand text-surface-0 font-bold px-5 py-2 rounded-full text-sm hover:bg-brand-hover transition-colors">Save</button>
+          <button onClick={() => setShowInput(false)} className="text-text-secondary hover:text-text-main text-sm font-medium px-2">Cancel</button>
         </div>
       )}
 
@@ -122,7 +123,7 @@ export const Playlists: React.FC = () => {
         <div>
         {listView && <LibraryListHeader title="Playlist" stats="Tracks" />}
         <div
-          className={listView ? 'grid gap-0' : 'grid gap-6'}
+          className={listView ? 'grid gap-0' : 'grid gap-2'}
           style={{ gridTemplateColumns: `repeat(${listView ? 1 : cardCols}, minmax(0, 1fr))` }}
         >
             {playlists.map((pl, index) => listView ? (
@@ -134,7 +135,7 @@ export const Playlists: React.FC = () => {
             ) : (
                 <div 
                     key={pl.id} 
-                    className="bg-surface-2 p-4 rounded-lg hover:bg-surface-3 transition-all group cursor-pointer"
+                    className="bg-transparent p-3 rounded-lg hover:bg-surface-hover transition-colors group cursor-pointer"
                     onContextMenu={(e) => openContextMenu(e, ContextMenuType.PLAYLIST, pl)}
                 >
                     <button type="button" className="w-full text-left rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand" aria-label={`Open playlist ${pl.name}`} onClick={() => navigate(`/playlist/${encodeURIComponent(pl.id)}`)}>
@@ -142,17 +143,17 @@ export const Playlists: React.FC = () => {
                       name={pl.name}
                       coverUrl={pl.coverUrl}
                       covers={thumbnails.get(pl.id) || []}
-                      className="mb-4"
+                      className="mb-3 shadow-xl"
                     />
-                    <h4 className="font-bold truncate text-text-main mb-1">{pl.name}</h4>
-                    <p className="text-sm text-text-secondary">{pl.songIds.length} songs</p>
+                    <h4 className="font-semibold text-sm truncate text-text-main mb-1">{pl.name}</h4>
+                    <p className="text-xs text-text-secondary">{pl.songIds.length} songs</p>
                     </button>
                     <button
                       type="button"
-                      className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-text-secondary hover:text-brand"
+                      className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-text-subtle hover:text-text-main transition-colors"
                       onClick={(event) => { event.stopPropagation(); void handleExport(pl.id, pl.name); }}
                     >
-                      <Download size={14} /> Export M3U
+                      <Download size={13} /> Export M3U
                     </button>
                 </div>
             ))}

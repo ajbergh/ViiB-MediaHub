@@ -23,11 +23,8 @@ export const HomeStatsCompact: React.FC<HomeStatsCompactProps> = ({
   ];
 
   return (
-    <section className="mb-10">
-      <div className="mb-4 flex items-center gap-2 text-text-secondary">
-        <Library size={18} aria-hidden="true" />
-        <h2 className="text-card font-semibold text-text-main">Library Snapshot</h2>
-      </div>
+    <section className="mb-6">
+      <h2 className="mb-3 text-card font-bold tracking-tight text-text-main">Library Overview</h2>
       <div className="grid gap-3 sm:grid-cols-3">
         {stats.map((stat) => {
           const Icon = stat.icon;
@@ -36,14 +33,14 @@ export const HomeStatsCompact: React.FC<HomeStatsCompactProps> = ({
               key={stat.label}
               type="button"
               onClick={() => navigate(stat.path)}
-              className="flex items-center gap-3 rounded-lg bg-surface-1 px-4 py-3 text-left ring-1 ring-surface-3 transition-colors hover:bg-surface-2 hover:ring-surface-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
+              className="flex items-center gap-3.5 rounded-lg bg-surface-2/80 px-4 py-3.5 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
             >
-              <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-surface-2 text-brand">
-                <Icon size={20} aria-hidden="true" />
+              <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-surface-3 text-text-secondary">
+                <Icon size={18} aria-hidden="true" />
               </span>
               <span className="min-w-0">
-                <span className="block text-lg font-semibold text-text-main">{stat.value.toLocaleString()}</span>
-                <span className="block truncate text-sm text-text-secondary">{stat.label}</span>
+                <span className="block text-lg font-bold tabular-nums text-text-main">{stat.value.toLocaleString()}</span>
+                <span className="block truncate text-xs text-text-secondary">{stat.label}</span>
               </span>
             </button>
           );

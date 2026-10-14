@@ -935,95 +935,95 @@ export const Settings: React.FC = () => {
       />
 
       {/* Category Tabs Header */}
-      <div className="flex items-center gap-2 mb-8 overflow-x-auto pb-2 border-b border-surface-border scrollbar-none">
+      <div className="flex items-center gap-2 mb-8 flex-wrap pb-4 border-b border-surface-border">
         <button
           type="button"
           onClick={() => setActiveTab('library')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
             activeTab === 'library'
-              ? 'bg-brand text-black shadow-md shadow-brand/20'
-              : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-3'
+              ? 'bg-text-main text-surface-0 font-bold'
+              : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-hover'
           }`}
         >
-          <FolderOpen size={16} />
+          <FolderOpen size={15} />
           Library Sources
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('health')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
             activeTab === 'health'
-              ? 'bg-brand text-black shadow-md shadow-brand/20'
-              : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-3'
+              ? 'bg-text-main text-surface-0 font-bold'
+              : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-hover'
           }`}
         >
-          <ShieldCheck size={16} />
+          <ShieldCheck size={15} />
           Library Operations
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('audio')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
             activeTab === 'audio'
-              ? 'bg-brand text-black shadow-md shadow-brand/20'
-              : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-3'
+              ? 'bg-text-main text-surface-0 font-bold'
+              : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-hover'
           }`}
         >
-          <Volume2 size={16} />
+          <Volume2 size={15} />
           Playback & Audio
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('integrations')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
             activeTab === 'integrations'
-              ? 'bg-brand text-black shadow-md shadow-brand/20'
-              : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-3'
+              ? 'bg-text-main text-surface-0 font-bold'
+              : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-hover'
           }`}
         >
-          <Wifi size={16} />
+          <Wifi size={15} />
           Integrations & Spotify
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('ai')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
             activeTab === 'ai'
-              ? 'bg-brand text-black shadow-md shadow-brand/20'
-              : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-3'
+              ? 'bg-text-main text-surface-0 font-bold'
+              : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-hover'
           }`}
         >
-          <Sparkles size={16} />
+          <Sparkles size={15} />
           AI & Enrichment
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('appearance')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
             activeTab === 'appearance'
-              ? 'bg-brand text-black shadow-md shadow-brand/20'
-              : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-3'
+              ? 'bg-text-main text-surface-0 font-bold'
+              : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-hover'
           }`}
         >
-          <SlidersHorizontal size={16} />
+          <SlidersHorizontal size={15} />
           Appearance & Now Playing
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('system')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
             activeTab === 'system'
-              ? 'bg-brand text-black shadow-md shadow-brand/20'
-              : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-3'
+              ? 'bg-text-main text-surface-0 font-bold'
+              : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-hover'
           }`}
         >
-          <Terminal size={16} />
+          <Terminal size={15} />
           System & Logs
         </button>
       </div>

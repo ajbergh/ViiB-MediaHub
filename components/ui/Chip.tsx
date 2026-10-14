@@ -11,7 +11,6 @@ export interface ChipProps extends React.ButtonHTMLAttributes<HTMLButtonElement>
 
 export const Chip: React.FC<ChipProps> = ({
   selected = false,
-  accent = 'brand',
   className,
   children,
   type,
@@ -21,11 +20,11 @@ export const Chip: React.FC<ChipProps> = ({
     <button
       type={type ?? 'button'}
       className={cn(
-        'inline-flex items-center justify-center rounded-full px-3 py-1.5 text-[12px] ' +
-          'transition-all duration-150 ease-out motion-reduce:transition-none ' +
-          'bg-surface-2 text-text-secondary ring-1 ring-surface-3/80 ' +
-          'hover:text-text-main hover:ring-white/10',
-        selected && cn('text-text-main', 'ring-2', accentToRingClass(accent)),
+        'inline-flex items-center justify-center rounded-full px-3.5 py-1.5 text-[13px] font-medium ' +
+          'transition-colors duration-150 ease-out motion-reduce:transition-none',
+        selected
+          ? 'bg-text-main text-surface-0 font-semibold'
+          : 'bg-surface-3 text-text-main hover:bg-surface-highlight',
         className
       )}
       {...rest}

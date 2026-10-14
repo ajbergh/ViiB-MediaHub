@@ -49,29 +49,29 @@ const QueueRow = React.memo<QueueRowProps>(({
       onDragOver={(e) => onDragOver(e, index)}
       onDrop={(e) => onDrop(e, index)}
       onContextMenu={(e) => onContextMenu(e, song, index)}
-      className={`group flex items-center gap-3 p-2 mb-1 rounded-md border border-transparent ${
-        isCurrent ? 'bg-surface-hover border-l-brand border-l-4' : 'hover:bg-surface-highlight border-l-transparent border-l-4'
+      className={`group flex items-center gap-3 p-2 mb-0.5 rounded-md transition-colors ${
+        isCurrent ? 'bg-surface-highlight' : 'hover:bg-surface-hover'
       } ${isDragging ? 'opacity-50' : ''}`}
     >
-      <div className="cursor-grab active:cursor-grabbing text-surface-slider group-hover:text-text-subtle" aria-hidden="true">
-        <GripVertical size={16} />
+      <div className="cursor-grab active:cursor-grabbing text-text-subtle opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true">
+        <GripVertical size={15} />
       </div>
 
       <div
-        className="w-10 h-10 rounded bg-surface-3 bg-center bg-cover flex-shrink-0 relative"
+        className="w-10 h-10 rounded bg-surface-3 bg-center bg-cover flex-shrink-0 relative overflow-hidden"
         style={{ background: cover ? cssUrl(cover) : generateGradient(song.album) }}
       >
         <button
           type="button"
           onClick={() => onPlay(index)}
           aria-label={`Play ${song.title}`}
-          className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center cursor-pointer"
+          className="absolute inset-0 bg-surface-0/60 hidden group-hover:flex items-center justify-center cursor-pointer"
         >
-          <Play size={16} aria-hidden="true" className="text-white fill-current" />
+          <Play size={16} aria-hidden="true" className="text-text-main fill-current" />
         </button>
         {isCurrent && (
-          <div className="absolute inset-0 bg-black/40 flex items-center justify-center" aria-hidden="true">
-            <div className="w-3 h-3 bg-brand rounded-full animate-pulse shadow-[0_0_8px_rgb(29,185,84)]"></div>
+          <div className="absolute inset-0 bg-surface-0/50 flex items-center justify-center" aria-hidden="true">
+            <div className="w-2.5 h-2.5 bg-brand rounded-full animate-pulse"></div>
           </div>
         )}
       </div>
@@ -91,7 +91,7 @@ const QueueRow = React.memo<QueueRowProps>(({
 
       <button
         onClick={(e) => { e.stopPropagation(); onRemove(index); }}
-        className="p-1.5 rounded hover:bg-surface-border text-surface-slider group-hover:text-text-secondary hover:text-error transition-colors"
+        className="p-1.5 rounded-md hover:bg-surface-3 text-text-subtle opacity-0 group-hover:opacity-100 hover:text-error transition-all"
         title="Remove from Queue"
         aria-label={`Remove ${song.title} from queue`}
       >
@@ -117,7 +117,7 @@ export const Queue: React.FC = () => {
 
   const albumCovers = useAlbumCovers();
   const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
-  const [height, setHeight] = useState(500);
+  const [height, setHeight] = useState(520);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
 
   const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
@@ -173,35 +173,35 @@ export const Queue: React.FC = () => {
 
   return (
     <div
-      className="fixed bottom-24 right-4 w-full max-w-[400px] bg-surface-2 border border-surface-3 rounded-xl shadow-2xl z-40 flex flex-col overflow-hidden transition-all duration-200"
+      className="fixed bottom-24 right-4 w-full max-w-[380px] bg-surface-2 border border-surface-border rounded-lg shadow-2xl z-40 flex flex-col overflow-hidden transition-all duration-200"
       style={{ height: `${height}px` }}
       role="region"
       aria-label="Playback queue"
     >
       {/* Resize Handle */}
       <div
-        className="h-4 w-full bg-surface-highlight cursor-ns-resize flex items-center justify-center hover:bg-surface-hover"
+        className="h-3 w-full bg-surface-2 cursor-ns-resize flex items-center justify-center hover:bg-surface-hover"
         onMouseDown={handleMouseDown}
         aria-hidden="true"
       >
-        <div className="w-12 h-1 bg-surface-slider rounded-full"></div>
+        <div className="w-10 h-1 bg-surface-3 rounded-full"></div>
       </div>
 
       {/* Header */}
-      <div className="p-4 border-b border-surface-3 flex items-center justify-between bg-surface-2">
-        <div className="flex items-center gap-2">
-          <h2 className="font-bold text-text-main">Queue</h2>
-          <span className="text-xs text-text-secondary bg-surface-hover px-2 py-0.5 rounded-full">
+      <div className="px-4 py-3 border-b border-surface-border flex items-center justify-between bg-surface-2">
+        <div className="flex items-center gap-2.5">
+          <h2 className="text-base font-bold text-text-main tracking-tight">Queue</h2>
+          <span className="text-xs font-medium text-text-secondary bg-surface-3 px-2 py-0.5 rounded-full">
             {queue.length} {queue.length === 1 ? 'track' : 'tracks'}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {currentSongIndex >= 0 && queue.length > 0 && (
             <button
               onClick={jumpToCurrent}
               aria-label="Jump to current track"
               title="Jump to current track"
-              className="p-1 rounded-full text-text-secondary hover:bg-surface-hover hover:text-text-main"
+              className="p-1.5 rounded-full text-text-secondary hover:bg-surface-hover hover:text-text-main transition-colors"
             >
               <LocateFixed size={16} aria-hidden="true" />
             </button>
@@ -209,7 +209,7 @@ export const Queue: React.FC = () => {
           {queue.length > 0 && (
             <button
               onClick={clearQueue}
-              className="text-xs text-text-secondary hover:text-text-main hover:underline mr-2"
+              className="text-xs font-semibold text-text-secondary hover:text-text-main px-2 py-1 rounded hover:bg-surface-hover transition-colors"
             >
               Clear
             </button>
@@ -217,7 +217,7 @@ export const Queue: React.FC = () => {
           <button
             onClick={() => setQueueOpen(false)}
             aria-label="Close queue"
-            className="p-1 hover:bg-surface-hover rounded-full text-text-secondary hover:text-text-main"
+            className="p-1.5 hover:bg-surface-hover rounded-full text-text-secondary hover:text-text-main transition-colors"
           >
             <X size={18} aria-hidden="true" />
           </button>
@@ -225,7 +225,7 @@ export const Queue: React.FC = () => {
       </div>
 
       {/* Virtualized List */}
-      <div className="flex-1 overflow-hidden bg-surface-1">
+      <div className="flex-1 overflow-hidden bg-surface-2">
         {queue.length === 0 ? (
           <EmptyQueue />
         ) : (

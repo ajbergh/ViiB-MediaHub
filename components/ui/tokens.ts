@@ -22,8 +22,8 @@ export const VIIB = {
     },
   },
   radius: {
-    card: 'rounded-xl',
-    control: 'rounded-lg',
+    card: 'rounded-lg',
+    control: 'rounded-md',
     pill: 'rounded-full',
   },
   motion: {
@@ -32,27 +32,27 @@ export const VIIB = {
     easing: 'ease-out',
   },
   layout: {
-    sectionPadding: 'p-6',
-    maxContent: 'max-w-[1440px]',
+    sectionPadding: 'px-6 py-5',
+    maxContent: 'max-w-[1600px]',
   },
 } as const;
 
 // Use only when a component requires a literal color string (e.g., canvas/WebAudio visualizers).
 export const VIIB_COLOR_VALUES = {
-  brandPurple: '#9B5CFF',
-  playbackGreen: '#3EE089',
-  discoveryOrange: '#FF9F43',
-  statsBlue: '#4EA1FF',
-  destructiveCrimson: '#FF5D5D',
+  brandPurple: '#1ED760',
+  playbackGreen: '#1ED760',
+  discoveryOrange: '#FFA42B',
+  statsBlue: '#3D91F4',
+  destructiveCrimson: '#E91429',
   visualizerMuted: 'rgba(255,255,255,0.4)',
 } as const;
 
 // Use only for canvas/WebAudio where dynamic alpha is required.
 export const VIIB_COLOR_RGB = {
-  visualizerPurple: { r: 139, g: 92, b: 246 },
-  visualizerPink: { r: 236, g: 72, b: 153 },
-  visualizerBlue: { r: 59, g: 130, b: 246 },
-  visualizerGreen: { r: 34, g: 197, b: 94 },
+  visualizerPurple: { r: 30, g: 215, b: 96 },
+  visualizerPink: { r: 59, g: 228, b: 119 },
+  visualizerBlue: { r: 61, g: 145, b: 244 },
+  visualizerGreen: { r: 30, g: 215, b: 96 },
   spotifyGreen: { r: 30, g: 215, b: 96 },
   white: { r: 255, g: 255, b: 255 },
   black: { r: 0, g: 0, b: 0 },
