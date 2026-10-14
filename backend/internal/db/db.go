@@ -82,6 +82,7 @@ func buildGenreLikePattern(genreName string) string {
 // including play history tracking and mood analysis.
 type DB struct {
 	conn                *sql.DB
+	credentialKeys      *crypto.KeyStore
 	databaseLock        *os.File
 	librarySyncOnce     sync.Once
 	librarySyncInitErr  error
@@ -198,13 +199,14 @@ func New(dbPath string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
+	keyDir := ""
 	if dbPath != "" && dbPath != ":memory:" && !strings.HasPrefix(dbPath, "file:") {
-		if dir := filepath.Dir(dbPath); dir != "" && dir != "." {
-			if err := crypto.ConfigureKeyStore(dir); err != nil {
-				databaseLock.Close()
-				return nil, fmt.Errorf("failed to configure credential key store: %w", err)
-			}
-		}
+		keyDir = filepath.Dir(dbPath)
+	}
+	credentialKeys, err := crypto.NewKeyStore(keyDir)
+	if err != nil {
+		databaseLock.Close()
+		return nil, fmt.Errorf("failed to configure credential key store: %w", err)
 	}
 	registerSQLiteRuntimeDriver()
 	conn, err := sql.Open(sqliteRuntimeDriverName, sqliteRuntimeDSN(dbPath))
@@ -213,7 +215,7 @@ func New(dbPath string) (*DB, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	db := &DB{conn: conn, databaseLock: databaseLock}
+	db := &DB{conn: conn, databaseLock: databaseLock, credentialKeys: credentialKeys}
 
 	if err := db.migrate(); err != nil {
 		conn.Close()
@@ -783,7 +785,7 @@ func (d *DB) migrateUnencryptedSettings() error {
 			continue
 		}
 
-		encrypted, migrated, err := crypto.MigrateUnencryptedValue(value)
+		_, encrypted, migrated, err := d.credentialKeys.DecryptAndUpgrade(value)
 		if err != nil {
 			if crypto.IsLegacyEncrypted(value) && errors.Is(err, crypto.ErrReauthRequired) {
 				// Leave unreadable legacy v1 row intact so callers can report a
@@ -2661,14 +2663,14 @@ func (d *DB) GetSetting(key string) (string, error) {
 
 	// Decrypt sensitive settings and opportunistically upgrade legacy enc:v1: rows to enc:v2:
 	if crypto.IsSensitiveKey(key) {
-		decrypted, upgradedCiphertext, upgraded, err := crypto.DecryptAndUpgrade(value)
+		decrypted, upgradedCiphertext, upgraded, err := d.credentialKeys.DecryptAndUpgrade(value)
 		if err != nil {
 			// Return empty string and wrapped error (including crypto.ErrReauthRequired)
 			// to avoid exposing encrypted data.
 			return "", fmt.Errorf("failed to decrypt setting %s: %w", key, err)
 		}
 		if upgraded && upgradedCiphertext != "" {
-			_, _ = d.conn.Exec("UPDATE settings SET value = ? WHERE key = ?", upgradedCiphertext, key)
+			_, _ = d.conn.Exec("UPDATE settings SET value = ? WHERE key = ? AND value = ?", upgradedCiphertext, key, value)
 		}
 		return decrypted, nil
 	}
@@ -2694,7 +2696,7 @@ func (d *DB) SetSetting(key, value string) error {
 
 	// Encrypt sensitive settings
 	if crypto.IsSensitiveKey(key) && value != "" {
-		encrypted, err := crypto.Encrypt(value)
+		encrypted, err := d.credentialKeys.Encrypt(value)
 		if err != nil {
 			return fmt.Errorf("failed to encrypt setting %s: %w", key, err)
 		}
@@ -2719,7 +2721,7 @@ func (d *DB) SetSettingsBatch(settings map[string]string) error {
 	for key, value := range settings {
 		storeValue := value
 		if crypto.IsSensitiveKey(key) && value != "" {
-			encrypted, err := crypto.Encrypt(value)
+			encrypted, err := d.credentialKeys.Encrypt(value)
 			if err != nil {
 				return fmt.Errorf("failed to encrypt setting %s: %w", key, err)
 			}

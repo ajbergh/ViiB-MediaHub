@@ -178,14 +178,25 @@ func getV2Key() ([]byte, error) {
 		return out, nil
 	}
 
+	key, err := loadV2Key(dir)
+	if err != nil {
+		return nil, err
+	}
+	cachedV2Key, cachedV2KeyDir = key, dir
+	return append([]byte(nil), key...), nil
+}
+
+// loadV2Key loads a directory's master key. Callers hold keyMu to serialize creation.
+func loadV2Key(dir string) ([]byte, error) {
+	if dir == "" {
+		return deriveRelocationSafeWrapKey(), nil
+	}
 	keyPath := filepath.Join(dir, masterKeyFileName)
 	if raw, err := os.ReadFile(keyPath); err == nil {
 		key, parseErr := parseMasterKeyFile(strings.TrimSpace(string(raw)))
 		if parseErr != nil {
 			return nil, parseErr
 		}
-		cachedV2Key = key
-		cachedV2KeyDir = dir
 		out := make([]byte, keyLength)
 		copy(out, key)
 		return out, nil
@@ -212,8 +223,6 @@ func getV2Key() ([]byte, error) {
 		return nil, fmt.Errorf("commit credential master key: %w", err)
 	}
 
-	cachedV2Key = masterKey
-	cachedV2KeyDir = dir
 	out := make([]byte, keyLength)
 	copy(out, masterKey)
 	return out, nil
@@ -464,10 +473,14 @@ func encryptLegacyV1(plaintext string) (string, error) {
 // Returns a base64-encoded string prefixed with "enc:v2:" for identification.
 // Returns empty string for empty input (no encryption needed).
 func Encrypt(plaintext string) (string, error) {
+	return encryptWithKey(plaintext, getV2Key)
+}
+
+func encryptWithKey(plaintext string, getKey func() ([]byte, error)) (string, error) {
 	if plaintext == "" {
 		return "", nil
 	}
-	key, err := getV2Key()
+	key, err := getKey()
 	if err != nil {
 		return "", fmt.Errorf("failed to get encryption key: %w", err)
 	}
@@ -489,6 +502,10 @@ func Encrypt(plaintext string) (string, error) {
 //     an enc:v1: secret stranded by binary relocation), the returned error wraps
 //     ErrReauthRequired.
 func Decrypt(ciphertext string) (string, error) {
+	return decryptWithKey(ciphertext, getV2Key)
+}
+
+func decryptWithKey(ciphertext string, getKey func() ([]byte, error)) (string, error) {
 	if ciphertext == "" {
 		return "", nil
 	}
@@ -500,7 +517,7 @@ func Decrypt(ciphertext string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("%w: failed to decode base64: %v", ErrReauthRequired, err)
 		}
-		key, err := getV2Key()
+		key, err := getKey()
 		if err != nil {
 			return "", fmt.Errorf("failed to get encryption key: %w", err)
 		}
@@ -537,17 +554,21 @@ func Decrypt(ciphertext string) (string, error) {
 //   - upgraded: true when the caller should persist upgradedCiphertext
 //   - err: Any error during decryption or re-encryption (wraps ErrReauthRequired on key mismatch)
 func DecryptAndUpgrade(ciphertext string) (plaintext string, upgradedCiphertext string, upgraded bool, err error) {
+	return upgradeWithKey(ciphertext, getV2Key)
+}
+
+func upgradeWithKey(ciphertext string, getKey func() ([]byte, error)) (plaintext string, upgradedCiphertext string, upgraded bool, err error) {
 	if ciphertext == "" {
 		return "", "", false, nil
 	}
-	plaintext, err = Decrypt(ciphertext)
+	plaintext, err = decryptWithKey(ciphertext, getKey)
 	if err != nil {
 		return "", "", false, err
 	}
 	if IsCurrentEncrypted(ciphertext) {
 		return plaintext, ciphertext, false, nil
 	}
-	upgradedCiphertext, err = Encrypt(plaintext)
+	upgradedCiphertext, err = encryptWithKey(plaintext, getKey)
 	if err != nil {
 		return plaintext, "", false, err
 	}
@@ -590,4 +611,3 @@ func MigrateUnencryptedValue(value string) (string, bool, error) {
 	}
 	return upgraded, migrated, nil
 }
-

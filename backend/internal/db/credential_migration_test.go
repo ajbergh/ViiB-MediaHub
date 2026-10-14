@@ -141,3 +141,38 @@ func TestUnresolvableLegacyV1SettingDoesNotBlockStartupAndReportsReauth(t *testi
 		t.Fatalf("recovered setting = %q, err=%v", recovered, err)
 	}
 }
+
+func TestCredentialKeysRemainBoundToDatabase(t *testing.T) {
+	first, err := New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	if err := first.SetSetting("llm_api_key", "first-secret"); err != nil {
+		t.Fatal(err)
+	}
+	second, err := New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	if err := second.SetSetting("llm_api_key", "second-secret"); err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range []struct {
+		database *DB
+		want     string
+	}{{first, "first-secret"}, {second, "second-secret"}} {
+		got, err := entry.database.GetSetting("llm_api_key")
+		if err != nil || got != entry.want {
+			t.Fatalf("credential changed after opening another database: got %q, err %v", got, err)
+		}
+		if err := entry.database.SetSettingsBatch(map[string]string{"gemini_api_key": entry.want}); err != nil {
+			t.Fatal(err)
+		}
+		got, err = entry.database.GetSetting("gemini_api_key")
+		if err != nil || got != entry.want {
+			t.Fatalf("batch credential: got %q, err %v", got, err)
+		}
+	}
+}
