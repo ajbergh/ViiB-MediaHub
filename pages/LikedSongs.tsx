@@ -107,7 +107,7 @@ const LikedHeader: React.FC<{ context?: LikedContext }> = ({ context }) => {
                 <div>Title</div>
                 <div className="hidden md:block">Album</div>
                 <div className="hidden md:block">Artist</div>
-                <div className="flex justify-end pr-2"><Clock size={14} aria-label="Duration" /></div>
+                <div className="flex justify-center"><Clock size={14} aria-label="Duration" /></div>
                 <div></div>
                 <div className="hidden md:block"></div>
             </div>
@@ -229,7 +229,7 @@ export const LikedSongs: React.FC = () => {
                                 </div>
                                 <div className="hidden md:block text-text-secondary text-sm truncate">{song.album}</div>
                                 <div className="hidden md:block text-text-secondary text-sm truncate">{song.artist}</div>
-                                <div className="text-text-secondary text-xs tabular-nums text-right pr-2">{formatTime(song.duration)}</div>
+                                <div className="text-text-secondary text-xs tabular-nums text-center">{formatTime(song.duration)}</div>
                                 
                                 <div className="flex justify-center">
                                     <LikeButton songId={song.id} size={16} />

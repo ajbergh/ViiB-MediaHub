@@ -31,10 +31,27 @@ import { Menu, MenuItem } from '../components/ui/Menu';
 import { ListHeader } from '../components/ui/Page';
 import { SongColumnMenu } from '../components/SongColumnMenu';
 import { SONG_COLUMNS, SongColumnId, SONG_COLUMNS_STORAGE_KEY, loadSongColumns, songColumnValue } from '../lib/songColumns';
+import { getCamelotColor } from '../lib/camelotColors';
 import { api } from '../services/api';
 import { TrackAnalysisFeature } from '../services/trackAnalysisContracts';
 
 const songGridClass = 'grid grid-cols-[36px_minmax(0,1fr)_52px_36px] md:grid-cols-[var(--song-columns)] gap-2 md:gap-4';
+
+const CENTERED_SONG_COLUMNS: ReadonlySet<SongColumnId> = new Set([
+  'plays',
+  'duration',
+  'bpm',
+  'key',
+  'camelot',
+  'year',
+  'mood',
+  'energy',
+  'trackNumber',
+  'discNumber',
+  'added',
+  'lastPlayed',
+  'source',
+]);
 
 type SongSortOption = 'recent' | 'title-asc' | 'title-desc' | 'artist-asc' | 'artist-desc' | 'album-asc' | 'album-desc' | 'duration-asc' | 'duration-desc' | 'plays-desc';
 
@@ -156,18 +173,25 @@ const SongsHeader: React.FC<{ context?: SongsContext }> = ({ context }) => {
               className={`${songGridClass} bg-surface-1 sticky top-0 z-10 border-b border-surface-border px-4 py-2 text-text-subtle text-xs uppercase tracking-wider font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand`}>
                 <div className="text-center">#</div>
                 <div>Title</div>
-                {SONG_COLUMNS.filter(column => columns.includes(column.id)).map(column => (
-                  <div key={column.id} data-column={column.id} className="hidden md:flex items-center truncate">
-                    {column.id === 'duration' ? (
-                      <>
-                        <Clock size={14} aria-hidden="true" />
-                        <span className="sr-only">{column.label}</span>
-                      </>
-                    ) : (
-                      column.label
-                    )}
-                  </div>
-                ))}
+                {SONG_COLUMNS.filter(column => columns.includes(column.id)).map(column => {
+                  const isCentered = CENTERED_SONG_COLUMNS.has(column.id);
+                  return (
+                    <div
+                      key={column.id}
+                      data-column={column.id}
+                      className={`hidden md:flex items-center truncate ${isCentered ? 'justify-center text-center' : ''}`}
+                    >
+                      {column.id === 'duration' ? (
+                        <>
+                          <Clock size={14} aria-hidden="true" />
+                          <span className="sr-only">{column.label}</span>
+                        </>
+                      ) : (
+                        column.label
+                      )}
+                    </div>
+                  );
+                })}
                 <div className="md:hidden flex justify-end"><Clock size={14} aria-label="Duration" /></div>
                 <div className="hidden md:block" />
                 <div />
@@ -315,7 +339,38 @@ export const Songs: React.FC = () => {
                         </div>
                         {visibleColumns.map(column => {
                           const value = songColumnValue(column.id, song, analysis[song.id]);
-                          return <div key={column.id} data-column={column.id} title={value} className="hidden md:block text-text-secondary text-sm truncate tabular-nums">{value}</div>;
+                          const isCentered = CENTERED_SONG_COLUMNS.has(column.id);
+                          if (column.id === 'camelot') {
+                            const camelotColor = getCamelotColor(value);
+                            return (
+                              <div key={column.id} data-column={column.id} title={value} className="hidden md:flex items-center justify-center text-center text-text-secondary text-sm truncate tabular-nums">
+                                {camelotColor ? (
+                                  <span
+                                    className="inline-flex min-w-[2.1rem] items-center justify-center rounded px-1.5 py-0.5 font-mono text-xs font-semibold leading-none"
+                                    style={{
+                                      backgroundColor: camelotColor.background,
+                                      border: `1px solid ${camelotColor.border}`,
+                                      color: camelotColor.foreground,
+                                    }}
+                                  >
+                                    {value.trim().toUpperCase()}
+                                  </span>
+                                ) : (
+                                  value
+                                )}
+                              </div>
+                            );
+                          }
+                          return (
+                            <div
+                              key={column.id}
+                              data-column={column.id}
+                              title={value}
+                              className={`hidden md:block text-text-secondary text-sm truncate tabular-nums ${isCentered ? 'text-center' : ''}`}
+                            >
+                              {value}
+                            </div>
+                          );
                         })}
                         <div className="md:hidden text-text-secondary text-xs tabular-nums text-right">{formatTime(song.duration)}</div>
                         

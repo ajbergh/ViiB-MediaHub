@@ -90,3 +90,27 @@ it('refreshes Energy Level on a successful manual metadata event', async () => {
     expect(container.querySelector('[data-song-id="a"] [data-column=energy]')?.textContent).toBe('9');
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
+
+import { getCamelotColor } from '../lib/camelotColors';
+
+it('renders Camelot Key column values with their deterministic Camelot wheel color', async () => {
+  localStorage.setItem(SONG_COLUMNS_STORAGE_KEY, JSON.stringify(['camelot']));
+  mocks.analysis.mockResolvedValue([{ songId: 'a', camelotKey: '5A' }]);
+  const { root, container } = setup();
+  try {
+    await act(async () => root.render(<Songs/>));
+    const expected = getCamelotColor('5A')!;
+    const badge = container.querySelector<HTMLElement>('[data-song-id="a"] [data-column="camelot"] span');
+    expect(badge).not.toBeNull();
+    expect(badge?.textContent).toBe('5A');
+    const probe = document.createElement('span');
+    probe.style.backgroundColor = expected.background;
+    probe.style.borderColor = expected.border;
+    probe.style.color = expected.foreground;
+    expect(badge?.style.backgroundColor).toBe(probe.style.backgroundColor);
+    expect(badge?.style.borderColor).toBe(probe.style.borderColor);
+    expect(badge?.style.color).toBe(probe.style.color);
+    const missingCell = container.querySelector<HTMLElement>('[data-song-id="b"] [data-column="camelot"]');
+    expect(missingCell?.querySelector('span')).toBeNull();
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});

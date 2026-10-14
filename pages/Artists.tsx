@@ -19,12 +19,25 @@ import { useArtists, useStore } from '../store';
 import { generateGradient, cssUrl } from '../utils';
 import { ContextMenuType } from '../types';
 import { VirtuosoGrid } from 'react-virtuoso';
-import { Search } from 'lucide-react';
+import { ArrowUpDown, ChevronDown, Search } from 'lucide-react';
 import { EmptyArtists } from '../components/EmptyState';
+import { Button } from '../components/ui/Button';
+import { Menu, MenuItem } from '../components/ui/Menu';
 import { Page, PageHeader } from '../components/ui/Page';
 import { CardSizeSlider, MAX_CARD_COLUMNS } from '../components/ui/CardSizeSlider';
 import { LibraryListHeader, LibraryListRow } from '../components/ui/LibraryList';
 import { TextInput } from '../components/ui/TextInput';
+
+type ArtistSortOption = 'name-asc' | 'name-desc' | 'songs-desc' | 'songs-asc' | 'albums-desc' | 'albums-asc';
+
+const artistSortLabels: Record<ArtistSortOption, string> = {
+  'name-asc': 'Name (A-Z)',
+  'name-desc': 'Name (Z-A)',
+  'songs-desc': 'Most Songs',
+  'songs-asc': 'Fewest Songs',
+  'albums-desc': 'Most Albums',
+  'albums-asc': 'Fewest Albums',
+};
 
 // Define Grid Components
 // gridTemplateColumns driven by --card-cols CSS variable on the parent wrapper.
@@ -55,6 +68,8 @@ export const Artists: React.FC = () => {
   const artists = useArtists();
   const { openContextMenu, artistMetadata } = useStore();
   const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
+  const [sortBy, setSortBy] = useState<ArtistSortOption>('name-asc');
+  const [showSortMenu, setShowSortMenu] = useState(false);
   const [filter, setFilter] = useState('');
   const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('artists-card-cols') ?? 5));
   const listView = cardCols === MAX_CARD_COLUMNS;
@@ -79,11 +94,31 @@ export const Artists: React.FC = () => {
       navigate(`/artist/${encodeURIComponent(artistName)}`);
   }, [navigate]);
 
+  const sortedArtists = useMemo(() => {
+    const sorted = [...artists];
+    switch (sortBy) {
+      case 'name-asc':
+        return sorted.sort((a, b) => a.name.localeCompare(b.name));
+      case 'name-desc':
+        return sorted.sort((a, b) => b.name.localeCompare(a.name));
+      case 'songs-desc':
+        return sorted.sort((a, b) => b.songCount - a.songCount || a.name.localeCompare(b.name));
+      case 'songs-asc':
+        return sorted.sort((a, b) => a.songCount - b.songCount || a.name.localeCompare(b.name));
+      case 'albums-desc':
+        return sorted.sort((a, b) => b.albumCount - a.albumCount || a.name.localeCompare(b.name));
+      case 'albums-asc':
+        return sorted.sort((a, b) => a.albumCount - b.albumCount || a.name.localeCompare(b.name));
+      default:
+        return sorted;
+    }
+  }, [artists, sortBy]);
+
   const filteredArtists = useMemo(() => {
-    if (!filter.trim()) return artists;
+    if (!filter.trim()) return sortedArtists;
     const query = filter.toLowerCase();
-    return artists.filter(artist => artist.name.toLowerCase().includes(query));
-  }, [artists, filter]);
+    return sortedArtists.filter(artist => artist.name.toLowerCase().includes(query));
+  }, [sortedArtists, filter]);
 
   return (
     <Page withPlayerPadding={false}>
@@ -91,6 +126,44 @@ export const Artists: React.FC = () => {
           actions={
             <div className="flex items-center gap-3">
               <CardSizeSlider listAtMinimum value={cardCols} onChange={handleCardColsChange} />
+              <div className="relative">
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowSortMenu(!showSortMenu)}
+                  className="rounded-full whitespace-nowrap"
+                  leftIcon={<ArrowUpDown size={16} className="text-text-secondary" aria-hidden="true" />}
+                  rightIcon={<ChevronDown size={16} className={`text-text-secondary transition-transform ${showSortMenu ? 'rotate-180' : ''}`} aria-hidden="true" />}
+                  aria-haspopup="menu"
+                  aria-expanded={showSortMenu}
+                >
+                  {artistSortLabels[sortBy]}
+                </Button>
+                {showSortMenu && (
+                  <>
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      aria-label="Close sort menu"
+                      className="fixed inset-0 z-40"
+                      onClick={() => setShowSortMenu(false)}
+                    />
+                    <Menu
+                      className="absolute right-0 top-full mt-2 z-50 min-w-[180px]"
+                      onRequestClose={() => setShowSortMenu(false)}
+                    >
+                      {(Object.keys(artistSortLabels) as ArtistSortOption[]).map((option) => (
+                        <MenuItem
+                          key={option}
+                          onClick={() => { setSortBy(option); setShowSortMenu(false); }}
+                          active={sortBy === option}
+                        >
+                          {artistSortLabels[option]}
+                        </MenuItem>
+                      ))}
+                    </Menu>
+                  </>
+                )}
+              </div>
               {/* Search Input */}
               <div className="w-full md:w-72">
                 <TextInput

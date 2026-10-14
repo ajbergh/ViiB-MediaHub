@@ -3,12 +3,23 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useStore } from '../store';
-import { Music, Search, Play, Shuffle, Loader2 } from 'lucide-react';
+import { Music, Search, Play, Shuffle, Loader2, ArrowUpDown, ChevronDown } from 'lucide-react';
 import { api, GenreStat } from '../services/api';
+import { Button } from '../components/ui/Button';
+import { Menu, MenuItem } from '../components/ui/Menu';
 import { CardSizeSlider, MAX_CARD_COLUMNS } from '../components/ui/CardSizeSlider';
 import { LibraryListHeader, LibraryListRow } from '../components/ui/LibraryList';
 import { TextInput } from '../components/ui/TextInput';
 import { generateGradient } from '../utils';
+
+type GenreSortOption = 'count-desc' | 'count-asc' | 'name-asc' | 'name-desc';
+
+const genreSortLabels: Record<GenreSortOption, string> = {
+  'count-desc': 'Most Tracks',
+  'count-asc': 'Fewest Tracks',
+  'name-asc': 'Name (A-Z)',
+  'name-desc': 'Name (Z-A)',
+};
 
 /**
  * Genres Page Component
@@ -36,6 +47,8 @@ export const Genres: React.FC = () => {
   const { songs, playSong } = useStore();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<GenreSortOption>('count-desc');
+  const [showSortMenu, setShowSortMenu] = useState(false);
   const [genres, setGenres] = useState<GenreStat[]>([]);
   const [failedCovers, setFailedCovers] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -79,11 +92,27 @@ export const Genres: React.FC = () => {
     };
   }, []);
 
+  const sortedGenres = useMemo(() => {
+    const sorted = [...genres];
+    switch (sortBy) {
+      case 'count-desc':
+        return sorted.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+      case 'count-asc':
+        return sorted.sort((a, b) => a.count - b.count || a.name.localeCompare(b.name));
+      case 'name-asc':
+        return sorted.sort((a, b) => a.name.localeCompare(b.name));
+      case 'name-desc':
+        return sorted.sort((a, b) => b.name.localeCompare(a.name));
+      default:
+        return sorted;
+    }
+  }, [genres, sortBy]);
+
   const filteredGenres = useMemo(() => {
-    if (!searchQuery) return genres;
+    if (!searchQuery) return sortedGenres;
     const query = searchQuery.toLowerCase();
-    return genres.filter(g => g.name.toLowerCase().includes(query));
-  }, [genres, searchQuery]);
+    return sortedGenres.filter(g => g.name.toLowerCase().includes(query));
+  }, [sortedGenres, searchQuery]);
 
   const handlePlayGenre = (e: React.MouseEvent, genreName: string, shuffle: boolean) => {
     e.stopPropagation();
@@ -115,11 +144,49 @@ export const Genres: React.FC = () => {
         <div>
           <h1 className="text-display font-bold tracking-tight text-text-main">Genres</h1>
           <p className="text-sm text-text-secondary mt-1">
-            {genres.length} categories in your library
+            {filteredGenres.length}{searchQuery ? ` of ${genres.length}` : ''} categories in your library
           </p>
         </div>
         <div className="flex items-center gap-3">
           <CardSizeSlider listAtMinimum value={cardCols} onChange={handleCardColsChange} />
+          <div className="relative">
+            <Button
+              variant="secondary"
+              onClick={() => setShowSortMenu(!showSortMenu)}
+              className="rounded-full whitespace-nowrap"
+              leftIcon={<ArrowUpDown size={16} className="text-text-secondary" aria-hidden="true" />}
+              rightIcon={<ChevronDown size={16} className={`text-text-secondary transition-transform ${showSortMenu ? 'rotate-180' : ''}`} aria-hidden="true" />}
+              aria-haspopup="menu"
+              aria-expanded={showSortMenu}
+            >
+              {genreSortLabels[sortBy]}
+            </Button>
+            {showSortMenu && (
+              <>
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  aria-label="Close sort menu"
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowSortMenu(false)}
+                />
+                <Menu
+                  className="absolute right-0 top-full mt-2 z-50 min-w-[180px]"
+                  onRequestClose={() => setShowSortMenu(false)}
+                >
+                  {(Object.keys(genreSortLabels) as GenreSortOption[]).map((option) => (
+                    <MenuItem
+                      key={option}
+                      onClick={() => { setSortBy(option); setShowSortMenu(false); }}
+                      active={sortBy === option}
+                    >
+                      {genreSortLabels[option]}
+                    </MenuItem>
+                  ))}
+                </Menu>
+              </>
+            )}
+          </div>
           <div className="w-full md:w-72">
             <TextInput
               leftIcon={<Search size={18} className="text-text-secondary" aria-hidden="true" />}
