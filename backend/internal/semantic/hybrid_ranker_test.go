@@ -18,6 +18,17 @@ func TestRankSemanticCandidatesPrioritizesSemanticRelevance(t *testing.T) {
 	}
 }
 
+func TestAuditRejectionDoesNotLowerSemanticQualityFloor(t *testing.T) {
+	ranked := RankSemanticCandidates([]SemanticCandidate{
+		{Song: db.Song{ID: "rejected"}, Evidence: SemanticEvidence{BestSimilarity: 0.95}},
+		{Song: db.Song{ID: "replacement"}, Evidence: SemanticEvidence{BestSimilarity: 0.80}},
+		{Song: db.Song{ID: "weak"}, Evidence: SemanticEvidence{BestSimilarity: 0.40}},
+	}, HybridRankingOptions{RejectedSongIDs: map[string]bool{"rejected": true}})
+	if len(ranked) != 1 || ranked[0].Candidate.Song.ID != "replacement" {
+		t.Fatalf("ranking=%+v", ranked)
+	}
+}
+
 func TestRankSemanticCandidatesDoesNotFillFromWeakLongTail(t *testing.T) {
 	ranked := RankSemanticCandidates([]SemanticCandidate{
 		{Song: db.Song{ID: "strong", Artist: "Jazz"}, Evidence: SemanticEvidence{BestSimilarity: 0.91}},

@@ -20,6 +20,8 @@ const (
 	semanticAlbumExpansionLimit  = 8
 	semanticArtistExpansionLimit = 10
 	semanticCandidatePoolLimit   = 900
+	// Bound request memory/work; diagnostics distinguish this ceiling from exhaustion.
+	MaxSemanticSearchBreadth = 64
 )
 
 // ErrNoSearchableSemanticIndex tells callers to use their existing fallback
@@ -37,11 +39,12 @@ type SemanticDocumentMatch struct {
 // SemanticSearchResult preserves entity-specific matches so a later expansion
 // step can distinguish direct track evidence from album/artist rescue evidence.
 type SemanticSearchResult struct {
-	Query    string
-	Identity EmbeddingIdentity
-	Tracks   []SemanticDocumentMatch
-	Albums   []SemanticDocumentMatch
-	Artists  []SemanticDocumentMatch
+	Query         string
+	MoreAvailable bool
+	Identity      EmbeddingIdentity
+	Tracks        []SemanticDocumentMatch
+	Albums        []SemanticDocumentMatch
+	Artists       []SemanticDocumentMatch
 }
 
 // SemanticEvidence records why a local song entered the candidate pool.
@@ -78,6 +81,7 @@ type SemanticCandidate struct {
 // Behavioural ranking and diversity are intentionally separate concerns.
 type SemanticRetrievalOptions struct {
 	Source                string
+	SearchBreadth         int
 	IncludeArtists        []string
 	ExcludeArtists        []string
 	MinYear               int
@@ -96,16 +100,22 @@ type SemanticFilterDiagnostics struct {
 }
 
 // SemanticRetrievalResult is the expanded, deduplicated candidate pool ready
-// for ranking. CandidateCount is capped before hard filters by design.
+// for ranking. Recall grows with SearchBreadth; MoreAvailable distinguishes
+// a truncated search/expansion from exhaustion.
 type SemanticRetrievalResult struct {
-	Search      SemanticSearchResult
-	Candidates  []SemanticCandidate
-	Diagnostics SemanticFilterDiagnostics
+	Search        SemanticSearchResult
+	Candidates    []SemanticCandidate
+	Diagnostics   SemanticFilterDiagnostics
+	MoreAvailable bool
 }
 
 // SearchSemanticDocuments embeds one query once, then exact-searches each
 // active arena at the named Phase 1 quotas. It never scans SQLite vectors.
 func (service *Service) SearchSemanticDocuments(ctx context.Context, query string) (SemanticSearchResult, error) {
+	return service.searchSemanticDocuments(ctx, query, 1)
+}
+
+func (service *Service) searchSemanticDocuments(ctx context.Context, query string, breadth int) (SemanticSearchResult, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return SemanticSearchResult{}, errors.New("semantic query is required")
@@ -122,14 +132,19 @@ func (service *Service) SearchSemanticDocuments(ctx context.Context, query strin
 		return SemanticSearchResult{}, err
 	}
 	result := SemanticSearchResult{Query: query, Identity: identity}
-	if result.Tracks, err = service.searchDocuments(ctx, indexes[db.SemanticEntityTrack], db.SemanticEntityTrack, vector, semanticTrackSearchLimit); err != nil {
+	if result.Tracks, err = service.searchDocuments(ctx, indexes[db.SemanticEntityTrack], db.SemanticEntityTrack, vector, semanticTrackSearchLimit*breadth); err != nil {
 		return SemanticSearchResult{}, err
 	}
-	if result.Albums, err = service.searchDocuments(ctx, indexes[db.SemanticEntityAlbum], db.SemanticEntityAlbum, vector, semanticAlbumSearchLimit); err != nil {
+	if result.Albums, err = service.searchDocuments(ctx, indexes[db.SemanticEntityAlbum], db.SemanticEntityAlbum, vector, semanticAlbumSearchLimit*breadth); err != nil {
 		return SemanticSearchResult{}, err
 	}
-	if result.Artists, err = service.searchDocuments(ctx, indexes[db.SemanticEntityArtist], db.SemanticEntityArtist, vector, semanticArtistSearchLimit); err != nil {
+	if result.Artists, err = service.searchDocuments(ctx, indexes[db.SemanticEntityArtist], db.SemanticEntityArtist, vector, semanticArtistSearchLimit*breadth); err != nil {
 		return SemanticSearchResult{}, err
+	}
+	for entityType, count := range map[string]int{db.SemanticEntityTrack: len(result.Tracks), db.SemanticEntityAlbum: len(result.Albums), db.SemanticEntityArtist: len(result.Artists)} {
+		if index := indexes[entityType]; index != nil && count < index.Len() {
+			result.MoreAvailable = true
+		}
 	}
 	return result, nil
 }
@@ -138,7 +153,10 @@ func (service *Service) SearchSemanticDocuments(ctx context.Context, query strin
 // applies source availability plus hard constraints, and retains evidence for
 // the hybrid ranker. It never falls back to loading the entire catalog.
 func (service *Service) RetrieveSemanticCandidates(ctx context.Context, query string, options SemanticRetrievalOptions) (SemanticRetrievalResult, error) {
-	search, err := service.SearchSemanticDocuments(ctx, query)
+	breadth := max(1, min(options.SearchBreadth, MaxSemanticSearchBreadth))
+	poolLimit := semanticCandidatePoolLimit * breadth
+	moreAvailable := false
+	search, err := service.searchSemanticDocuments(ctx, query, breadth)
 	if err != nil {
 		return SemanticRetrievalResult{}, err
 	}
@@ -158,30 +176,38 @@ func (service *Service) RetrieveSemanticCandidates(ctx context.Context, query st
 		return SemanticRetrievalResult{}, fmt.Errorf("expand semantic track matches: %w", err)
 	}
 	for _, song := range tracks {
-		service.addSemanticCandidate(candidates, song, SemanticEvidence{TrackSimilarity: trackScores[song.ID]})
+		service.addSemanticCandidate(candidates, song, SemanticEvidence{TrackSimilarity: trackScores[song.ID]}, poolLimit)
 	}
 	for _, match := range search.Albums {
-		if len(candidates) >= semanticCandidatePoolLimit {
+		if len(candidates) >= poolLimit {
 			break
 		}
-		songs, expansionErr := service.database.GetSongsForSemanticAlbum(ctx, match.Document.Artist, match.Document.Album, semanticAlbumExpansionLimit)
+		songs, expansionErr := service.database.GetSongsForSemanticAlbum(ctx, match.Document.Artist, match.Document.Album, semanticAlbumExpansionLimit*breadth+1)
 		if expansionErr != nil {
 			return SemanticRetrievalResult{}, fmt.Errorf("expand semantic album %q: %w", match.Document.DisplayName, expansionErr)
 		}
+		if len(songs) > semanticAlbumExpansionLimit*breadth {
+			moreAvailable = true
+			songs = songs[:semanticAlbumExpansionLimit*breadth]
+		}
 		for _, song := range songs {
-			service.addSemanticCandidate(candidates, song, SemanticEvidence{AlbumSimilarity: match.Similarity, MatchedAlbum: match.Document.Album})
+			service.addSemanticCandidate(candidates, song, SemanticEvidence{AlbumSimilarity: match.Similarity, MatchedAlbum: match.Document.Album}, poolLimit)
 		}
 	}
 	for _, match := range search.Artists {
-		if len(candidates) >= semanticCandidatePoolLimit {
+		if len(candidates) >= poolLimit {
 			break
 		}
-		songs, expansionErr := service.database.GetSongsForSemanticArtist(ctx, match.Document.Artist, semanticArtistExpansionLimit)
+		songs, expansionErr := service.database.GetSongsForSemanticArtist(ctx, match.Document.Artist, semanticArtistExpansionLimit*breadth+1)
 		if expansionErr != nil {
 			return SemanticRetrievalResult{}, fmt.Errorf("expand semantic artist %q: %w", match.Document.DisplayName, expansionErr)
 		}
+		if len(songs) > semanticArtistExpansionLimit*breadth {
+			moreAvailable = true
+			songs = songs[:semanticArtistExpansionLimit*breadth]
+		}
 		for _, song := range songs {
-			service.addSemanticCandidate(candidates, song, SemanticEvidence{ArtistSimilarity: match.Similarity, MatchedArtist: match.Document.Artist})
+			service.addSemanticCandidate(candidates, song, SemanticEvidence{ArtistSimilarity: match.Similarity, MatchedArtist: match.Document.Artist}, poolLimit)
 		}
 	}
 	songs := make([]db.Song, 0, len(candidates))
@@ -192,7 +218,20 @@ func (service *Service) RetrieveSemanticCandidates(ctx context.Context, query st
 	if err != nil {
 		return SemanticRetrievalResult{}, fmt.Errorf("filter semantic candidate sources: %w", err)
 	}
-	result := SemanticRetrievalResult{Search: search, Candidates: make([]SemanticCandidate, 0, len(songs))}
+	result := SemanticRetrievalResult{Search: search, Candidates: make([]SemanticCandidate, 0, len(songs)), MoreAvailable: search.MoreAvailable || moreAvailable || len(candidates) >= poolLimit}
+	if result.MoreAvailable && !search.MoreAvailable {
+		// Album/artist pages can look truncated even when direct track recall
+		// already covered every eligible source song. Do not report a search
+		// ceiling as a shortage when the source catalog was actually exhausted.
+		summary, summaryErr := service.database.GetAIDJLibrarySummary(ctx, options.Source)
+		if summaryErr != nil {
+			return SemanticRetrievalResult{}, summaryErr
+		}
+		if len(songs) >= summary.SongCount {
+			result.MoreAvailable = false
+		}
+	}
+
 	for _, song := range songs {
 		candidate := candidates[song.ID]
 		candidate.Song = song
@@ -288,12 +327,12 @@ func cosineSimilarity(left, right []float32) float64 {
 	return clampSemanticScore(similarity)
 }
 
-func (service *Service) addSemanticCandidate(candidates map[string]SemanticCandidate, song db.Song, evidence SemanticEvidence) {
+func (service *Service) addSemanticCandidate(candidates map[string]SemanticCandidate, song db.Song, evidence SemanticEvidence, poolLimit int) {
 	if song.ID == "" {
 		return
 	}
 	candidate, exists := candidates[song.ID]
-	if !exists && len(candidates) >= semanticCandidatePoolLimit {
+	if !exists && len(candidates) >= poolLimit {
 		return
 	}
 	if !exists {

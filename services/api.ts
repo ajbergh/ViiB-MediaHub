@@ -1921,6 +1921,7 @@ export interface SmartPlaylistValidation {
   auditReviewed: number;
   auditRejected: number;
   shortened: boolean;
+  shortfallReason?: 'matching_tracks_exhausted' | 'search_limit_reached' | 'audit_limit_reached';
 }
 
 /** Optional diagnostics returned by the semantic retrieval path. */
@@ -1928,6 +1929,8 @@ export interface SmartPlaylistRetrieval {
   mode: string;
   candidateCount: number;
   returnedCount?: number;
+  searchPasses?: number;
+  searchLimitReached?: boolean;
   trackMatches?: number;
   albumMatches?: number;
   artistMatches?: number;

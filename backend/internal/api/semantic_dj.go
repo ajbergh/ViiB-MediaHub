@@ -1,11 +1,7 @@
-// Defines semantic dj functionality for package api.
-
 package api
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
@@ -17,6 +13,7 @@ import (
 const semanticDJMinimumPhasePool = 24
 
 type semanticDJRequest struct {
+	Prompt            string
 	Source            string
 	DiscoverMode      string
 	RecentlyPlayedIDs map[string]bool
@@ -29,96 +26,97 @@ type semanticDJRetrievalResult struct {
 	PhaseCandidateCount []int
 	Diagnostics         semantic.SemanticFilterDiagnostics
 	RankingFiltered     int
+	Audit               playlistValidationDiagnostics
+	SearchLimitReached  bool
+	AuditLimitReached   bool
 }
 
-// retrieveSemanticDJPhasePools resolves each planned semantic query into a
-// bounded pool for the sequencer. A false result means the caller should use
-// the established full-catalog fallback because semantic retrieval is absent
-// or cannot produce enough songs for a complete phase.
+// Each phase uses the same adaptive recall/refill path as ordinary playlists.
+// Audit decisions are shared across phases, but relevance/negative intent stay
+// phase-specific. A genuine shortage stays semantic; it never broadens genres.
 func (a *API) retrieveSemanticDJPhasePools(ctx context.Context, plan *dj.DJSetPlan, request semanticDJRequest) (semanticDJRetrievalResult, bool, error) {
-	service := a.currentSemanticService()
-	if service == nil || plan == nil || len(plan.Phases) == 0 {
+	return a.retrieveSemanticDJPhasePoolsWithAudit(ctx, plan, request, a.auditPlaylistSongs)
+}
+
+func (a *API) retrieveSemanticDJPhasePoolsWithAudit(ctx context.Context, plan *dj.DJSetPlan, request semanticDJRequest, audit playlistAuditor) (semanticDJRetrievalResult, bool, error) {
+	if a.currentSemanticService() == nil || plan == nil || len(plan.Phases) == 0 {
 		return semanticDJRetrievalResult{}, false, nil
 	}
-	result := semanticDJRetrievalResult{
-		Pools:               make([]dj.PhaseCandidatePool, len(plan.Phases)),
-		PhaseCandidateCount: make([]int, len(plan.Phases)),
+	result := semanticDJRetrievalResult{Pools: make([]dj.PhaseCandidatePool, len(plan.Phases)), PhaseCandidateCount: make([]int, len(plan.Phases))}
+	totalTarget := 0
+	for _, phase := range plan.Phases {
+		totalTarget += max(phase.TargetCount, 1)
 	}
-	distinctSongIDs := make(map[string]struct{})
-	targetSongCount := 0
+	session := newPlaylistAuditSession()
+	sharedAudit := func(ctx context.Context, prompt string, _ llm.PlaylistIntent, songs []db.Song) ([]db.Song, playlistValidationDiagnostics) {
+		beforeReviewed, beforeRejected := session.diagnostics.AuditReviewed, session.diagnostics.AuditRejected
+		accepted := session.filter(ctx, prompt, request.Intent, songs, audit)
+		diagnostics := session.diagnostics
+		diagnostics.AuditReviewed -= beforeReviewed
+		diagnostics.AuditRejected -= beforeRejected
+		return accepted, diagnostics
+	}
 	for index, phase := range plan.Phases {
-		query := strings.TrimSpace(phase.SemanticQuery)
-		if query == "" {
-			query = strings.TrimSpace(plan.IntentSummary)
+		intent := request.Intent
+		intent.SemanticQuery = strings.TrimSpace(phase.SemanticQuery)
+		if intent.SemanticQuery == "" {
+			intent.SemanticQuery = strings.TrimSpace(plan.IntentSummary)
 		}
-		if query == "" {
+		if intent.SemanticQuery == "" {
 			return semanticDJRetrievalResult{}, false, nil
 		}
-		negativeQuery := phase.NegativeSemanticQuery
-		if strings.TrimSpace(negativeQuery) == "" {
-			negativeQuery = request.Intent.NegativeSemanticQuery
+		if strings.TrimSpace(phase.NegativeSemanticQuery) != "" {
+			intent.NegativeSemanticQuery = phase.NegativeSemanticQuery
 		}
-		retrieval, err := service.RetrieveSemanticCandidates(ctx, query, semantic.SemanticRetrievalOptions{
-			Source:                request.Source,
-			IncludeArtists:        request.Intent.IncludeArtists,
-			ExcludeArtists:        request.Intent.ExcludeArtists,
-			MinYear:               request.Intent.MinYear,
-			MaxYear:               request.Intent.MaxYear,
-			YearConstraintHard:    request.Intent.YearConstraintHard,
-			InstrumentalOnly:      request.Intent.InstrumentalOnly,
-			NegativeSemanticQuery: negativeQuery,
-			RequiredStyles:        request.Intent.RequiredStyles,
-			ExcludedTerms:         request.Intent.ExcludedTerms,
-		})
-		if err != nil {
-			if errors.Is(err, semantic.ErrNoSearchableSemanticIndex) {
-				return semanticDJRetrievalResult{}, false, nil
-			}
-			return semanticDJRetrievalResult{}, false, fmt.Errorf("phase %q semantic retrieval: %w", phase.Name, err)
+		// Include reserves for overlap across the complete arc, so consuming
+		// a song in an earlier phase does not exhaust later phase pools.
+		reserve := min(maximumPlaylistRefillCandidates, max(semanticDJMinimumPhasePool, max(phase.TargetCount*5, totalTarget)))
+		playlist, handled, err := a.retrieveSemanticPlaylistWithAudit(ctx, intent, semanticPlaylistRequest{
+			Prompt: request.Prompt, TargetSongs: reserve, Source: request.Source,
+			DiscoverMode: request.DiscoverMode, RecentlyPlayedIDs: request.RecentlyPlayedIDs,
+		}, sharedAudit)
+		if err != nil || !handled {
+			return semanticDJRetrievalResult{}, false, err
 		}
-		result.Diagnostics.HardExcluded += retrieval.Diagnostics.HardExcluded
-		result.Diagnostics.StyleMismatches += retrieval.Diagnostics.StyleMismatches
-		result.Diagnostics.NegativeRejected += retrieval.Diagnostics.NegativeRejected
-		targetCount := max(phase.TargetCount, 1)
-		targetSongCount += targetCount
-		if len(retrieval.Candidates) < targetCount {
-			return semanticDJRetrievalResult{}, false, nil
-		}
-		ranked := semantic.RankSemanticCandidates(retrieval.Candidates, semantic.HybridRankingOptions{
-			DiscoverMode:      request.DiscoverMode,
-			RecentlyPlayedIDs: request.RecentlyPlayedIDs,
-			Limit:             semanticPlaylistRankingLimit,
-			PreferredGenres:   request.Intent.PreferredGenres,
-			MinYear:           request.Intent.MinYear,
-			MaxYear:           request.Intent.MaxYear,
-		})
-		result.RankingFiltered += max(0, len(retrieval.Candidates)-len(ranked))
-		poolLimit := min(semanticPlaylistRankingLimit, max(semanticDJMinimumPhasePool, targetCount*5))
-		selected, err := service.ApplyMMRDiversity(ctx, ranked, semantic.DiversityOptions{
-			DiscoverMode: request.DiscoverMode,
-			Limit:        poolLimit,
-		})
-		if err != nil {
-			return semanticDJRetrievalResult{}, false, fmt.Errorf("phase %q diversity ranking: %w", phase.Name, err)
-		}
-		if len(selected) < targetCount {
-			return semanticDJRetrievalResult{}, false, nil
-		}
-		pool := dj.PhaseCandidatePool{
-			Songs:          make([]db.Song, len(selected)),
-			SemanticScores: make(map[string]float64, len(selected)),
-		}
-		for candidateIndex, candidate := range selected {
-			pool.Songs[candidateIndex] = candidate.Candidate.Song
-			pool.SemanticScores[candidate.Candidate.Song.ID] = candidate.Candidate.Evidence.Relevance()
-			distinctSongIDs[candidate.Candidate.Song.ID] = struct{}{}
-		}
-		result.Pools[index] = pool
-		result.PhaseCandidateCount[index] = len(pool.Songs)
-		result.CandidateCount += len(retrieval.Candidates)
+		result.Pools[index] = dj.PhaseCandidatePool{Songs: playlist.Songs, SemanticScores: playlist.SemanticScores}
+		result.PhaseCandidateCount[index] = len(playlist.Songs)
+		result.CandidateCount += playlist.Diagnostics.CandidateCount
+		result.Diagnostics.HardExcluded += playlist.Diagnostics.Validation.HardExcluded
+		result.Diagnostics.StyleMismatches += playlist.Diagnostics.Validation.StyleMismatches
+		result.Diagnostics.NegativeRejected += playlist.Diagnostics.Validation.NegativeRejected
+		result.RankingFiltered += playlist.Diagnostics.Validation.RankingFiltered
+		result.SearchLimitReached = result.SearchLimitReached || playlist.Diagnostics.SearchLimitReached
 	}
-	if len(distinctSongIDs) < targetSongCount {
-		return semanticDJRetrievalResult{}, false, nil
-	}
+	result.Audit = session.diagnostics
+	result.AuditLimitReached = session.attempted >= maximumPlaylistRefillCandidates
 	return result, true, nil
+}
+
+// Empty constrained phases are valid shortages, not sequencer failures. Keep
+// their positions in the response while sequencing only non-empty phase pools.
+func sequenceAvailableSemanticPhases(pools []dj.PhaseCandidatePool, plan *dj.DJSetPlan, persona dj.PersonaDefinition, score *dj.ScoreContext) ([]db.Song, []dj.PhaseResult, error) {
+	filteredPlan := *plan
+	filteredPlan.Phases = nil
+	var filteredPools []dj.PhaseCandidatePool
+	var indices []int
+	results := make([]dj.PhaseResult, len(plan.Phases))
+	for i, phase := range plan.Phases {
+		results[i] = dj.PhaseResult{Name: phase.Name, SongIDs: []string{}, Notes: "No eligible matching tracks available"}
+		if len(pools[i].Songs) > 0 {
+			filteredPlan.Phases = append(filteredPlan.Phases, phase)
+			filteredPools = append(filteredPools, pools[i])
+			indices = append(indices, i)
+		}
+	}
+	if len(indices) == 0 {
+		return []db.Song{}, results, nil
+	}
+	queue, phases, err := dj.NewSequencer().BuildQueueFromPhasePools(filteredPools, &filteredPlan, persona, score)
+	if err != nil {
+		return nil, nil, err
+	}
+	for i, result := range phases {
+		results[indices[i]] = result
+	}
+	return queue, results, nil
 }

@@ -25,6 +25,7 @@ const (
 type HybridRankingOptions struct {
 	DiscoverMode      string
 	RecentlyPlayedIDs map[string]bool
+	RejectedSongIDs   map[string]bool
 	OnePerArtist      bool
 	Limit             int
 	PreferredGenres   []string
@@ -71,7 +72,7 @@ func RankSemanticCandidates(candidates []SemanticCandidate, options HybridRankin
 	qualityFloor := max(semanticAbsoluteFloor, bestSemanticScore-semanticRelativeWindow)
 	qualityEligible := eligible[:0]
 	for _, candidate := range eligible {
-		if candidate.SemanticScore >= qualityFloor {
+		if candidate.SemanticScore >= qualityFloor && !options.RejectedSongIDs[candidate.Candidate.Song.ID] {
 			qualityEligible = append(qualityEligible, candidate)
 		}
 	}

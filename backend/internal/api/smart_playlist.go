@@ -1980,6 +1980,7 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 	}
 
 	semanticDJ, semanticUsed, semanticErr := a.retrieveSemanticDJPhasePools(ctx, plan, semanticDJRequest{
+		Prompt:            prompt,
 		Source:            source,
 		DiscoverMode:      discoverMode,
 		RecentlyPlayedIDs: recentlyPlayedIDs,
@@ -2111,7 +2112,7 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 		var phaseResults []dj.PhaseResult
 		var buildErr error
 		if semanticUsed {
-			queue, phaseResults, buildErr = sequencer.BuildQueueFromPhasePools(semanticDJ.Pools, plan, personaDef, scoreCtx)
+			queue, phaseResults, buildErr = sequenceAvailableSemanticPhases(semanticDJ.Pools, plan, personaDef, scoreCtx)
 		} else {
 			queue, phaseResults, buildErr = sequencer.BuildQueue(candidates, plan, personaDef, scoreCtx)
 		}
@@ -2121,7 +2122,12 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 		}
 
 		logger.API("DJ Mode: Built queue with %d songs across %d phases", len(queue), len(phaseResults))
-		queue, validation := a.auditPlaylistSongs(ctx, prompt, intent, queue)
+		var validation playlistValidationDiagnostics
+		if semanticUsed {
+			validation = semanticDJ.Audit
+		} else {
+			queue, validation = a.auditPlaylistSongs(ctx, prompt, intent, queue)
+		}
 		if semanticUsed {
 			validation.HardExcluded = semanticDJ.Diagnostics.HardExcluded
 			validation.StyleMismatches = semanticDJ.Diagnostics.StyleMismatches
@@ -2136,6 +2142,16 @@ func (a *API) handleDJMode(w http.ResponseWriter, r *http.Request,
 			plannedSongCount += max(phase.TargetCount, 1)
 		}
 		validation.Shortened = len(queue) < plannedSongCount
+		if validation.Shortened && semanticUsed {
+			switch {
+			case semanticDJ.AuditLimitReached:
+				validation.ShortfallReason = "audit_limit_reached"
+			case semanticDJ.SearchLimitReached:
+				validation.ShortfallReason = "search_limit_reached"
+			default:
+				validation.ShortfallReason = "matching_tracks_exhausted"
+			}
+		}
 		if validation.AuditRejected > 0 {
 			phaseResults = reconcileDJPhaseResults(queue, phaseResults, scoreCtx.EffectiveBPM)
 		}

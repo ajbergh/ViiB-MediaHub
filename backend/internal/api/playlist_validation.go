@@ -25,6 +25,7 @@ type playlistValidationDiagnostics struct {
 	AuditStatus      string   `json:"auditStatus"`
 	AuditReviewed    int      `json:"auditReviewed"`
 	AuditRejected    int      `json:"auditRejected"`
+	ShortfallReason  string   `json:"shortfallReason,omitempty"`
 	Shortened        bool     `json:"shortened"`
 }
 

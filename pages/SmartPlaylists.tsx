@@ -213,14 +213,22 @@ export const SmartPlaylists: React.FC = () => {
       if (songs.length === 0) {
         showToast({ 
           type: 'error', 
-          message: aiDjMode 
-            ? 'No songs found for your DJ set. Try a different prompt or check your library.' 
-            : 'No songs found matching your request. Try different keywords.'
+          message: validation?.shortfallReason === 'search_limit_reached'
+            ? 'Search limit reached before finding eligible tracks. Try a more specific request.'
+            : validation?.shortfallReason === 'audit_limit_reached'
+              ? 'Review limit reached before finding eligible tracks. Try adjusting your request.'
+              : aiDjMode
+                ? 'No songs found for your DJ set. Try a different prompt or check your library.'
+                : 'No songs found matching your request. Try different keywords.'
         });
       } else if (validation?.shortened) {
         showToast({
           type: 'warning',
-          message: `Found ${songs.length} strong matches. AI Smart Mix did not pad the playlist with tracks that conflicted with your request.`
+          message: validation.shortfallReason === 'search_limit_reached'
+            ? `Found ${songs.length} matching tracks before reaching the search limit. More matching tracks may remain.`
+            : validation.shortfallReason === 'audit_limit_reached'
+              ? `Found ${songs.length} matching tracks before reaching the review limit.`
+              : `Found ${songs.length} strong matches. No more eligible tracks matched your request.`
         });
       } else if (aiDjMode) {
         showToast({
@@ -633,7 +641,11 @@ export const SmartPlaylists: React.FC = () => {
                     </div>
                     {aiDjValidation.shortened && (
                       <p className="mt-2 text-meta text-warning">
-                        The result is shorter than requested because AI Smart Mix found no more tracks that safely matched.
+                        {aiDjValidation.shortfallReason === 'audit_limit_reached'
+                          ? 'The result is shorter than requested because the review limit was reached while checking additional tracks.'
+                          : aiDjValidation.shortfallReason === 'search_limit_reached'
+                            ? 'The result is shorter than requested because the search limit was reached. More matching tracks may remain in the library.'
+                            : 'The result is shorter than requested because no more eligible tracks matched your request.'}
                       </p>
                     )}
                   </div>

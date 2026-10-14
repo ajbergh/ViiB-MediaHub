@@ -53,6 +53,10 @@ func (service *Service) ApplyMMRDiversity(ctx context.Context, candidates []Rank
 	if options.Limit <= 0 {
 		selected = append(selected, remaining...)
 		selected = append(selected, candidates[workingCount:]...)
+	} else if options.Limit > len(selected) {
+		// MMR is intentionally bounded, but that bound must not truncate a
+		// larger reserve requested by DJ/refill callers. Keep the ranked tail.
+		selected = append(selected, candidates[workingCount:min(len(candidates), workingCount+options.Limit-len(selected))]...)
 	}
 	return selected, nil
 }

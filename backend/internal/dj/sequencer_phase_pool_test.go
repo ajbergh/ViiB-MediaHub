@@ -64,3 +64,13 @@ func TestStochasticSelectionFiltersUsedBeforeWindowAndPreservesInput(t *testing.
 		t.Fatal("caller pool was mutated")
 	}
 }
+
+func TestPhaseExpandsWhenPreferredBucketContainsOnlyPreviouslyUsedTracks(t *testing.T) {
+	used := db.Song{ID: "used", Artist: "First", Energy: EnergyLow, Tempo: TempoSlow}
+	fresh := db.Song{ID: "fresh", Artist: "Second", Energy: EnergyHigh, Tempo: TempoFast}
+	plan := &DJSetPlan{Phases: []DJPhase{{Name: "First", TargetEnergy: EnergyLow, TargetTempo: TempoSlow, TargetCount: 1}, {Name: "Second", TargetEnergy: EnergyLow, TargetTempo: TempoSlow, TargetCount: 1}}}
+	queue, phases, err := NewSequencer().BuildQueueFromPhasePools([]PhaseCandidatePool{{Songs: []db.Song{used}}, {Songs: []db.Song{used, fresh}}}, plan, GetPersona(PersonaFlowMaster), NewScoreContext())
+	if err != nil || len(queue) != 2 || queue[0].ID != "used" || queue[1].ID != "fresh" || phases[1].SongCount != 1 {
+		t.Fatalf("queue=%v phases=%v err=%v", queue, phases, err)
+	}
+}

@@ -181,17 +181,25 @@ func (s *Sequencer) selectForPhase(
 		targetCount = 1
 	}
 
-	// Get candidates from matching buckets
-	candidates := s.getCandidatesForPhase(phase, buckets)
-
-	// If not enough candidates, try relaxing constraints
-	if len(candidates) < targetCount {
-		candidates = s.relaxAndExpand(phase, buckets, candidates, targetCount)
+	// Count distinct unused songs before deciding whether the preferred
+	// energy/tempo buckets are sufficient. A used track cannot fill this phase.
+	eligible := func(values []db.Song) []db.Song {
+		songs := make([]db.Song, 0, len(values))
+		seen := make(map[string]bool)
+		for _, song := range values {
+			if !seen[song.ID] && !ctx.UsedSongIDs[song.ID] && !ctx.RecentlyPlayedIDs[song.ID] {
+				songs = append(songs, song)
+				seen[song.ID] = true
+			}
+		}
+		return songs
 	}
-
-	// If still not enough, use all candidates as fallback
+	candidates := eligible(s.getCandidatesForPhase(phase, buckets))
 	if len(candidates) < targetCount {
-		candidates = allCandidates
+		candidates = eligible(s.relaxAndExpand(phase, buckets, candidates, targetCount))
+	}
+	if len(candidates) < targetCount {
+		candidates = eligible(allCandidates)
 	}
 
 	// Score all candidates
