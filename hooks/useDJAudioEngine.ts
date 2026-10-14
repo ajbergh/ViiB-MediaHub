@@ -357,7 +357,7 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
           if (isTrackStillLoaded()) useStore.getState().setDeckAnalysisStatus(deck, 'not_analyzed');
         } else {
           if (!isTrackStillLoaded()) return;
-          const grid = feature.status === 'unsupported'
+          const grid = feature.status === 'unsupported' && feature.hasManualBeatGrid === false
             ? null
             : await api.getTrackBeatGrid(track.id).catch(() => null);
           if (isTrackStillLoaded()) {
@@ -1152,7 +1152,7 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
         if (isTrackStillLoaded()) useStore.getState().setDeckAnalysisStatus(deck, 'not_analyzed');
       } else {
         if (!isTrackStillLoaded()) return;
-        const grid = feature.status === 'unsupported'
+        const grid = feature.status === 'unsupported' && feature.hasManualBeatGrid === false
           ? null
           : await api.getTrackBeatGrid(track.id).catch(() => null);
         if (isTrackStillLoaded()) {

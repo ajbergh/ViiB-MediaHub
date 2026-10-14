@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ajbergh/viib-mediahub/internal/crypto"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	spotifyauth "github.com/ajbergh/viib-mediahub/internal/spotify/auth"
 	"github.com/ajbergh/viib-mediahub/internal/spotify/catalog"
@@ -72,6 +73,7 @@ type spotifyAuthRuntime struct {
 	cookieMode            bool
 	closed                bool
 	invalid               atomic.Bool
+	reauthMessage         string
 	webAPIGate            chan struct{}
 	catalogGate           chan struct{}
 	catalogBackgroundGate chan struct{}
@@ -123,6 +125,9 @@ func newSpotifyAuthRuntime(database *db.DB, options spotifyauth.WebPlayerOptions
 	if err != nil { // An unreadable cookie record must never silently select OAuth.
 		s.cookieMode = true
 		s.manager = spotifyauth.NewWebPlayerManager(nil)
+		if errors.Is(err, crypto.ErrReauthRequired) {
+			s.reauthMessage = "Stored Spotify session could not be decrypted after an application move or key change; please sign in to Spotify again."
+		}
 		return s
 	}
 	if raw != "" {
@@ -297,16 +302,21 @@ func (s *spotifyAuthRuntime) status() spotifySessionStatus {
 				status.TokenExpiresAt = expiry.UnixMilli()
 				status.TokenIssueCount = issues
 			}
+		} else if s.reauthMessage != "" {
+			status.Message = s.reauthMessage
 		}
 		return status
 	}
 	connected := false
+	reauthMsg := s.reauthMessage
 	if !s.closed && !s.invalid.Load() && s.lifetime.Err() == nil {
 		if creds, err := readSpotifyCredentials(s.database); err == nil {
 			connected = creds.AccessToken != ""
+		} else if errors.Is(err, crypto.ErrReauthRequired) && reauthMsg == "" {
+			reauthMsg = "Stored Spotify credentials could not be decrypted after an application move or key change; please sign in to Spotify again."
 		}
 	}
-	return spotifySessionStatus{Provider: "oauth", Connected: connected, AuthRequired: !connected}
+	return spotifySessionStatus{Provider: "oauth", Connected: connected, AuthRequired: !connected, Message: reauthMsg}
 }
 
 // withPlayback serializes token-to-session preparation with account retirement.
@@ -388,8 +398,10 @@ func (s *spotifyAuthRuntime) connectGuarded(ctx context.Context, cookie string, 
 	}
 	defer clear(raw)
 	// Storage failure must leave the current account and media usable.
+	// However, if the previous stored session is an unreadable legacy enc:v1
+	// record (ErrReauthRequired), allow the new sign-in to overwrite it.
 	previous, err := s.database.GetSetting(spotifyCookieSetting)
-	if err != nil {
+	if err != nil && !errors.Is(err, crypto.ErrReauthRequired) {
 		return errSpotifySessionRead
 	}
 	if err := s.storeSession(string(raw)); err != nil {
@@ -439,6 +451,7 @@ func (s *spotifyAuthRuntime) connectGuarded(ctx context.Context, cookie string, 
 		_ = s.database.ActivateSpotifyMetadataContext(s.metadataContext)
 	}
 	s.invalid.Store(false)
+	s.reauthMessage = ""
 	s.provider = p
 	s.manager = spotifyauth.NewWebPlayerManager(p)
 	s.cookieMode = true
@@ -482,6 +495,7 @@ func (s *spotifyAuthRuntime) disconnect() error {
 	s.pendingOwner = nil
 	s.setOwnerRetryIdentity("", "")
 	s.provider = nil
+	s.reauthMessage = ""
 	s.cookieMode = true
 	s.manager = spotifyauth.NewWebPlayerManager(nil)
 	return nil

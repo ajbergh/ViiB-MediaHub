@@ -122,13 +122,21 @@ for (const [name,useAudio] of [['full',useDJAudioEngine],['actions',useDJAudioEn
    expect(mocks.patch).toHaveBeenCalledTimes(1);expect(mocks.status).toHaveBeenLastCalledWith('A','available');
   });
   it('marks deck analysisStatus as unsupported and skips beatgrid fetch when feature.status is unsupported without overrides',async()=>{
-   mocks.feature.mockResolvedValueOnce({songId:'song',status:'unsupported',bpmSource:'unknown',keySource:'unknown',syncAllowed:false,sourceFingerprint:'fp'});
+   mocks.feature.mockResolvedValueOnce({songId:'song',status:'unsupported',hasManualBeatGrid:false,bpmSource:'unknown',keySource:'unknown',syncAllowed:false,sourceFingerprint:'fp'});
    await mounted(async audio=>{await audio.loadTrack('A',song);});
    expect(mocks.grid).not.toHaveBeenCalled();
    expect(mocks.status).toHaveBeenLastCalledWith('A','unsupported');
   });
+  it('loads a saved manual grid on an unsupported format',async()=>{
+   mocks.feature.mockResolvedValueOnce({songId:'song',status:'unsupported',hasManualBeatGrid:true,bpmSource:'unknown',keySource:'unknown',syncAllowed:false,sourceFingerprint:'fp'});
+   mocks.grid.mockResolvedValueOnce({songId:'song',resolution:'available',source:'manual',provenance:'manual',beats:[0,0.5,1],downbeatIndices:[0],locked:true,sourceFingerprint:'fp'});
+   await mounted(async audio=>{await audio.loadTrack('A',song);});
+   expect(mocks.grid).toHaveBeenCalledWith('song');
+   expect(mocks.patch).toHaveBeenCalledWith('A',expect.objectContaining({beatGrid:[0,0.5,1],beatGridSource:'manual',beatGridLocked:true}));
+   expect(mocks.status).toHaveBeenLastCalledWith('A','available');
+  });
   it('marks deck analysisStatus as available when feature.status is unsupported but a manual or Spotify BPM exists',async()=>{
-   mocks.feature.mockResolvedValueOnce({songId:'song',status:'unsupported',bpm:126,bpmSource:'manual',keySource:'unknown',syncAllowed:true,sourceFingerprint:'fp'});
+   mocks.feature.mockResolvedValueOnce({songId:'song',status:'unsupported',hasManualBeatGrid:false,bpm:126,bpmSource:'manual',keySource:'unknown',syncAllowed:true,sourceFingerprint:'fp'});
    await mounted(async audio=>{await audio.loadTrack('A',song);});
    expect(mocks.grid).not.toHaveBeenCalled();
    expect(mocks.status).toHaveBeenLastCalledWith('A','available');

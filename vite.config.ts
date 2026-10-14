@@ -18,6 +18,7 @@ export default defineConfig(() => {
         },
       },
       plugins: [react()],
+      worker: { format: 'es' as const },
       // API keys are stored securely in the backend (encrypted in SQLite).
       // Do NOT inject API keys into the frontend bundle via define.
       resolve: {

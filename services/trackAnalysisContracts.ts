@@ -36,6 +36,8 @@ export interface EffectiveScalar {
 }
 
 export interface TrackAnalysisFeature {
+  /** Presence hint; the beatgrid endpoint still validates the source and artifact. */
+  hasManualBeatGrid?: boolean;
   effectiveFields?: EffectiveScalar[];
   providerScores?: Record<string, { value: number; stale: boolean; retrievedAt: string; expiresAt: string; endpoint: 'audio_features' | 'audio_analysis' }>;
   providerScoresUnverified?: boolean;

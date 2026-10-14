@@ -36,10 +36,12 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -80,6 +82,7 @@ func buildGenreLikePattern(genreName string) string {
 // including play history tracking and mood analysis.
 type DB struct {
 	conn                *sql.DB
+	credentialKeys      *crypto.KeyStore
 	databaseLock        *os.File
 	librarySyncOnce     sync.Once
 	librarySyncInitErr  error
@@ -196,6 +199,15 @@ func New(dbPath string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
+	keyDir := ""
+	if dbPath != "" && dbPath != ":memory:" && !strings.HasPrefix(dbPath, "file:") {
+		keyDir = filepath.Dir(dbPath)
+	}
+	credentialKeys, err := crypto.NewKeyStore(keyDir)
+	if err != nil {
+		databaseLock.Close()
+		return nil, fmt.Errorf("failed to configure credential key store: %w", err)
+	}
 	registerSQLiteRuntimeDriver()
 	conn, err := sql.Open(sqliteRuntimeDriverName, sqliteRuntimeDSN(dbPath))
 	if err != nil {
@@ -203,7 +215,7 @@ func New(dbPath string) (*DB, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	db := &DB{conn: conn, databaseLock: databaseLock}
+	db := &DB{conn: conn, databaseLock: databaseLock, credentialKeys: credentialKeys}
 
 	if err := db.migrate(); err != nil {
 		conn.Close()
@@ -742,26 +754,22 @@ func (d *DB) migrateColumns() error {
 	return nil
 }
 
-// migrateUnencryptedSettings encrypts any existing plaintext sensitive settings.
-// This provides backward compatibility when upgrading from versions without encryption.
+// migrateUnencryptedSettings encrypts any existing plaintext sensitive settings
+// and upgrades readable legacy "enc:v1:" secrets to "enc:v2:".
 //
 // The migration process:
-//  1. Reads the raw value from the database (bypassing GetSetting decryption)
-//  2. Checks if the value is already encrypted (has "enc:v1:" prefix)
-//  3. If plaintext, encrypts using the crypto package
-//  4. Updates the database with the encrypted value
-//
-// This function is called during database initialization and is idempotent -
-// already encrypted values are skipped, and the migration can be run multiple
-// times safely.
-//
-// Protected settings:
-//   - spotify_credentials: OAuth tokens and client secrets
-//   - gemini_api_key: Google Gemini AI API key
+//  1. Iterates over all registered crypto.SensitiveKeys() (including Plex,
+//     semantic embedding, Spotify, LLM, and Last.FM secrets)
+//  2. Reads the raw value from the database (bypassing GetSetting decryption)
+//  3. Skips empty or already-current ("enc:v2:") values
+//  4. If plaintext or readable "enc:v1:", encrypts with "enc:v2:" and updates
+//     the database
+//  5. If a legacy "enc:v1:" entry is unreadable (for example, the executable was
+//     relocated before upgrading to v2), leaves the stored row untouched so
+//     GetSetting can surface crypto.ErrReauthRequired without failing startup
+//     or silently destroying data.
 func (d *DB) migrateUnencryptedSettings() error {
-	sensitiveKeys := []string{"spotify_webplayer_session", "spotify_credentials", "gemini_api_key", "llm_api_key", "lastfm_api_key", "lastfm_shared_secret", "lastfm_session_key"}
-
-	for _, key := range sensitiveKeys {
+	for _, key := range crypto.SensitiveKeys() {
 		// Read raw value directly (bypass GetSetting which would try to decrypt)
 		var value string
 		err := d.conn.QueryRow("SELECT value FROM settings WHERE key = ?", key).Scan(&value)
@@ -772,15 +780,22 @@ func (d *DB) migrateUnencryptedSettings() error {
 			return err
 		}
 
-		// Check if already encrypted
-		if value == "" || crypto.IsEncrypted(value) {
-			continue // Empty or already encrypted
+		// Skip empty or already-current v2 encrypted values
+		if value == "" || crypto.IsCurrentEncrypted(value) {
+			continue
 		}
 
-		// Encrypt and update
-		encrypted, err := crypto.Encrypt(value)
+		_, encrypted, migrated, err := d.credentialKeys.DecryptAndUpgrade(value)
 		if err != nil {
+			if crypto.IsLegacyEncrypted(value) && errors.Is(err, crypto.ErrReauthRequired) {
+				// Leave unreadable legacy v1 row intact so callers can report a
+				// clear reauthentication requirement without blocking DB startup.
+				continue
+			}
 			return fmt.Errorf("failed to encrypt setting %s during migration: %w", key, err)
+		}
+		if !migrated {
+			continue
 		}
 
 		_, err = d.conn.Exec("UPDATE settings SET value = ? WHERE key = ?", encrypted, key)
@@ -2646,12 +2661,16 @@ func (d *DB) GetSetting(key string) (string, error) {
 		return "", err
 	}
 
-	// Decrypt sensitive settings
+	// Decrypt sensitive settings and opportunistically upgrade legacy enc:v1: rows to enc:v2:
 	if crypto.IsSensitiveKey(key) {
-		decrypted, err := crypto.Decrypt(value)
+		decrypted, upgradedCiphertext, upgraded, err := d.credentialKeys.DecryptAndUpgrade(value)
 		if err != nil {
-			// Log error but return empty to avoid exposing encrypted data
+			// Return empty string and wrapped error (including crypto.ErrReauthRequired)
+			// to avoid exposing encrypted data.
 			return "", fmt.Errorf("failed to decrypt setting %s: %w", key, err)
+		}
+		if upgraded && upgradedCiphertext != "" {
+			_, _ = d.conn.Exec("UPDATE settings SET value = ? WHERE key = ? AND value = ?", upgradedCiphertext, key, value)
 		}
 		return decrypted, nil
 	}
@@ -2677,7 +2696,7 @@ func (d *DB) SetSetting(key, value string) error {
 
 	// Encrypt sensitive settings
 	if crypto.IsSensitiveKey(key) && value != "" {
-		encrypted, err := crypto.Encrypt(value)
+		encrypted, err := d.credentialKeys.Encrypt(value)
 		if err != nil {
 			return fmt.Errorf("failed to encrypt setting %s: %w", key, err)
 		}
@@ -2702,7 +2721,7 @@ func (d *DB) SetSettingsBatch(settings map[string]string) error {
 	for key, value := range settings {
 		storeValue := value
 		if crypto.IsSensitiveKey(key) && value != "" {
-			encrypted, err := crypto.Encrypt(value)
+			encrypted, err := d.credentialKeys.Encrypt(value)
 			if err != nil {
 				return fmt.Errorf("failed to encrypt setting %s: %w", key, err)
 			}

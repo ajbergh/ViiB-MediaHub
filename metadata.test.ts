@@ -12,7 +12,28 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it('registers actual browser-parser URLs and releases the worker bootstrap URL', async () => {
+it('rejects worker startup failures promptly and recreates the worker on retry', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+  let count = 0;
+  class WorkerFixture {
+    onmessage: any;
+    onerror: any;
+    failed = ++count === 1;
+    terminate() {}
+    postMessage(payload: any) {
+      queueMicrotask(() => this.failed
+        ? this.onerror({ message: 'Metadata module failed to load' })
+        : this.onmessage({ data: { id: payload.id, metadata: { title: 'Recovered', duration: 1 } } }));
+    }
+  }
+  vi.stubGlobal('Worker', WorkerFixture);
+  const file = new File(['audio'], 'song.mp3');
+  await expect(parseSong(file, new Map())).rejects.toThrow('Metadata module failed to load');
+  expect((await parseSong(file, new Map())).title).toBe('Recovered');
+  expect(count).toBe(2);
+});
+
+it('registers browser-parser media URLs with the bundled worker', async () => {
   let index = 0;
   vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:parser-${++index}`);
   const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
@@ -40,12 +61,11 @@ it('registers actual browser-parser URLs and releases the worker bootstrap URL',
   const parsed = await parseSong(new File(['audio'], 'song.mp3'), new Map());
   expect(managedObjectUrls.owns(parsed.url)).toBe(true);
   expect(managedObjectUrls.owns(parsed.coverUrl)).toBe(true);
-  expect(revoke).toHaveBeenCalledWith('blob:parser-1');
   managedObjectUrls.release(parsed.url);
   expect(revoke).toHaveBeenCalledWith(parsed.url);
 });
 
-it('admits and parses MP3, OGG, FLAC, and M4A files with metadata, artwork, and duration', async () => {
+it('transports metadata, artwork, and duration from worker responses for admitted formats', async () => {
   let index = 0;
   vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:format-${++index}`);
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});

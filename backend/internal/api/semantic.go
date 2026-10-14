@@ -5,12 +5,14 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/ajbergh/viib-mediahub/internal/crypto"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/semantic"
@@ -70,6 +72,14 @@ func (a *API) initSemanticServiceGeneration(generation uint64) {
 	defer cancel()
 	resolution, err := semantic.ResolveEmbeddingSettings(ctx, a.db, nil)
 	if err != nil {
+		if errors.Is(err, crypto.ErrReauthRequired) {
+			a.storeSemanticUnavailable(generation, semantic.EmbeddingResolution{
+				Settings: a.loadSemanticSettingsWithoutSecret(),
+				Status:   "needs_configuration",
+				Reason:   "Stored semantic embedding API key could not be decrypted after an application move or key change; please re-enter the API key in Settings.",
+			}, "")
+			return
+		}
 		a.storeSemanticUnavailable(generation, semantic.EmbeddingResolution{Status: "error"}, err.Error())
 		return
 	}
@@ -144,6 +154,23 @@ func (a *API) storeSemanticUnavailable(generation uint64, resolution semantic.Em
 	a.semanticError = errMessage
 }
 
+func (a *API) loadSemanticSettingsWithoutSecret() semantic.EmbeddingSettings {
+	provider, _ := a.db.GetSetting(semantic.SemanticEmbeddingProviderSetting)
+	model, _ := a.db.GetSetting(semantic.SemanticEmbeddingModelSetting)
+	baseURL, _ := a.db.GetSetting(semantic.SemanticEmbeddingBaseURLSetting)
+	rawDims, _ := a.db.GetSetting(semantic.SemanticEmbeddingDimensionsSetting)
+	dims, _ := strconv.Atoi(strings.TrimSpace(rawDims))
+	if dims < 0 {
+		dims = 0
+	}
+	return semantic.EmbeddingSettings{
+		Provider:   strings.ToLower(strings.TrimSpace(provider)),
+		Model:      strings.TrimSpace(model),
+		Dimensions: dims,
+		BaseURL:    strings.TrimSpace(baseURL),
+	}
+}
+
 // restartSemanticService safely retires a previous provider before resolving
 // the saved configuration. The generation prevents a slow Ollama probe from
 // installing a stale service after a later settings update.
@@ -171,14 +198,25 @@ func (a *API) restartSemanticService() {
 
 func (a *API) getSemanticSettings(w http.ResponseWriter, _ *http.Request) {
 	settings, err := semantic.LoadEmbeddingSettings(a.db)
+	reauthReason := ""
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to load semantic settings")
-		return
+		if !errors.Is(err, crypto.ErrReauthRequired) {
+			respondError(w, http.StatusInternalServerError, "failed to load semantic settings")
+			return
+		}
+		reauthReason = "Stored semantic embedding API key could not be decrypted after an application move or key change; please re-enter the API key."
+		settings = a.loadSemanticSettingsWithoutSecret()
 	}
 	resolution, _, _ := a.semanticSnapshot()
 	provider := settings.Provider
 	if provider == "" {
 		provider = semantic.EmbeddingProviderAuto
+	}
+	reason := resolution.Reason
+	status := resolution.Status
+	if reauthReason != "" {
+		status = "needs_configuration"
+		reason = reauthReason
 	}
 	response := semanticSettingsResponse{
 		Provider:         provider,
@@ -186,8 +224,8 @@ func (a *API) getSemanticSettings(w http.ResponseWriter, _ *http.Request) {
 		Dimensions:       settings.Dimensions,
 		BaseURL:          settings.BaseURL,
 		APIKeyConfigured: settings.APIKey != "",
-		Status:           resolution.Status,
-		Reason:           resolution.Reason,
+		Status:           status,
+		Reason:           reason,
 	}
 	if response.Status == "" {
 		response.Status = "initializing"
@@ -219,8 +257,11 @@ func (a *API) updateSemanticSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	existing, err := semantic.LoadEmbeddingSettings(a.db)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to load semantic settings")
-		return
+		if !errors.Is(err, crypto.ErrReauthRequired) {
+			respondError(w, http.StatusInternalServerError, "failed to load semantic settings")
+			return
+		}
+		existing = a.loadSemanticSettingsWithoutSecret()
 	}
 	provider := strings.ToLower(strings.TrimSpace(request.Provider))
 	if provider == "" {

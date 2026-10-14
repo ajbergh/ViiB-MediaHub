@@ -3,6 +3,8 @@
 package audio
 
 import (
+	_ "embed"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -72,14 +74,14 @@ type FormatCapability struct {
 // CapabilityError is a reusable structured error returned or surfaced when an
 // operation is not supported for a media format or source.
 type CapabilityError struct {
-	Code               CapabilityErrorCode    `json:"code"`
-	FormatID           string                 `json:"formatId,omitempty"`
-	Extension          string                 `json:"extension,omitempty"`
-	Operation          string                 `json:"operation"`
-	SupportState       CapabilitySupportState `json:"supportState"`
-	FallbackAvailable  bool                   `json:"fallbackAvailable"`
-	FallbackBehavior   string                 `json:"fallbackBehavior,omitempty"`
-	Message            string                 `json:"message"`
+	Code              CapabilityErrorCode    `json:"code"`
+	FormatID          string                 `json:"formatId,omitempty"`
+	Extension         string                 `json:"extension,omitempty"`
+	Operation         string                 `json:"operation"`
+	SupportState      CapabilitySupportState `json:"supportState"`
+	FallbackAvailable bool                   `json:"fallbackAvailable"`
+	FallbackBehavior  string                 `json:"fallbackBehavior,omitempty"`
+	Message           string                 `json:"message"`
 }
 
 func (e *CapabilityError) Error() string {
@@ -94,317 +96,19 @@ type CapabilityMatrix struct {
 
 const CapabilityMatrixVersion = "media-capabilities-v1"
 
-var canonicalFormats = []FormatCapability{
-	{
-		ID:                     "mp3",
-		Label:                  "MP3 (MPEG-1/2 Audio Layer III)",
-		Extensions:             []string{".mp3"},
-		MIMETypes:              []string{"audio/mpeg", "audio/mp3"},
-		ScannerSupported:       true,
-		BrowserImportSupported: true,
-		MetadataExtractor:      "taglib+dhowden",
-		BackendDecoderID:       "go-mp3-v0.3.4",
-		BackendWaveform:        CapabilitySupported,
-		ClientWaveform:         CapabilitySupported,
-		BackendAnalysis:        CapabilitySupported,
-		Playback:               CapabilitySupported,
-		Sources: map[string]SourceFormatCapability{
-			"local": {
-				Ingestion:       CapabilitySupported,
-				Metadata:        CapabilitySupported,
-				Playback:        CapabilitySupported,
-				BackendWaveform: CapabilitySupported,
-				ClientWaveform:  CapabilitySupported,
-				BackendAnalysis: CapabilitySupported,
-			},
-			"browser": {
-				Ingestion:       CapabilitySupported,
-				Metadata:        CapabilitySupported,
-				Playback:        CapabilitySupported,
-				BackendWaveform: CapabilityUnsupported,
-				ClientWaveform:  CapabilitySupported,
-				BackendAnalysis: CapabilityUnsupported,
-				FallbackBehavior: "Browser-only mode uses Web Audio client waveform and metadata.ts extraction.",
-			},
-			"plex": {
-				Ingestion:       CapabilitySupported,
-				Metadata:        CapabilitySupported,
-				Playback:        CapabilitySupported,
-				BackendWaveform: CapabilitySupported,
-				ClientWaveform:  CapabilitySupported,
-				BackendAnalysis: CapabilitySupported,
-			},
-		},
-		Notes: "Full end-to-end support across native scan, browser import, playback, backend DJ waveform, and track analysis.",
-	},
-	{
-		ID:                     "ogg_vorbis",
-		Label:                  "OGG Vorbis",
-		Extensions:             []string{".ogg", ".oga"},
-		MIMETypes:              []string{"audio/ogg", "application/ogg"},
-		ScannerSupported:       true,
-		BrowserImportSupported: true,
-		MetadataExtractor:      "taglib+dhowden",
-		BackendDecoderID:       "oggvorbis-v1.0.5",
-		BackendWaveform:        CapabilitySupported,
-		ClientWaveform:         CapabilityRuntimeDependent,
-		BackendAnalysis:        CapabilitySupported,
-		Playback:               CapabilityRuntimeDependent,
-		Sources: map[string]SourceFormatCapability{
-			"local": {
-				Ingestion:       CapabilitySupported,
-				Metadata:        CapabilitySupported,
-				Playback:        CapabilityRuntimeDependent,
-				BackendWaveform: CapabilitySupported,
-				ClientWaveform:  CapabilityRuntimeDependent,
-				BackendAnalysis: CapabilitySupported,
-			},
-			"browser": {
-				Ingestion:       CapabilitySupported,
-				Metadata:        CapabilitySupported,
-				Playback:        CapabilityRuntimeDependent,
-				BackendWaveform: CapabilityUnsupported,
-				ClientWaveform:  CapabilityRuntimeDependent,
-				BackendAnalysis: CapabilityUnsupported,
-			},
-			"plex": {
-				Ingestion:       CapabilitySupported,
-				Metadata:        CapabilitySupported,
-				Playback:        CapabilityRuntimeDependent,
-				BackendWaveform: CapabilitySupported,
-				ClientWaveform:  CapabilityRuntimeDependent,
-				BackendAnalysis: CapabilitySupported,
-			},
-			"spotify": {
-				Ingestion:        CapabilitySupported,
-				Metadata:         CapabilitySupported,
-				Playback:         CapabilityRuntimeDependent,
-				BackendWaveform:  CapabilitySupported,
-				ClientWaveform:   CapabilityRuntimeDependent,
-				BackendAnalysis:  CapabilitySupported,
-				FallbackBehavior: "Spotify downloads can optionally convert OGG Vorbis to MP3 for broader playback compatibility.",
-			},
-		},
-		Notes: "Backend analysis and DJ waveform decode OGG Vorbis (.ogg, .oga). OGG Opus in an .ogg container is rejected by the Vorbis decoder.",
-	},
-	{
-		ID:                     "wav",
-		Label:                  "WAV (RIFF PCM16 / Float32)",
-		Extensions:             []string{".wav", ".wave"},
-		MIMETypes:              []string{"audio/wav", "audio/x-wav", "audio/wave"},
-		ScannerSupported:       true,
-		BrowserImportSupported: false,
-		MetadataExtractor:      "taglib+filename",
-		BackendDecoderID:       "wav-pcm16-v1",
-		BackendWaveform:        CapabilitySupported,
-		ClientWaveform:         CapabilitySupported,
-		BackendAnalysis:        CapabilitySupported,
-		Playback:               CapabilitySupported,
-		Sources: map[string]SourceFormatCapability{
-			"local": {
-				Ingestion:       CapabilitySupported,
-				Metadata:        CapabilitySupported,
-				Playback:        CapabilitySupported,
-				BackendWaveform: CapabilitySupported,
-				ClientWaveform:  CapabilitySupported,
-				BackendAnalysis: CapabilitySupported,
-			},
-			"browser": {
-				Ingestion:        CapabilityUnsupported,
-				Metadata:         CapabilityUnsupported,
-				Playback:         CapabilitySupported,
-				BackendWaveform:  CapabilityUnsupported,
-				ClientWaveform:   CapabilitySupported,
-				BackendAnalysis:  CapabilityUnsupported,
-				FallbackBehavior: "Browser-only folder import does not currently admit .wav/.wave.",
-			},
-			"plex": {
-				Ingestion:       CapabilitySupported,
-				Metadata:        CapabilitySupported,
-				Playback:        CapabilitySupported,
-				BackendWaveform: CapabilitySupported,
-				ClientWaveform:  CapabilitySupported,
-				BackendAnalysis: CapabilitySupported,
-			},
-		},
-		Notes: "Backend decoder supports RIFF/WAVE signed 16-bit PCM and 32-bit IEEE float. Other bit depths return an explicit decoder error.",
-	},
-	{
-		ID:                     "flac",
-		Label:                  "FLAC (Free Lossless Audio Codec)",
-		Extensions:             []string{".flac"},
-		MIMETypes:              []string{"audio/flac", "audio/x-flac"},
-		ScannerSupported:       true,
-		BrowserImportSupported: true,
-		MetadataExtractor:      "taglib+dhowden",
-		BackendDecoderID:       "",
-		BackendWaveform:        CapabilityClientFallback,
-		ClientWaveform:         CapabilityRuntimeDependent,
-		BackendAnalysis:        CapabilityUnsupported,
-		Playback:               CapabilityRuntimeDependent,
-		Sources: map[string]SourceFormatCapability{
-			"local": {
-				Ingestion:        CapabilitySupported,
-				Metadata:         CapabilitySupported,
-				Playback:         CapabilityRuntimeDependent,
-				BackendWaveform:  CapabilityClientFallback,
-				ClientWaveform:   CapabilityRuntimeDependent,
-				BackendAnalysis:  CapabilityUnsupported,
-				FallbackBehavior: "DJ waveform falls back to client Web Audio decode; backend BPM/key/beatgrid analysis is explicitly unsupported.",
-			},
-			"browser": {
-				Ingestion:        CapabilitySupported,
-				Metadata:         CapabilitySupported,
-				Playback:         CapabilityRuntimeDependent,
-				BackendWaveform:  CapabilityUnsupported,
-				ClientWaveform:   CapabilityRuntimeDependent,
-				BackendAnalysis:  CapabilityUnsupported,
-				FallbackBehavior: "Browser-only mode parses FLAC Vorbis comments/artwork via music-metadata and uses Web Audio client waveform fallback.",
-			},
-			"plex": {
-				Ingestion:        CapabilitySupported,
-				Metadata:         CapabilitySupported,
-				Playback:         CapabilityRuntimeDependent,
-				BackendWaveform:  CapabilityClientFallback,
-				ClientWaveform:   CapabilityRuntimeDependent,
-				BackendAnalysis:  CapabilityUnsupported,
-				FallbackBehavior: "Direct-play stream; DJ waveform uses client Web Audio fallback and backend analysis marks unsupported_codec.",
-			},
-		},
-		Notes: "Accepted by native scanner and browser-only folder import. No backend PCM decoder is registered; DJ waveform defers to client Web Audio (HTTP 422) and backend track analysis records unsupported_codec.",
-	},
-	{
-		ID:                     "m4a_aac",
-		Label:                  "M4A / AAC (MP4 Audio)",
-		Extensions:             []string{".m4a", ".aac"},
-		MIMETypes:              []string{"audio/mp4", "audio/x-m4a", "audio/aac"},
-		ScannerSupported:       true,
-		BrowserImportSupported: true,
-		MetadataExtractor:      "taglib+dhowden",
-		BackendDecoderID:       "",
-		BackendWaveform:        CapabilityClientFallback,
-		ClientWaveform:         CapabilityRuntimeDependent,
-		BackendAnalysis:        CapabilityUnsupported,
-		Playback:               CapabilityRuntimeDependent,
-		Sources: map[string]SourceFormatCapability{
-			"local": {
-				Ingestion:        CapabilitySupported,
-				Metadata:         CapabilitySupported,
-				Playback:         CapabilityRuntimeDependent,
-				BackendWaveform:  CapabilityClientFallback,
-				ClientWaveform:   CapabilityRuntimeDependent,
-				BackendAnalysis:  CapabilityUnsupported,
-				FallbackBehavior: "DJ waveform falls back to client Web Audio decode; backend BPM/key/beatgrid analysis is explicitly unsupported.",
-			},
-			"browser": {
-				Ingestion:        CapabilitySupported,
-				Metadata:         CapabilitySupported,
-				Playback:         CapabilityRuntimeDependent,
-				BackendWaveform:  CapabilityUnsupported,
-				ClientWaveform:   CapabilityRuntimeDependent,
-				BackendAnalysis:  CapabilityUnsupported,
-				FallbackBehavior: "Browser-only folder import admits .m4a (parsed via music-metadata); raw ADTS .aac files remain scanner-only.",
-			},
-			"plex": {
-				Ingestion:        CapabilitySupported,
-				Metadata:         CapabilitySupported,
-				Playback:         CapabilityRuntimeDependent,
-				BackendWaveform:  CapabilityClientFallback,
-				ClientWaveform:   CapabilityRuntimeDependent,
-				BackendAnalysis:  CapabilityUnsupported,
-				FallbackBehavior: "Direct-play stream; DJ waveform uses client Web Audio fallback and backend analysis marks unsupported_codec.",
-			},
-		},
-		Notes: "M4A (.m4a) is accepted by both native scan and browser-only folder import; raw ADTS .aac files are scanner-only. Backend DSP analysis is explicitly unsupported.",
-	},
-	{
-		ID:                     "opus",
-		Label:                  "Opus (.opus)",
-		Extensions:             []string{".opus"},
-		MIMETypes:              []string{"audio/opus", "audio/ogg; codecs=opus"},
-		ScannerSupported:       true,
-		BrowserImportSupported: false,
-		MetadataExtractor:      "taglib+dhowden",
-		BackendDecoderID:       "",
-		BackendWaveform:        CapabilityClientFallback,
-		ClientWaveform:         CapabilityRuntimeDependent,
-		BackendAnalysis:        CapabilityUnsupported,
-		Playback:               CapabilityRuntimeDependent,
-		Sources: map[string]SourceFormatCapability{
-			"local": {
-				Ingestion:        CapabilitySupported,
-				Metadata:         CapabilitySupported,
-				Playback:         CapabilityRuntimeDependent,
-				BackendWaveform:  CapabilityClientFallback,
-				ClientWaveform:   CapabilityRuntimeDependent,
-				BackendAnalysis:  CapabilityUnsupported,
-				FallbackBehavior: "DJ waveform falls back to client Web Audio decode; backend BPM/key/beatgrid analysis is explicitly unsupported.",
-			},
-			"browser": {
-				Ingestion:        CapabilityUnsupported,
-				Metadata:         CapabilityUnsupported,
-				Playback:         CapabilityRuntimeDependent,
-				BackendWaveform:  CapabilityUnsupported,
-				ClientWaveform:   CapabilityRuntimeDependent,
-				BackendAnalysis:  CapabilityUnsupported,
-				FallbackBehavior: "Browser-only folder import does not admit .opus.",
-			},
-			"plex": {
-				Ingestion:        CapabilitySupported,
-				Metadata:         CapabilitySupported,
-				Playback:         CapabilityRuntimeDependent,
-				BackendWaveform:  CapabilityClientFallback,
-				ClientWaveform:   CapabilityRuntimeDependent,
-				BackendAnalysis:  CapabilityUnsupported,
-				FallbackBehavior: "Direct-play stream; DJ waveform uses client Web Audio fallback and backend analysis marks unsupported_codec.",
-			},
-		},
-		Notes: "Accepted by native scanner; not registered in the backend Vorbis/PCM analysis decoder registry.",
-	},
-	{
-		ID:                     "wma",
-		Label:                  "Windows Media Audio (.wma)",
-		Extensions:             []string{".wma"},
-		MIMETypes:              []string{"audio/x-ms-wma"},
-		ScannerSupported:       true,
-		BrowserImportSupported: false,
-		MetadataExtractor:      "taglib+filename",
-		BackendDecoderID:       "",
-		BackendWaveform:        CapabilityClientFallback,
-		ClientWaveform:         CapabilityRuntimeDependent,
-		BackendAnalysis:        CapabilityUnsupported,
-		Playback:               CapabilityRuntimeDependent,
-		Sources: map[string]SourceFormatCapability{
-			"local": {
-				Ingestion:        CapabilitySupported,
-				Metadata:         CapabilitySupported,
-				Playback:         CapabilityRuntimeDependent,
-				BackendWaveform:  CapabilityClientFallback,
-				ClientWaveform:   CapabilityRuntimeDependent,
-				BackendAnalysis:  CapabilityUnsupported,
-				FallbackBehavior: "Legacy scanner extension only; most WebView/browser runtimes cannot decode WMA natively.",
-			},
-			"browser": {
-				Ingestion:       CapabilityUnsupported,
-				Metadata:        CapabilityUnsupported,
-				Playback:        CapabilityUnsupported,
-				BackendWaveform: CapabilityUnsupported,
-				ClientWaveform:  CapabilityUnsupported,
-				BackendAnalysis: CapabilityUnsupported,
-			},
-			"plex": {
-				Ingestion:        CapabilitySupported,
-				Metadata:         CapabilitySupported,
-				Playback:         CapabilityRuntimeDependent,
-				BackendWaveform:  CapabilityClientFallback,
-				ClientWaveform:   CapabilityRuntimeDependent,
-				BackendAnalysis:  CapabilityUnsupported,
-				FallbackBehavior: "Direct-play depends on client decoder support; transcoding is not enabled.",
-			},
-		},
-		Notes: "Legacy Windows format accepted by scanner; no backend DSP decoder and limited browser/WebView playback support.",
-	},
-}
+//go:embed media-capabilities.json
+var canonicalMatrixJSON []byte
+
+var canonicalFormats = func() []FormatCapability {
+	var matrix CapabilityMatrix
+	if err := json.Unmarshal(canonicalMatrixJSON, &matrix); err != nil {
+		panic(err)
+	}
+	if matrix.Version != CapabilityMatrixVersion {
+		panic("media capability matrix version mismatch")
+	}
+	return matrix.Formats
+}()
 
 // DefaultCapabilityMatrix returns a deep copy of the canonical media capability matrix.
 func DefaultCapabilityMatrix() CapabilityMatrix {

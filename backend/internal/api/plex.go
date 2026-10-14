@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ajbergh/viib-mediahub/internal/crypto"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/plex"
@@ -76,6 +77,8 @@ func classifyPlexError(err error) (status int, code, message string, retryable b
 	// Preserve wrapped sentinel identity for classification. Redaction creates a
 	// new error value and therefore must happen only after errors.Is checks.
 	switch {
+	case errors.Is(err, crypto.ErrReauthRequired):
+		status, code, message, retryable = http.StatusUnauthorized, "plex_reauth_required", "Stored Plex credentials could not be decrypted after an application move or key change; please sign in to Plex again", false
 	case errors.Is(err, plex.ErrAuthenticationRequired), errors.Is(err, plex.ErrInvalidToken):
 		status, code, message, retryable = http.StatusUnauthorized, "plex_auth_required", "Plex authentication is required or has expired", false
 	case errors.Is(err, plex.ErrNotPlexServer):
@@ -191,8 +194,12 @@ func (a *API) connectPlexServer(w http.ResponseWriter, r *http.Request) {
 
 	credentials, err := a.loadPlexCredentials()
 	if err != nil {
-		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_state_failed", "Failed to load Plex authentication state", true)
-		return
+		if errors.Is(err, crypto.ErrReauthRequired) {
+			credentials = plex.Credentials{ServerTokens: map[string]string{}}
+		} else {
+			respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_state_failed", "Failed to load Plex authentication state", true)
+			return
+		}
 	}
 	if credentials.ServerTokens == nil {
 		credentials.ServerTokens = map[string]string{}
@@ -249,12 +256,17 @@ func (a *API) getPlexConfig(w http.ResponseWriter, r *http.Request) {
 		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_config_load_failed", "Failed to load Plex configuration", true)
 		return
 	}
-	credentials, _ := a.loadPlexCredentials()
-	authenticated := credentials.AccountToken != ""
-	if source != nil {
+	credentials, credErr := a.loadPlexCredentials()
+	authenticated := credErr == nil && credentials.AccountToken != ""
+	if source != nil && credErr == nil {
 		authenticated = authenticated || credentials.ServerTokens[source.MachineIdentifier] != ""
 	}
-	respondV2JSON(w, http.StatusOK, map[string]any{"source": source, "authenticated": authenticated})
+	response := map[string]any{"source": source, "authenticated": authenticated}
+	if errors.Is(credErr, crypto.ErrReauthRequired) {
+		response["reauthRequired"] = true
+		response["message"] = "Stored Plex credentials could not be decrypted; please reconnect to Plex."
+	}
+	respondV2JSON(w, http.StatusOK, response)
 }
 
 func (a *API) disconnectPlex(w http.ResponseWriter, r *http.Request) {
@@ -282,8 +294,13 @@ func (a *API) disconnectPlex(w http.ResponseWriter, r *http.Request) {
 func (a *API) startPlexAuth(w http.ResponseWriter, r *http.Request) {
 	credentials, err := a.loadPlexCredentials()
 	if err != nil {
-		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_state_failed", "Failed to load Plex authentication state", true)
-		return
+		if errors.Is(err, crypto.ErrReauthRequired) {
+			// Starting a fresh PIN sign-in replaces unreadable legacy credentials.
+			credentials = plex.Credentials{ServerTokens: map[string]string{}}
+		} else {
+			respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_state_failed", "Failed to load Plex authentication state", true)
+			return
+		}
 	}
 	start, err := plex.NewAuthClient().StartPIN(r.Context(), &credentials)
 	if err != nil {
@@ -305,6 +322,10 @@ func (a *API) getPlexAuthStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	credentials, err := a.loadPlexCredentials()
 	if err != nil {
+		if errors.Is(err, crypto.ErrReauthRequired) {
+			respondPlexAPIError(w, r, err)
+			return
+		}
 		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_state_failed", "Failed to load Plex authentication state", true)
 		return
 	}
@@ -358,6 +379,10 @@ func (a *API) getPlexAuthStatus(w http.ResponseWriter, r *http.Request) {
 func (a *API) getPlexAccountServers(w http.ResponseWriter, r *http.Request) {
 	credentials, err := a.loadPlexCredentials()
 	if err != nil {
+		if errors.Is(err, crypto.ErrReauthRequired) {
+			respondPlexAPIError(w, r, err)
+			return
+		}
 		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_state_failed", "Failed to load Plex authentication state", true)
 		return
 	}
@@ -386,6 +411,10 @@ func (a *API) connectPlexAccountServer(w http.ResponseWriter, r *http.Request) {
 	}
 	credentials, err := a.loadPlexCredentials()
 	if err != nil {
+		if errors.Is(err, crypto.ErrReauthRequired) {
+			respondPlexAPIError(w, r, err)
+			return
+		}
 		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_state_failed", "Failed to load Plex authentication state", true)
 		return
 	}
