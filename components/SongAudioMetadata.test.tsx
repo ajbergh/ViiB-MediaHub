@@ -187,3 +187,23 @@ it('keeps the previous snapshot during refresh failure and hides it for another 
   expect(host.textContent).not.toContain('BPM 120');
  }finally{await act(async()=>root.unmount());}
 });
+
+it('explicitly discloses unsupported local backend analysis status for FLAC/M4A tracks', async () => {
+  (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+  mocks.load.mockResolvedValue({
+    songId: 'flac-track',
+    status: 'unsupported',
+    bpmSource: 'unknown',
+    keySource: 'unknown',
+    syncAllowed: false,
+  });
+  const host = document.createElement('div');
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(<SongAudioMetadata songId="flac-track" />));
+    expect(host.textContent).toContain('Local backend audio analysis (BPM, key, beatgrid, loudness) is not supported for this file format');
+    expect(host.textContent).toContain('BPM Unknown · unknown · Key Unknown · unknown');
+  } finally {
+    await act(async () => root.unmount());
+  }
+});

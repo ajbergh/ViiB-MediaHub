@@ -49,6 +49,7 @@ import { PlexMusicSourceSettings } from '../components/PlexMusicSourceSettings';
 import { LibraryMonitoringPanel, LibraryOperationsPanel } from './LibraryOperations';
 import { isMacOSWails } from '../lib/webglSafety';
 import { closeNativeWindow, persistNativeWindowCloseAction } from '../services/skinnyWindowService';
+import { isBrowserImportSupportedFile } from '../services/mediaCapabilities';
 
 const HOME_LAYOUT_OPTIONS: Array<{
   value: HomeLayoutVariant;
@@ -812,7 +813,7 @@ export const Settings: React.FC = () => {
         // 1. First Pass: Collect Handles
         for await (const { handle, path } of getFilesRecursively(dirHandle)) {
             const lowerName = handle.name.toLowerCase();
-            if (lowerName.endsWith('.mp3') || lowerName.endsWith('.ogg')) {
+            if (isBrowserImportSupportedFile(lowerName)) {
                 audioHandles.push({ handle, path });
             } else if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.png')) {
                 const file = await handle.getFile();
@@ -881,7 +882,7 @@ export const Settings: React.FC = () => {
           const file = files[i];
           const lowerName = file.name.toLowerCase();
           
-          if (lowerName.endsWith('.mp3') || lowerName.endsWith('.ogg')) {
+          if (isBrowserImportSupportedFile(lowerName)) {
               audioFiles.push(file);
           } else if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.png')) {
               const path = file.webkitRelativePath || '';
@@ -1124,7 +1125,7 @@ export const Settings: React.FC = () => {
             {!backendAvailable && (
                 <div className="flex flex-col gap-4">
                     <p className="text-sm text-text-secondary">
-                        Import music from your local folders. Supported formats: MP3, OGG, FLAC.
+                        Import music from your local folders. Supported formats: MP3, OGG, FLAC, M4A.
                     </p>
                     
                     <div className="flex items-center gap-4">

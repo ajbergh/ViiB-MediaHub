@@ -14,7 +14,7 @@ The canonical machine-readable matrix is defined in [`backend/internal/audio/cap
 |---|---|---|---|---|---|---|---|
 | Native library scan | Supported | Supported | Supported | Supported | Supported | Supported | Supported |
 | Native metadata extraction | TagLib + `dhowden/tag` | TagLib + `dhowden/tag` | TagLib + filename | TagLib + `dhowden/tag` | TagLib + `dhowden/tag` | TagLib + `dhowden/tag` | TagLib + filename |
-| Browser-only folder import | Supported | Supported | **Unsupported** | **Unsupported** (tracked in `P1.2`) | **Unsupported** (tracked in `P1.2`) | **Unsupported** | **Unsupported** |
+| Browser-only folder import | Supported | Supported | **Unsupported** | **Supported** (`.flac`) | **Supported** (`.m4a`) | **Unsupported** | **Unsupported** |
 | Backend decoder ID | `go-mp3-v0.3.4` | `oggvorbis-v1.0.5` | `wav-pcm16-v1` | None | None | None | None |
 | Backend DJ waveform | Supported | Supported | Supported | **Client fallback (`422`)** | **Client fallback (`422`)** | **Client fallback (`422`)** | **Client fallback (`422`)** |
 | Client waveform fallback | Supported | Runtime-dependent | Supported | Runtime-dependent | Runtime-dependent | Runtime-dependent | Runtime-dependent |

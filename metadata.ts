@@ -170,6 +170,11 @@ self.onmessage = async (e) => {
 let worker: Worker | null = null;
 const pendingRequests = new Map<string, { resolve: (s: Song) => void, reject: (e: any) => void }>();
 
+export function resetMetadataWorkerForTests(): void {
+    worker = null;
+    pendingRequests.clear();
+}
+
 function getWorker() {
     if (!worker) {
         try {

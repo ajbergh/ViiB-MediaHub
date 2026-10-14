@@ -398,7 +398,14 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     if (session) finishPreviewRef.current(session.token, 'Test Mix stopped.');
   }, []);
 
-  if (analysisStatus === 'not_analyzed' || analysisStatus === 'error') return <div className="px-2 py-1 text-[12px] text-[var(--dj-warning)]">{analysisStatus === 'not_analyzed' ? 'Track not analysed yet.' : 'Track analysis is unavailable.'} Energy insights and recommendations are unavailable.</div>;
+  if (analysisStatus === 'not_analyzed' || analysisStatus === 'unsupported' || analysisStatus === 'error') {
+    const msg = analysisStatus === 'not_analyzed'
+      ? 'Track not analysed yet.'
+      : analysisStatus === 'unsupported'
+      ? 'Backend track analysis is not supported for this audio format.'
+      : 'Track analysis is unavailable.';
+    return <div className="px-2 py-1 text-[12px] text-[var(--dj-warning)]">{msg} Energy insights and recommendations are unavailable.</div>;
+  }
   if (!features) return null;
 
   const acceptCandidate = async () => {

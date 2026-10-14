@@ -45,4 +45,10 @@ describe('DeckFacts', () => {
     expect(container.textContent).toContain('129.5 BPM');
     expect(container.textContent).not.toContain('130.2 BPM');
   });
+
+  it('shows Unsupported format when deck analysisStatus is unsupported and no BPM override exists', async () => {
+    mocks.state.djDeckA = { effectiveBpm: null, originalBpm: null, key: null, analysisStatus: 'unsupported' };
+    await act(async () => root.render(<DeckFacts deck="A" />));
+    expect(container.textContent).toContain('Unsupported format');
+  });
 });

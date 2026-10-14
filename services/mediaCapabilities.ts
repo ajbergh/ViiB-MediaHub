@@ -209,7 +209,7 @@ export const CANONICAL_MEDIA_CAPABILITIES: CapabilityMatrix = {
       extensions: ['.flac'],
       mimeTypes: ['audio/flac', 'audio/x-flac'],
       scannerSupported: true,
-      browserImportSupported: false,
+      browserImportSupported: true,
       metadataExtractor: 'taglib+dhowden',
       backendWaveform: 'client_fallback',
       clientWaveform: 'runtime_dependent',
@@ -226,13 +226,13 @@ export const CANONICAL_MEDIA_CAPABILITIES: CapabilityMatrix = {
           fallbackBehavior: 'DJ waveform falls back to client Web Audio decode; backend BPM/key/beatgrid analysis is explicitly unsupported.',
         },
         browser: {
-          ingestion: 'unsupported',
+          ingestion: 'supported',
           metadata: 'supported',
           playback: 'runtime_dependent',
           backendWaveform: 'unsupported',
           clientWaveform: 'runtime_dependent',
           backendAnalysis: 'unsupported',
-          fallbackBehavior: 'Browser-only folder import currently filters to .mp3 and .ogg (tracked in P1.2).',
+          fallbackBehavior: 'Browser-only mode parses FLAC Vorbis comments/artwork via music-metadata and uses Web Audio client waveform fallback.',
         },
         plex: {
           ingestion: 'supported',
@@ -244,7 +244,7 @@ export const CANONICAL_MEDIA_CAPABILITIES: CapabilityMatrix = {
           fallbackBehavior: 'Direct-play stream; DJ waveform uses client Web Audio fallback and backend analysis marks unsupported_codec.',
         },
       },
-      notes: 'Accepted by native scanner and TagLib/dhowden metadata extraction. No backend PCM decoder is registered yet; DJ waveform defers to client Web Audio (HTTP 422) and backend track analysis records unsupported_codec.',
+      notes: 'Accepted by native scanner and browser-only folder import. No backend PCM decoder is registered; DJ waveform defers to client Web Audio (HTTP 422) and backend track analysis records unsupported_codec.',
     },
     {
       id: 'm4a_aac',
@@ -252,7 +252,7 @@ export const CANONICAL_MEDIA_CAPABILITIES: CapabilityMatrix = {
       extensions: ['.m4a', '.aac'],
       mimeTypes: ['audio/mp4', 'audio/x-m4a', 'audio/aac'],
       scannerSupported: true,
-      browserImportSupported: false,
+      browserImportSupported: true,
       metadataExtractor: 'taglib+dhowden',
       backendWaveform: 'client_fallback',
       clientWaveform: 'runtime_dependent',
@@ -269,13 +269,13 @@ export const CANONICAL_MEDIA_CAPABILITIES: CapabilityMatrix = {
           fallbackBehavior: 'DJ waveform falls back to client Web Audio decode; backend BPM/key/beatgrid analysis is explicitly unsupported.',
         },
         browser: {
-          ingestion: 'unsupported',
+          ingestion: 'supported',
           metadata: 'supported',
           playback: 'runtime_dependent',
           backendWaveform: 'unsupported',
           clientWaveform: 'runtime_dependent',
           backendAnalysis: 'unsupported',
-          fallbackBehavior: 'Browser-only folder import currently filters to .mp3 and .ogg (tracked in P1.2).',
+          fallbackBehavior: 'Browser-only folder import admits .m4a (parsed via music-metadata); raw ADTS .aac files remain scanner-only.',
         },
         plex: {
           ingestion: 'supported',
@@ -287,7 +287,7 @@ export const CANONICAL_MEDIA_CAPABILITIES: CapabilityMatrix = {
           fallbackBehavior: 'Direct-play stream; DJ waveform uses client Web Audio fallback and backend analysis marks unsupported_codec.',
         },
       },
-      notes: 'M4A tags are extracted via TagLib/dhowden; raw ADTS .aac files fall back to TagLib or filename metadata. Backend DSP analysis is unsupported.',
+      notes: 'M4A (.m4a) is accepted by both native scan and browser-only folder import; raw ADTS .aac files are scanner-only. Backend DSP analysis is explicitly unsupported.',
     },
     {
       id: 'opus',
@@ -390,6 +390,13 @@ export function normalizeMediaExtension(nameOrExt: string): string {
   return cleanPath.slice(lastDot);
 }
 
+export const BROWSER_IMPORT_SUPPORTED_EXTENSIONS = ['.mp3', '.ogg', '.oga', '.flac', '.m4a'] as const;
+
+export function isBrowserImportSupportedFile(fileNameOrPath: string): boolean {
+  const ext = normalizeMediaExtension(fileNameOrPath);
+  return (BROWSER_IMPORT_SUPPORTED_EXTENSIONS as readonly string[]).includes(ext);
+}
+
 export function lookupFormatCapability(nameOrExt: string): FormatCapability | null {
   const ext = normalizeMediaExtension(nameOrExt);
   if (!ext) return null;
@@ -405,12 +412,13 @@ export function createMediaCapabilityError(
   const extLabel = ext ? ext.slice(1).toUpperCase() : 'UNKNOWN';
 
   if (operation === 'browser_import') {
+    const supported = isBrowserImportSupportedFile(nameOrExt);
     return {
       code: 'browser_import_format_unsupported',
       formatId: cap?.id,
       extension: ext,
       operation,
-      supportState: cap?.browserImportSupported ? 'supported' : 'unsupported',
+      supportState: supported ? 'supported' : 'unsupported',
       fallbackAvailable: Boolean(cap?.scannerSupported),
       fallbackBehavior: cap?.scannerSupported
         ? 'Use the desktop/server folder scanner to index this format.'

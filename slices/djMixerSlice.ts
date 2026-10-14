@@ -116,7 +116,7 @@ export interface DeckFX {
 export interface DeckState {
   // Track
   track: Song | null;
-  analysisStatus: 'loading' | 'not_analyzed' | 'available' | 'error';
+  analysisStatus: 'loading' | 'not_analyzed' | 'unsupported' | 'available' | 'error';
   
   // Transport
   isPlaying: boolean;

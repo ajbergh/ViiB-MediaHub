@@ -50,8 +50,13 @@ describe('mediaCapabilities', () => {
     expect(analysisUnsupported.supportState).toBe('unsupported');
     expect(analysisUnsupported.formatId).toBe('m4a_aac');
 
-    const browserImportUnsupported = createMediaCapabilityError('browser_import', 'track.flac');
-    expect(browserImportUnsupported.code).toBe('browser_import_format_unsupported');
-    expect(browserImportUnsupported.fallbackAvailable).toBe(true);
+    const browserImportFlac = createMediaCapabilityError('browser_import', 'track.flac');
+    expect(browserImportFlac.code).toBe('browser_import_format_unsupported');
+    expect(browserImportFlac.supportState).toBe('supported');
+
+    const browserImportWav = createMediaCapabilityError('browser_import', 'track.wav');
+    expect(browserImportWav.code).toBe('browser_import_format_unsupported');
+    expect(browserImportWav.supportState).toBe('unsupported');
+    expect(browserImportWav.fallbackAvailable).toBe(true);
   });
 });
