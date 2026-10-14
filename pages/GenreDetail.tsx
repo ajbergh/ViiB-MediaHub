@@ -2,15 +2,22 @@
 
 import React, { useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router';
+import { Virtuoso } from 'react-virtuoso';
 import { useStore } from '../store';
-import { ChevronLeft, Play, Shuffle, Clock, Calendar, Music } from 'lucide-react';
+import { ChevronLeft, Play, Shuffle, Clock, Music } from 'lucide-react';
 import { formatTime } from '../utils';
 import { ContextMenuType } from '../types';
+
+const genreGridClass = 'grid grid-cols-[44px_minmax(0,3fr)_minmax(0,2fr)_minmax(0,2fr)_80px] gap-4 items-center';
 
 export const GenreDetail: React.FC = () => {
   const { genreId } = useParams<{ genreId: string }>();
   const navigate = useNavigate();
-  const { songs, playSong, currentSong, isPlaying, openContextMenu } = useStore();
+  const songs = useStore((state) => state.songs);
+  const playSong = useStore((state) => state.playSong);
+  const currentSongId = useStore((state) => state.currentSong?.id);
+  const isPlaying = useStore((state) => state.isPlaying);
+  const openContextMenu = useStore((state) => state.openContextMenu);
   
   const genreName = decodeURIComponent(genreId || '');
 
@@ -25,7 +32,7 @@ export const GenreDetail: React.FC = () => {
 
   const handlePlay = () => {
     if (genreSongs.length > 0) {
-      playSong(genreSongs[0], genreSongs);
+      playSong(genreSongs[0], genreSongs, undefined, 0);
     }
   };
 
@@ -36,14 +43,7 @@ export const GenreDetail: React.FC = () => {
         const j = Math.floor(Math.random() * (i + 1));
         [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
       }
-      playSong(shuffled[0], shuffled);
-    }
-  };
-
-  const handleSongPlay = (songId: string) => {
-    const songIndex = genreSongs.findIndex(s => s.id === songId);
-    if (songIndex !== -1) {
-      playSong(genreSongs[songIndex], genreSongs);
+      playSong(shuffled[0], shuffled, undefined, 0);
     }
   };
 
@@ -99,32 +99,36 @@ export const GenreDetail: React.FC = () => {
         </div>
       </div>
 
-      {/* Song List */}
-      <div className="flex-1 overflow-y-auto px-6 pb-32">
-        <table className="w-full text-left border-collapse">
-          <thead className="bg-surface-1 sticky top-0 z-10 text-text-subtle text-xs uppercase tracking-wider font-semibold border-b border-surface-border">
-            <tr>
-              <th className="px-4 py-3 w-12 text-center">#</th>
-              <th className="px-4 py-3">Title</th>
-              <th className="px-4 py-3">Artist</th>
-              <th className="px-4 py-3">Album</th>
-              <th className="px-4 py-3 w-24 text-right"><Clock size={14} className="inline" /></th>
-            </tr>
-          </thead>
-          <tbody>
-            {genreSongs.map((song, index) => {
-              const isCurrentSong = currentSong?.id === song.id;
-              
+      {/* Virtualized Song List */}
+      <div className="flex-1 flex flex-col overflow-hidden px-6">
+        <div className={`${genreGridClass} bg-surface-1 px-4 py-3 text-text-subtle text-xs uppercase tracking-wider font-semibold border-b border-surface-border`}>
+          <div className="text-center">#</div>
+          <div>Title</div>
+          <div>Artist</div>
+          <div>Album</div>
+          <div className="text-right"><Clock size={14} className="inline" /></div>
+        </div>
+        <div className="flex-1 overflow-hidden">
+          <Virtuoso
+            data={genreSongs}
+            style={{ height: '100%' }}
+            className="h-full overflow-x-hidden"
+            components={{
+              Footer: () => <div className="h-32" />,
+            }}
+            computeItemKey={(index, song) => `${song.id}-${index}`}
+            itemContent={(index, song) => {
+              const isCurrentSong = currentSongId === song.id;
+
               return (
-                <tr 
-                  key={song.id}
-                  onClick={() => handleSongPlay(song.id)}
+                <div
+                  onClick={() => playSong(song, genreSongs, undefined, index)}
                   onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, song)}
-                  className={`group hover:bg-surface-hover transition-colors cursor-pointer ${
+                  className={`${genreGridClass} group px-4 py-2.5 rounded-md hover:bg-surface-hover transition-colors cursor-pointer ${
                     isCurrentSong ? 'bg-surface-hover/70' : ''
                   }`}
                 >
-                  <td className="px-4 py-2.5 text-text-subtle w-12 text-center">
+                  <div className="text-text-subtle text-center">
                     <span className="group-hover:hidden text-xs tabular-nums">{index + 1}</span>
                     <button className="hidden group-hover:inline-flex text-text-main">
                       {isCurrentSong && isPlaying ? (
@@ -133,27 +137,28 @@ export const GenreDetail: React.FC = () => {
                         <Play size={14} fill="currentColor" />
                       )}
                     </button>
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <div className={`font-semibold text-sm ${isCurrentSong ? 'text-brand' : 'text-text-main'}`}>
+                  </div>
+                  <div className="min-w-0">
+                    <div className={`font-semibold text-sm truncate ${isCurrentSong ? 'text-brand' : 'text-text-main'}`}>
                       {song.title}
                     </div>
-                  </td>
-                  <td className="px-4 py-2.5 text-sm text-text-secondary hover:text-text-main transition-colors">
+                  </div>
+                  <div className="text-sm text-text-secondary hover:text-text-main transition-colors truncate">
                     {song.artist}
-                  </td>
-                  <td className="px-4 py-2.5 text-sm text-text-secondary hover:text-text-main transition-colors">
+                  </div>
+                  <div className="text-sm text-text-secondary hover:text-text-main transition-colors truncate">
                     {song.album}
-                  </td>
-                  <td className="px-4 py-2.5 text-text-secondary text-right font-mono text-xs tabular-nums">
+                  </div>
+                  <div className="text-text-secondary text-right font-mono text-xs tabular-nums">
                     {formatTime(song.duration)}
-                  </td>
-                </tr>
+                  </div>
+                </div>
               );
-            })}
-          </tbody>
-        </table>
+            }}
+          />
+        </div>
       </div>
     </div>
   );
 };
+

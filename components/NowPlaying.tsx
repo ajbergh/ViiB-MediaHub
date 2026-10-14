@@ -554,7 +554,9 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                             )}
 
                             {activeTab === 'QUEUE' && (
-                                <QueueList queue={queue} currentSongIndex={currentSongIndex} />
+                                <div className="h-full flex flex-col">
+                                    <QueueList queue={queue} currentSongIndex={currentSongIndex} />
+                                </div>
                             )}
 
                             {activeTab === 'INFO' && (

@@ -13,7 +13,7 @@
  * @module Artists
  */
 
-import React, { useEffect, useState, forwardRef, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, forwardRef, useCallback, useMemo, useDeferredValue } from 'react';
 import { useNavigate } from 'react-router';
 import { useArtists, useStore } from '../store';
 import { generateGradient, cssUrl } from '../utils';
@@ -66,25 +66,16 @@ const ItemContainer = forwardRef<HTMLDivElement, any>(({ children, ...props }, r
 export const Artists: React.FC = () => {
   const navigate = useNavigate();
   const artists = useArtists();
-  const { openContextMenu, artistMetadata } = useStore();
+  const openContextMenu = useStore((state) => state.openContextMenu);
+  const artistMetadata = useStore((state) => state.artistMetadata);
   const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
   const [sortBy, setSortBy] = useState<ArtistSortOption>('name-asc');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [filter, setFilter] = useState('');
+  const deferredFilter = useDeferredValue(filter);
   const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('artists-card-cols') ?? 5));
   const listView = cardCols === MAX_CARD_COLUMNS;
   const handleCardColsChange = (v: number) => { setCardCols(v); localStorage.setItem('artists-card-cols', String(v)); };
-
-  // Debug: Log artistMetadata on first render and when it changes
-  useEffect(() => {
-    console.log(`🎨 Artists page: artistMetadata has ${Object.keys(artistMetadata).length} entries`);
-    if (Object.keys(artistMetadata).length > 0) {
-      const sample = Object.entries(artistMetadata).slice(0, 3);
-      sample.forEach(([name, meta]) => {
-        console.log(`   📷 "${name}": imageUrl = ${meta.imageUrl?.substring(0, 80)}...`);
-      });
-    }
-  }, [artistMetadata]);
 
   useEffect(() => {
     setScrollParent(document.querySelector('main'));
@@ -115,10 +106,10 @@ export const Artists: React.FC = () => {
   }, [artists, sortBy]);
 
   const filteredArtists = useMemo(() => {
-    if (!filter.trim()) return sortedArtists;
-    const query = filter.toLowerCase();
+    if (!deferredFilter.trim()) return sortedArtists;
+    const query = deferredFilter.toLowerCase();
     return sortedArtists.filter(artist => artist.name.toLowerCase().includes(query));
-  }, [sortedArtists, filter]);
+  }, [sortedArtists, deferredFilter]);
 
   return (
     <Page withPlayerPadding={false}>

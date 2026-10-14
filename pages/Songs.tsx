@@ -15,7 +15,7 @@
  * @module Songs
  */
 
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, useDeferredValue } from 'react';
 import { useStore, useAlbumCovers } from '../store';
 import { Play, Clock, MoreHorizontal, Search, ChevronDown, ArrowUpDown, FolderPlus, Info, Columns3 } from 'lucide-react';
 import { formatTime, generateGradient } from '../utils';
@@ -205,11 +205,17 @@ const Footer = () => <div className="h-32 bg-transparent" />;
 
 export const Songs: React.FC = () => {
   const navigate = useNavigate();
-  const { songs, playSong, currentSong, isPlaying, openContextMenu, openSongInfoModal } = useStore();
+  const songs = useStore((state) => state.songs);
+  const playSong = useStore((state) => state.playSong);
+  const currentSongId = useStore((state) => state.currentSong?.id);
+  const isPlaying = useStore((state) => state.isPlaying);
+  const openContextMenu = useStore((state) => state.openContextMenu);
+  const openSongInfoModal = useStore((state) => state.openSongInfoModal);
   const isLibraryInitializing = useStore(state => state.isLibraryInitializing);
   const isScanning = useStore(state => state.isScanning);
   const albumCovers = useAlbumCovers();
   const [filter, setFilter] = useState('');
+  const deferredFilter = useDeferredValue(filter);
   const [sortBy, setSortBy] = useState<SongSortOption>('recent');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [columns, setColumns] = useState<SongColumnId[]>(loadSongColumns);
@@ -240,22 +246,15 @@ export const Songs: React.FC = () => {
     window.addEventListener('library_updated', refresh);
     window.addEventListener('enrichment_complete', refresh);
     return () => { active = false; window.removeEventListener('library_updated', refresh); window.removeEventListener('enrichment_complete', refresh); };
-  }, [needsAnalysis, songs]);
+  }, [needsAnalysis, songs.length]);
   const visibleColumns = SONG_COLUMNS.filter(column => columns.includes(column.id));
   const gridStyle = {
     '--song-columns': ['36px', 'minmax(220px, 4fr)', ...visibleColumns.map(column => column.width), '64px', '40px'].join(' '),
     '--song-min-width': `${36 + 220 + 64 + 40 + visibleColumns.reduce((sum, column) => sum + column.minWidth, 0) + (visibleColumns.length + 3) * 16 + 96}px`,
   } as React.CSSProperties;
 
-  const sortedAndFilteredSongs = useMemo(() => {
-    // First filter
-    let result = songs.filter(
-      s => s.title.toLowerCase().includes(filter.toLowerCase()) || 
-           s.artist.toLowerCase().includes(filter.toLowerCase()) ||
-           s.album.toLowerCase().includes(filter.toLowerCase())
-    );
-    
-    // Then sort
+  const sortedSongs = useMemo(() => {
+    const result = [...songs];
     switch (sortBy) {
       case 'recent':
         return result.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
@@ -280,7 +279,17 @@ export const Songs: React.FC = () => {
       default:
         return result;
     }
-  }, [songs, filter, sortBy]);
+  }, [songs, sortBy]);
+
+  const sortedAndFilteredSongs = useMemo(() => {
+    const normalizedFilter = deferredFilter.trim().toLowerCase();
+    if (!normalizedFilter) return sortedSongs;
+    return sortedSongs.filter(
+      s => s.title.toLowerCase().includes(normalizedFilter) ||
+           s.artist.toLowerCase().includes(normalizedFilter) ||
+           s.album.toLowerCase().includes(normalizedFilter)
+    );
+  }, [sortedSongs, deferredFilter]);
 
   // Memoize components to prevent re-renders of the list structure
   const components: Components<any, any> = useMemo(() => ({
@@ -297,7 +306,7 @@ export const Songs: React.FC = () => {
             context={{ filter, setFilter, sortBy, setSortBy, showSortMenu, setShowSortMenu, columns, setColumns }}
             components={components}
             itemContent={(index, song) => {
-               const isCurrent = currentSong?.id === song.id;
+               const isCurrent = currentSongId === song.id;
                const displayCover = song.coverUrl || albumCovers[song.album];
                
                return (
@@ -305,7 +314,7 @@ export const Songs: React.FC = () => {
                     <div 
                         className={`${songGridClass} rounded-md px-4 py-2 items-center hover:bg-surface-hover group transition-colors cursor-pointer ${isCurrent ? 'bg-surface-hover' : 'bg-transparent'}`}
                         data-song-id={song.id}
-                        onClick={() => playSong(song, sortedAndFilteredSongs)}
+                        onClick={() => playSong(song, sortedAndFilteredSongs, undefined, index)}
                         onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, song)}
                     >
                         <div className="text-center text-text-subtle tabular-nums text-sm relative h-full flex items-center justify-center">
@@ -315,7 +324,7 @@ export const Songs: React.FC = () => {
                         <div className="flex items-center gap-3 overflow-hidden">
                             <div className="w-10 h-10 flex-shrink-0 rounded bg-surface-3 overflow-hidden relative">
                                     {displayCover ? (
-                                    <img src={displayCover} alt={song.album} className="w-full h-full object-cover" />
+                                    <img src={displayCover} alt={song.album} loading="lazy" className="w-full h-full object-cover" />
                                     ) : (
                                     <div className="w-full h-full" style={{ background: generateGradient(song.album) }}></div>
                                     )}

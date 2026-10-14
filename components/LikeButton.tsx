@@ -26,14 +26,16 @@ interface LikeButtonProps {
  * A heart button that toggles the liked status of a song.
  * Uses the Zustand store to check/update like status.
  */
-export const LikeButton: React.FC<LikeButtonProps> = ({ 
+export const LikeButton: React.FC<LikeButtonProps> = React.memo(({ 
     songId, 
     size = 24, 
     className = '',
     showFilled = false 
 }) => {
-    const { isLikedSong, toggleLikeSong } = useStore();
-    const isLiked = isLikedSong(songId);
+    const isLiked = useStore((state) =>
+        state?.likedSongIds ? state.likedSongIds.has(songId) : Boolean(state?.isLikedSong?.(songId))
+    );
+    const toggleLikeSong = useStore((state) => state.toggleLikeSong);
 
     const handleClick = async (e: React.MouseEvent) => {
         e.stopPropagation(); // Prevent triggering parent click handlers
@@ -58,6 +60,7 @@ export const LikeButton: React.FC<LikeButtonProps> = ({
             />
         </button>
     );
-};
+});
+LikeButton.displayName = 'LikeButton';
 
 export default LikeButton;

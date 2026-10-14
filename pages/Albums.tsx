@@ -13,7 +13,7 @@
  * @module Albums
  */
 
-import React, { useEffect, useState, forwardRef, useMemo } from 'react';
+import React, { useEffect, useState, forwardRef, useMemo, useDeferredValue } from 'react';
 import { useAlbums, useStore } from '../store';
 import { coverBackground } from '../utils';
 import { useNavigate } from 'react-router';
@@ -66,12 +66,15 @@ const ItemContainer = forwardRef<HTMLDivElement, any>(({ children, ...props }, r
 
 export const Albums: React.FC = () => {
   const albums = useAlbums();
-  const { openContextMenu, fetchAlbumMetadata, albumMetadata } = useStore();
+  const openContextMenu = useStore((state) => state.openContextMenu);
+  const fetchAlbumMetadata = useStore((state) => state.fetchAlbumMetadata);
+  const albumMetadata = useStore((state) => state.albumMetadata);
   const navigate = useNavigate();
   const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
   const [sortBy, setSortBy] = useState<AlbumSortOption>('recent');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [filter, setFilter] = useState('');
+  const deferredFilter = useDeferredValue(filter);
   const [cardCols, setCardCols] = useState(() => Number(localStorage.getItem('albums-card-cols') ?? 4));
   const listView = cardCols === MAX_CARD_COLUMNS;
   const handleCardColsChange = (v: number) => { setCardCols(v); localStorage.setItem('albums-card-cols', String(v)); };
@@ -121,12 +124,12 @@ export const Albums: React.FC = () => {
   }, [albums, sortBy]);
 
   const filteredAlbums = useMemo(() => {
-    if (!filter.trim()) return sortedAlbums;
-    const query = filter.toLowerCase();
+    if (!deferredFilter.trim()) return sortedAlbums;
+    const query = deferredFilter.toLowerCase();
     return sortedAlbums.filter(
       album => album.name.toLowerCase().includes(query) || album.artist.toLowerCase().includes(query)
     );
-  }, [sortedAlbums, filter]);
+  }, [sortedAlbums, deferredFilter]);
 
   return (
     <Page withPlayerPadding={false}>

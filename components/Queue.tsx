@@ -121,17 +121,15 @@ const QueueRow = React.memo<QueueRowProps>(({
 QueueRow.displayName = 'QueueRow';
 
 export const Queue: React.FC = () => {
-  const {
-    queue,
-    currentSongIndex,
-    isQueueOpen,
-    setQueueOpen,
-    removeFromQueue,
-    reorderQueue,
-    playQueueItem,
-    clearQueue,
-    openContextMenu,
-  } = useStore();
+  const isQueueOpen = useStore((state) => state.isQueueOpen);
+  const queue = useStore((state) => state.queue);
+  const currentSongIndex = useStore((state) => state.currentSongIndex);
+  const setQueueOpen = useStore((state) => state.setQueueOpen);
+  const removeFromQueue = useStore((state) => state.removeFromQueue);
+  const reorderQueue = useStore((state) => state.reorderQueue);
+  const playQueueItem = useStore((state) => state.playQueueItem);
+  const clearQueue = useStore((state) => state.clearQueue);
+  const openContextMenu = useStore((state) => state.openContextMenu);
 
   const albumCovers = useAlbumCovers();
   const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);

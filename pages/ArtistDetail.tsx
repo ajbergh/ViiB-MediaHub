@@ -13,30 +13,17 @@ import { Play, ArrowLeft, User, MoreHorizontal, ExternalLink, Shuffle, Disc } fr
 import { generateGradient, coverBackground } from '../utils';
 import { ContextMenuType } from '../types';
 import { isPlexSourcePath, resolveAlbumArtwork } from '../lib/artwork';
-
-const splitArtistNames = (artistString: string): string[] => {
-  if (!artistString) return [];
-  const separators = [
-    ' feat. ', ' feat ', ' ft. ', ' ft ',
-    ' featuring ', ' & ', ' x ', ' and ',
-    ', ', ' / ', ' vs. ', ' vs '
-  ];
-  let artists = [artistString];
-  for (const sep of separators) {
-    const newArtists: string[] = [];
-    for (const artist of artists) {
-      const parts = artist.split(new RegExp(sep.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
-      newArtists.push(...parts);
-    }
-    artists = newArtists;
-  }
-  return artists.map(a => a.trim()).filter(a => a.length > 0);
-};
+import { splitArtistNames } from '../lib/artistNames';
 
 export const ArtistDetail: React.FC = () => {
     const { artistName } = useParams<{ artistName: string }>();
     const navigate = useNavigate();
-    const { songs, playSong, openContextMenu, fetchArtistMetadata, artistMetadata, albumMetadata } = useStore();
+    const songs = useStore((state) => state.songs);
+    const playSong = useStore((state) => state.playSong);
+    const openContextMenu = useStore((state) => state.openContextMenu);
+    const fetchArtistMetadata = useStore((state) => state.fetchArtistMetadata);
+    const artistMetadata = useStore((state) => state.artistMetadata);
+    const albumMetadata = useStore((state) => state.albumMetadata);
     const allAlbums = useAlbums();
     const [, setScrollParent] = useState<HTMLElement | null>(null);
 
@@ -53,11 +40,20 @@ export const ArtistDetail: React.FC = () => {
     }, [artistName]);
 
     const artistSongs = useMemo(() => {
+        const targetLower = decodedArtistName.toLowerCase();
+        if (!targetLower) return [];
         return songs.filter(s => {
             const artistsInSong = splitArtistNames(s.artist);
-            const albumArtists = splitArtistNames(s.albumArtist || '');
-            return artistsInSong.some(a => a.toLowerCase() === decodedArtistName.toLowerCase()) ||
-                   albumArtists.some(a => a.toLowerCase() === decodedArtistName.toLowerCase());
+            for (let i = 0; i < artistsInSong.length; i++) {
+                if (artistsInSong[i].toLowerCase() === targetLower) return true;
+            }
+            if (s.albumArtist) {
+                const albumArtists = splitArtistNames(s.albumArtist);
+                for (let i = 0; i < albumArtists.length; i++) {
+                    if (albumArtists[i].toLowerCase() === targetLower) return true;
+                }
+            }
+            return false;
         }).sort((a, b) => {
             if (a.album !== b.album) return a.album.localeCompare(b.album);
             return (a.trackNumber || 0) - (b.trackNumber || 0);
@@ -75,12 +71,12 @@ export const ArtistDetail: React.FC = () => {
     }, [decodedArtistName, fetchArtistMetadata]);
 
     const metadata = artistMetadata[decodedArtistName];
-    const artistHasPlex = artistSongs.some(song => isPlexSourcePath(song.path));
+    const artistHasPlex = useMemo(() => artistSongs.some(song => isPlexSourcePath(song.path)), [artistSongs]);
     // Plex artist portraits are synced separately from album artwork. If PMS
     // does not provide one, keep the neutral fallback rather than using an
     // unrelated album cover as an artist photo.
     const imageUrl = metadata?.imageUrl || (artistHasPlex ? undefined : artistSongs[0]?.coverUrl);
-    const totalDuration = artistSongs.reduce((acc, s) => acc + s.duration, 0);
+    const totalDuration = useMemo(() => artistSongs.reduce((acc, s) => acc + s.duration, 0), [artistSongs]);
     const durationHours = Math.floor(totalDuration / 3600);
     const durationMin = Math.floor((totalDuration % 3600) / 60);
 

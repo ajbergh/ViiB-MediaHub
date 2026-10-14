@@ -36,29 +36,24 @@ import { EMPTY_STATE } from '../lib/emptyStateCopy';
 interface LikedContext {
     totalDuration: string;
     songCount: number;
+    likedSongs: import('../types').Song[];
 }
 
 // Define Header component
 const LikedHeader: React.FC<{ context?: LikedContext }> = ({ context }) => {
-    const { playSong, songs, likedSongIds } = useStore();
-    
-    // Get liked songs sorted by likedAt (newest first)
-    const likedSongs = useMemo(() => {
-        return songs
-            .filter(s => likedSongIds.has(s.id))
-            .sort((a, b) => (b.likedAt || 0) - (a.likedAt || 0));
-    }, [songs, likedSongIds]);
+    const playSong = useStore((state) => state.playSong);
+    const likedSongs = context?.likedSongs || [];
 
     const handlePlayAll = () => {
         if (likedSongs.length > 0) {
-            playSong(likedSongs[0], likedSongs);
+            playSong(likedSongs[0], likedSongs, undefined, 0);
         }
     };
 
     const handleShuffle = () => {
         if (likedSongs.length > 0) {
             const shuffled = [...likedSongs].sort(() => Math.random() - 0.5);
-            playSong(shuffled[0], shuffled);
+            playSong(shuffled[0], shuffled, undefined, 0);
         }
     };
 
@@ -118,7 +113,12 @@ const LikedHeader: React.FC<{ context?: LikedContext }> = ({ context }) => {
 const Footer: React.FC = () => <div className="h-8" />;
 
 export const LikedSongs: React.FC = () => {
-    const { songs, likedSongIds, currentSong, isPlaying, playSong, openContextMenu } = useStore();
+    const songs = useStore((state) => state.songs);
+    const likedSongIds = useStore((state) => state.likedSongIds);
+    const currentSongId = useStore((state) => state.currentSong?.id);
+    const isPlaying = useStore((state) => state.isPlaying);
+    const playSong = useStore((state) => state.playSong);
+    const openContextMenu = useStore((state) => state.openContextMenu);
     const albumCovers = useAlbumCovers();
     const navigate = useNavigate();
     
@@ -147,10 +147,11 @@ export const LikedSongs: React.FC = () => {
         Footer: Footer
     }), []);
 
-    const context: LikedContext = {
+    const context: LikedContext = useMemo(() => ({
         totalDuration,
-        songCount: likedSongs.length
-    };
+        songCount: likedSongs.length,
+        likedSongs
+    }), [totalDuration, likedSongs]);
 
     // Empty state
     const likedCopy = EMPTY_STATE.likedSongs;
@@ -200,14 +201,14 @@ export const LikedSongs: React.FC = () => {
                 context={context}
                 components={components}
                 itemContent={(index, song) => {
-                    const isCurrent = currentSong?.id === song.id;
+                    const isCurrent = currentSongId === song.id;
                     const displayCover = song.coverUrl || albumCovers[song.album];
 
                     return (
                         <div className="bg-surface-1 px-4 sm:px-6 lg:px-8">
                             <div 
                                 className={`grid grid-cols-[40px_1fr_52px_36px] md:grid-cols-[44px_4fr_3fr_3fr_60px_40px_40px] gap-2 md:gap-4 rounded-md px-4 py-2 items-center hover:bg-surface-hover group transition-colors cursor-pointer ${isCurrent ? 'bg-surface-hover' : 'bg-transparent'}`}
-                                onClick={() => playSong(song, likedSongs)}
+                                onClick={() => playSong(song, likedSongs, undefined, index)}
                                 onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, song)}
                             >
                                 <div className="text-center text-text-subtle tabular-nums text-sm relative h-full flex items-center justify-center">
@@ -217,7 +218,7 @@ export const LikedSongs: React.FC = () => {
                                 <div className="flex items-center gap-3 overflow-hidden">
                                     <div className="w-10 h-10 flex-shrink-0 rounded bg-surface-3 overflow-hidden relative">
                                         {displayCover ? (
-                                            <img src={displayCover} alt={song.album} className="w-full h-full object-cover" />
+                                            <img src={displayCover} alt={song.album} loading="lazy" className="w-full h-full object-cover" />
                                         ) : (
                                             <div className="w-full h-full" style={{ background: generateGradient(song.album) }}></div>
                                         )}
