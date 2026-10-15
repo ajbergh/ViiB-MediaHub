@@ -105,22 +105,22 @@
       <g>
         <rect width="116" height="30" rx="8" fill="#121216" stroke="#24242b"/>
         <path d="M17 10V21M12 16H23" stroke="#3ee089" stroke-width="2.2" stroke-linecap="round"/>
-        <text x="36" y="20" fill="#e7e5f2">Local files</text>
+        <text x="36" y="20" fill="#e7e5f2">Local Files</text>
       </g>
       <g transform="translate(128 0)">
         <rect width="136" height="30" rx="8" fill="#121216" stroke="#24242b"/>
-        <path d="M14 20L20 10L26 20" fill="none" stroke="#ff4f87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <text x="38" y="20" fill="#e7e5f2">AI Smart Mix</text>
+        <path d="M16 9L23 15L16 21" fill="none" stroke="#e5a00d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="38" y="20" fill="#e7e5f2">Plex</text>
       </g>
       <g transform="translate(276 0)">
         <rect width="118" height="30" rx="8" fill="#121216" stroke="#24242b"/>
         <path d="M13 18C21 9 27 23 35 13" fill="none" stroke="#9b5cff" stroke-width="2.2" stroke-linecap="round"/>
-        <text x="47" y="20" fill="#e7e5f2">Visualizers</text>
+        <text x="43" y="20" fill="#e7e5f2">DJ Decks</text>
       </g>
       <g transform="translate(406 0)">
         <rect width="129" height="30" rx="8" fill="#121216" stroke="#24242b"/>
         <path d="M14 11H26M14 16H29M14 21H23" stroke="#4ea1ff" stroke-width="2" stroke-linecap="round"/>
-        <text x="42" y="20" fill="#e7e5f2">Wails + Go</text>
+        <text x="36" y="20" fill="#e7e5f2">AI Smart Mix</text>
       </g>
     </g>
 

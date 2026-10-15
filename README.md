@@ -3,390 +3,152 @@
 </p>
 
 <p align="center">
-  <strong>A modern, local-first music hub — React 19 frontend · Go backend · Native desktop via Wails</strong>
+  <strong>Your music. Your mood. Your mix.</strong><br/>
+  A local-first music hub that turns your collection into a place to discover, listen, and DJ.
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick Start</a> ·
+  <a href="https://github.com/ajbergh/ViiB-MediaHub/releases">Download</a> ·
+  <a href="#the-tour">Take the tour</a> ·
   <a href="#features">Features</a> ·
-  <a href="docs/index.md">Documentation</a> ·
-  <a href="#architecture">Architecture</a> ·
-  <a href="#api">API</a> ·
-  <a href="#validation">Validation</a>
+  <a href="#quick-start">Get started</a> ·
+  <a href="docs/index.md">Documentation</a>
 </p>
 
-<p align="center">
-  <img src="assets/screenshots/home.png" alt="ViiB MediaHub Home" width="75%"/>
-</p>
+![ViiB Home with featured albums, colorful personalized mixes, and the music library](assets/screenshots/home.png)
 
----
+## Meet your next favorite way to listen
 
-## Overview
+Bring your local files and Plex music together in one library. Rediscover forgotten favorites, browse a wall of album art, or describe a mood and let AI Smart Mix build the soundtrack. When you want to take the controls, step into a two-deck DJ workspace with waveforms, effects, hot cues, and headphone monitoring.
 
-ViiB MediaHub is a self-hosted, local-first music player for Windows, macOS, and Linux. It combines a React interface with a Go backend, SQLite catalog, native Wails desktop shell, local filesystem scanning, Plex Media Server music-library support, Spotify integration, and AI-assisted library intelligence.
-
-ViiB's normal library experience is source-transparent: local files and synchronized Plex music are normalized into the same ViiB song catalog, so Songs, Albums, Artists, Search, Queue, playlists, likes, history, Smart Mixes, AI Smart Mix, and statistics do not need separate Plex-specific screens.
-
-Spotify remains a distinct integration for Spotify browsing, streaming, and downloads.
-
-| Mode | Description | Output |
-|---|---|---|
-| **Wails desktop** | Native desktop window backed by the local Go service | `.exe`, `.app`, native binary |
-| **Web/browser** | Local HTTP server opened in the default browser | Single executable |
-
-Both modes share the same Go backend and React frontend.
-
-> **Plex scope:** ViiB supports Plex **music/audio libraries only**. Movies, TV, photos, music videos, general Plex video playback, and video transcoding are intentionally unsupported.
-
----
-
-## Platforms
-
-| Platform | Architecture | Wails desktop | Web/browser |
-|---|---|:---:|:---:|
-| Windows | x86-64 (amd64) | ✅ | ✅ |
-| Windows | ARM64 | ✅ | ✅ |
-| macOS | Apple Silicon (arm64) | ✅ | ✅ |
-| macOS | Intel (amd64) | ✅ | ✅ |
-| macOS | Universal | ✅ | — |
-| Linux | x86-64 (amd64) | ✅ | ✅ |
-| Linux | ARM64 | ✅ | ✅ |
-
----
+ViiB runs on your own computer, as a native desktop app or a local server in your browser. Your catalog, playlists, likes, and listening history live locally. Spotify and your choice of AI provider add optional ways to explore and create.
 
 ## Features
 
-### Audio playback
+| Make it yours | What you can do |
+|---|---|
+| **One collection, every angle** | Browse local folders and synchronized Plex music through the same Songs, Albums, Artists, Genres, search, playlists, and queue. |
+| **A home for your listening** | Choose Music Shelves, Cover Wall, or Compact Dashboard; jump into favorites, recent additions, and personalized Smart Mixes. |
+| **Say the vibe** | Ask AI Smart Mix for a playlist or a phased DJ set. Add duration, era, artist, mood, and supported audio constraints. |
+| **Matching that stays local** | Meaning-based catalog search prepares automatically on your device. Switch AI providers without rebuilding the library index. |
+| **Take the decks** | Mix with two decks, waveforms, pitch/tempo controls, loops, hot cues, effects, a sampler, and separate main/cue outputs where supported. |
+| **Shape the sound** | Gapless playback, configurable crossfade, a 10-band EQ with presets and Auto-EQ, visualizers, and a sleep timer. |
+| **Explore Spotify** | Sign in, search, and browse saved albums, artists, and playlists. Spotify Premium enables streaming, playback queue actions, and downloads. |
+| **Keep your library in shape** | Monitor folders, review duplicates, enrich metadata, prepare track analysis, and run diagnostics, repair, backup, or staged restore. |
+| **See your listening story** | Track listening time, play counts, top artists/albums/genres, likes, and history; add optional Last.FM metadata and scrobbling. |
 
-- MP3, FLAC, M4A, AAC, OGG, OPUS, WAV, WMA, and other formats supported by the active playback stack
-- Gapless playback and configurable crossfade
-- Queue management with reorder, Play Next, and Add to Queue
-- HTTP Range-aware backend media delivery and seeking
-- Persistent Now Playing, queue, equalizer, sleep timer, and media-session integration
+### AI with a local foundation
 
-### Unified music library
+Try a request like **“45 minutes of instrumental jazz between 90 and 110 BPM, building gradually”** or **“90s alternative rock for a late-night drive.”** ViiB selects from your existing local/Plex catalog and applies source, duration, diversity, and supported audio requirements. Missing measurements remain unknown; limited matches can produce a shorter playlist.
 
-- **Local folders** — add and scan multiple filesystem music roots
-- **Plex Media Server music** — discover or manually configure PMS, authenticate, select a music library, synchronize metadata, and play through the normal ViiB player
-- One canonical ViiB `songs` catalog for local and Plex tracks
-- Source-transparent Albums, Artists, Search, playlists, likes, history, Smart Mixes, AI Smart Mix, and Stats
-- Revisioned library synchronization and indexed backend search for large catalogs
-- Library Operations for track analysis, diagnostics, repair, backup, and staged offline restore
+Local matching downloads about **31 MB** of verified model files once, then indexes and searches offline. Your selected AI provider handles playlist reasoning and enrichment separately: cloud AI can receive your prompt and bounded candidate metadata. Choose Gemini, OpenAI, Anthropic, OpenRouter, Ollama, or X.AI where configured. See [AI Smart Mix](docs/smart-playlists.md) for behavior and privacy details.
 
-### Plex Media Server
+## The tour
 
-- Backend GDM discovery using Plex multicast `239.0.0.250:32414`
-- Per-interface IPv4 discovery for multi-NIC/VPN/link-local environments
-- Manual hostname/IP/HTTP/HTTPS configuration when GDM is unavailable
-- PMS identity validation before configuration is accepted
-- Plex JWT/PIN device authentication with a locally generated ED25519 device key
-- Music/audio-library filtering; video-oriented Plex libraries are never offered as ViiB sources
-- Transactional metadata synchronization with add/update/remove reconciliation
-- Offline-safe catalog retention: temporary PMS outages never become mass deletions
-- Backend-authenticated audio and artwork proxying; Plex tokens are not placed in browser-visible media URLs
-- Range forwarding and seeking through the existing `/api/audio/{songId}` contract
-- Read-only source behavior by default: ViiB never deletes, moves, renames, or reconfigures Plex media
-- Explicit, reviewable AI metadata writeback for approved Plex genre and original-year proposals only; it requires PMS management permission and never edits audio-file tags
+### A collection worth getting lost in
 
-See [Plex Media Server Music Support](docs/plex-music.md).
+Album artwork, quick navigation, and one catalog for local files and Plex music. Build playlists and keep your favorites close without switching between separate source libraries.
 
-### Spotify
+![Album browser showing artwork from the current music collection](assets/screenshots/albums.png)
 
-- Browser sign-in on Spotify using installed Chrome, Chromium, or Microsoft Edge; the backend stores the session encrypted
-- Saved albums, playlists, artist/album detail views, and Spotify search/browse experiences
-- Recently Played and extended profile fields remain subject to the [open parity gates](docs/SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md)
-- Direct Spotify streaming with configurable quality
-- Track/album/playlist downloads with metadata and progress events
-- Optional threshold-controlled local-library quick scan after completed downloads
-- Optional Spotify BPM/key import with recording identity, source provenance, manual-lock precedence, and local DJ-artifact fallback
+### From a few words to a whole mood
 
-See [Spotify Integration](docs/spotify.md).
+Choose Playlist or DJ Mode, describe what you want to hear, and set a target duration. Home's Smart Mixes offer another way back into your collection using metadata and listening history.
 
-### AI Smart Mix and library intelligence
+![Smart Mix with Playlist and DJ Mode choices and natural-language generation controls](assets/screenshots/smart-playlists.png)
 
-- Natural-language playlist generation with semantic track, album, and artist recall when the optional local SQLite index is ready
-- Semantic AI Smart Mix phase retrieval with local source/filter enforcement, behaviour-aware ranking, diversity, BPM flow, and deterministic metadata fallback
-- Separate semantic embedding configuration: local Ollama or explicitly confirmed OpenAI, Gemini, or OpenRouter embeddings; chat-provider settings and listening history are never repurposed as embedding content
-- Smart Mixes based on catalog metadata and listening history
-- Multi-provider LLM support including Gemini, OpenAI, Anthropic, OpenRouter, Ollama, and X.AI where configured
-- Genre, mood, energy, tempo, BPM, and year enrichment
-- AI Smart Mix set generation using the same ViiB catalog that contains local and synchronized Plex tracks
+### Your collection, behind the decks
 
-### DJ Mode
+A dedicated performance workspace with blue and purple decks, a central mixer, effects, cue controls, and a library drawer. Load pre-generated `.viibstems` packages from adjacent folders or separate Stem Libraries.
 
-- Two-deck mixing interface
-- Persistent BPM/key, beatgrid, energy, loudness, and structure analysis; results are advisory while professional accuracy/calibration gates remain open
-- Pre-generated `.viibstems` package playback from adjacent packages or separate Stem Libraries
-- Cue points, advisory cue suggestions, and sampler
-- Pitch/tempo controls
-- MIDI controller support through Web MIDI where available
+![Two-deck DJ workspace with mixer, effects, hot cues, and sampler](assets/screenshots/dj-mode.png)
 
-### Audio enhancement
+DJ Mode requires a desktop viewport at least **1440 CSS pixels wide**. MIDI and separate output routing depend on browser/device support. Track analysis and cue suggestions are advisory; professional accuracy and calibration gates remain open. ViiB plays stem packages; it does not generate stems. [Explore DJ Mode →](docs/dj-mode.md)
 
-- 10-band equalizer
-- Built-in EQ presets and Auto-EQ
-- Multiple real-time visualizers
-- Web Audio based visualization and processing
+### More ways to explore
 
-### Stats, likes, and history
+Browse Spotify in its own workspace, then follow downloads and scan completed files into your local library. Free or unknown-plan sessions can browse; Premium is required for streaming and downloads. Local playback works independently of Spotify Premium.
 
-- Listening-time and play-count statistics
-- Top artists, albums, and genres
-- Recently played and persistent play history
-- Liked songs and albums stored in ViiB, independent of Plex or Spotify favorites
+![Spotify sign-in screen explaining how to connect an account](assets/screenshots/spotify.png)
 
----
+Screenshots were captured from the live app at 1440 × 900. Artwork, counts, account state, and analysis progress reflect the capture library.
 
 ## Quick Start
 
-### Prerequisites
+1. **Get ViiB:** choose a package for your platform from [Releases](https://github.com/ajbergh/ViiB-MediaHub/releases). Browser builds include the frontend; unzip and run the included executable.
+2. **Bring your music:** add folders in **Settings → Library Sources**, or connect a Plex server, choose a music library, and synchronize it.
+3. **Press play:** explore Home, search your collection, or open AI Smart Mix after configuring an AI provider in **Settings → AI & Enrichment**.
 
-| Requirement | Minimum | Notes |
-|---|---|---|
-| Node.js | 20 LTS | Frontend tooling |
-| Go | **1.26.9+** | Current security-patched Go 1.26 baseline |
-| GCC / Clang | — | Required for native Wails builds and packages that opt into CGO |
-| Wails CLI | v2 | Desktop builds |
+Plex support is for **music/audio libraries**. Plex must be reachable for remote playback; cached metadata remains browsable during temporary outages. Spotify sign-in requires Chrome, Edge, or Chromium installed on the backend device. See the [Plex](docs/plex-music.md) and [Spotify](docs/spotify.md) guides for setup.
 
-Install Wails:
+### Platforms
 
-```bash
-go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
-```
+| Platform | Architecture | Desktop release | Browser release |
+|---|---|:---:|:---:|
+| Windows | x64 | ✓ | ✓ |
+| Windows | ARM64 | — | ✓ |
+| macOS | Apple Silicon | ✓ | ✓ |
+| macOS | Intel | ✓ | ✓ |
+| Linux | x64 | ✓ | ✓ |
+| Linux | ARM64 | — | ✓ |
 
-Platform-native build dependencies are documented by Wails. The backend uses the pure-Go `modernc.org/sqlite` driver and can build without CGO; native Wails packaging still uses the repository's platform toolchain and may enable CGO for other native dependencies.
+Desktop releases use Wails; browser releases serve the same interface from a local Go executable. Linux browser builds need Ayatana AppIndicator for the system tray, or can run with `-no-tray`.
 
-### Development
+### Run from source
 
-Install frontend dependencies from the repository root before starting either mode:
+Use **Node.js 20+** and **Go 1.26.9+**. From the repository root:
 
 ```bash
 npm ci
 ```
 
-Windows/Wails:
-
-```powershell
-.\scripts\dev-wails.ps1
-```
-
-Windows/browser mode:
-
-```powershell
-.\scripts\dev.ps1
-```
-
-macOS/Linux manual development:
+Start the backend in one terminal:
 
 ```bash
-# Terminal 1
 cd backend
 go run ./cmd/viib -port 8080 -no-browser
+```
 
-# Terminal 2
+Start the UI in another terminal, from the repository root:
+
+```bash
 npm run dev
 ```
 
-### Normal validation
-
-```bash
-npm run check
-cd backend
-go test ./...
-go test -race ./...
-go vet ./...
-staticcheck ./...
-```
-
-Pull-request CI also builds browser/Wails targets, runs binary `govulncheck`, packages the Windows Wails executable, and scans the packaged Windows binary.
-
----
-
-## Configuring music sources
-
-### Local folders
-
-Use **Settings** to add local music folders. ViiB scans configured roots and incrementally reconciles filesystem changes.
-
-### Plex Media Server
-
-Open **Settings → Library Sources** and use the **Plex Media Server** panel:
-
-1. Search the local network or enter a PMS address manually.
-2. Validate/connect the server.
-3. Sign in to Plex when the server requires authentication.
-4. Select one of the returned music/audio libraries.
-5. Synchronize the selected library.
-
-Plex tracks then appear in the normal ViiB library UI. Use **Resynchronize** to refresh the remote catalog. A temporary PMS outage retains already imported catalog metadata and surfaces source availability/authentication state instead of deleting tracks.
-
-See [docs/plex-music.md](docs/plex-music.md) for security, discovery, troubleshooting, and playback details.
-
----
-
-## Architecture
-
-```text
-React / TypeScript UI
-        │
-        │ REST + SSE + normal media URLs
-        ▼
-Go backend (chi)
-        │
-        ├── SQLite canonical catalog
-        │     ├── local filesystem songs
-        │     └── synchronized Plex songs
-        │
-        ├── local scanner / metadata extraction
-        ├── Plex client / discovery / auth / sync / media proxy
-        ├── Spotify session / proxy / downloader
-        ├── AI / enrichment services
-        └── Library Operations / jobs / recovery
-```
-
-Important backend packages:
-
-```text
-backend/internal/
-├── api/          REST/SSE handlers and source-aware media routes
-├── audio/        local audio metadata extraction
-├── crypto/       sensitive-setting encryption
-├── db/           SQLite catalog, Plex source records, playlists, history
-├── llm/          AI providers and enrichment
-├── plex/         PMS client, GDM discovery, auth, metadata mapping
-├── scanner/      local filesystem scan/reconciliation
-├── server/       HTTP router/middleware
-├── spotify/      Spotify session, streaming, and downloads
-└── validation/   input and sensitive-key classification
-```
-
-The Plex integration deliberately extends the existing catalog/playback abstractions rather than creating a second Plex-specific media application.
-
----
-
-## Data and security
-
-Application data is stored under the OS user configuration directory in `ViiB-MediaHub/`, including the SQLite database, artwork cache, logs, and downloaded Spotify media.
-
-Sensitive settings are encrypted before persistence using ViiB's machine-bound AES-256-GCM settings mechanism. This includes Plex account/server tokens, Plex device private-key material, and Spotify cookie sessions. Normal Spotify requests use backend-owned authentication; session cookies and bearer tokens are omitted from public status responses.
-
-Plex security properties:
-
-- credentials are not returned through Plex configuration APIs;
-- credentials are not stored in frontend localStorage/Zustand state;
-- browser media URLs contain ViiB song IDs, not Plex tokens;
-- PMS authentication is attached server-side;
-- credential-like error material is redacted;
-- cross-origin Plex asset resolution does not forward the PMS token.
-
-New backups exclude Spotify cookie sessions and OAuth credentials, so Spotify sign-in is required after restore. Other encrypted integration credentials and older archives may still contain sensitive data; protect backups like the application data directory.
-
----
-
-## API
-
-ViiB retains legacy `/api` routes and provides an additive versioned `/api/v2` surface for scalable library synchronization, indexed search, durable jobs, Library Operations, and Plex source management.
-
-Key source-transparent media routes:
-
-| Method | Endpoint | Purpose |
-|---|---|---|
-| `GET` | `/api/audio/{songId}` | Play local or Plex catalog audio; Plex requests are authenticated/proxied by the backend |
-| `GET` | `/api/cover/{songId}` | Return local or proxied Plex artwork |
-
-Plex management routes live under `/api/v2/plex`:
-
-| Method | Endpoint | Purpose |
-|---|---|---|
-| `POST` | `/discover` | Run bounded LAN GDM discovery |
-| `POST` | `/connect` | Normalize, validate, and connect a PMS address |
-| `GET` | `/config` | Return sanitized Plex source/configuration state |
-| `DELETE` | `/config` | Remove the ViiB Plex source/cache without modifying PMS |
-| `POST` | `/auth/start` | Start Plex device authentication |
-| `GET` | `/auth/status` | Poll authentication state |
-| `GET` | `/servers` | List Plex servers available to the signed-in account |
-| `POST` | `/servers/select` | Connect one account-visible or shared Plex server |
-| `GET` | `/artist-artwork/{name}` | Return proxied Plex artist artwork without exposing credentials |
-| `GET` | `/libraries` | List selectable music/audio libraries only |
-| `PUT` | `/library` | Select a Plex music library |
-| `POST` | `/sync` | Start Plex library synchronization |
-| `GET` | `/sync/status` | Read Plex synchronization/source status |
-| `POST` | `/metadata-writeback/preview` | Review eligible AI genre/year changes without writing to Plex |
-| `POST` | `/metadata-writeback/sync` | Apply the exact approved metadata preview and verify it |
-
-The complete versioned contract is [docs/openapi-v2.yaml](docs/openapi-v2.yaml).
-
----
-
-## Build targets
-
-Repository build scripts cover Windows, macOS, and Linux browser/Wails targets. See the scripts under `scripts/` and the CI workflows under `.github/workflows/` for the exact supported build commands and toolchain used by automation.
-
-Every pull request and `main` push packages native Wails desktop builds for Linux x64,
-macOS Apple Silicon, macOS Intel, and Windows x64. Successful CI runs expose the Linux
-binary as a `.tar.gz` artifact and the unsigned macOS `.app` bundles as `.zip` artifacts;
-the macOS CI bundles are intended for validation and require release signing/notarization
-before distribution.
-
-The Wails v2 desktop shell keeps the external system tray on Windows and Linux. On
-macOS it uses the standard application lifecycle (closing the window exits) because
-the legacy tray library and Wails both install a native macOS application delegate.
-
-Typical Windows desktop build:
-
-```powershell
-.\scripts\build-wails.ps1
-```
-
-Typical web/server build:
-
-```powershell
-.\scripts\build.ps1
-```
-
----
+Open **http://localhost:3000/**. For native dependencies, Windows launch scripts, packaging, and validation commands, see [Development and builds](docs/development.md).
 
 ## Documentation
 
-Start at [docs/index.md](docs/index.md).
+Start with the [documentation hub](docs/index.md), or jump to a workflow:
 
-Important references:
+- [Player, queue, EQ, and Now Playing](docs/player.md)
+- [AI Smart Mix and generated DJ sets](docs/smart-playlists.md)
+- [Two-deck DJ Mode](docs/dj-mode.md)
+- [Plex music](docs/plex-music.md) and [Spotify](docs/spotify.md)
+- [Settings](docs/settings.md) and [Library Operations](docs/library-operations.md)
+- [Keyboard shortcuts](docs/keyboard-shortcuts.md)
+- [Roadmap and release gates](docs/ROADMAP.md)
 
-- [Plex Music](docs/plex-music.md)
-- [Library Operations](docs/library-operations.md)
-- [Settings](docs/settings.md)
-- [Player](docs/player.md)
-- [Search](docs/search.md)
-- [Spotify](docs/spotify.md)
-- [OpenAPI v2](docs/openapi-v2.yaml)
-- [Active plans, contracts, and validation](docs/index.md#maintainer-and-reference-documentation)
-- [Historical documentation archive](docs/archive/README.md)
+## Architecture
 
----
+React 19, TypeScript, Vite, Zustand, and Tailwind power the interface. Go, SQLite, and Wails handle the local service, catalog, and desktop shell. Local files and Plex music share one catalog and playback contract. [Read the architecture guide](docs/architecture.md).
+
+## API
+
+The backend exposes REST and SSE endpoints, with a versioned surface for library synchronization, search, durable jobs, and source management. The [OpenAPI v2 reference](docs/openapi-v2.yaml) covers core routes; additional analysis routes currently use their backend handler contracts. See [developer API notes](docs/development.md#api).
+
+## Data and security
+
+Application data lives in your OS user configuration directory under `ViiB-MediaHub/`. Sensitive integration settings use machine-bound encryption; Plex media credentials stay on the backend. New backups exclude Spotify sign-in credentials; other integration credentials may remain, so protect backup archives. [Data and security details](docs/development.md#data-and-security).
 
 ## Validation
 
-The current CI baseline validates:
-
-- frontend checks and production dependency audit;
-- Go tests and race tests;
-- `go vet` and Staticcheck;
-- Linux browser and Wails builds;
-- binary vulnerability scanning;
-- Windows frontend production build;
-- Windows Wails `.exe` packaging;
-- vulnerability scanning of the packaged Windows executable.
-
-The Plex implementation is covered with fake/`httptest` PMS behavior and does not require a live Plex server in CI. Real-PMS smoke testing remains appropriate before a release candidate, especially for LAN discovery, authentication, large-library sync, codec coverage, and long-running direct playback.
-
----
-
-## License
-
-MIT
+CI checks frontend types, tests, and builds; Go tests, race tests, vet, and Staticcheck; platform packaging; and dependency/binary vulnerabilities. Dated provider and analysis evidence, including remaining release gates, lives in the [maintainer references](docs/index.md#maintainer-and-reference-documentation). [Run the checks locally](docs/development.md#normal-validation).
 
 ## Contributing
 
-Contributions are welcome. Please open an issue or pull request and keep changes aligned with the existing source-transparent catalog and playback architecture.
+Issues and pull requests are welcome. Start with the [development guide](docs/development.md) and keep changes aligned with the shared catalog and playback architecture.
 
-Song BPM and key data provided by [GetSongBPM](https://getsongbpm.com/).
+## License
+
+MIT. Song BPM and key data provided by [GetSongBPM](https://getsongbpm.com/).

@@ -37,11 +37,11 @@ Generated results use normal ViiB song IDs, so a result can contain both local a
 
 ## Semantic retrieval
 
-The **Semantic Retrieval Index** in **Settings → AI & Enrichment** uses a fixed, managed local embedding model (Model2Vec `minishlab/potion-base-8M`). ViiB automatically downloads and verifies pinned model files on first use, then computes embeddings and stores vectors in local SQLite. There are no embedding provider or model choices.
+The **Smart Playlist Library** panel in **Settings → AI & Enrichment** uses a fixed, managed local embedding model (Model2Vec `minishlab/potion-base-8M`). ViiB automatically downloads and verifies pinned model files on first use, then computes embeddings and stores vectors in local SQLite. There are no embedding provider or model choices.
 
 The index is independent of the selected chat provider. Switching between OpenAI, OpenRouter, Gemini, Anthropic, and Ollama does not change the vector space or require reindexing. The selected AI model interprets requests and audits candidates; the semantic index remains local. No embedding API or Ollama embedding model is required.
 
-Indexing runs in the background. The Smart Playlists page displays whether semantic matching is ready, indexing, or using the standard fallback. File paths, internal IDs, listening history, and vectors are excluded from semantic document text sent to the AI model. Strict numeric audio requests require the semantic metadata path; if it is unavailable, generation reports that limitation instead of bypassing those requirements.
+Indexing runs in the background. The Smart Mix page (opened from **AI Smart Mix** in the sidebar) displays whether semantic matching is ready, indexing, or using the standard fallback. Embedding documents and vectors stay on-device. Embedding text excludes file paths, internal IDs, and listening history. Separately, the selected chat provider can receive your prompt and bounded candidate metadata, including catalog IDs, for playlist reasoning. Strict numeric audio requests require the semantic metadata path; if it is unavailable, generation reports that limitation instead of bypassing those requirements.
 
 After a semantic result is generated, **Semantic retrieval details** can be expanded for count-only troubleshooting information such as candidate and track/album/artist-match counts. It is collapsed by default and never exposes document text or vectors.
 

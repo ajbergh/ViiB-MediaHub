@@ -4,9 +4,11 @@
 
 ![Player — Equalizer panel](../assets/screenshots/player-equalizer.png)
 
-The Player bar is persistent at the bottom of ViiB and is the playback surface for normal catalog tracks regardless of whether they originate from a local file or a synchronized Plex music library. Spotify streaming uses the same visible player controls but a separate Spotify streaming route.
+The Player bar stays at the bottom of normal ViiB pages and is the playback surface for normal catalog tracks regardless of whether they originate from a local file or a synchronized Plex music library. Spotify streaming uses the same visible player controls but a separate Spotify streaming route.
 
 ---
+
+The full DJ workspace uses its own deck and mixer controls and hides the normal Player and Queue. Skinny player mode can still render the Player on the DJ route.
 
 ## Player Bar
 

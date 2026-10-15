@@ -158,19 +158,17 @@ Enter the API key (or endpoint for Ollama) and click **Save**.
 
 ### Semantic Retrieval Index
 
-The Semantic Retrieval Index is configured independently from the AI chat provider. It powers meaning-based candidate recall for Smart Playlists and AI Smart Mix when it is ready; chat/metadata enrichment settings do not silently change its vector space.
+The **Smart Playlist Library** panel prepares meaning-based music matching automatically on this device. Its fixed local Model2Vec model is independent of your AI provider; changing the chat model does not require reindexing. No embedding API key, Python, GPU, or Ollama embedding installation is required.
 
-| Setting or control | Description |
+Initial setup downloads about 31 MB of verified public model files. After setup, indexing and semantic search work offline. Catalog content is not sent to an embedding service. Your selected AI provider handles playlist reasoning separately; cloud AI can receive the prompt and bounded candidate metadata, including catalog IDs.
+
+| Control or status | Description |
 |---|---|
-| Embedding Provider | **Auto**, local **Ollama**, cloud **OpenAI**, **Google Gemini**, **OpenRouter**, or **Disabled**. Auto only reuses a configured key for that same provider. |
-| Embedding Model / dimensions | Identity for the embedding space. Changing it safely rebuilds the index rather than mixing vectors. |
-| Test Embedding Provider | Sends one non-persistent test embedding and reports the detected dimensions. |
-| Reindex | Starts a background rebuild; playback and normal metadata matching remain usable. |
-| Retry Errors | Requeues only documents left in an error state after bounded provider retries. |
+| Preparation status | Shows model/index readiness, progress, document counts, and errors. |
+| Rebuild Index | Rebuilds matching data in the background. |
+| Retry Errors | Retries failed preparation/indexing work. |
 
-Ollama uses its embedding endpoint and ViiB never downloads a model automatically. Gemini uses `gemini-embedding-2` at 768 dimensions by default; OpenRouter uses its embeddings API with `openai/text-embedding-3-small` at 512 dimensions by default. Cloud providers receive deterministic semantic document text but never file paths, internal song IDs, or listening history. Before any cloud indexing starts, ViiB displays either OpenAI's current one-time estimate or a Gemini/OpenRouter data-and-cost notice and requires explicit confirmation.
-
-Status reports ready/indexing/configuration/error state plus ready, pending, and error document counts. If the index is unavailable, Smart Playlists and AI Smart Mix use their normal metadata fallback rather than becoming unavailable.
+Ordinary playback remains available while preparation runs. Standard metadata matching remains available when semantic retrieval is unavailable; strict numeric AI requests report the limitation rather than bypassing requirements. See [AI Smart Mix](smart-playlists.md#semantic-retrieval) and [Architecture](architecture.md#semantic-retrieval-subsystem).
 
 ### Metadata enrichment source
 

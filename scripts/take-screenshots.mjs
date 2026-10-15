@@ -100,6 +100,11 @@ async function main() {
       }, pagePath);
       await page.waitForTimeout(800);
     }
+    // Genres waits for its metadata request before rendering its heading.
+    // Do not publish the temporary loading spinner as the guide screenshot.
+    if (pagePath === '/genres') {
+      await page.getByRole('heading', { name: 'Genres', exact: true }).waitFor({ timeout: 30000 });
+    }
   }
 
   for (const { name, path: pagePath, label } of PAGES) {

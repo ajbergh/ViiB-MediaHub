@@ -7,7 +7,7 @@ ViiB can build one canonical music catalog from two first-class sources:
 - **Local filesystem folders** scanned by ViiB.
 - **Plex Media Server music/audio libraries** synchronized into the same catalog and streamed through the ViiB backend.
 
-Spotify remains a separate integration for Spotify browsing, streaming, and downloads.
+Spotify remains a separate integration: Free/unknown-plan sessions can browse, while streaming and downloads require confirmed Premium. Local playback works independently of Spotify Premium.
 
 > Plex support is audio/music only. ViiB does not support Plex movie, TV, photo, music-video, general video playback, or video transcoding.
 
@@ -17,6 +17,8 @@ Spotify remains a separate integration for Spotify browsing, streaming, and down
 
 | Page | Description |
 |---|---|
+| [Development and builds](development.md) | Source setup, native packaging, API entry points, data handling, and contributor checks |
+| [UI screenshots](screenshots.md) | Reproduce and review the README and user-guide captures |
 | [Architecture](architecture.md) | Current media-source, catalog, playback, synchronization, and security model |
 | [Home](home.md) | Dashboard with Smart Mixes, recently played, recently added, and library stats |
 | [Songs](songs.md) | Unified local/Plex song catalog with sort, filter, and playback |
@@ -42,10 +44,12 @@ Spotify remains a separate integration for Spotify browsing, streaming, and down
 
 Branch scope and references reviewed on 2026-10-12. Further local scanning/DSP improvements are deferred to a future branch. Implementation status and dated validation evidence are distinct: an implemented adapter or displayed analysis result does not close a parity or professional-quality gate.
 
+The [October 15 documentation refresh](DOCUMENTATION_REVIEW_2026-10-15.md) reconciles current user-facing behavior and screenshots; it does not change those qualification gates.
+
 | Reference | Purpose and status |
 |---|---|
 | [Product & Engineering Roadmap](ROADMAP.md) | Active overarching phases, priorities, release gates, dependencies and qualified-vs-planned status |
-| [OpenAPI v2](openapi-v2.yaml) | Machine-readable versioned backend API contract |
+| [OpenAPI v2](openapi-v2.yaml) | Machine-readable core API routes; additional analysis detail routes currently follow backend handler contracts |
 | [Stem package v1](VIIB_STEM_PACKAGE_V1.md) | Current `.viibstems` interchange and validation contract |
 | [DJ professional analysis roadmap](DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md) | Delivered analysis engineering and remaining accuracy/calibration/release gates |
 | [DJ analysis context](DJV2_TRACK_ANALYSIS_CONCISE_CONTEXT.md) | Current scope freeze and links to preserved measurement evidence |
@@ -107,7 +111,7 @@ See [Architecture and Media Source Model](architecture.md) for the detailed back
 │ Genres                                                  │
 │ Playlists                                               │
 │ Liked Songs / Albums                                    │
-│ Smart Playlists                                         │
+│ AI Smart Mix                                            │
 │ Search                                                  │
 │ Spotify                                                 │
 │ DJ Mode                                                 │
@@ -119,6 +123,8 @@ See [Architecture and Media Source Model](architecture.md) for the detailed back
 │ Artwork · Track info · Controls · Volume · Queue · EQ    │
 └──────────────────────────────────────────────────────────┘
 ```
+
+The full DJ workspace replaces the normal bottom Player and Queue with deck/mixer controls; skinny player mode can still display the Player.
 
 Plex does not add duplicate Plex-only Songs, Albums, Artists, Search, or Now Playing screens. Configure Plex through **Settings → Library Sources**, then use the normal ViiB UI.
 
@@ -139,4 +145,4 @@ Plex does not add duplicate Plex-only Songs, Albums, Artists, Search, or Now Pla
 - **Security:** machine-bound AES-256-GCM sensitive-setting storage; Plex tokens stay server-side for PMS media requests
 - **Platform:** Wails desktop on Windows/macOS/Linux plus browser/server mode
 
-See the [README](../README.md) for development/build requirements.
+See [Development and builds](development.md) for development/build requirements and the [README](../README.md) for the product tour.

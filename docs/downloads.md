@@ -2,7 +2,7 @@
 
 ![Downloads page](../assets/screenshots/downloads.png)
 
-The Downloads page manages the Spotify download queue and shows real-time progress for each download.
+The Downloads page manages the Spotify download queue and shows real-time progress for each download. Downloads require a connected, confirmed Spotify Premium account; Free or unknown-plan sessions can browse Spotify but cannot start downloads.
 
 ---
 

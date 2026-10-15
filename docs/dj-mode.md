@@ -4,7 +4,7 @@
 
 DJ Mode is ViiB MediaHub's two-deck mixing interface. Its library browser works from the ViiB catalog, so synchronized Plex music can be discoverable alongside local filesystem tracks where the active DJ/audio pipeline can load and decode the track through ViiB's normal media route.
 
-> DJ Mode requires a sufficiently wide desktop layout. Mobile layouts are not supported for the full DJ interface.
+> DJ Mode requires a desktop viewport at least **1440 CSS pixels wide**. Mobile layouts are not supported for the full DJ interface.
 
 ---
 
@@ -24,9 +24,9 @@ Plex support remains audio-only; DJ Mode does not introduce Plex video or video-
 
 The **AI Smart Mix** page is the set-generation workflow; it is distinct from this two-deck performance interface. When the Semantic Retrieval Index is ready, each generated set phase retrieves a bounded pool of catalog songs matching the phase's positive and negative semantic intent. Existing persona, BPM/flow, recency, artist-diversity, and sequencing logic then chooses the final queue.
 
-The LLM receives the prompt and compact planning context, not a dump of the ViiB catalog or local genre taxonomy. Generated queues always contain existing ViiB song IDs and retain the selected local/Plex source constraint. If the index is unavailable or its pools cannot satisfy the plan without reusing songs, ViiB falls back to the established metadata/full-catalog path before sequencing.
+The LLM receives the prompt and compact planning context, not a dump of the ViiB catalog or local genre taxonomy. Generated queues always contain existing ViiB song IDs and retain the selected local/Plex source constraint. If the index is unavailable, ViiB uses the established metadata path with the same resolved audio requirements. A shortage in a searchable semantic phase is reported instead of filled with unrelated catalog tracks.
 
-The AI Smart Mix page shows index readiness and optional count-only retrieval diagnostics. Configure, reindex, test, or recover the semantic provider in **Settings → AI & Enrichment**.
+The AI Smart Mix page shows index readiness and optional count-only retrieval diagnostics. View preparation status, rebuild the local index, or retry errors in **Settings → AI & Enrichment → Smart Playlist Library**. Matching is managed locally; there is no embedding-provider configuration.
 
 ---
 
@@ -84,7 +84,7 @@ The DJ library browser filters the ViiB catalog and exposes available metadata s
 
 - Click **Library** or press **/** to open the bottom overlay and focus search. **Browse** also opens it.
 - Close with **×**, **Library**, or **Escape**. Closing is immediate and restores focus to the opener. A column menu or modal gets Escape before the library. Typing and focus traversal inside the library do not trigger deck shortcuts.
-- The drawer uses 40% of the DJ viewport, bounded by a 280px minimum, 640px maximum, and available height. It is no longer manually resizable. There is no page-level library-height state or library resize observer.
+- The full-width drawer uses 50% of the DJ viewport height, bounded by a 280px minimum, 640px maximum, and available height. It is no longer manually resizable. There is no page-level library-height state or library resize observer.
 - Search, categories/playlists, sorting, configurable columns, track colors, BPM/key and harmonic compatibility, load A/B, and drag-to-deck use the existing browser. Drag onto the exposed upper portion of either deck.
 - The `react-virtuoso` table remains virtualized. The browser mounts on first use and stays mounted while hidden, preserving search, category, sorting, and scroll state across open/close. Hidden content is excluded from focus traversal and accessibility navigation.
 

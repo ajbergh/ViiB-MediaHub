@@ -57,17 +57,17 @@ DJ Mode has its own dedicated set of shortcuts active only while on the DJ Mode 
 
 | Key | Action |
 |---|---|
-| `Space` | Play/Pause Deck A |
-| `Shift + Space` | Play/Pause Deck B |
+| `Space` | Play/Pause the active deck (Shift does not change the target) |
 | `W` | Play/Pause Deck A |
 | `P` | Play/Pause Deck B |
 | `Q` | Return Deck A to cue |
 | `O` | Return Deck B to cue |
 | `Tab` | Toggle active deck |
 | `Z` / `X` / `C` | Crossfader left / center / right |
+| `←` / `→` | Adjust crossfader by 2% toward A / B |
 | `E` / `[` | Sync Deck A / Deck B |
-| `Shift + ←` / `Shift + →` | Nudge the active deck backward / forward |
-| `Alt + Shift + ←` / `Alt + Shift + →` | Larger nudge backward / forward |
+| `Shift + ←` / `Shift + →` | Nudge the active deck backward / forward by 20 ms |
+| `Alt + Shift + ←` / `Alt + Shift + →` | Fine nudge backward / forward by 5 ms |
 | `1`–`8` | Trigger the active deck's hot cue |
 | `Shift + 1`–`8` | Set the active deck's hot cue at the current position |
 | `/` | Open and focus the DJ library search |

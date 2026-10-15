@@ -30,9 +30,13 @@ Legacy OAuth remains a compatibility path for installations that have not select
 
 Artist results open profiles with top tracks and albums. Saved-library pages support pagination, loading/error state, and retry. Account/profile fields and Recently Played can be unavailable or rate limited; an incomplete response does not establish full account-history support. The [parity audit](SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md) tracks remaining gaps and the [validation log](SPOTIFY_WEBPLAYER_VALIDATION.md) records dated evidence.
 
+## Account plans
+
+Free and unknown-plan sessions can search and browse artists, albums, playlists, and saved-library metadata. Streaming, playback queue additions, shuffle playback, and downloads require a confirmed **Spotify Premium** account. Unsupported media actions are disabled in the UI and rejected by the backend. Local-file playback does not require Spotify Premium.
+
 ## Streaming and queue actions
 
-Use **Play**, **Play Next**, or **Add to Queue** on supported track results. Streaming runs through ViiB's backend and its bundled Spotify integration with configurable quality; no separate librespot executable installation is required. A connected session and an available recording are required.
+Use **Play**, **Play Next**, or **Add to Queue** on supported track results. Streaming runs through ViiB's backend and its bundled Spotify integration with configurable quality; no separate librespot executable installation is required. A connected Premium session and an available recording are required.
 
 ## Downloading tracks
 
