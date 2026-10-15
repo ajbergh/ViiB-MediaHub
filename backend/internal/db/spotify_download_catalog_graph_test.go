@@ -1,10 +1,113 @@
 package db
 
 import (
+	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+// A tiny reachable graph in a large unrelated catalog must use identity-keyed
+// lookups. Previously SQLite scanned relations by entity_type alone, making a
+// completion hold the writer for tens of seconds despite retaining a few rows.
+func TestDownloadedCatalogGraphUsesTargetedRelationLookups(t *testing.T) {
+	d, path := evidenceFixture(t)
+	if err := d.ActivateSpotifyMetadataContext("owner"); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	album, artist := "AAAAAAAAAAAAAAAAAAAAAA", "BBBBBBBBBBBBBBBBBBBBBB"
+	root := SpotifyEntitySnapshot{SpotifySnapshotKey: SpotifySnapshotKey{EntityType: "track", SpotifyID: referenceID, Resource: "catalog", ContextKey: "owner"}, SchemaVersion: 1, AdapterRevision: "fixture", Payload: []byte(`{}`), RetrievedAt: now, ExpiresAt: now.Add(time.Hour)}
+	root.Relations = []SpotifyEntityRelation{{Kind: "album", ChildType: "album", ChildID: album}, {Kind: "artist", ChildType: "artist", ChildID: artist}}
+	if err := d.PutSpotifyEntitySnapshot(root); err != nil {
+		t.Fatal(err)
+	}
+	for _, node := range []struct{ kind, id, childKind, childID string }{{"album", album, "artist", artist}, {"artist", artist, "album", album}} {
+		snapshot := root
+		snapshot.EntityType, snapshot.SpotifyID = node.kind, node.id
+		snapshot.Relations = []SpotifyEntityRelation{{Kind: "related", ChildType: node.childKind, ChildID: node.childID}}
+		if err := d.PutSpotifyEntitySnapshot(snapshot); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tx, err := d.conn.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	// Use set-based fixture seeding to represent a production-sized catalog
+	// without spending the test's time constructing provider responses.
+	_, err = tx.Exec(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<50000)
+	 INSERT INTO spotify_entity_snapshots(entity_type,spotify_id,resource,context_key,schema_version,adapter_revision,payload,payload_hash,retrieved_at,expires_at)
+	 SELECT 'track',printf('%022d',i),'catalog','owner',1,'fixture',X'7B7D','fixture',?,? FROM n`, now.UnixMilli(), now.Add(time.Hour).UnixMilli())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = tx.Exec(`INSERT INTO spotify_entity_relations(entity_type,spotify_id,resource,context_key,relation_kind,position,child_type,child_id,unavailable,metadata_json)
+	 SELECT entity_type,spotify_id,resource,context_key,'artist',0,'artist','AAAAAAAAAAAAAAAAAAAAAA',0,X'7B7D'
+	 FROM spotify_entity_snapshots WHERE entity_type='track' AND spotify_id<>?`, referenceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	query := downloadedCatalogGraphCTE + ` SELECT (SELECT COUNT(*) FROM eligible),(SELECT COUNT(*) FROM relations)`
+	rows, err := d.conn.Query("EXPLAIN QUERY PLAN "+query, now.UnixMilli(), referenceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targeted := 0
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			rows.Close()
+			t.Fatal(err)
+		}
+		if detail == "SCAN r" || strings.HasPrefix(detail, "SCAN r ") || strings.HasPrefix(detail, "SEARCH r ") {
+			for _, key := range []string{"entity_type=?", "spotify_id=?", "resource=?", "context_key=?"} {
+				if !strings.Contains(detail, key) {
+					rows.Close()
+					t.Fatalf("broad relation traversal: %s", detail)
+				}
+			}
+			targeted++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		t.Fatal(err)
+	}
+	rows.Close()
+	if targeted < 2 {
+		t.Fatalf("expected keyed recursive and retained relation lookups, got %d", targeted)
+	}
+	if err := d.AddDownload(&SpotifyDownload{ID: "large-catalog", SpotifyID: referenceID, Type: "track", Status: "queued"}); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := d.MarkDownloadStarted("large-catalog"); err != nil || !changed {
+		t.Fatalf("start: %v %v", changed, err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	started := time.Now()
+	if changed, err := d.MarkDownloadCompletedWithEvidence(ctx, "large-catalog", path); err != nil || !changed {
+		t.Fatalf("completion: %v %v", changed, err)
+	}
+	t.Logf("completion with 50,000 unrelated catalog rows: %v", time.Since(started))
+	var imports, relations int
+	if err := d.conn.QueryRow(`SELECT count(*) FROM spotify_download_catalog_imports WHERE recording_id=?`, referenceID).Scan(&imports); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.conn.QueryRow(`SELECT count(*) FROM spotify_download_catalog_relations WHERE recording_id=?`, referenceID).Scan(&relations); err != nil {
+		t.Fatal(err)
+	}
+	if imports != 3 || relations != 4 {
+		t.Fatalf("unrelated catalog retained: imports=%d relations=%d", imports, relations)
+	}
+}
 
 func TestDownloadedCatalogReachableGraphLifecycle(t *testing.T) {
 	for _, mode := range []string{"cycle", "missing", "unavailable"} {

@@ -1218,9 +1218,11 @@ func (dm *DownloadManager) processDownload(workerID int, job downloadJob) {
 	// Download with retry logic for transient errors
 	const maxRetries = 3
 	var lastErr error
+	attempts := 0
 	audioKeySessionResetAttempted := false
 retryLoop:
 	for attempt := 1; attempt <= maxRetries; attempt++ {
+		attempts = attempt
 		dm.recordDownloadActivity(download.ID, spotify.DownloadPhasePreparing)
 		sessionGeneration := dm.sessionManager.Generation()
 		lastErr = dm.downloadTrack(ctx, download)
@@ -1281,7 +1283,7 @@ retryLoop:
 		if ctx.Err() != nil {
 			return
 		}
-		dmLog("Worker %d: download failed for '%s' after %d attempts: %v", workerID, download.Title, maxRetries, lastErr)
+		dmLog("Worker %d: download failed for '%s' after %d attempts: %v", workerID, download.Title, attempts, lastErr)
 		changed, _ := dm.db.MarkDownloadFailed(download.ID, lastErr.Error())
 		if changed {
 			dm.progressChan <- DownloadProgress{

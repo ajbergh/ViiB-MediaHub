@@ -81,16 +81,18 @@ func buildGenreLikePattern(genreName string) string {
 // songs, playlists, scan folders, Spotify downloads, and AI DJ features
 // including play history tracking and mood analysis.
 type DB struct {
-	conn                *sql.DB
-	credentialKeys      *crypto.KeyStore
-	databaseLock        *os.File
-	librarySyncOnce     sync.Once
-	librarySyncInitErr  error
-	semanticOnce        sync.Once
-	semanticInitErr     error
-	genreStatsMu        sync.Mutex
-	externalSchemaMu    sync.Mutex
-	externalSchemaReady bool
+	conn                      *sql.DB
+	credentialKeys            *crypto.KeyStore
+	databaseLock              *os.File
+	librarySyncOnce           sync.Once
+	librarySyncInitErr        error
+	semanticOnce              sync.Once
+	semanticInitErr           error
+	genreStatsMu              sync.Mutex
+	externalSchemaMu          sync.Mutex
+	externalSchemaReady       bool
+	scannerFailureSchemaMu    sync.Mutex
+	scannerFailureSchemaReady bool
 }
 
 // Song represents a persisted audio track with metadata and file locations
@@ -216,6 +218,11 @@ func New(dbPath string) (*DB, error) {
 	}
 
 	db := &DB{conn: conn, databaseLock: databaseLock, credentialKeys: credentialKeys}
+	if err := db.ConfigureRuntime(); err != nil {
+		conn.Close()
+		databaseLock.Close()
+		return nil, fmt.Errorf("failed to configure database runtime: %w", err)
+	}
 
 	if err := db.migrate(); err != nil {
 		conn.Close()
@@ -3927,7 +3934,7 @@ func (d *DB) DeleteDirectorySignatures(paths []string) (int, error) {
 // The scan state is stored with a fixed ID (1) so there's always only one row.
 // Uses upsert (INSERT ... ON CONFLICT UPDATE) for efficiency.
 func (d *DB) SaveScanState(state ScanState) error {
-	_, err := d.conn.Exec(`
+	_, err := d.execSQLiteWrite(context.Background(), `
 		INSERT INTO scan_state (id, last_scan_time, windows_usn, macos_event_id, linux_last_mtime, scan_duration_ms, files_scanned, files_changed)
 		VALUES (1, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET

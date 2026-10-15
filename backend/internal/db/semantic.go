@@ -430,7 +430,7 @@ func (d *DB) upsertSemanticDocumentBatch(ctx context.Context, docs []SemanticDoc
 			return nil, errors.New("semantic document has invalid required fields")
 		}
 	}
-	tx, err := d.conn.BeginTx(ctx, nil)
+	tx, err := d.beginSemanticWriteTx(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -631,7 +631,7 @@ func (d *DB) storeSemanticEmbeddingBatch(ctx context.Context, entityType string,
 			return errors.New("semantic embedding batch mixes provider identities")
 		}
 	}
-	tx, err := d.conn.BeginTx(ctx, nil)
+	tx, err := d.beginSemanticWriteTx(ctx)
 	if err != nil {
 		return err
 	}
@@ -699,7 +699,7 @@ func (d *DB) ResetSemanticEmbeddings(ctx context.Context) error {
 	if err := d.EnsureSemanticSchema(); err != nil {
 		return err
 	}
-	tx, err := d.conn.BeginTx(ctx, nil)
+	tx, err := d.beginSemanticWriteTx(ctx)
 	if err != nil {
 		return err
 	}
@@ -738,7 +738,7 @@ func (d *DB) DeleteSemanticDocumentsForMissingSongs(ctx context.Context) (int, e
 	if err := d.EnsureSemanticSchema(); err != nil {
 		return 0, err
 	}
-	tx, err := d.conn.BeginTx(ctx, nil)
+	tx, err := d.beginSemanticWriteTx(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -826,7 +826,7 @@ func (d *DB) deleteSemanticDocumentKeyBatch(ctx context.Context, entityType stri
 	if len(keys) == 0 {
 		return SemanticDocumentDeletion{ReadyIDs: []int64{}}, nil
 	}
-	tx, err := d.conn.BeginTx(ctx, nil)
+	tx, err := d.beginSemanticWriteTx(ctx)
 	if err != nil {
 		return SemanticDocumentDeletion{}, err
 	}

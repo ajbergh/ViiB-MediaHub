@@ -2,6 +2,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"time"
 )
@@ -19,7 +20,12 @@ type ScannerFailure struct {
 }
 
 func (d *DB) EnsureScannerFailureSchema() error {
-	_, err := d.conn.Exec(`
+	d.scannerFailureSchemaMu.Lock()
+	defer d.scannerFailureSchemaMu.Unlock()
+	if d.scannerFailureSchemaReady {
+		return nil
+	}
+	_, err := d.execSQLiteWrite(context.Background(), `
 		CREATE TABLE IF NOT EXISTS scanner_failures (
 			file_path TEXT PRIMARY KEY,
 			failure_kind TEXT NOT NULL,
@@ -31,15 +37,20 @@ func (d *DB) EnsureScannerFailureSchema() error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_scanner_failures_retry ON scanner_failures(retry_after);
 	`)
+	if err == nil {
+		d.scannerFailureSchemaReady = true
+	}
 	return err
 }
 
 // RecordScannerFailure increments the failure count and delays the next retry
 // with a capped quadratic backoff.
 func (d *DB) RecordScannerFailure(filePath, kind, message string) error {
-	if err := d.EnsureScannerFailureSchema(); err != nil { return err }
+	if err := d.EnsureScannerFailureSchema(); err != nil {
+		return err
+	}
 	now := time.Now().UnixMilli()
-	_, err := d.conn.Exec(`
+	_, err := d.execSQLiteWrite(context.Background(), `
 		INSERT INTO scanner_failures(file_path, failure_kind, message, attempts, first_seen_at, last_seen_at, retry_after)
 		VALUES(?, ?, ?, 1, ?, ?, ?)
 		ON CONFLICT(file_path) DO UPDATE SET
@@ -53,28 +64,42 @@ func (d *DB) RecordScannerFailure(filePath, kind, message string) error {
 }
 
 func (d *DB) ClearScannerFailure(filePath string) error {
-	if err := d.EnsureScannerFailureSchema(); err != nil { return err }
-	_, err := d.conn.Exec(`DELETE FROM scanner_failures WHERE file_path = ?`, filePath)
+	if err := d.EnsureScannerFailureSchema(); err != nil {
+		return err
+	}
+	_, err := d.execSQLiteWrite(context.Background(), `DELETE FROM scanner_failures WHERE file_path = ?`, filePath)
 	return err
 }
 
 // ScannerFailureRetryAllowed reports whether a quarantined path may be parsed again.
 func (d *DB) ScannerFailureRetryAllowed(filePath string) (bool, error) {
-	if err := d.EnsureScannerFailureSchema(); err != nil { return false, err }
+	if err := d.EnsureScannerFailureSchema(); err != nil {
+		return false, err
+	}
 	var retryAfter int64
 	err := d.conn.QueryRow(`SELECT retry_after FROM scanner_failures WHERE file_path = ?`, filePath).Scan(&retryAfter)
-	if err == sql.ErrNoRows { return true, nil }
-	if err != nil { return false, err }
+	if err == sql.ErrNoRows {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
 	return time.Now().UnixMilli() >= retryAfter, nil
 }
 
 func (d *DB) ListScannerFailures(limit int) ([]ScannerFailure, error) {
-	if err := d.EnsureScannerFailureSchema(); err != nil { return nil, err }
-	if limit <= 0 || limit > 1000 { limit = 250 }
+	if err := d.EnsureScannerFailureSchema(); err != nil {
+		return nil, err
+	}
+	if limit <= 0 || limit > 1000 {
+		limit = 250
+	}
 	rows, err := d.conn.Query(`
 		SELECT file_path, failure_kind, message, attempts, first_seen_at, last_seen_at, retry_after
 		FROM scanner_failures ORDER BY last_seen_at DESC LIMIT ?`, limit)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	failures := make([]ScannerFailure, 0)
 	for rows.Next() {

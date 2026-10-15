@@ -178,7 +178,8 @@ func (s *spotifyAuthRuntime) persistCatalogDomainResult(ctx context.Context, ent
 		})
 	})
 	if err != nil && ctx.Err() == nil {
-		logger.Scan("spotify_catalog_snapshot status=failed reason=persistence_failed")
+		logger.Scan("spotify_catalog_snapshot status=failed reason=persistence_failed error=%q", err)
+		logger.API("Spotify catalog snapshot persistence failed: %v", err)
 	}
 	return err
 }
