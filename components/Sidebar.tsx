@@ -243,7 +243,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onMobileCl
               <div
                 role="status"
                 aria-live="polite"
-                aria-label={activeAnalysisJob.progressTotal > 0 ? `Analyzing ${activeAnalysisJob.progressCurrent} of ${activeAnalysisJob.progressTotal}` : 'Preparing track analysis'}
+                aria-label={activeAnalysisJob.progressTotal > 0 ? `Track analysis: ${Math.min(activeAnalysisJob.progressCurrent, activeAnalysisJob.progressTotal).toLocaleString()} of ${activeAnalysisJob.progressTotal.toLocaleString()} processed` : 'Preparing track analysis'}
                 className={`rounded-md bg-surface-3 p-2.5 ${effectiveCollapsed ? 'p-1.5' : ''}`}
               >
                 <div className={`flex items-center gap-2.5 text-brand ${effectiveCollapsed ? 'justify-center' : ''}`}>
@@ -251,9 +251,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onMobileCl
                   {!effectiveCollapsed && (
                     <div className="min-w-0 flex-1">
                       <span className="block text-[11px] font-bold text-text-main truncate">
-                        {activeAnalysisJob.progressTotal > 0 ? `Analyzing ${Math.min(activeAnalysisJob.progressCurrent, activeAnalysisJob.progressTotal)}/${activeAnalysisJob.progressTotal}` : 'Analyzing tracks'}
+                        {activeAnalysisJob.progressTotal > 0 ? `Processed ${Math.min(activeAnalysisJob.progressCurrent, activeAnalysisJob.progressTotal).toLocaleString()} / ${activeAnalysisJob.progressTotal.toLocaleString()}` : 'Preparing track analysis'}
                       </span>
-                      <span className="block truncate text-[10px] text-text-secondary">{activeAnalysisJob.message || 'Preparing your library…'}</span>
+                      <span className="block text-[10px] leading-relaxed text-text-secondary">{activeAnalysisJob.message || 'Preparing your library…'}</span>
                     </div>
                   )}
                 </div>
