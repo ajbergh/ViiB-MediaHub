@@ -221,13 +221,13 @@ export const MetadataHealthWidget: React.FC = () => {
         <div className="p-3.5 rounded-xl bg-surface-2/60 border border-surface-border/60 space-y-2">
           <div className="flex justify-between items-center">
             <span className="font-semibold text-text-main flex items-center gap-1.5">
-              <Sparkles size={14} className="text-accent-pink" />
+              <Sparkles size={14} className="text-accent-purple" />
               AI Mood Profile
             </span>
             <span className="font-mono font-bold text-text-main">{stats.aiPercent}%</span>
           </div>
           <div className="w-full h-2 bg-surface-3 rounded-full overflow-hidden">
-            <div className="h-full bg-accent-pink transition-all duration-500" style={{ width: `${stats.aiPercent}%` }} />
+            <div className="h-full bg-accent-purple transition-all duration-500" style={{ width: `${stats.aiPercent}%` }} />
           </div>
           <span className="text-[10px] text-text-subtle block">AI-enriched mood metadata</span>
         </div>
