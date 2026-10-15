@@ -44,6 +44,19 @@ func TestAudioIntentSeparatesHardBoundsAndSoftPreferences(t *testing.T) {
 	}
 }
 
+func TestQualitativeExclusionsDoNotBecomePositivePreferences(t *testing.T) {
+	for _, prompt := range []string{"not energetic", "avoid relaxing music", "without peaceful music", "not harmonic mixing", "exclude melancholic music", "no mix in key", "not building", "avoid rising energy", "without an energy arc"} {
+		intent := ParseAudioIntent(prompt)
+		if intent.TargetEnergy != "" || len(intent.PreferredMoods) != 0 || intent.HarmonicMix || intent.EnergyDirection != "" {
+			t.Errorf("%q became positive intent: %+v", prompt, intent)
+		}
+	}
+	intent := MergeAudioIntent(AudioIntent{TargetEnergy: "medium"}, "not energetic, but happy and harmonic mixing")
+	if intent.TargetEnergy != "medium" || len(intent.PreferredMoods) != 1 || intent.PreferredMoods[0] != "happy" || !intent.HarmonicMix {
+		t.Fatalf("exclusions overrode model or removed positive intent: %+v", intent)
+	}
+}
+
 func TestHardRangesRejectUnknownAndKeepEnergyMetricsSeparate(t *testing.T) {
 	intent := AudioIntent{MaxBPM: 128, BPMConstraintHard: true, MaxEnergyLevel: 7, EnergyConstraintHard: true}
 	for _, value := range []AudioFeatures{{}, {BPM: observation(125)}, {BPM: observation(125), ProviderScores: map[string]Observation{"spotify_energy_score": {Value: .5, Confidence: 1}}}, {BPM: observation(140), EnergyLevel: observation(5)}} {

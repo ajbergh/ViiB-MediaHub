@@ -1370,7 +1370,7 @@ export const api = {
    * @param options.useTimeContext - Add time-of-day context to AI recommendations
    * @param options.mode - 'playlist' (default) or 'dj' for DJ mode
    * @param options.persona - DJ persona key (FlowMaster, CrowdPleaser, etc.)
-   * @param options.targetDurationMinutes - DJ set duration in minutes
+   * @param options.targetDurationMinutes - Approximate playlist or DJ set duration in minutes
    * @param options.flowStrictness - BPM continuity strictness 0-100
    * @param options.talkMode - Enable DJ narration cues
    * @param options.source - 'all' (online sources), 'local', or 'plex'
@@ -1415,7 +1415,7 @@ export const api = {
         // DJ Mode fields
         mode: options?.mode || 'playlist',
         persona: options?.persona || 'FlowMaster',
-        targetDurationMinutes: options?.targetDurationMinutes || 45,
+        targetDurationMinutes: options?.targetDurationMinutes ?? (options?.mode === 'dj' ? 45 : undefined),
         flowStrictness: options?.flowStrictness || 60,
         talkMode: options?.talkMode || false,
         source: options?.source || 'all',

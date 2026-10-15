@@ -12,6 +12,8 @@ Spotify's remote catalog is not implicitly searched by this feature; Spotify rem
 
 Playlist Mode builds a one-shot ViiB playlist from a natural-language request. When the Semantic Retrieval Index is ready, ViiB retrieves matching tracks, albums, and artists by meaning before applying listening-history, source, year, artist, and diversity rules. When the index is unavailable, the established metadata/history matching path remains available.
 
+Use the **Playlist Duration** slider to choose 15–120 minutes in five-minute steps (45 minutes by default). The duration selection is shared with DJ Mode and includes an estimated song count. Semantic selection uses actual track lengths; the standard fallback uses the estimated song count. Whole tracks and available matches can make the result shorter or longer than the target.
+
 Examples:
 
 ```text

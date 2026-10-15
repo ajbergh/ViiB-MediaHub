@@ -147,6 +147,7 @@ var (
 	negativeBPMUpper    = regexp.MustCompile(`(?i)\b(?:no|not|without|avoid|exclude|excluding)\s+(?:(?:tracks?|songs?|music)\s+)?(?:over|above|more than)\s+(\d{2,3}(?:\.\d+)?)\s*bpm\b`)
 	negativeBPMLower    = regexp.MustCompile(`(?i)\b(?:no|not|without|avoid|exclude|excluding)\s+(?:(?:tracks?|songs?|music)\s+)?(?:under|below|less than)\s+(\d{2,3}(?:\.\d+)?)\s*bpm\b`)
 	negativeAudioPrefix = regexp.MustCompile(`(?i)\b(?:no|not|without|avoid|exclude|excluding)(?:\s+[\w.-]+){0,6}\s*$`)
+	negativeQualitative = regexp.MustCompile(`(?i)\b(?:no|not|without|avoid|exclude|excluding)\s+(?:(?:a|an|any)\s+)?(?:high[- ]energy|low[- ]energy|harmonic(?: mixing)?|mix in key|calm|peaceful|happy|sad|dreamy|melancholic|aggressive|energetic|relaxing|uplifting|romantic|nostalgic|build gradually|building|rising energy|cool down|cooldown|winding down|energy arc|steady energy)\b`)
 )
 
 func negatedAudioMatch(prompt string, pattern *regexp.Regexp) bool {
@@ -201,7 +202,7 @@ func ParseAudioIntent(prompt string) AudioIntent {
 		intent.KeyConstraintHard = true
 	}
 	lower := strings.ToLower(prompt)
-	lower = regexp.MustCompile(`(?i)\b(?:no|without|avoid|exclude|excluding)\s+(?:high[- ]energy|low[- ]energy|harmonic(?: mixing)?|calm|happy|sad|dreamy|aggressive|energetic|uplifting|romantic|nostalgic)\b`).ReplaceAllString(lower, "")
+	lower = negativeQualitative.ReplaceAllString(lower, "")
 	if strings.Contains(lower, "high energy") || strings.Contains(lower, "high-energy") || strings.Contains(lower, "energetic") {
 		intent.TargetEnergy = "high"
 	} else if strings.Contains(lower, "low energy") || strings.Contains(lower, "low-energy") || strings.Contains(lower, "relaxing") {

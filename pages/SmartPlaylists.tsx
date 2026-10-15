@@ -173,7 +173,7 @@ export const SmartPlaylists: React.FC = () => {
     try {
       const result = await api.generateSmartPlaylist(aiDjPrompt, { 
         blendMode: 'mixed',
-        targetSongs: aiDjMode ? estimatedSongCount : 50,
+        targetSongs: estimatedSongCount,
         discoverMode: aiDjDiscoverMode,
         avoidRecentlyHours: aiDjAvoidRecentlyHours,
         onePerArtist: aiDjOnePerArtist,
@@ -181,7 +181,7 @@ export const SmartPlaylists: React.FC = () => {
         // DJ Mode options
         mode: aiDjMode ? 'dj' : 'playlist',
         persona: aiDjPersona,
-        targetDurationMinutes: aiDjMode ? aiDjTargetDurationMinutes : undefined,
+        targetDurationMinutes: aiDjTargetDurationMinutes,
         talkMode: aiDjTalkMode,
         flowStrictness: aiDjFlowStrictness,
         source: aiDjSource,
@@ -411,6 +411,30 @@ export const SmartPlaylists: React.FC = () => {
           </p>
         </div>
 
+        <div className="mt-4 max-w-xl">
+          <label htmlFor="smart-playlist-duration" className="text-meta text-text-secondary mb-2 flex items-center gap-2">
+            <Timer size={14} />
+            {aiDjMode ? 'Set Duration' : 'Playlist Duration'}: {aiDjTargetDurationMinutes} min (~{estimatedSongCount} songs)
+          </label>
+          <input
+            id="smart-playlist-duration"
+            type="range"
+            min={15}
+            max={120}
+            step={5}
+            value={aiDjTargetDurationMinutes}
+            onChange={(e) => setAIDJTargetDurationMinutes(Number(e.target.value))}
+            className="w-full accent-brand"
+          />
+          <div className="flex justify-between text-meta text-text-subtle">
+            <span>15 min</span>
+            <span>120 min</span>
+          </div>
+          <p className="text-meta text-text-subtle mt-2">
+            Actual length depends on track lengths and available matches.
+          </p>
+        </div>
+
         {/* DJ Mode Controls */}
         {aiDjMode && (
           <div className="mt-6 p-4 bg-surface-1 rounded-xl border border-surface-highlight">
@@ -446,28 +470,8 @@ export const SmartPlaylists: React.FC = () => {
               )}
             </div>
 
-            {/* Duration & Flow Controls */}
+            {/* Flow Controls */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-meta text-text-secondary mb-2 flex items-center gap-2">
-                  <Timer size={14} />
-                  Set Duration: {aiDjTargetDurationMinutes} min (~{estimatedSongCount} songs)
-                </label>
-                <input
-                  type="range"
-                  min={15}
-                  max={120}
-                  step={5}
-                  value={aiDjTargetDurationMinutes}
-                  onChange={(e) => setAIDJTargetDurationMinutes(Number(e.target.value))}
-                  className="w-full accent-brand"
-                />
-                <div className="flex justify-between text-meta text-text-subtle">
-                  <span>15 min</span>
-                  <span>120 min</span>
-                </div>
-              </div>
-              
               <div>
                 <label className="text-meta text-text-secondary mb-2 flex items-center gap-2">
                   <BarChart3 size={14} />
