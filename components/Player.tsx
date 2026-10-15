@@ -308,7 +308,7 @@ export const Player: React.FC = () => {
                   <SkipForward size={18} className="text-text-subtle fill-current" />
                   <Repeat size={16} className="text-text-subtle" />
                 </div>
-                <div className="w-full max-w-md flex items-center gap-2 text-[11px] text-text-subtle font-mono">
+                <div className="w-full max-w-md flex items-center justify-center gap-2 text-[11px] text-text-subtle font-mono">
                   <span>0:00</span>
                   <div className="h-1 w-64 rounded-full bg-surface-3" />
                   <span>0:00</span>
