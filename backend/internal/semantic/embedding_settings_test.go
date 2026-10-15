@@ -4,112 +4,26 @@ package semantic
 
 import (
 	"context"
-	"net/http"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
-	"github.com/ajbergh/viib-mediahub/internal/llm"
 )
 
-func TestResolveEmbeddingSettingsUsesDedicatedAndChatConfiguration(t *testing.T) {
+func TestManagedEmbeddingIdentityIgnoresChatAndLegacySettings(t *testing.T) {
 	database := newEmbeddingSettingsTestDB(t)
-	if err := database.SetSettingsBatch(map[string]string{
-		SemanticEmbeddingProviderSetting: EmbeddingProviderOllama,
-		SemanticEmbeddingModelSetting:    "custom-embed",
-		SemanticEmbeddingBaseURLSetting:  "http://127.0.0.1:11434/",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	resolution, err := ResolveEmbeddingSettings(context.Background(), database, nil)
-	if err != nil || !resolution.Ready() || resolution.Source != "setting" {
-		t.Fatalf("resolution=%#v err=%v", resolution, err)
-	}
-	if resolution.Settings.Provider != EmbeddingProviderOllama || resolution.Settings.Model != "custom-embed" || resolution.Settings.BaseURL != "http://127.0.0.1:11434/" {
-		t.Fatalf("settings=%#v", resolution.Settings)
-	}
-
-	if err := database.SetSettingsBatch(map[string]string{
-		SemanticEmbeddingProviderSetting: "",
-		SemanticEmbeddingAPIKeySetting:   "",
-		"llm_provider":                   "openai",
-		"llm_api_key":                    "chat-key",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	resolution, err = ResolveEmbeddingSettings(context.Background(), database, nil)
-	if err != nil || !resolution.Ready() || resolution.Source != "chat_provider" || resolution.Settings.Provider != EmbeddingProviderOpenAI || resolution.Settings.APIKey != "chat-key" || resolution.Settings.Dimensions != DefaultOpenAIEmbeddingDimensions {
-		t.Fatalf("resolution=%#v err=%v", resolution, err)
-	}
-}
-
-func TestResolveEmbeddingSettingsAutoProbeAndConfigurationMessage(t *testing.T) {
-	database := newEmbeddingSettingsTestDB(t)
-	called := false
-	probe := func(_ context.Context, baseURL, model string, _ *http.Client) (bool, error) {
-		called = true
-		if baseURL != "http://localhost:11434" || model != DefaultOllamaEmbeddingModel {
-			t.Fatalf("probe baseURL=%q model=%q", baseURL, model)
+	for _, provider := range []string{"openai", "anthropic", "gemini", "openrouter", "ollama", "xai"} {
+		if err := database.SetSettingsBatch(map[string]string{
+			"llm_provider": provider, "llm_model": "arbitrary-chat-model", "llm_api_key": "chat-secret",
+			SemanticEmbeddingProviderSetting: provider, SemanticEmbeddingModelSetting: "legacy-embed-model",
+			SemanticEmbeddingDimensionsSetting: "invalid-legacy-value", SemanticEmbeddingAPIKeySetting: "legacy-secret",
+		}); err != nil {
+			t.Fatal(err)
 		}
-		return true, nil
-	}
-	resolution, err := resolveEmbeddingSettings(context.Background(), database, nil, probe)
-	if err != nil || !called || !resolution.Ready() || resolution.Source != "local_probe" || resolution.Settings.Provider != EmbeddingProviderOllama {
-		t.Fatalf("resolution=%#v called=%v err=%v", resolution, called, err)
-	}
-
-	resolution, err = resolveEmbeddingSettings(context.Background(), database, nil, func(context.Context, string, string, *http.Client) (bool, error) { return false, nil })
-	if err != nil || resolution.Status != embeddingResolutionNeedsConfiguration || resolution.Reason == "" {
-		t.Fatalf("resolution=%#v err=%v", resolution, err)
-	}
-}
-
-func TestResolveEmbeddingSettingsDocumentsNonNativeChatProviderFallback(t *testing.T) {
-	providers := []string{llm.ProviderAnthropic, llm.ProviderXAI}
-	for _, provider := range providers {
-		t.Run(provider, func(t *testing.T) {
-			database := newEmbeddingSettingsTestDB(t)
-			if err := database.SetSetting("llm_provider", provider); err != nil {
-				t.Fatal(err)
-			}
-			resolution, err := resolveEmbeddingSettings(context.Background(), database, nil, func(context.Context, string, string, *http.Client) (bool, error) {
-				return false, nil
-			})
-			if err != nil || resolution.Status != embeddingResolutionNeedsConfiguration || !strings.Contains(resolution.Reason, provider+" chat has no native Phase 1 embedding adapter") {
-				t.Fatalf("resolution=%#v err=%v", resolution, err)
-			}
-		})
-	}
-}
-
-func TestResolveEmbeddingSettingsUsesMatchingGeminiAndOpenRouterChatCredentials(t *testing.T) {
-	database := newEmbeddingSettingsTestDB(t)
-	if err := database.SetSettingsBatch(map[string]string{
-		"gemini_api_key":                   "legacy-key",
-		SemanticEmbeddingAPIKeySetting:     "unrelated-explicit-provider-key",
-		SemanticEmbeddingModelSetting:      "unrelated-explicit-provider-model",
-		SemanticEmbeddingDimensionsSetting: "333",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	resolution, err := resolveEmbeddingSettings(context.Background(), database, nil, func(context.Context, string, string, *http.Client) (bool, error) {
-		return false, nil
-	})
-	if err != nil || !resolution.Ready() || resolution.Source != "chat_provider" || resolution.Settings.Provider != EmbeddingProviderGemini || resolution.Settings.APIKey != "legacy-key" || resolution.Settings.Model != DefaultGeminiEmbeddingModel || resolution.Settings.Dimensions != DefaultGeminiEmbeddingDimensions {
-		t.Fatalf("resolution=%#v err=%v", resolution, err)
-	}
-	if err := database.SetSettingsBatch(map[string]string{
-		"llm_provider": "openrouter",
-		"llm_api_key":  "router-key",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	resolution, err = resolveEmbeddingSettings(context.Background(), database, nil, func(context.Context, string, string, *http.Client) (bool, error) {
-		return false, nil
-	})
-	if err != nil || !resolution.Ready() || resolution.Source != "chat_provider" || resolution.Settings.Provider != EmbeddingProviderOpenRouter || resolution.Settings.APIKey != "router-key" || resolution.Settings.Model != DefaultOpenRouterEmbeddingModel || resolution.Settings.Dimensions != DefaultOpenRouterEmbeddingDimensions {
-		t.Fatalf("resolution=%#v err=%v", resolution, err)
+		resolution, err := ResolveEmbeddingSettings(context.Background(), database, nil)
+		if err != nil || resolution != ManagedEmbeddingResolution() {
+			t.Fatalf("%s: %#v %v", provider, resolution, err)
+		}
 	}
 }
 
@@ -120,31 +34,6 @@ func TestLoadEmbeddingSettingsRejectsInvalidDimensions(t *testing.T) {
 	}
 	if _, err := LoadEmbeddingSettings(database); err == nil {
 		t.Fatal("zero dimensions accepted")
-	}
-}
-
-func TestNewConfiguredEmbeddingProviderCreatesCloudAdapters(t *testing.T) {
-	testCases := []struct {
-		provider   string
-		model      string
-		dimensions int
-	}{
-		{EmbeddingProviderOpenAI, DefaultOpenAIEmbeddingModel, DefaultOpenAIEmbeddingDimensions},
-		{EmbeddingProviderGemini, DefaultGeminiEmbeddingModel, DefaultGeminiEmbeddingDimensions},
-		{EmbeddingProviderOpenRouter, DefaultOpenRouterEmbeddingModel, DefaultOpenRouterEmbeddingDimensions},
-	}
-	for _, testCase := range testCases {
-		t.Run(testCase.provider, func(t *testing.T) {
-			provider, err := NewConfiguredEmbeddingProvider(EmbeddingSettings{
-				Provider:   testCase.provider,
-				Model:      testCase.model,
-				Dimensions: testCase.dimensions,
-				APIKey:     "test-key",
-			}, nil)
-			if err != nil || provider.Name() != testCase.provider || provider.Model() != testCase.model {
-				t.Fatalf("provider=%T err=%v", provider, err)
-			}
-		})
 	}
 }
 

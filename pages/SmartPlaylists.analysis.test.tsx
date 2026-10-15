@@ -8,6 +8,46 @@ vi.mock('react-router', () => ({ useNavigate: () => vi.fn() }));
 vi.mock('../services/api', () => ({ api: { generateSmartPlaylist: mocks.generate, getSemanticStatus: vi.fn().mockResolvedValue({ state: 'unavailable' }) } }));
 import { SmartPlaylists } from './SmartPlaylists';
 
+it('lets Playlist Mode choose a duration and sends it when generating', async () => {
+  (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+  mocks.generate.mockReset();
+  mocks.generate.mockResolvedValue({ filter: {}, songs: [] });
+  mocks.state = {
+    spotifySessionGeneration: 1, aiDjPrompt: 'chill jazz', aiDjGeneratedSongs: [], aiDjIsLoading: false,
+    aiDjMode: false, aiDjPersona: 'FlowMaster', aiDjTargetDurationMinutes: 45, aiDjFlowStrictness: 60,
+    aiDjDiscoverMode: 'balanced', aiDjAvoidRecentlyHours: 24, aiDjOnePerArtist: true, aiDjSource: 'local',
+    aiDjPhases: [], showToast: vi.fn(),
+    setAIDJTargetDurationMinutes: vi.fn((minutes: number) => { mocks.state.aiDjTargetDurationMinutes = minutes; }),
+    setAIDJMode: vi.fn((mode: boolean) => { mocks.state.aiDjMode = mode; }),
+    setAIDJGeneratedSongs: vi.fn(), setAIDJFilter: vi.fn(), setAIDJValidation: vi.fn(), setAIDJIsLoading: vi.fn(),
+  };
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  const render = () => act(async () => root.render(<SmartPlaylists />));
+  try {
+    await render();
+    const slider = container.querySelector('#smart-playlist-duration') as HTMLInputElement;
+    expect(slider.min).toBe('15');
+    expect(slider.max).toBe('120');
+    expect(slider.step).toBe('5');
+    expect(slider.labels?.[0].textContent).toContain('Playlist Duration: 45 min');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(slider, '60');
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(mocks.state.setAIDJTargetDurationMinutes).toHaveBeenCalledWith(60);
+    await render();
+    expect(slider.labels?.[0].textContent).toContain('Playlist Duration: 60 min');
+    await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent === 'Generate')!.click());
+    expect(mocks.generate).toHaveBeenCalledWith('chill jazz', expect.objectContaining({ mode: 'playlist', targetDurationMinutes: 60, targetSongs: 17 }));
+    await act(async () => [...container.querySelectorAll('button')].find(button => button.textContent?.includes('DJ Mode'))!.click());
+    await render();
+    expect(container.querySelectorAll('#smart-playlist-duration')).toHaveLength(1);
+    expect(slider.value).toBe('60');
+    expect(slider.labels?.[0].textContent).toContain('Set Duration: 60 min');
+  } finally { await act(async () => root.unmount()); }
+});
+
 it('shows resolved queue tempo transiently and discards a retired-session response', async () => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   mocks.state = {

@@ -10,6 +10,8 @@ import (
 	"io"
 	"regexp"
 	"strings"
+
+	"github.com/ajbergh/viib-mediahub/internal/playlist"
 )
 
 const (
@@ -21,6 +23,7 @@ const (
 // request. SemanticQuery describes meaning rather than trying to match the
 // user's incomplete local metadata taxonomy.
 type PlaylistIntent struct {
+	playlist.AudioIntent
 	IntentSummary         string   `json:"intentSummary"`
 	SemanticQuery         string   `json:"semanticQuery"`
 	NegativeSemanticQuery string   `json:"negativeSemanticQuery,omitempty"`
@@ -80,6 +83,7 @@ func FallbackPlaylistIntent(rawPrompt string) PlaylistIntent {
 		query = "music matching the requested positive style and mood"
 	}
 	return PlaylistIntent{
+		AudioIntent:           playlist.ParseAudioIntent(rawPrompt),
 		IntentSummary:         query,
 		SemanticQuery:         query,
 		RequiredStyles:        requiredStyles,
@@ -126,6 +130,7 @@ func normalizePlaylistIntent(intent PlaylistIntent, rawPrompt string) PlaylistIn
 	if intent.MinYear == 0 && intent.MaxYear == 0 {
 		intent.YearConstraintHard = false
 	}
+	intent.AudioIntent = playlist.MergeAudioIntent(intent.AudioIntent, rawPrompt)
 	intent.DiscoveryBias = clampIntentBias(intent.DiscoveryBias)
 	intent.FamiliarityBias = clampIntentBias(intent.FamiliarityBias)
 	return intent

@@ -1,3 +1,4 @@
+import { SpotifyAccountNotice } from '../components/SpotifyAccountNotice';
 /**
  * ViiB MediaHub - Downloads Page
  * 
@@ -28,6 +29,7 @@ import { Page, PageHeader } from '../components/ui/Page';
 import { getEventStreamURL } from '../services/eventStreamURL';
 
 export const Downloads: React.FC = () => {
+  const mediaDisabled = useStore(s => !s.spotifyConnected || s.spotifyAccountProduct !== 'premium');
   const [downloads, setDownloads] = useState<ApiSpotifyDownload[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
@@ -293,13 +295,15 @@ export const Downloads: React.FC = () => {
         <div className="w-16 h-16 rounded-full bg-surface-2 flex items-center justify-center mb-4 text-text-subtle">
           <Download size={32} />
         </div>
+        <SpotifyAccountNotice />
         <h1 className="text-xl font-bold text-text-main mb-2">No Downloads Yet</h1>
         <p className="text-text-secondary text-sm text-center max-w-sm mb-6">
           Download songs, albums, or playlists from Spotify to listen offline. Look for the download button on any track.
         </p>
         <button
+          disabled={mediaDisabled}
           onClick={() => setShowDirectDownload(true)}
-          className="px-6 py-2.5 bg-brand hover:bg-brand-hover text-surface-0 font-bold text-sm rounded-full transition-all flex items-center gap-2"
+          className="px-6 py-2.5 bg-brand hover:bg-brand-hover text-surface-0 font-bold text-sm rounded-full transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Link2 size={18} />
           Download from URL
@@ -346,6 +350,7 @@ export const Downloads: React.FC = () => {
         </div>
       )}
 
+      <SpotifyAccountNotice />
       <PageHeader
         heading={
           <span className="flex items-center gap-3">
@@ -357,16 +362,18 @@ export const Downloads: React.FC = () => {
         actions={
           <div className="flex gap-2">
           <button
-            onClick={() => setShowDirectDownload(true)}
-            className="px-4 py-2 bg-brand hover:bg-brand/90 text-white font-semibold rounded-lg transition-colors flex items-center gap-2"
+            disabled={mediaDisabled}
+          onClick={() => setShowDirectDownload(true)}
+            className="px-4 py-2 bg-brand hover:bg-brand/90 text-white font-semibold rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Link2 size={18} />
             Direct Download
           </button>
           {stats.failed > 0 && (
             <button
+              disabled={mediaDisabled}
               onClick={handleRetryAllFailed}
-              className="px-4 py-2 bg-surface-2 hover:bg-surface-3 text-text-secondary hover:text-brand rounded-lg transition-colors flex items-center gap-2"
+              className="px-4 py-2 bg-surface-2 hover:bg-surface-3 text-text-secondary hover:text-brand rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <RotateCcw size={18} />
               Retry All Failed
@@ -521,6 +528,7 @@ interface DownloadCardProps {
 }
 
 const DownloadCard: React.FC<DownloadCardProps> = ({ download, onDelete, onRetry, onForceRestart }) => {
+  const mediaDisabled = useStore(s => !s.spotifyConnected || s.spotifyAccountProduct !== 'premium');
   const getStatusIcon = () => {
     switch (download.status) {
       case 'queued':
@@ -636,8 +644,9 @@ const DownloadCard: React.FC<DownloadCardProps> = ({ download, onDelete, onRetry
           {/* Force Restart Button - for stuck transfers or conversions */}
           {(download.status === 'downloading' || download.status === 'converting') && (
             <button
+              disabled={mediaDisabled}
               onClick={() => onForceRestart(download.id)}
-              className="p-2 hover:bg-surface-3 rounded-lg transition-colors group"
+              className="p-2 hover:bg-surface-3 rounded-lg transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
               title={`Force restart ${download.status === 'converting' ? 'conversion' : 'download'} (if stuck)`}
             >
               <RefreshCw className="text-text-muted group-hover:text-brand" size={18} />
@@ -647,8 +656,9 @@ const DownloadCard: React.FC<DownloadCardProps> = ({ download, onDelete, onRetry
           {/* Retry Button - only for failed downloads */}
           {download.status === 'failed' && (
             <button
+              disabled={mediaDisabled}
               onClick={() => onRetry(download.id)}
-              className="p-2 hover:bg-surface-3 rounded-lg transition-colors group"
+              className="p-2 hover:bg-surface-3 rounded-lg transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
               title="Retry download"
             >
               <RotateCcw className="text-text-muted group-hover:text-brand" size={18} />

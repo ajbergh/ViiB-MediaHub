@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { Link2, Loader2, X, Music, Disc3, ListMusic, CheckCircle, AlertCircle } from 'lucide-react';
 import api from '../services/api';
+import { useStore } from '../store';
+import { SpotifyAccountNotice } from './SpotifyAccountNotice';
 
 interface DirectDownloadDialogProps {
   isOpen: boolean;
@@ -58,6 +60,7 @@ const getTypeName = (type?: string) => {
 };
 
 export const DirectDownloadDialog: React.FC<DirectDownloadDialogProps> = ({ isOpen, onClose, onQueued }) => {
+  const mediaDisabled = useStore(s => !s.spotifyConnected || s.spotifyAccountProduct !== 'premium');
   const [url, setUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +70,7 @@ export const DirectDownloadDialog: React.FC<DirectDownloadDialogProps> = ({ isOp
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (mediaDisabled) return;
     
     if (!validation.valid) {
       setError('Please enter a valid Spotify URL or URI');
@@ -146,6 +150,7 @@ export const DirectDownloadDialog: React.FC<DirectDownloadDialogProps> = ({ isOp
 
         {/* Form */}
         <form onSubmit={handleSubmit}>
+          <SpotifyAccountNotice />
           <div className="mb-4">
             <div className="relative">
               <input
@@ -230,7 +235,7 @@ export const DirectDownloadDialog: React.FC<DirectDownloadDialogProps> = ({ isOp
             </button>
             <button
               type="submit"
-              disabled={isLoading || !validation.valid}
+              disabled={mediaDisabled || isLoading || !validation.valid}
               className="px-5 py-2 rounded-lg font-bold bg-brand hover:bg-brand/90 text-white transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading && <Loader2 size={16} className="animate-spin" />}

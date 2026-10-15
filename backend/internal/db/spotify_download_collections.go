@@ -325,7 +325,14 @@ func promoteDownloadCollections(ctx context.Context, tx *sql.Tx, downloadID stri
 			state, reason = "oversized", "relation_limit"
 		}
 	}
-	if state != "oversized" {
+	if state != "oversized" && len(fresh) > 0 {
+		// Reuse the statement for large playlists rather than compiling the same
+		// INSERT up to 20,000 times while holding SQLite's single writer lock.
+		relationInsert, prepareErr := tx.PrepareContext(ctx, `INSERT INTO spotify_download_catalog_relations(file_path,content_sha256,file_size,mtime_ns,recording_id,parent_type,parent_id,resource,relation_kind,position,child_type,child_id,unavailable,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+		if prepareErr != nil {
+			return prepareErr
+		}
+		defer relationInsert.Close()
 		for _, p := range fresh {
 			s := p.snapshot
 			insert := append(append([]any{}, args...), s.EntityType, s.SpotifyID, p.resource, s.SchemaVersion, s.AdapterRevision, s.Payload, s.PayloadHash, p.retrieved, p.expires, s.Resource, s.CaptureRevision)
@@ -334,7 +341,7 @@ func promoteDownloadCollections(ctx context.Context, tx *sql.Tx, downloadID stri
 			}
 			for _, r := range s.Relations {
 				insert = append(append([]any{}, args...), s.EntityType, s.SpotifyID, p.resource, r.Kind, r.Position, r.ChildType, r.ChildID, r.Unavailable, r.Metadata)
-				if _, err = tx.ExecContext(ctx, `INSERT INTO spotify_download_catalog_relations(file_path,content_sha256,file_size,mtime_ns,recording_id,parent_type,parent_id,resource,relation_kind,position,child_type,child_id,unavailable,metadata_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, insert...); err != nil {
+				if _, err = relationInsert.ExecContext(ctx, insert...); err != nil {
 					return err
 				}
 			}

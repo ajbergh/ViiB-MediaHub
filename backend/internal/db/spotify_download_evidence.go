@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ajbergh/viib-mediahub/internal/logger"
 	spotifyanalysis "github.com/ajbergh/viib-mediahub/internal/spotify/analysis"
 )
 
@@ -99,6 +100,18 @@ func (d *DB) MarkDownloadCompletedWithEvidence(ctx context.Context, id, path str
 	if err != nil {
 		return false, fmt.Errorf("verify completed artifact: %w", err)
 	}
+	var changed bool
+	err = retrySQLiteBusy(ctx, func() error {
+		var commitErr error
+		changed, commitErr = d.markDownloadCompletedWithRevision(ctx, id, revision)
+		return commitErr
+	})
+	return changed, err
+}
+
+// The file is already verified. On contention replay only the rolled-back
+// database publication, preserving atomic status/evidence and account fencing.
+func (d *DB) markDownloadCompletedWithRevision(ctx context.Context, id string, revision downloadFileRevision) (bool, error) {
 	tx, err := d.conn.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
@@ -118,6 +131,16 @@ func (d *DB) MarkDownloadCompletedWithEvidence(ctx context.Context, id, path str
 	if !ValidSpotifyRecordingID(recording) {
 		return false, errors.New("invalid recording ID in completed download")
 	}
+	writeStarted := time.Now()
+	var writeFinished time.Time
+	defer func() {
+		if writeFinished.IsZero() {
+			writeFinished = time.Now()
+		}
+		if duration := writeFinished.Sub(writeStarted); duration >= time.Second {
+			logger.Log("Database", "Slow download completion write transaction: %v", duration)
+		}
+	}()
 	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO spotify_download_evidence
  (file_path,content_sha256,file_size,mtime_ns,spotify_id,completed_at,features_json)
  VALUES (?,?,?,?,?,?,COALESCE((SELECT observation_json FROM external_track_analysis
@@ -228,6 +251,7 @@ func (d *DB) MarkDownloadCompletedWithEvidence(ctx context.Context, id, path str
 	if err = tx.Commit(); err != nil {
 		return false, err
 	}
+	writeFinished = time.Now()
 	// A library rescan may have finished before the worker completed.
 	if err = d.ReconcileSpotifyDownload(ctx, revision.path); err != nil && ctx.Err() == nil {
 		log.Printf("Spotify recording reconciliation failed: %v", err)

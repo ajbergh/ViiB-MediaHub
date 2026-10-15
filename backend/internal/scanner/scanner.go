@@ -36,6 +36,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/lastfm"
 	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
+	"github.com/ajbergh/viib-mediahub/internal/releasedate"
 	"github.com/google/uuid"
 	taglib "go.senan.xyz/taglib"
 )
@@ -941,15 +942,15 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 		song.CoverPath = coverPath
 
 		dbSong := db.Song{
-			ID:           song.ID,
-			Title:        song.Title,
-			Artist:       song.Artist,
-			Album:        song.Album,
-			AlbumArtist:  song.AlbumArtist,
-			TrackNumber:  song.TrackNumber,
-			DiscNumber:   song.DiscNumber,
-			Genre:        song.Genre,
-			Year:         song.Year,
+			ID:          song.ID,
+			Title:       song.Title,
+			Artist:      song.Artist,
+			Album:       song.Album,
+			AlbumArtist: song.AlbumArtist,
+			TrackNumber: song.TrackNumber,
+			DiscNumber:  song.DiscNumber,
+			Genre:       song.Genre,
+			Year:        song.Year, OriginalYear: song.OriginalYear, ReleaseDate: song.ReleaseDate, OriginalReleaseDate: song.OriginalReleaseDate,
 			Duration:     song.Duration,
 			ReplayGainDB: song.ReplayGainDB,
 			ReplayPeak:   song.ReplayPeak,
@@ -1309,22 +1310,25 @@ func (s *Scanner) enrichWithLLM() {
 
 // SongMetadata holds extracted metadata from an audio file
 type SongMetadata struct {
-	ID           string
-	Title        string
-	Artist       string
-	Album        string
-	AlbumArtist  string
-	TrackNumber  int
-	DiscNumber   int
-	Genre        []string
-	Year         int
-	Duration     float64
-	ReplayGainDB float64
-	ReplayPeak   float64
-	FilePath     string
-	CoverPath    string
-	CoverData    []byte
-	FileHash     string
+	ID                  string
+	Title               string
+	Artist              string
+	Album               string
+	AlbumArtist         string
+	TrackNumber         int
+	DiscNumber          int
+	Genre               []string
+	Year                int
+	OriginalYear        int
+	ReleaseDate         string
+	OriginalReleaseDate string
+	Duration            float64
+	ReplayGainDB        float64
+	ReplayPeak          float64
+	FilePath            string
+	CoverPath           string
+	CoverData           []byte
+	FileHash            string
 }
 
 // extractMetadata bounds parser work even when TagLib cannot be canceled.
@@ -1381,8 +1385,8 @@ func (s *Scanner) readMetadata(filePath string) (*SongMetadata, error) {
 	}
 
 	getTagFold := func(keys ...string) string {
-		for actualKey, values := range tags {
-			for _, key := range keys {
+		for _, key := range keys {
+			for actualKey, values := range tags {
 				if strings.EqualFold(actualKey, key) && len(values) > 0 {
 					return values[0]
 				}
@@ -1417,15 +1421,9 @@ func (s *Scanner) readMetadata(filePath string) (*SongMetadata, error) {
 		song.ReplayPeak = parseReplayValue(value)
 	}
 
-	// Year
-	if yearStr := getTag(taglib.Date); yearStr != "" {
-		// Parse year from date (might be YYYY or YYYY-MM-DD)
-		if len(yearStr) >= 4 {
-			if y, err := strconv.Atoi(yearStr[:4]); err == nil {
-				song.Year = y
-			}
-		}
-	}
+	// DATE identifies this edition; ORIGINALDATE/ORIGINALYEAR identifies the recording's original release.
+	song.ReleaseDate, _, song.Year = releasedate.Parse(getTag(taglib.Date))
+	song.OriginalReleaseDate, _, song.OriginalYear = releasedate.Parse(getTagFold("ORIGINALDATE", "ORIGINALYEAR", "TORY", "TDOR"))
 
 	// Fallback title to filename
 	if song.Title == "" {

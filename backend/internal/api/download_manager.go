@@ -91,6 +91,7 @@ const (
 type DownloadManager struct {
 	tokenSource         spotifyTokenSource
 	spotifyFeatures     func(context.Context, string) *spotifyanalysis.Observation
+	spotifyReleaseDate  func(context.Context, string) string
 	sessionPrepareMu    sync.Mutex
 	db                  *db.DB                        // Database for persistent queue
 	downloadDir         string                        // Root directory for downloaded files
@@ -1218,9 +1219,11 @@ func (dm *DownloadManager) processDownload(workerID int, job downloadJob) {
 	// Download with retry logic for transient errors
 	const maxRetries = 3
 	var lastErr error
+	attempts := 0
 	audioKeySessionResetAttempted := false
 retryLoop:
 	for attempt := 1; attempt <= maxRetries; attempt++ {
+		attempts = attempt
 		dm.recordDownloadActivity(download.ID, spotify.DownloadPhasePreparing)
 		sessionGeneration := dm.sessionManager.Generation()
 		lastErr = dm.downloadTrack(ctx, download)
@@ -1281,7 +1284,7 @@ retryLoop:
 		if ctx.Err() != nil {
 			return
 		}
-		dmLog("Worker %d: download failed for '%s' after %d attempts: %v", workerID, download.Title, maxRetries, lastErr)
+		dmLog("Worker %d: download failed for '%s' after %d attempts: %v", workerID, download.Title, attempts, lastErr)
 		changed, _ := dm.db.MarkDownloadFailed(download.ID, lastErr.Error())
 		if changed {
 			dm.progressChan <- DownloadProgress{
@@ -1402,6 +1405,14 @@ func (dm *DownloadManager) downloadTrack(ctx context.Context, download *db.Spoti
 		}
 	}
 
+	if dm.spotifyReleaseDate != nil && (metadata == nil || metadata.ReleaseDate == "") {
+		if date := dm.spotifyReleaseDate(ctx, download.SpotifyID); date != "" {
+			if metadata == nil {
+				metadata = &spotify.DownloadMetadata{}
+			}
+			metadata.ReleaseDate = date
+		}
+	}
 	if dm.spotifyFeatures != nil {
 		if observation := dm.spotifyFeatures(ctx, download.SpotifyID); observation != nil {
 			if metadata == nil {

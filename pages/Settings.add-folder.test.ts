@@ -14,6 +14,9 @@ const mocks = vi.hoisted(() => ({
   setStemLibraryLocations: vi.fn(),
   scanStemLibraries: vi.fn(),
   getJob: vi.fn(),
+  getLLMSettings: vi.fn(),
+  updateLLMSettings: vi.fn(),
+  updateSemanticSettings: vi.fn(),
 }));
 
 vi.mock('../store', () => ({
@@ -30,9 +33,11 @@ vi.mock('../store', () => ({
 vi.mock('../services/api', () => ({
   api: {
     browseFolder: mocks.browseFolder,
-    getLLMSettings: vi.fn().mockResolvedValue({ provider: 'ollama', providers: [], models: {} }),
-    getSemanticSettings: vi.fn().mockResolvedValue({ provider: 'disabled', model: '', dimensions: 0 }),
-    getSemanticStatus: vi.fn().mockResolvedValue({}),
+    getLLMSettings: mocks.getLLMSettings,
+    updateLLMSettings: mocks.updateLLMSettings,
+    updateSemanticSettings: mocks.updateSemanticSettings,
+    getSemanticSettings: vi.fn().mockResolvedValue({ provider: 'local', managed: true, dimensions: 256 }),
+    getSemanticStatus: vi.fn().mockResolvedValue({ state: 'ready', documentsByStatus: { ready: 10 }, indexes: [], progress: 1 }),
     getLastFMSettings: vi.fn().mockResolvedValue({ apiKey: '', enabled: false, username: '' }),
     getLastFMStatus: vi.fn().mockResolvedValue({ connected: false, canScrobble: false }),
     getSetting: vi.fn().mockResolvedValue(''),
@@ -57,6 +62,9 @@ describe('Settings Add Folder browser', () => {
 
   beforeEach(() => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    mocks.getLLMSettings.mockReset().mockResolvedValue({ provider: 'openai', model: 'chat-a', apiKey: '****saved', providers: [{ id: 'openai', name: 'OpenAI', requiresKey: true }, { id: 'anthropic', name: 'Anthropic', requiresKey: true }], models: { openai: [{ id: 'chat-a', name: 'Chat A' }], anthropic: [{ id: 'chat-b', name: 'Chat B' }] } });
+    mocks.updateLLMSettings.mockReset().mockResolvedValue({ status: 'ok' });
+    mocks.updateSemanticSettings.mockReset();
     mocks.browseFolder.mockReset();
     mocks.addScanFolder.mockReset().mockResolvedValue(undefined);
     mocks.loadScanFolders.mockReset();
@@ -102,6 +110,21 @@ describe('Settings Add Folder browser', () => {
     if (!button) throw new Error(`Button not found: ${name}`);
     return button;
   }
+
+  it('manages local matching without embedding choices and changes only the chat model', async () => {
+    await act(async () => root.render(React.createElement(Settings)));
+    await click(buttonNamed('AI & Enrichment'));
+    expect(container.textContent).toContain('Smart Playlist Library');
+    expect(container.textContent).not.toContain('Embedding provider');
+    expect(container.textContent).not.toContain('Embedding model');
+    expect(container.textContent).not.toContain('Save Index Settings');
+    const provider = Array.from(container.querySelectorAll('select')).find(select => Array.from(select.options).some(option => option.value === 'anthropic'))!;
+    await act(async () => { provider.value = 'anthropic'; provider.dispatchEvent(new Event('change', { bubbles: true })); });
+    expect(container.querySelector<HTMLInputElement>('input[type="password"]')?.value).toBe('');
+    await click(buttonNamed('Save Settings'));
+    expect(mocks.updateLLMSettings).toHaveBeenCalledWith({ provider: 'anthropic', model: 'chat-b', apiKey: '', baseURL: '' });
+    expect(mocks.updateSemanticSettings).not.toHaveBeenCalled();
+  });
 
   it('opens, navigates, adds the current folder, and supports close and cancel', async () => {
     await act(async () => root.render(React.createElement(Settings)));

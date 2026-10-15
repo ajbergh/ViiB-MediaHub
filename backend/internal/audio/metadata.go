@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ajbergh/viib-mediahub/internal/releasedate"
 	"github.com/dhowden/tag"
 	taglib "go.senan.xyz/taglib"
 )
@@ -31,19 +32,22 @@ import (
 // SongMetadata represents metadata extracted from an audio file including
 // title/artist/album, track numbers, duration, and cover data.
 type SongMetadata struct {
-	ID          string
-	Title       string
-	Artist      string
-	Album       string
-	AlbumArtist string
-	TrackNumber int
-	DiscNumber  int
-	Genre       []string
-	Year        int
-	Duration    float64
-	FilePath    string
-	CoverPath   string
-	CoverData   []byte
+	ID                  string
+	Title               string
+	Artist              string
+	Album               string
+	AlbumArtist         string
+	TrackNumber         int
+	DiscNumber          int
+	Genre               []string
+	Year                int
+	OriginalYear        int
+	ReleaseDate         string
+	OriginalReleaseDate string
+	Duration            float64
+	FilePath            string
+	CoverPath           string
+	CoverData           []byte
 }
 
 // ExtractMetadata reads metadata from the audio file located at filePath.
@@ -103,15 +107,9 @@ func extractWithTaglib(filePath, id string) (*SongMetadata, error) {
 		FilePath: filePath,
 	}
 
-	// Year
-	if yearStr := getTag(taglib.Date); yearStr != "" {
-		// Parse year from date (might be YYYY or YYYY-MM-DD)
-		if len(yearStr) >= 4 {
-			if y, err := strconv.Atoi(yearStr[:4]); err == nil {
-				song.Year = y
-			}
-		}
-	}
+	// DATE identifies this edition; ORIGINALDATE/ORIGINALYEAR identifies the recording's original release.
+	song.ReleaseDate, _, song.Year = releasedate.Parse(getTag(taglib.Date))
+	song.OriginalReleaseDate, _, song.OriginalYear = releasedate.Parse(getOriginalDateTag(tags))
 
 	// Fallback title to filename
 	if song.Title == "" {
@@ -251,4 +249,15 @@ func GetAudioDuration(filePath string) (float64, error) {
 		return 0, err
 	}
 	return float64(props.Length) / float64(time.Second), nil
+}
+
+func getOriginalDateTag(tags map[string][]string) string {
+	for _, key := range []string{"ORIGINALDATE", "ORIGINALYEAR", "TDOR", "TORY"} {
+		for actual, values := range tags {
+			if strings.EqualFold(actual, key) && len(values) > 0 {
+				return values[0]
+			}
+		}
+	}
+	return ""
 }

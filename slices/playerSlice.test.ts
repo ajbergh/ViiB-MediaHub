@@ -5,15 +5,49 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPlayerSlice } from './playerSlice';
 import { createSpotifySlice } from './spotifySlice';
 import { libraryService } from '../services/libraryService';
+import { api } from '../services/api';
 import { managedObjectUrls } from '../lib/playbackLifecycle';
 import type { Song } from '../types';
 vi.mock('../store',()=>({useStore:{getState:()=>({})}}));
 const song=(id:string):Song=>({id,title:id,artist:'Artist',album:'Album',duration:120,url:'/audio/'+id,addedAt:1});
 function setup() {
  let state:any={};const set=(update:any)=>Object.assign(state,typeof update==='function'?update(state):update);
- state={...createPlayerSlice(set as never,(()=>state) as never,{} as never),...createSpotifySlice(set as never,(()=>state) as never,{} as never),showToast:vi.fn(),recordStreamEvent:vi.fn()};return state;
+ state={...createPlayerSlice(set as never,(()=>state) as never,{} as never),...createSpotifySlice(set as never,(()=>state) as never,{} as never),spotifyConnected:true,spotifyAccountProduct:'premium',showToast:vi.fn(),recordStreamEvent:vi.fn()};return state;
 }
 afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks();managedObjectUrls.releaseAll()});
+
+describe('Spotify account capabilities', () => {
+ it.each(['free', 'unknown'])('blocks %s streaming and preloads without disturbing current local playback', async product => {
+  const state = setup(); state.spotifyAccountProduct = product;
+  const resolve = vi.spyOn(api, 'resolveSpotifyStreamUrl');
+  vi.spyOn(libraryService, 'getSongBySpotifyId').mockResolvedValue(undefined);
+  await state.playSong(song('local'));
+  await state.playSong({...song('remote'), url: '', spotifyId: 'remote', isStreaming: true});
+  expect(state.currentSong.id).toBe('local');
+  state.queue = [song('local'), {...song('remote'), spotifyId: 'remote', isStreaming: true}];
+  await state.preloadNextTrack();
+  expect(resolve).not.toHaveBeenCalled();
+ });
+ it('resolves a catalog track to an existing local file for a free account even when streaming was preferred', async () => {
+  const state = setup(); state.spotifyAccountProduct = 'free'; state.preferLocalPlayback = false;
+  const local = {...song('download'), spotifyId: 'remote'};
+  state.songs = [local];
+  const resolve = vi.spyOn(api, 'resolveSpotifyStreamUrl');
+  await state.playSong({...song('remote'), url: '', spotifyId: 'remote', isStreaming: true});
+  expect(state.currentSong.url).toBe('/audio/download');
+  expect(state.currentSong.isStreaming).toBe(false);
+  expect(resolve).not.toHaveBeenCalled();
+ });
+ it('clears the account plan on logout and stops remote playback when Premium becomes unavailable', () => {
+  const state = setup();
+  state.currentSong = {...song('remote'), spotifyId: 'remote', isStreaming: true};
+  state.isPlaying = true;
+  state.setSpotifyAccountProduct('free');
+  expect(state.currentSong).toBeNull();
+  state.logoutSpotify();
+  expect(state.spotifyAccountProduct).toBe('unknown');
+ });
+});
 describe('playback ownership',()=>{
  it('preserves duplicate occurrence through next, previous and direct selection',async()=>{
   const state=setup(),a=song('a'),b=song('b'),queue=[a,b,a];

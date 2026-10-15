@@ -522,14 +522,9 @@ func (a *API) downloadTrack(w http.ResponseWriter, r *http.Request) {
 		ids, queueErr = a.downloadManager.QueueDownloads([]QueueDownloadRequest{{SpotifyID: req.SpotifyID, SpotifyURI: "spotify:track:" + req.SpotifyID, Type: "track", Title: req.Title, Artist: req.Artist, Album: req.Album, Origins: req.Origins}})
 		return queueErr
 	}
-	var err error
-	if len(req.Origins) == 0 {
-		err = queue()
-	} else {
-		err = a.spotifyTokens().ensureMetadataOwner(ctx)
-		if err == nil {
-			err = a.spotifyTokens().withAccount(ctx, queue)
-		}
+	err := a.spotifyTokens().ensureMetadataOwner(ctx)
+	if err == nil {
+		err = a.spotifyTokens().withAccount(ctx, queue)
 	}
 
 	if err != nil {
@@ -816,8 +811,9 @@ func (a *API) downloadTrackByID(w http.ResponseWriter, ctx context.Context, spot
 			Name string `json:"name"`
 		} `json:"artists"`
 		Album struct {
-			Name   string `json:"name"`
-			Images []struct {
+			Name        string `json:"name"`
+			ReleaseDate string `json:"release_date"`
+			Images      []struct {
 				URL string `json:"url"`
 			} `json:"images"`
 		} `json:"album"`
@@ -838,9 +834,9 @@ func (a *API) downloadTrackByID(w http.ResponseWriter, ctx context.Context, spot
 	}
 
 	// Prepare metadata with artwork
-	var metadata *DownloadMetadata
+	metadata := &DownloadMetadata{ReleaseDate: track.Album.ReleaseDate}
 	if len(track.Album.Images) > 0 {
-		metadata = &DownloadMetadata{ImageURL: track.Album.Images[0].URL}
+		metadata.ImageURL = track.Album.Images[0].URL
 	}
 
 	// Queue the download
@@ -1382,7 +1378,20 @@ func (a *API) getSpotifyAuthStatus(w http.ResponseWriter, r *http.Request) {
 	if a.downloadManager != nil && a.downloadManager.IsAuthRequired() {
 		status.AuthRequired = true
 	}
-	respondJSON(w, status)
+	product := "unknown"
+	if status.Connected && !status.AuthRequired {
+		product = a.spotifyAccountProduct(r.Context(), r.URL.Query().Get("refreshProduct") == "true")
+	}
+	status = a.spotifyTokens().status()
+	if !status.Connected || status.AuthRequired {
+		product = "unknown"
+	}
+	respondJSON(w, struct {
+		spotifySessionStatus
+		Product     string `json:"product"`
+		CanStream   bool   `json:"canStream"`
+		CanDownload bool   `json:"canDownload"`
+	}{status, product, product == "premium", product == "premium"})
 }
 
 // refreshSpotifyAuth is called after the user re-authenticates with Spotify.

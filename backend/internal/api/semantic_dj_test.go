@@ -68,7 +68,7 @@ func TestRetrieveSemanticDJPhasePoolsFallsBackWhenIndexIsEmpty(t *testing.T) {
 	}
 }
 
-func TestRetrieveSemanticDJPhasePoolsFallsBackWhenPoolsLackDistinctSongs(t *testing.T) {
+func TestRetrieveSemanticDJPhasePoolsKeepsSemanticShortageWhenPoolsLackDistinctSongs(t *testing.T) {
 	database, err := db.New(filepath.Join(t.TempDir(), "semantic-dj-small.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +93,55 @@ func TestRetrieveSemanticDJPhasePoolsFallsBackWhenPoolsLackDistinctSongs(t *test
 			{Name: "Warm-up", SemanticQuery: "quiet", TargetCount: 1},
 			{Name: "Peak", SemanticQuery: "loud", TargetCount: 1},
 		},
-	}, semanticDJRequest{Source: "local"}); err != nil || handled {
+	}, semanticDJRequest{Source: "local"}); err != nil || !handled {
 		t.Fatalf("handled=%v err=%v", handled, err)
+	}
+}
+
+func TestAdaptiveDJRefillsAuditRejectionsOnceAcrossOverlappingPhases(t *testing.T) {
+	api, provider := adaptivePlaylistFixture(t, 420, nil)
+	seen := make(map[string]bool)
+	audit := func(_ context.Context, _ string, _ llm.PlaylistIntent, songs []db.Song) ([]db.Song, playlistValidationDiagnostics) {
+		var accepted []db.Song
+		for _, song := range songs {
+			if seen[song.ID] {
+				t.Fatalf("duplicate audit across phases: %s", song.ID)
+			}
+			seen[song.ID] = true
+			if song.ID >= "song-0325" {
+				accepted = append(accepted, song)
+			}
+		}
+		return accepted, playlistValidationDiagnostics{AuditStatus: "passed", AuditReviewed: len(songs), AuditRejected: len(songs) - len(accepted)}
+	}
+	plan := &dj.DJSetPlan{IntentSummary: "jazz", Phases: []dj.DJPhase{{Name: "Warm-up", SemanticQuery: "jazz", TargetCount: 10}, {Name: "Peak", SemanticQuery: "jazz", TargetCount: 10}}}
+	result, handled, err := api.retrieveSemanticDJPhasePoolsWithAudit(context.Background(), plan, semanticDJRequest{Source: "local"}, audit)
+	if err != nil || !handled {
+		t.Fatalf("handled=%v err=%v", handled, err)
+	}
+	if len(result.Pools[0].Songs) != 50 || len(result.Pools[1].Songs) != 50 || provider.queries != 1 {
+		t.Fatalf("pools=%v query embeds=%d", result.PhaseCandidateCount, provider.queries)
+	}
+	queue, _, err := sequenceAvailableSemanticPhases(result.Pools, plan, dj.GetPersona(dj.PersonaFlowMaster), dj.NewScoreContext())
+	if err != nil || len(queue) != 20 {
+		t.Fatalf("queue=%d err=%v", len(queue), err)
+	}
+	unique := make(map[string]bool)
+	for _, song := range queue {
+		if unique[song.ID] || song.ID < "song-0325" {
+			t.Fatalf("invalid or repeated track %s", song.ID)
+		}
+		unique[song.ID] = true
+	}
+	if result.Audit.AuditReviewed != len(seen) || result.Audit.AuditRejected != 325 {
+		t.Fatalf("audit=%+v unique=%d", result.Audit, len(seen))
+	}
+}
+
+func TestSequenceAvailableSemanticPhasesPreservesEmptyConstrainedPhase(t *testing.T) {
+	plan := &dj.DJSetPlan{Phases: []dj.DJPhase{{Name: "Empty", TargetCount: 2}, {Name: "Available", TargetCount: 1}}}
+	queue, phases, err := sequenceAvailableSemanticPhases([]dj.PhaseCandidatePool{{}, {Songs: []db.Song{{ID: "only", Artist: "Artist"}}}}, plan, dj.GetPersona(dj.PersonaFlowMaster), dj.NewScoreContext())
+	if err != nil || len(queue) != 1 || len(phases) != 2 || phases[0].Name != "Empty" || phases[0].SongCount != 0 || phases[1].SongCount != 1 {
+		t.Fatalf("queue=%v phases=%v err=%v", queue, phases, err)
 	}
 }

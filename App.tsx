@@ -107,7 +107,14 @@ const App: React.FC = () => {
     if (!backendAvailable) return;
     let active = true;
     const generation = useStore.getState().spotifySessionGeneration;
-      void api.getSpotifyAuthStatus().then(status => {if(active && generation === useStore.getState().spotifySessionGeneration) setSpotifyConnected(status.connected && !status.authRequired);}).catch(() => {if(active && generation === useStore.getState().spotifySessionGeneration) setSpotifyConnected(false);});
+    void api.getSpotifyAuthStatus().then(status => {
+      if (!active || generation !== useStore.getState().spotifySessionGeneration) return;
+      const connected = status.connected && !status.authRequired;
+      setSpotifyConnected(connected);
+      useStore.getState().setSpotifyAccountProduct(connected ? status.product : undefined);
+    }).catch(() => {
+      if (active && generation === useStore.getState().spotifySessionGeneration) setSpotifyConnected(false);
+    });
     return () => {active=false;};
   }, [backendAvailable, setSpotifyConnected]);
 

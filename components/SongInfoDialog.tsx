@@ -1,4 +1,5 @@
 import { SongAudioMetadata } from './SongAudioMetadata';
+import { TrackReleaseDates } from './TrackReleaseDates';
 /**
  * ViiB MediaHub - Song Info / Properties Dialog
  * 
@@ -90,7 +91,7 @@ const SongInfoEditor: React.FC = () => {
     setEditAlbumArtist(song.albumArtist || '');
     setEditTrackNumber(song.trackNumber || '');
     setEditDiscNumber(song.discNumber || '');
-    setEditYear(song.year || '');
+    setEditYear(song.originalYear || song.year || '');
     setEditGenres(song.genre ? song.genre.join(', ') : '');
     setIsEditing(true);
     setActiveTab('overview');
@@ -306,6 +307,8 @@ const SongInfoEditor: React.FC = () => {
                 </span>
               </div>
 
+              <TrackReleaseDates songID={song.id} />
+
               {/* Action Buttons */}
               <div className="flex items-center justify-center sm:justify-start gap-2 mt-4">
                 <Button
@@ -466,7 +469,7 @@ const SongInfoEditor: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-text-subtle mb-1 font-semibold">Release Year</label>
+                    <label className="block text-text-subtle mb-1 font-semibold">Original Release Year</label>
                     <input
                       type="number"
                       value={editYear}

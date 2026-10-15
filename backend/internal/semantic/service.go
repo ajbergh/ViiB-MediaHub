@@ -90,6 +90,15 @@ func (service *Service) Start(parent context.Context) error {
 		return nil
 	}
 	service.lifecycleMu.Unlock()
+	if err := service.database.EnsureSemanticSchema(); err != nil {
+		return err
+	}
+	service.runMu.Lock()
+	resetErr := service.resetForIdentityChange(parent)
+	service.runMu.Unlock()
+	if resetErr != nil {
+		return resetErr
+	}
 	if err := service.LoadReadyIndexes(parent); err != nil {
 		return err
 	}
@@ -104,6 +113,7 @@ func (service *Service) Start(parent context.Context) error {
 	ctx, cancel := context.WithCancel(parent)
 	service.cancel = cancel
 	service.done = make(chan struct{})
+	service.setStatus(ServiceStatus{State: serviceStateIndexing})
 	go func() {
 		defer close(service.done)
 		if err := service.Reindex(ctx); err != nil && !errors.Is(err, context.Canceled) {

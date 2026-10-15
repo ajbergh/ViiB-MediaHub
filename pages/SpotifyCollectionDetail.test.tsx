@@ -19,7 +19,7 @@ afterEach(() => { useStore.setState(initial, true); vi.restoreAllMocks(); vi.cle
 it.each(['album', 'playlist'] as const)('%s actions preserve collection order and duplicate row positions', async kind => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   const play = vi.fn(), queue = vi.fn(), context = vi.fn();
-  useStore.setState({ spotifyConnected: true, spotifySessionGeneration: 1, playSong: play, addToQueue: queue, openContextMenu: context, showToast: vi.fn(), addLog: vi.fn() });
+  useStore.setState({ spotifyAccountProduct: 'premium', spotifyConnected: true, spotifySessionGeneration: 1, playSong: play, addToQueue: queue, openContextMenu: context, showToast: vi.fn(), addLog: vi.fn() });
   const track = { id: 'duplicate', name: 'Duplicate Track', duration_ms: 120000, artists: [{ id: 'artist', name: 'Artist' }], album: { name: 'Collection', images: [] } };
   const collection = { id: 'collection', name: 'Collection', images: [], artists: track.artists, release_date: '2024', owner: { display_name: 'Owner' }, external_urls: { spotify: '#' }, tracks: { total: 2, items: kind === 'album' ? [track, track] : [{ track }, { track }] } };
   mocks.album.mockResolvedValue(collection);
@@ -52,7 +52,7 @@ it.each(['album', 'playlist'] as const)('%s actions preserve collection order an
 
 it.each(['album', 'playlist'] as const)('%s ignores detail responses from a retired generation', async kind => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
-  useStore.setState({ spotifyConnected: true, spotifySessionGeneration: 1, addLog: vi.fn() });
+  useStore.setState({ spotifyAccountProduct: 'premium', spotifyConnected: true, spotifySessionGeneration: 1, addLog: vi.fn() });
   let finish!: (value: any) => void;
   const late = new Promise(resolve => { finish = resolve; });
   mocks.album.mockReturnValueOnce(late).mockRejectedValue(new Error('Session retired'));

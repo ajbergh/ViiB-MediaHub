@@ -1,3 +1,4 @@
+import { SpotifyAccountNotice } from '../components/SpotifyAccountNotice';
 /** Browses Spotify artist top tracks and bounded discography with account-isolated loading and playback actions. */
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
@@ -41,6 +42,7 @@ const message = (error: unknown) =>
         : 'Unable to load artist information.';
 
 export const SpotifyArtistDetail: React.FC = () => {
+    const mediaDisabled = useStore(s => !s.spotifyConnected || s.spotifyAccountProduct !== 'premium');
     const { id = '' } = useParams<{ id: string }>();
     const connected = useStore((state) => state.spotifyConnected);
     const generation = useStore((state) => state.spotifySessionGeneration);
@@ -108,6 +110,7 @@ export const SpotifyArtistDetail: React.FC = () => {
         : [];
     const songs = useMemo(() => spotifyTracksToSongs(tracks), [tracks]);
     const play = (index = 0, shuffle = false) => {
+        if (mediaDisabled) return;
         assertSpotifySession(generation);
         if (!songs.length) return;
         const context = [...songs];
@@ -119,6 +122,7 @@ export const SpotifyArtistDetail: React.FC = () => {
         playSong(context[shuffle ? 0 : index], context);
     };
     const queue = (index?: number) => {
+        if (mediaDisabled) return;
         assertSpotifySession(generation);
         const selection = index === undefined ? songs : [songs[index]];
         if (!selection.length) return;
@@ -129,6 +133,7 @@ export const SpotifyArtistDetail: React.FC = () => {
         });
     };
     const download = async (track: SpotifyArtistTrack) => {
+        if (mediaDisabled) return;
         if (downloads.has(track.id)) return;
         setDownloads((previous) => new Set(previous).add(track.id));
         try {
@@ -216,6 +221,7 @@ export const SpotifyArtistDetail: React.FC = () => {
     };
     return (
         <div className="p-8 pb-32 text-text-main">
+            <SpotifyAccountNotice />
             <Link
                 to="/spotify"
                 className="inline-flex items-center gap-2 text-text-secondary hover:text-text-main mb-6"
@@ -267,7 +273,7 @@ export const SpotifyArtistDetail: React.FC = () => {
                         <Button
                             variant="primary"
                             accent="brand"
-                            disabled={!songs.length}
+                            disabled={mediaDisabled || !songs.length}
                             onClick={() => play()}
                             leftIcon={<Play size={18} />}
                         >
@@ -275,7 +281,7 @@ export const SpotifyArtistDetail: React.FC = () => {
                         </Button>
                         <Button
                             variant="secondary"
-                            disabled={!songs.length}
+                            disabled={mediaDisabled || !songs.length}
                             onClick={() => play(0, true)}
                             aria-label="Shuffle top tracks"
                         >
@@ -283,7 +289,7 @@ export const SpotifyArtistDetail: React.FC = () => {
                         </Button>
                         <Button
                             variant="secondary"
-                            disabled={!songs.length}
+                            disabled={mediaDisabled || !songs.length}
                             onClick={() => queue()}
                             aria-label="Queue top tracks"
                         >
@@ -333,13 +339,15 @@ export const SpotifyArtistDetail: React.FC = () => {
                                     variant="ghost"
                                     aria-label={'Play ' + track.name}
                                     onClick={() => play(index)}
+                                    disabled={mediaDisabled}
                                 >
                                     <Play size={18} />
                                 </Button>
                                 <div className="flex-1 min-w-0">
                                     <button
-                                        className="font-medium text-left hover:underline truncate max-w-full"
+                                        className="font-medium text-left hover:underline truncate max-w-full disabled:opacity-50 disabled:cursor-not-allowed"
                                         onClick={() => play(index)}
+                                        disabled={mediaDisabled}
                                     >
                                         {track.name}
                                     </button>
@@ -365,13 +373,14 @@ export const SpotifyArtistDetail: React.FC = () => {
                                     variant="ghost"
                                     aria-label={'Queue ' + track.name}
                                     onClick={() => queue(index)}
+                                    disabled={mediaDisabled}
                                 >
                                     <ListPlus size={18} />
                                 </Button>
                                 <Button
                                     variant="ghost"
                                     aria-label={'Download ' + track.name}
-                                    disabled={downloads.has(track.id)}
+                                    disabled={mediaDisabled || downloads.has(track.id)}
                                     onClick={() => void download(track)}
                                 >
                                     {downloads.has(track.id) ? (

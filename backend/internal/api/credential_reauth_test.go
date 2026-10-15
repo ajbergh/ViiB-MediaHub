@@ -142,21 +142,19 @@ func TestAPIHandlersReportReauthRequiredOnStrandedLegacyV1Credentials(t *testing
 		}
 	})
 
-	// 3. Semantic GET /semantic/settings reports needs_configuration with reauth reason and allows replacement
-	t.Run("Semantic settings surface reauth reason and allow saving new key", func(t *testing.T) {
-		apiRouter := apiHandler.Routes()
-		req := httptest.NewRequest(http.MethodGet, "/semantic/settings", nil)
+	// Stranded legacy embedding keys cannot block managed local indexing.
+	t.Run("Managed semantic settings ignore stranded legacy key", func(t *testing.T) {
 		rec := httptest.NewRecorder()
-		apiRouter.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("GET /semantic/settings status = %d, want 200 (body=%s)", rec.Code, rec.Body.String())
+		apiHandler.Routes().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/semantic/settings", nil))
+		var response struct {
+			Provider string
+			Managed  bool
 		}
-		var semResp semanticSettingsResponse
-		if err := json.Unmarshal(rec.Body.Bytes(), &semResp); err != nil {
+		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 			t.Fatal(err)
 		}
-		if semResp.APIKeyConfigured || semResp.Status != "needs_configuration" || !strings.Contains(semResp.Reason, "re-enter the API key") {
-			t.Fatalf("unexpected semantic settings response on stranded key: %+v", semResp)
+		if rec.Code != http.StatusOK || response.Provider != semantic.EmbeddingProviderLocal || !response.Managed {
+			t.Fatalf("%s", rec.Body)
 		}
 	})
 

@@ -54,7 +54,7 @@ func (d *DB) ConfirmSpotifyMetadataOwner(epoch, provider, accountID, newContext 
 	if epoch == "" || (provider != "oauth" && provider != "webplayer") || accountID == "" || len(accountID) > 256 || newContext == "" || len(newContext) > 256 {
 		return "", errors.New("invalid Spotify owner identity")
 	}
-	tx, err := d.conn.Begin()
+	tx, err := d.beginSpotifyWriteTx()
 	if err != nil {
 		return "", err
 	}

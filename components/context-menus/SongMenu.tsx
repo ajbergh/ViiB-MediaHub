@@ -20,6 +20,8 @@ import { api } from '../../services/api';
 export const SongMenu: React.FC<{ song: Song; onClose: () => void }> = ({ song, onClose }) => {
     const { playSong, playNext, addToQueue, showToast, openSongInfoModal } = useStore();
     const navigate = useNavigate();
+    const premium = useStore(s => s.spotifyConnected && s.spotifyAccountProduct === 'premium');
+    const mediaDisabled = Boolean(song.spotifyId && (song.isStreaming || (!song.url && !song.fileHandle)) && !premium);
     const [playlistsSubmenuOpen, setPlaylistsSubmenuOpen] = useState(false);
     const playlistTriggerRef = React.useRef<HTMLButtonElement | null>(null);
 
@@ -63,9 +65,9 @@ export const SongMenu: React.FC<{ song: Song; onClose: () => void }> = ({ song, 
                 <div className="text-xs text-text-secondary truncate">{song.artist}</div>
             </div>
 
-            <MenuItem icon={Play} label="Play Now" onClick={() => handleAction(() => playSong(song))} />
-            <MenuItem icon={SkipForward} label="Play Next" onClick={() => handleAction(() => playNext(song))} />
-            <MenuItem icon={ListPlus} label="Add to Queue" onClick={() => handleAction(() => addToQueue(song))} />
+            <MenuItem icon={Play} disabled={mediaDisabled} label="Play Now" onClick={() => handleAction(() => playSong(song))} />
+            <MenuItem icon={SkipForward} disabled={mediaDisabled} label="Play Next" onClick={() => handleAction(() => playNext(song))} />
+            <MenuItem icon={ListPlus} disabled={mediaDisabled} label="Add to Queue" onClick={() => handleAction(() => addToQueue(song))} />
             
             <div 
                 className="relative"
@@ -127,7 +129,7 @@ export const SongMenu: React.FC<{ song: Song; onClose: () => void }> = ({ song, 
             
             {/* Download option for streaming Spotify tracks */}
             {isSpotifyStreaming && (
-                <MenuItem icon={Download} label="Download for Offline" onClick={handleDownloadTrack} />
+                <MenuItem icon={Download} disabled={!premium} label="Download for Offline" onClick={handleDownloadTrack} />
             )}
             {/* Show downloaded indicator for Spotify tracks */}
             {isSpotifyDownloaded && (

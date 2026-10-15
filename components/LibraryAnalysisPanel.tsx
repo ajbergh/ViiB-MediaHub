@@ -188,7 +188,7 @@ export const LibraryAnalysisPanel: React.FC = () => {
           <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
             <span className="text-sm font-semibold">{activeJob.message || 'Analyzing'}</span>
             <span className="text-xs text-text-secondary">
-              {activeJob.progressTotal > 0 ? `${activeJob.progressCurrent} / ${activeJob.progressTotal}` : activeJob.status}
+              {activeJob.progressTotal > 0 ? `${activeJob.progressCurrent.toLocaleString()} / ${activeJob.progressTotal.toLocaleString()} processed` : activeJob.status}
             </span>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-valuenow={progressPercent} aria-valuemin={0} aria-valuemax={100}>
@@ -211,7 +211,7 @@ export const LibraryAnalysisPanel: React.FC = () => {
         <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <div className="rounded-lg bg-surface-2 p-3"><dt className="text-text-secondary">Selected</dt><dd className="mt-1 font-semibold">{lastResult.total ?? 0}</dd></div>
           <div className="rounded-lg bg-surface-2 p-3"><dt className="text-text-secondary">Analyzed</dt><dd className="mt-1 font-semibold">{lastResult.analyzed ?? 0}</dd></div>
-          <div className="rounded-lg bg-surface-2 p-3"><dt className="text-text-secondary">Already current</dt><dd className="mt-1 font-semibold">{lastResult.skipped ?? 0}</dd></div>
+          <div className="rounded-lg bg-surface-2 p-3"><dt className="text-text-secondary">Skipped</dt><dd className="mt-1 font-semibold">{lastResult.skipped ?? 0}</dd></div>
           <div className="rounded-lg bg-surface-2 p-3">
             <dt className="text-text-secondary">Could not analyze</dt>
             <dd className={`mt-1 font-semibold ${(lastResult.failed ?? 0) > 0 ? 'text-error' : ''}`}>{lastResult.failed ?? 0}</dd>

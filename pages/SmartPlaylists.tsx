@@ -83,12 +83,12 @@ export const SmartPlaylists: React.FC = () => {
 
   const semanticState = semanticStatus?.state;
   const semanticReady = semanticState === 'ready';
-  const semanticIndexing = semanticState === 'indexing';
+  const semanticIndexing = semanticState === 'indexing' || semanticState === 'preparing';
   const semanticProgress = Math.round((semanticStatus?.progress || 0) * 100);
   const semanticLabel = semanticReady
     ? 'Semantic matching ready'
     : semanticIndexing
-      ? `Semantic index building${semanticProgress > 0 ? ` (${semanticProgress}%)` : ''}`
+      ? semanticState === 'preparing' ? 'Preparing Smart Playlists' : `Semantic index building${semanticProgress > 0 ? ` (${semanticProgress}%)` : ''}`
       : semanticState === 'error'
         ? 'Semantic index needs attention'
         : 'Standard matching active';
@@ -96,7 +96,7 @@ export const SmartPlaylists: React.FC = () => {
     ? 'AI Smart Mix will use meaning-based retrieval when indexed tracks are available for the selected source.'
     : semanticIndexing
       ? 'Standard matching remains available while the background index finishes.'
-      : 'Semantic matching will be used automatically after the index is configured and ready.';
+      : 'Music matching is prepared automatically on this device.';
   const semanticReason = semanticStatus?.reason || semanticStatus?.lastError;
 
   const spotifySessionGeneration = useStore(state => state.spotifySessionGeneration);
@@ -173,7 +173,7 @@ export const SmartPlaylists: React.FC = () => {
     try {
       const result = await api.generateSmartPlaylist(aiDjPrompt, { 
         blendMode: 'mixed',
-        targetSongs: aiDjMode ? estimatedSongCount : 50,
+        targetSongs: estimatedSongCount,
         discoverMode: aiDjDiscoverMode,
         avoidRecentlyHours: aiDjAvoidRecentlyHours,
         onePerArtist: aiDjOnePerArtist,
@@ -213,14 +213,22 @@ export const SmartPlaylists: React.FC = () => {
       if (songs.length === 0) {
         showToast({ 
           type: 'error', 
-          message: aiDjMode 
-            ? 'No songs found for your DJ set. Try a different prompt or check your library.' 
-            : 'No songs found matching your request. Try different keywords.'
+          message: validation?.shortfallReason === 'search_limit_reached'
+            ? 'Search limit reached before finding eligible tracks. Try a more specific request.'
+            : validation?.shortfallReason === 'audit_limit_reached'
+              ? 'Review limit reached before finding eligible tracks. Try adjusting your request.'
+              : aiDjMode
+                ? 'No songs found for your DJ set. Try a different prompt or check your library.'
+                : 'No songs found matching your request. Try different keywords.'
         });
       } else if (validation?.shortened) {
         showToast({
           type: 'warning',
-          message: `Found ${songs.length} strong matches. AI Smart Mix did not pad the playlist with tracks that conflicted with your request.`
+          message: validation.shortfallReason === 'search_limit_reached'
+            ? `Found ${songs.length} matching tracks before reaching the search limit. More matching tracks may remain.`
+            : validation.shortfallReason === 'audit_limit_reached'
+              ? `Found ${songs.length} matching tracks before reaching the review limit.`
+              : `Found ${songs.length} strong matches. No more eligible tracks matched your request.`
         });
       } else if (aiDjMode) {
         showToast({
@@ -403,6 +411,30 @@ export const SmartPlaylists: React.FC = () => {
           </p>
         </div>
 
+        <div className="mt-4 max-w-xl">
+          <label htmlFor="smart-playlist-duration" className="text-meta text-text-secondary mb-2 flex items-center gap-2">
+            <Timer size={14} />
+            {aiDjMode ? 'Set Duration' : 'Playlist Duration'}: {aiDjTargetDurationMinutes} min (~{estimatedSongCount} songs)
+          </label>
+          <input
+            id="smart-playlist-duration"
+            type="range"
+            min={15}
+            max={120}
+            step={5}
+            value={aiDjTargetDurationMinutes}
+            onChange={(e) => setAIDJTargetDurationMinutes(Number(e.target.value))}
+            className="w-full accent-brand"
+          />
+          <div className="flex justify-between text-meta text-text-subtle">
+            <span>15 min</span>
+            <span>120 min</span>
+          </div>
+          <p className="text-meta text-text-subtle mt-2">
+            Actual length depends on track lengths and available matches.
+          </p>
+        </div>
+
         {/* DJ Mode Controls */}
         {aiDjMode && (
           <div className="mt-6 p-4 bg-surface-1 rounded-xl border border-surface-highlight">
@@ -438,28 +470,8 @@ export const SmartPlaylists: React.FC = () => {
               )}
             </div>
 
-            {/* Duration & Flow Controls */}
+            {/* Flow Controls */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-meta text-text-secondary mb-2 flex items-center gap-2">
-                  <Timer size={14} />
-                  Set Duration: {aiDjTargetDurationMinutes} min (~{estimatedSongCount} songs)
-                </label>
-                <input
-                  type="range"
-                  min={15}
-                  max={120}
-                  step={5}
-                  value={aiDjTargetDurationMinutes}
-                  onChange={(e) => setAIDJTargetDurationMinutes(Number(e.target.value))}
-                  className="w-full accent-brand"
-                />
-                <div className="flex justify-between text-meta text-text-subtle">
-                  <span>15 min</span>
-                  <span>120 min</span>
-                </div>
-              </div>
-              
               <div>
                 <label className="text-meta text-text-secondary mb-2 flex items-center gap-2">
                   <BarChart3 size={14} />
@@ -633,7 +645,11 @@ export const SmartPlaylists: React.FC = () => {
                     </div>
                     {aiDjValidation.shortened && (
                       <p className="mt-2 text-meta text-warning">
-                        The result is shorter than requested because AI Smart Mix found no more tracks that safely matched.
+                        {aiDjValidation.shortfallReason === 'audit_limit_reached'
+                          ? 'The result is shorter than requested because the review limit was reached while checking additional tracks.'
+                          : aiDjValidation.shortfallReason === 'search_limit_reached'
+                            ? 'The result is shorter than requested because the search limit was reached. More matching tracks may remain in the library.'
+                            : 'The result is shorter than requested because no more eligible tracks matched your request.'}
                       </p>
                     )}
                   </div>

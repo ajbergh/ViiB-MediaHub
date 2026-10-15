@@ -119,7 +119,7 @@ func (a *API) runAnalyzeTracksJob(job db.Job) {
 			}
 			lastWrite = time.Now()
 			_ = a.db.UpdateJobProgress(job.ID, int64(current.Processed), int64(current.Total),
-				fmt.Sprintf("Analyzed %d of %d tracks (%d skipped, %d failed)", current.Analyzed, current.Total, current.Skipped, current.Failed))
+				fmt.Sprintf("%d analyzed · %d skipped · %d failed", current.Analyzed, current.Skipped, current.Failed))
 		},
 	})
 

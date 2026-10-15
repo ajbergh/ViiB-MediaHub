@@ -135,6 +135,27 @@ async function tab(label: string) {
     await act(async () => button!.click());
 }
 
+it.each(['free', 'unknown'])('keeps %s metadata search and library available while disabling media', async product => {
+    const play = vi.fn(), queue = vi.fn();
+    useStore.setState({ playSong: play, addToQueue: queue });
+    mocks.status.mockResolvedValue({ connected: true, authRequired: false, product });
+    await mount();
+    expect(useStore.getState().spotifyConnected).toBe(true);
+    expect(host.textContent).toContain(product === 'free' ? 'Spotify Free connected' : 'account plan is unverified');
+    await typeQuery('metadata');
+    await enter();
+    await act(async () => requests[0].final.resolve(results('Metadata track')));
+    expect(host.textContent).toContain('Metadata track');
+    const media = [...host.querySelectorAll<HTMLButtonElement>('button')].filter(button => /queue|download/i.test(button.title));
+    expect(media.length).toBeGreaterThan(0);
+    expect(media.every(button => button.disabled)).toBe(true);
+    await act(async () => media.forEach(button => button.click()));
+    expect(queue).not.toHaveBeenCalled();
+    expect(play).not.toHaveBeenCalled();
+    await tab('Saved Albums');
+    expect(mocks.albums).toHaveBeenCalled();
+});
+
 describe('Spotify interactive search regressions', () => {
     it('restores a logged-in session and dispatches Enter immediately while the profile is pending', async () => {
         await mount();

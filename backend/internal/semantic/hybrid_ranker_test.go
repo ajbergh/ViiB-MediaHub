@@ -6,7 +6,27 @@ import (
 	"testing"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/playlist"
 )
+
+func TestAudioPreferencesRankEvidenceWithoutLoweringSemanticFloor(t *testing.T) {
+	values := map[string]playlist.AudioFeatures{}
+	var candidates []SemanticCandidate
+	for _, id := range []string{"bad", "unknown", "good", "irrelevant"} {
+		similarity := .8
+		if id == "irrelevant" {
+			similarity = .3
+		}
+		candidates = append(candidates, SemanticCandidate{Song: db.Song{ID: id}, Evidence: SemanticEvidence{BestSimilarity: similarity}})
+	}
+	values["good"] = playlist.AudioFeatures{BPM: &playlist.Observation{Value: 125, Confidence: 1}}
+	values["irrelevant"] = values["good"]
+	values["bad"] = playlist.AudioFeatures{BPM: &playlist.Observation{Value: 80, Confidence: 1}}
+	ranked := RankSemanticCandidates(candidates, HybridRankingOptions{AudioIntent: playlist.AudioIntent{MinBPM: 120, MaxBPM: 128}, AudioFeatures: values})
+	if len(ranked) != 3 || ranked[0].Candidate.Song.ID != "good" || ranked[1].Candidate.Song.ID != "unknown" || ranked[2].Candidate.Song.ID != "bad" {
+		t.Fatalf("ranking=%+v", ranked)
+	}
+}
 
 func TestRankSemanticCandidatesPrioritizesSemanticRelevance(t *testing.T) {
 	ranked := RankSemanticCandidates([]SemanticCandidate{
@@ -15,6 +35,17 @@ func TestRankSemanticCandidatesPrioritizesSemanticRelevance(t *testing.T) {
 	}, HybridRankingOptions{DiscoverMode: "balanced"})
 	if len(ranked) != 1 || ranked[0].Candidate.Song.ID != "relevant" {
 		t.Fatalf("ranking=%#v", ranked)
+	}
+}
+
+func TestAuditRejectionDoesNotLowerSemanticQualityFloor(t *testing.T) {
+	ranked := RankSemanticCandidates([]SemanticCandidate{
+		{Song: db.Song{ID: "rejected"}, Evidence: SemanticEvidence{BestSimilarity: 0.95}},
+		{Song: db.Song{ID: "replacement"}, Evidence: SemanticEvidence{BestSimilarity: 0.80}},
+		{Song: db.Song{ID: "weak"}, Evidence: SemanticEvidence{BestSimilarity: 0.40}},
+	}, HybridRankingOptions{RejectedSongIDs: map[string]bool{"rejected": true}})
+	if len(ranked) != 1 || ranked[0].Candidate.Song.ID != "replacement" {
+		t.Fatalf("ranking=%+v", ranked)
 	}
 }
 

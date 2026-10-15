@@ -11,6 +11,7 @@
 package dj
 
 import (
+	"github.com/ajbergh/viib-mediahub/internal/playlist"
 	"strconv"
 	"strings"
 	"time"
@@ -116,6 +117,11 @@ func DefaultPlanOptions() PlanOptions {
 // ScoreContext provides contextual information for scoring songs.
 // It tracks the current state of sequencing and user preferences.
 type ScoreContext struct {
+	AudioIntent          playlist.AudioIntent
+	AudioFeatures        map[string]playlist.AudioFeatures
+	TransitionScorer     playlist.TransitionScorer
+	LastSongID           string
+	PhaseDurationSeconds float64
 	// Genre affinity scores from user's listening history
 	GenreAffinity map[string]float64
 

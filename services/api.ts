@@ -50,7 +50,15 @@ export interface SpotifyDownloadOrigin {
 import { AudioSettings } from '../types';
 import { getEventStreamURL } from './eventStreamURL';
 
-export interface SpotifySessionStatus { provider: 'oauth' | 'webplayer'; connected: boolean; authRequired: boolean; message: string }
+export interface SpotifySessionStatus {
+  provider: 'oauth' | 'webplayer';
+  connected: boolean;
+  authRequired: boolean;
+  message: string;
+  product?: 'premium' | 'free' | 'unknown';
+  canStream?: boolean;
+  canDownload?: boolean;
+}
 
 export interface SpotifyBrowserLoginStatus { id: string; state: 'pending' | 'connected' | 'canceled' | 'failed'; message?: string }
 
@@ -659,6 +667,12 @@ export const api = {
 
   // Spotify Downloads
 
+  async getTrackReleaseMetadata(songID: string): Promise<TrackReleaseMetadata> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(songID)}/release-date`, { cache: 'no-store' });
+    if (!response.ok) throw new Error('Release date metadata unavailable');
+    return response.json();
+  },
+
   /**
    * Queues a single track for download from Spotify.
    * Requires Spotify Premium account and valid OAuth authentication.
@@ -827,8 +841,8 @@ export const api = {
    * 
    * @returns Promise with authRequired status and optional message
    */
-  async getSpotifyAuthStatus(): Promise<SpotifySessionStatus> {
-    const response = await fetch(`${API_BASE}/spotify/auth/status`);
+  async getSpotifyAuthStatus(refreshProduct = false): Promise<SpotifySessionStatus> {
+    const response = await fetch(`${API_BASE}/spotify/auth/status${refreshProduct ? '?refreshProduct=true' : ''}`);
     return handleResponse<SpotifySessionStatus>(response);
   },
 
@@ -1158,15 +1172,6 @@ export const api = {
     return handleResponse<SemanticSettings>(response);
   },
 
-  async updateSemanticSettings(settings: SemanticSettingsRequest): Promise<{ status: string }> {
-    const response = await fetch(`${API_BASE}/semantic/settings`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings),
-    });
-    return handleResponse<{ status: string }>(response);
-  },
-
   async getSemanticStatus(): Promise<SemanticStatus> {
     const response = await fetch(`${API_BASE}/semantic/status`);
     return handleResponse<SemanticStatus>(response);
@@ -1379,7 +1384,7 @@ export const api = {
    * @param options.useTimeContext - Add time-of-day context to AI recommendations
    * @param options.mode - 'playlist' (default) or 'dj' for DJ mode
    * @param options.persona - DJ persona key (FlowMaster, CrowdPleaser, etc.)
-   * @param options.targetDurationMinutes - DJ set duration in minutes
+   * @param options.targetDurationMinutes - Approximate playlist or DJ set duration in minutes
    * @param options.flowStrictness - BPM continuity strictness 0-100
    * @param options.talkMode - Enable DJ narration cues
    * @param options.source - 'all' (online sources), 'local', or 'plex'
@@ -1424,7 +1429,7 @@ export const api = {
         // DJ Mode fields
         mode: options?.mode || 'playlist',
         persona: options?.persona || 'FlowMaster',
-        targetDurationMinutes: options?.targetDurationMinutes || 45,
+        targetDurationMinutes: options?.targetDurationMinutes ?? (options?.mode === 'dj' ? 45 : undefined),
         flowStrictness: options?.flowStrictness || 60,
         talkMode: options?.talkMode || false,
         source: options?.source || 'all',
@@ -1930,6 +1935,7 @@ export interface SmartPlaylistValidation {
   auditReviewed: number;
   auditRejected: number;
   shortened: boolean;
+  shortfallReason?: 'matching_tracks_exhausted' | 'search_limit_reached' | 'audit_limit_reached';
 }
 
 /** Optional diagnostics returned by the semantic retrieval path. */
@@ -1937,6 +1943,8 @@ export interface SmartPlaylistRetrieval {
   mode: string;
   candidateCount: number;
   returnedCount?: number;
+  searchPasses?: number;
+  searchLimitReached?: boolean;
   trackMatches?: number;
   albumMatches?: number;
   artistMatches?: number;
@@ -1949,7 +1957,38 @@ export interface SmartPlaylistRetrieval {
 /**
  * Response from the smart playlist API.
  */
+export interface TrackReleaseMetadata {
+  editionDate?: string;
+  editionSource?: string;
+  originalDate?: string;
+  originalSource?: string;
+  recordingId?: string;
+  state: string;
+  checkedAt: number;
+  retryAt: number;
+}
+
+export interface SmartPlaylistAudioIntent {
+  minBPM?: number;
+  maxBPM?: number;
+  bpmConstraintHard?: boolean;
+  minEnergyLevel?: number;
+  maxEnergyLevel?: number;
+  energyConstraintHard?: boolean;
+  targetEnergy?: 'low' | 'medium' | 'high';
+  preferredMoods?: string[];
+  camelotKeys?: string[];
+  keyConstraintHard?: boolean;
+  harmonicMix?: boolean;
+  energyDirection?: 'steady' | 'build' | 'cooldown' | 'arc';
+  targetDurationMinutes?: number;
+  providerPreferences?: Record<string, number>;
+}
+
 export interface SmartPlaylistResponse {
+  audioIntent?: SmartPlaylistAudioIntent;
+  durationSeconds?: number;
+  durationEstimated?: boolean;
   filter: SmartPlaylistFilter;
   songs: ApiSong[];
   dj?: DJModeResponse; // Present when mode === 'dj'
@@ -2059,46 +2098,11 @@ export interface LLMTestResponse {
 // ==================== Semantic Index Types ====================
 
 export interface SemanticSettings {
-  provider: 'auto' | 'ollama' | 'openai' | 'openrouter' | 'gemini' | 'disabled';
+  provider: 'local';
   model: string;
   dimensions: number;
-  baseURL: string;
-  apiKeyConfigured: boolean;
+  managed: true;
   status: string;
-  reason?: string;
-  cloudCost?: SemanticCloudCost;
-  cloudConfirmation?: SemanticCloudConfirmation;
-}
-
-export interface SemanticSettingsRequest {
-  provider: 'auto' | 'ollama' | 'openai' | 'openrouter' | 'gemini' | 'disabled';
-  model: string;
-  dimensions?: number;
-  baseURL: string;
-  apiKey?: string;
-  confirmCloudCost?: boolean;
-}
-
-export interface SemanticCloudCost {
-  provider: 'openai' | 'openrouter' | 'gemini';
-  model: string;
-  dimensions: number;
-  documents: number;
-  typicalInputTokens: number;
-  maximumInputTokens: number;
-  usdPerMillionInputTokens: number;
-  typicalUSD: number;
-  maximumUSD: number;
-  pricingKnown: boolean;
-  confirmed: boolean;
-}
-
-export interface SemanticCloudConfirmation {
-  provider: 'gemini' | 'openrouter';
-  model: string;
-  dimensions: number;
-  documents: number;
-  confirmed: boolean;
 }
 
 export interface SemanticIndexState {

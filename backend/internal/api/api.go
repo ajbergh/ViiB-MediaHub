@@ -40,6 +40,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/mediafetch"
+	"github.com/ajbergh/viib-mediahub/internal/releasedate"
 	"github.com/ajbergh/viib-mediahub/internal/scanner"
 	"github.com/ajbergh/viib-mediahub/internal/semantic"
 	"github.com/ajbergh/viib-mediahub/internal/spotify"
@@ -54,6 +55,7 @@ import (
 // components required by handler implementations.
 type API struct {
 	closeOnce              sync.Once
+	releaseMusicBrainz     *releasedate.Client
 	enrichmentMu           sync.Mutex
 	enrichmentContext      context.Context
 	enrichmentCancel       context.CancelFunc
@@ -84,6 +86,11 @@ type API struct {
 	semanticError          string
 	semanticClosed         bool
 	semanticGeneration     uint64
+	semanticContext        context.Context
+	semanticCancel         context.CancelFunc
+	semanticWorkers        sync.WaitGroup
+	semanticInitializing   bool
+	semanticWake           chan struct{}
 	jobSchedulerMu         sync.Mutex
 	jobSchedulerOn         bool
 	jobWake                chan struct{}
@@ -146,6 +153,9 @@ func New(database *db.DB, dataDir string) *API {
 	api.spotifyTokens()
 	api.initSpotifyAnalysis()
 	dm.spotifyFeatures = api.spotifyDownloadFeatures
+	dm.spotifyReleaseDate = api.spotifyTrackEditionDate
+	api.releaseMusicBrainz = releasedate.NewClient()
+	api.startReleaseMetadataWorker()
 	dm.Start()
 	// Initialize Last.FM client if configured
 	api.initLastFMClient()
@@ -269,21 +279,21 @@ func (a *API) Routes() chi.Router {
 	r.Delete("/spotify/auth/session", a.disconnectSpotifySession)
 
 	// Spotify Downloads
-	r.Post("/spotify/download/track", a.downloadTrack)
-	r.Post("/spotify/download/album", a.downloadAlbum)
-	r.Post("/spotify/download/playlist", a.downloadPlaylist)
-	r.Post("/spotify/download/url", a.downloadFromURL)
+	r.Post("/spotify/download/track", a.spotifyMediaOnly(a.downloadTrack))
+	r.Post("/spotify/download/album", a.spotifyMediaOnly(a.downloadAlbum))
+	r.Post("/spotify/download/playlist", a.spotifyMediaOnly(a.downloadPlaylist))
+	r.Post("/spotify/download/url", a.spotifyMediaOnly(a.downloadFromURL))
 	r.Get("/spotify/downloads", a.getDownloads)
 	r.Get("/spotify/downloads/active-count", a.getActiveDownloadCount)
 	r.Get("/spotify/downloads/{id}", a.getDownloadStatus)
 	r.Delete("/spotify/downloads/{id}", a.deleteDownload)
-	r.Post("/spotify/downloads/{id}/retry", a.retryDownload)
-	r.Post("/spotify/downloads/{id}/force-restart", a.forceRestartDownload)
+	r.Post("/spotify/downloads/{id}/retry", a.spotifyMediaOnly(a.retryDownload))
+	r.Post("/spotify/downloads/{id}/force-restart", a.spotifyMediaOnly(a.forceRestartDownload))
 	r.Delete("/spotify/downloads/completed", a.clearCompletedDownloads)
 	r.Get("/spotify/downloads/events", a.downloadProgressSSE)
 
 	// Spotify Streaming
-	r.Get("/spotify/stream/{id}", a.streamSpotifyTrack)
+	r.Get("/spotify/stream/{id}", a.spotifyMediaOnly(a.streamSpotifyTrack))
 
 	// Album metadata cache
 	r.Get("/albums/metadata", a.getAllAlbumMetadata)

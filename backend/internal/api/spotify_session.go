@@ -43,6 +43,7 @@ type spotifySessionStatus struct {
 	TokenIssueCount uint64 `json:"tokenIssueCount,omitempty"`
 }
 type spotifyAuthRuntime struct {
+	productCache          spotifyProductCache
 	ownerMu               sync.Mutex
 	ownerFlight           *spotifyOwnerFlight
 	ownerVerifier         func(context.Context) error
