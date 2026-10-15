@@ -22,6 +22,16 @@ The Songs page shows the canonical ViiB track catalog. It is source-transparent:
 
 ## Music sources
 
+### Track release dates
+
+Track properties distinguish **Original release** from **Edition release** and show each date's source. Decade and year matching prefer the original year; an edition year remains the fallback when the original is unknown. Dates retain their available precision, including year-only values.
+
+Scans collect `DATE` separately from `ORIGINALDATE`, `ORIGINALYEAR`, and equivalent original-date tags. Spotify downloads retain the selected album edition's release date; that date is not treated as proof of the recording's original release.
+
+Existing tracks are backfilled automatically in small background batches. MusicBrainz provides original dates only when title, artist, duration, and recording identity match unambiguously. Requests are rate limited and unsuccessful attempts are cached for retry. This lookup requires internet access and sends the track title and artist to MusicBrainz; cached dates remain local and work offline. No API key or model choice is required. Large libraries are enriched gradually.
+
+Manual year corrections take priority. Verified dates survive rescans and cannot be replaced by AI enrichment. AI-derived years remain labeled **AI estimate**; unmatched or ambiguous recordings retain their existing metadata rather than receiving an invented date.
+
 ### Local tracks
 
 Local songs are created by scanning configured folders. Their ViiB catalog rows retain filesystem identity so local playback and local-library diagnostics can operate normally.

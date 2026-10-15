@@ -108,6 +108,13 @@ func TestCookieCatalogTrackSingleBatchAndDownloadURL(t *testing.T) {
 	if w.Code != 200 || err != nil || len(queued) != 1 || queued[0].SpotifyID != id || queued[0].Title != "Track" || queued[0].Artist != "Artist" || queued[0].Album != "Saved Album" || !strings.Contains(queued[0].Metadata, "https://images.example/album") {
 		t.Fatal("track URL queue metadata failed", w.Code, err, queued)
 	}
+	var metadata DownloadMetadata
+	if err := json.Unmarshal([]byte(queued[0].Metadata), &metadata); err != nil || metadata.ReleaseDate != "2020-03-04" {
+		t.Fatalf("single-track release date lost: %+v %v", metadata, err)
+	}
+	if date := a.spotifyTrackEditionDate(t.Context(), id); date != "2020-03-04" {
+		t.Fatalf("download-worker release date=%q", date)
+	}
 }
 func TestCookieCatalogTrackErrorsAndCooldown(t *testing.T) {
 	for _, status := range []int{401, 403, 429, 200} {

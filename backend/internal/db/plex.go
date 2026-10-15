@@ -780,7 +780,8 @@ func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTra
 			ON CONFLICT(id) DO UPDATE SET
 				title=excluded.title, artist=excluded.artist, album=excluded.album, album_artist=excluded.album_artist,
 				track_number=excluded.track_number, disc_number=excluded.disc_number, genre=excluded.genre,
-				year=excluded.year, duration=excluded.duration, file_path=excluded.file_path, cover_path=excluded.cover_path,
+				original_year=CASE WHEN EXISTS(SELECT 1 FROM song_release_metadata WHERE song_id=songs.id AND manual_year=1) THEN songs.original_year WHEN songs.title<>excluded.title OR songs.artist<>excluded.artist OR songs.album<>excluded.album THEN 0 ELSE songs.original_year END,
+				year=CASE WHEN EXISTS(SELECT 1 FROM song_release_metadata WHERE song_id=songs.id AND manual_year=1) THEN songs.year WHEN excluded.year>0 THEN excluded.year ELSE songs.year END, duration=excluded.duration, file_path=excluded.file_path, cover_path=excluded.cover_path,
 				added_at=excluded.added_at, ignored=0
 		`, track.SongID, track.Title, track.Artist, track.Album, track.AlbumArtist, track.TrackNumber, track.DiscNumber,
 			string(genres), track.Year, track.Duration, filePath, coverPath, track.AddedAt)

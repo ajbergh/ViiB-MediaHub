@@ -47,6 +47,7 @@ func (a *API) V2Routes() chi.Router {
 	r.Get("/analysis/{songID}/waveform/spotify-three-band", a.getSongProviderWaveform)
 	r.Get("/analysis/{songID}/imported-analysis/{kind}", a.getSongImportedAnalysis)
 	r.Get("/analysis/{songID}/imported-catalog", a.getSongImportedCatalog)
+	r.Get("/analysis/{songID}/release-date", a.getTrackReleaseMetadata)
 	r.Get("/analysis/{songID}/provider-analysis/{kind}", a.getSongProviderAnalysis)
 	r.Get("/analysis/{songID}/waveform/local-three-band", a.getLocalThreeBand)
 	r.Get("/analysis/{songID}/beatgrid", a.getBeatGridV2)

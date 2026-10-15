@@ -40,6 +40,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/mediafetch"
+	"github.com/ajbergh/viib-mediahub/internal/releasedate"
 	"github.com/ajbergh/viib-mediahub/internal/scanner"
 	"github.com/ajbergh/viib-mediahub/internal/semantic"
 	"github.com/ajbergh/viib-mediahub/internal/spotify"
@@ -54,6 +55,7 @@ import (
 // components required by handler implementations.
 type API struct {
 	closeOnce              sync.Once
+	releaseMusicBrainz     *releasedate.Client
 	enrichmentMu           sync.Mutex
 	enrichmentContext      context.Context
 	enrichmentCancel       context.CancelFunc
@@ -151,6 +153,9 @@ func New(database *db.DB, dataDir string) *API {
 	api.spotifyTokens()
 	api.initSpotifyAnalysis()
 	dm.spotifyFeatures = api.spotifyDownloadFeatures
+	dm.spotifyReleaseDate = api.spotifyTrackEditionDate
+	api.releaseMusicBrainz = releasedate.NewClient()
+	api.startReleaseMetadataWorker()
 	dm.Start()
 	// Initialize Last.FM client if configured
 	api.initLastFMClient()

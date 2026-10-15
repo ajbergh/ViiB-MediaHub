@@ -91,6 +91,7 @@ const (
 type DownloadManager struct {
 	tokenSource         spotifyTokenSource
 	spotifyFeatures     func(context.Context, string) *spotifyanalysis.Observation
+	spotifyReleaseDate  func(context.Context, string) string
 	sessionPrepareMu    sync.Mutex
 	db                  *db.DB                        // Database for persistent queue
 	downloadDir         string                        // Root directory for downloaded files
@@ -1404,6 +1405,14 @@ func (dm *DownloadManager) downloadTrack(ctx context.Context, download *db.Spoti
 		}
 	}
 
+	if dm.spotifyReleaseDate != nil && (metadata == nil || metadata.ReleaseDate == "") {
+		if date := dm.spotifyReleaseDate(ctx, download.SpotifyID); date != "" {
+			if metadata == nil {
+				metadata = &spotify.DownloadMetadata{}
+			}
+			metadata.ReleaseDate = date
+		}
+	}
 	if dm.spotifyFeatures != nil {
 		if observation := dm.spotifyFeatures(ctx, download.SpotifyID); observation != nil {
 			if metadata == nil {

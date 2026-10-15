@@ -659,6 +659,12 @@ export const api = {
 
   // Spotify Downloads
 
+  async getTrackReleaseMetadata(songID: string): Promise<TrackReleaseMetadata> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(songID)}/release-date`, { cache: 'no-store' });
+    if (!response.ok) throw new Error('Release date metadata unavailable');
+    return response.json();
+  },
+
   /**
    * Queues a single track for download from Spotify.
    * Requires Spotify Premium account and valid OAuth authentication.
@@ -1943,6 +1949,17 @@ export interface SmartPlaylistRetrieval {
 /**
  * Response from the smart playlist API.
  */
+export interface TrackReleaseMetadata {
+  editionDate?: string;
+  editionSource?: string;
+  originalDate?: string;
+  originalSource?: string;
+  recordingId?: string;
+  state: string;
+  checkedAt: number;
+  retryAt: number;
+}
+
 export interface SmartPlaylistAudioIntent {
   minBPM?: number;
   maxBPM?: number;

@@ -98,37 +98,39 @@ type DB struct {
 // Song represents a persisted audio track with metadata and file locations
 // stored in the database.
 type Song struct {
-	ID             string   `json:"id"`
-	Title          string   `json:"title"`
-	Artist         string   `json:"artist"`
-	Album          string   `json:"album"`
-	AlbumArtist    string   `json:"albumArtist,omitempty"`
-	TrackNumber    int      `json:"trackNumber,omitempty"`
-	DiscNumber     int      `json:"discNumber,omitempty"`
-	Genre          []string `json:"genre,omitempty"`
-	Year           int      `json:"year,omitempty"`
-	OriginalYear   int      `json:"originalYear,omitempty"`   // Original release year (for remasters)
-	YearUncertain  bool     `json:"yearUncertain,omitempty"`  // True if year may be remaster date
-	YearAnalyzedAt int64    `json:"yearAnalyzedAt,omitempty"` // Timestamp of year analysis
-	Duration       float64  `json:"duration"`
-	ReplayGainDB   float64  `json:"replayGainDb,omitempty"`
-	ReplayPeak     float64  `json:"replayPeak,omitempty"`
-	FilePath       string   `json:"filePath"`
-	Path           string   `json:"path,omitempty"`
-	CoverPath      string   `json:"coverPath,omitempty"`
-	AddedAt        int64    `json:"addedAt"`
-	PlayCount      int      `json:"playCount,omitempty"`
-	LastPlayed     int64    `json:"lastPlayed,omitempty"`
-	SkipCount      int      `json:"skipCount,omitempty"`
-	FileHash       string   `json:"fileHash,omitempty"`
-	Mood           string   `json:"mood,omitempty"`           // e.g., "happy", "sad", "energetic", "calm"
-	Energy         string   `json:"energy,omitempty"`         // e.g., "high", "medium", "low"
-	Tempo          string   `json:"tempo,omitempty"`          // e.g., "fast", "medium", "slow"
-	BPM            int      `json:"bpm,omitempty"`            // Deprecated legacy storage; local tempo lives in TrackAnalysis
-	Instrumental   bool     `json:"instrumental,omitempty"`   // true if song has no vocals
-	MoodAnalyzedAt int64    `json:"moodAnalyzedAt,omitempty"` // Timestamp of mood analysis
-	Liked          bool     `json:"liked,omitempty"`          // true if user has liked this song
-	LikedAt        int64    `json:"likedAt,omitempty"`        // Timestamp when song was liked
+	ID                  string   `json:"id"`
+	Title               string   `json:"title"`
+	Artist              string   `json:"artist"`
+	Album               string   `json:"album"`
+	AlbumArtist         string   `json:"albumArtist,omitempty"`
+	TrackNumber         int      `json:"trackNumber,omitempty"`
+	DiscNumber          int      `json:"discNumber,omitempty"`
+	Genre               []string `json:"genre,omitempty"`
+	Year                int      `json:"year,omitempty"`
+	ReleaseDate         string   `json:"releaseDate,omitempty"`
+	OriginalReleaseDate string   `json:"originalReleaseDate,omitempty"`
+	OriginalYear        int      `json:"originalYear,omitempty"`   // Original release year (for remasters)
+	YearUncertain       bool     `json:"yearUncertain,omitempty"`  // True if year may be remaster date
+	YearAnalyzedAt      int64    `json:"yearAnalyzedAt,omitempty"` // Timestamp of year analysis
+	Duration            float64  `json:"duration"`
+	ReplayGainDB        float64  `json:"replayGainDb,omitempty"`
+	ReplayPeak          float64  `json:"replayPeak,omitempty"`
+	FilePath            string   `json:"filePath"`
+	Path                string   `json:"path,omitempty"`
+	CoverPath           string   `json:"coverPath,omitempty"`
+	AddedAt             int64    `json:"addedAt"`
+	PlayCount           int      `json:"playCount,omitempty"`
+	LastPlayed          int64    `json:"lastPlayed,omitempty"`
+	SkipCount           int      `json:"skipCount,omitempty"`
+	FileHash            string   `json:"fileHash,omitempty"`
+	Mood                string   `json:"mood,omitempty"`           // e.g., "happy", "sad", "energetic", "calm"
+	Energy              string   `json:"energy,omitempty"`         // e.g., "high", "medium", "low"
+	Tempo               string   `json:"tempo,omitempty"`          // e.g., "fast", "medium", "slow"
+	BPM                 int      `json:"bpm,omitempty"`            // Deprecated legacy storage; local tempo lives in TrackAnalysis
+	Instrumental        bool     `json:"instrumental,omitempty"`   // true if song has no vocals
+	MoodAnalyzedAt      int64    `json:"moodAnalyzedAt,omitempty"` // Timestamp of mood analysis
+	Liked               bool     `json:"liked,omitempty"`          // true if user has liked this song
+	LikedAt             int64    `json:"likedAt,omitempty"`        // Timestamp when song was liked
 	// Last.FM enrichment data
 	LastFMListeners  int    `json:"lastfmListeners,omitempty"`  // Global listener count
 	LastFMPlaycount  int    `json:"lastfmPlaycount,omitempty"`  // Global play count
@@ -228,6 +230,12 @@ func New(dbPath string) (*DB, error) {
 		conn.Close()
 		databaseLock.Close()
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
+	}
+
+	if err := db.ensureSongReleaseMetadataSchema(); err != nil {
+		conn.Close()
+		databaseLock.Close()
+		return nil, fmt.Errorf("release metadata schema: %w", err)
 	}
 
 	return db, nil
@@ -944,12 +952,17 @@ func (d *DB) SaveSong(s *Song) error {
 	normalizedGenres := NormalizeGenres(s.Genre)
 	genreJSON, _ := json.Marshal(normalizedGenres)
 
-	_, err := d.conn.Exec(`
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.Exec(`
 		INSERT INTO songs (
 			id, title, artist, album, album_artist, track_number, disc_number,
 			genre, year, duration, replay_gain_db, replay_peak, file_path, cover_path, added_at,
-			play_count, last_played, skip_count, file_hash
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			play_count, last_played, skip_count, file_hash, original_year
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			title = excluded.title,
 			artist = excluded.artist,
@@ -958,7 +971,8 @@ func (d *DB) SaveSong(s *Song) error {
 			track_number = excluded.track_number,
 			disc_number = excluded.disc_number,
 			genre = excluded.genre,
-			year = excluded.year,
+			year = CASE WHEN EXISTS(SELECT 1 FROM song_release_metadata WHERE song_id=songs.id AND manual_year=1) THEN songs.year WHEN excluded.year>0 THEN excluded.year ELSE songs.year END,
+            original_year = CASE WHEN EXISTS(SELECT 1 FROM song_release_metadata WHERE song_id=songs.id AND manual_year=1) THEN songs.original_year WHEN excluded.original_year>0 THEN excluded.original_year WHEN songs.title<>excluded.title OR songs.artist<>excluded.artist OR songs.album<>excluded.album OR COALESCE(songs.file_hash,'')<>COALESCE(excluded.file_hash,'') THEN 0 ELSE songs.original_year END,
 			duration = excluded.duration,
 			replay_gain_db = excluded.replay_gain_db,
 			replay_peak = excluded.replay_peak,
@@ -971,9 +985,15 @@ func (d *DB) SaveSong(s *Song) error {
 	`,
 		s.ID, s.Title, s.Artist, s.Album, s.AlbumArtist, s.TrackNumber, s.DiscNumber,
 		string(genreJSON), s.Year, s.Duration, s.ReplayGainDB, s.ReplayPeak, s.FilePath, s.CoverPath, s.AddedAt,
-		s.PlayCount, s.LastPlayed, s.SkipCount, s.FileHash,
+		s.PlayCount, s.LastPlayed, s.SkipCount, s.FileHash, s.OriginalYear,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	if err := recordReleaseTagsTx(tx, *s); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // SaveSongs inserts or updates multiple Song records in a transaction.
@@ -990,8 +1010,8 @@ func (d *DB) SaveSongs(songs []Song) error {
 		INSERT INTO songs (
 			id, title, artist, album, album_artist, track_number, disc_number,
 			genre, year, duration, replay_gain_db, replay_peak, file_path, cover_path, added_at,
-			play_count, last_played, skip_count, file_hash
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			play_count, last_played, skip_count, file_hash, original_year
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT DO UPDATE SET
 			file_path = excluded.file_path,
 			title = excluded.title,
@@ -1005,7 +1025,8 @@ func (d *DB) SaveSongs(songs []Song) error {
 				THEN songs.genre 
 				ELSE excluded.genre 
 			END,
-			year = excluded.year,
+			year = CASE WHEN EXISTS(SELECT 1 FROM song_release_metadata WHERE song_id=songs.id AND manual_year=1) THEN songs.year WHEN excluded.year>0 THEN excluded.year ELSE songs.year END,
+            original_year = CASE WHEN EXISTS(SELECT 1 FROM song_release_metadata WHERE song_id=songs.id AND manual_year=1) THEN songs.original_year WHEN excluded.original_year>0 THEN excluded.original_year WHEN songs.title<>excluded.title OR songs.artist<>excluded.artist OR songs.album<>excluded.album OR COALESCE(songs.file_hash,'')<>COALESCE(excluded.file_hash,'') THEN 0 ELSE songs.original_year END,
 			duration = excluded.duration,
 			replay_gain_db = excluded.replay_gain_db,
 			replay_peak = excluded.replay_peak,
@@ -1024,9 +1045,12 @@ func (d *DB) SaveSongs(songs []Song) error {
 		_, err = stmt.Exec(
 			s.ID, s.Title, s.Artist, s.Album, s.AlbumArtist, s.TrackNumber, s.DiscNumber,
 			string(genreJSON), s.Year, s.Duration, s.ReplayGainDB, s.ReplayPeak, s.FilePath, s.CoverPath, s.AddedAt,
-			s.PlayCount, s.LastPlayed, s.SkipCount, s.FileHash,
+			s.PlayCount, s.LastPlayed, s.SkipCount, s.FileHash, s.OriginalYear,
 		)
 		if err != nil {
+			return err
+		}
+		if err := recordReleaseTagsTx(tx, s); err != nil {
 			return err
 		}
 	}
@@ -1298,78 +1322,11 @@ func (d *DB) DeleteSongsByFilePaths(paths []string) (int, error) {
 
 // GetSongByID returns a Song by its ID or nil if not found.
 func (d *DB) GetSongByID(id string) (*Song, error) {
-	var s Song
-	var genreJSON sql.NullString
-	var albumArtist, coverPath, fileHash sql.NullString
-	var trackNum, discNum, year, playCount, skipCount sql.NullInt64
-	var lastPlayed sql.NullInt64
-	var liked, likedAt sql.NullInt64
-	var mood, energy, tempo sql.NullString
-
-	err := d.conn.QueryRow(`
-		SELECT id, title, artist, album, album_artist, track_number, disc_number,
-		       genre, year, duration, file_path, cover_path, added_at,
-		       play_count, last_played, skip_count, file_hash,
-		       liked, liked_at, mood, energy, tempo
-		FROM songs WHERE id = ?
-	`, id).Scan(
-		&s.ID, &s.Title, &s.Artist, &s.Album, &albumArtist,
-		&trackNum, &discNum, &genreJSON, &year,
-		&s.Duration, &s.FilePath, &coverPath, &s.AddedAt,
-		&playCount, &lastPlayed, &skipCount, &fileHash,
-		&liked, &likedAt, &mood, &energy, &tempo,
-	)
+	song, err := scanLibrarySong(d.conn.QueryRow(songSelect+` WHERE songs.id=?`, id))
 	if err != nil {
 		return nil, err
 	}
-
-	if albumArtist.Valid {
-		s.AlbumArtist = albumArtist.String
-	}
-	if trackNum.Valid {
-		s.TrackNumber = int(trackNum.Int64)
-	}
-	if discNum.Valid {
-		s.DiscNumber = int(discNum.Int64)
-	}
-	if genreJSON.Valid && genreJSON.String != "" {
-		json.Unmarshal([]byte(genreJSON.String), &s.Genre)
-	}
-	if year.Valid {
-		s.Year = int(year.Int64)
-	}
-	if coverPath.Valid {
-		s.CoverPath = coverPath.String
-	}
-	if playCount.Valid {
-		s.PlayCount = int(playCount.Int64)
-	}
-	if lastPlayed.Valid {
-		s.LastPlayed = lastPlayed.Int64
-	}
-	if skipCount.Valid {
-		s.SkipCount = int(skipCount.Int64)
-	}
-	if fileHash.Valid {
-		s.FileHash = fileHash.String
-	}
-	if liked.Valid {
-		s.Liked = liked.Int64 == 1
-	}
-	if likedAt.Valid {
-		s.LikedAt = likedAt.Int64
-	}
-	if mood.Valid {
-		s.Mood = mood.String
-	}
-	if energy.Valid {
-		s.Energy = energy.String
-	}
-	if tempo.Valid {
-		s.Tempo = tempo.String
-	}
-
-	return &s, nil
+	return &song, nil
 }
 
 // UpdatePlayCount increments the play count for the given song ID.
@@ -3005,7 +2962,8 @@ func (d *DB) BackfillSongYearsFromAlbumMetadata() (int64, error) {
 	result, err := d.conn.Exec(`
 		UPDATE songs SET year = CAST(SUBSTR(am.release_date, 1, 4) AS INTEGER)
 		FROM album_metadata am
-		WHERE songs.year IS NULL OR songs.year = 0
+		WHERE (songs.year IS NULL OR songs.year = 0)
+		AND NOT EXISTS(SELECT 1 FROM song_release_metadata WHERE song_id=songs.id AND manual_year=1)
 		AND am.release_date IS NOT NULL 
 		AND LENGTH(am.release_date) >= 4
 		AND CAST(SUBSTR(am.release_date, 1, 4) AS INTEGER) > 1900
@@ -3551,13 +3509,17 @@ func (d *DB) ApplyAIEnrichmentBatch(updates []AIEnrichmentUpdate, force bool) (A
 		return result, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec(`UPDATE settings SET value=value WHERE 0`); err != nil {
+		return result, err
+	}
 
 	for _, update := range updates {
 		var genreJSON, mood, energy, tempo sql.NullString
 		var originalYear sql.NullInt64
 		var yearUncertain sql.NullBool
-		if err := tx.QueryRow(`SELECT genre, mood, energy, tempo, original_year, year_uncertain FROM songs WHERE id = ?`, update.SongID).
-			Scan(&genreJSON, &mood, &energy, &tempo, &originalYear, &yearUncertain); err != nil {
+		var protectedYear bool
+		if err := tx.QueryRow(`SELECT genre, mood, energy, tempo, original_year, year_uncertain, EXISTS(SELECT 1 FROM song_release_metadata WHERE song_id=songs.id AND (manual_year=1 OR (original_date<>'' AND original_source IN ('musicbrainz','file_tag') AND song_release_metadata.title=songs.title AND song_release_metadata.artist=songs.artist AND song_release_metadata.album=songs.album AND song_release_metadata.file_hash=COALESCE(songs.file_hash,'')))) FROM songs WHERE id = ?`, update.SongID).
+			Scan(&genreJSON, &mood, &energy, &tempo, &originalYear, &yearUncertain, &protectedYear); err != nil {
 			if err == sql.ErrNoRows {
 				continue
 			}
@@ -3567,7 +3529,7 @@ func (d *DB) ApplyAIEnrichmentBatch(updates []AIEnrichmentUpdate, force bool) (A
 		currentGenre := genreJSON.String
 		applyGenres := len(update.Genres) > 0 && (force || genreNeedsEnrichment(currentGenre))
 		applyMood := update.Mood != "" && (force || !mood.Valid || strings.TrimSpace(mood.String) == "")
-		applyYear := update.OriginalYear > 0 && (force || (yearUncertain.Valid && yearUncertain.Bool && (!originalYear.Valid || originalYear.Int64 == 0)))
+		applyYear := !protectedYear && update.OriginalYear > 0 && (force || (yearUncertain.Valid && yearUncertain.Bool && (!originalYear.Valid || originalYear.Int64 == 0)))
 		if !applyGenres && !applyMood && !applyYear {
 			continue
 		}
@@ -3597,6 +3559,13 @@ func (d *DB) ApplyAIEnrichmentBatch(updates []AIEnrichmentUpdate, force bool) (A
 		if _, err := tx.Exec(`UPDATE songs SET genre = ?, mood = ?, energy = ?, tempo = ?, instrumental = CASE WHEN ? THEN ? ELSE instrumental END, mood_analyzed_at = CASE WHEN ? THEN ? ELSE mood_analyzed_at END, original_year = ?, year_uncertain = ?, year_analyzed_at = CASE WHEN ? THEN ? ELSE year_analyzed_at END WHERE id = ?`,
 			newGenre, newMood, newEnergy, newTempo, applyMood, newInstrumental, applyMood, now, newOriginalYear, newYearUncertain, applyYear, now, update.SongID); err != nil {
 			return result, fmt.Errorf("apply enrichment update: %w", err)
+		}
+		if applyYear {
+			if _, err := tx.Exec(`INSERT INTO song_release_metadata(song_id,title,artist,album,file_hash,original_date,original_source)
+            SELECT id,title,artist,album,COALESCE(file_hash,''),?,'ai_inferred' FROM songs WHERE id=?
+            ON CONFLICT(song_id) DO UPDATE SET original_date=excluded.original_date,original_source='ai_inferred'`, fmt.Sprint(update.OriginalYear), update.SongID); err != nil {
+				return result, err
+			}
 		}
 		result.Songs++
 		if err := queuePlexAIWriteback(tx, update.SongID, update.Genres, applyGenres, update.OriginalYear, applyYear, time.Now().UnixMilli()); err != nil {

@@ -816,8 +816,9 @@ func (a *API) downloadTrackByID(w http.ResponseWriter, ctx context.Context, spot
 			Name string `json:"name"`
 		} `json:"artists"`
 		Album struct {
-			Name   string `json:"name"`
-			Images []struct {
+			Name        string `json:"name"`
+			ReleaseDate string `json:"release_date"`
+			Images      []struct {
 				URL string `json:"url"`
 			} `json:"images"`
 		} `json:"album"`
@@ -838,9 +839,9 @@ func (a *API) downloadTrackByID(w http.ResponseWriter, ctx context.Context, spot
 	}
 
 	// Prepare metadata with artwork
-	var metadata *DownloadMetadata
+	metadata := &DownloadMetadata{ReleaseDate: track.Album.ReleaseDate}
 	if len(track.Album.Images) > 0 {
-		metadata = &DownloadMetadata{ImageURL: track.Album.Images[0].URL}
+		metadata.ImageURL = track.Album.Images[0].URL
 	}
 
 	// Queue the download
