@@ -195,7 +195,7 @@ func (d *DB) putSpotifyWaveform(id, contextKey string, w waveform.Waveform, revi
 		return errors.New("spotify waveform exceeds storage limit")
 	}
 	sum := sha256.Sum256(w.Domain)
-	tx, err := d.conn.Begin()
+	tx, err := d.beginSpotifyWriteTx()
 	if err != nil {
 		return err
 	}

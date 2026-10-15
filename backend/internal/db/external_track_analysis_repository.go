@@ -63,7 +63,7 @@ func (d *DB) putExternalAnalysis(o spotifyanalysis.Observation, revision string,
 	if err := d.EnsureExternalTrackAnalysisSchema(); err != nil {
 		return err
 	}
-	tx, err := d.conn.Begin()
+	tx, err := d.beginSpotifyWriteTx()
 	if err != nil {
 		return err
 	}
@@ -170,7 +170,7 @@ func (d *DB) putExternalAnalysisStatus(id, endpoint string, status ExternalAnaly
 	if err := d.EnsureExternalTrackAnalysisSchema(); err != nil {
 		return err
 	}
-	tx, err := d.conn.Begin()
+	tx, err := d.beginSpotifyWriteTx()
 	if err != nil {
 		return err
 	}

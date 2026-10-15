@@ -85,7 +85,7 @@ func (d *DB) putSpotifyEntitySnapshots(snapshots []SpotifyEntitySnapshot, traver
 			return errors.New("catalog batch exceeds byte limit")
 		}
 	}
-	tx, err := d.conn.Begin()
+	tx, err := d.beginSpotifyWriteTx()
 	if err != nil {
 		return err
 	}
@@ -387,7 +387,7 @@ func (d *DB) PutSpotifyMetadataResourceStatus(key SpotifySnapshotKey, status Spo
 }
 
 func (d *DB) PutSpotifyMetadataResourceStatusForRuntime(fence SpotifyMetadataFence, key SpotifySnapshotKey, status SpotifyMetadataResourceStatus) error {
-	tx, err := d.conn.Begin()
+	tx, err := d.beginSpotifyWriteTx()
 	if err != nil {
 		return err
 	}
