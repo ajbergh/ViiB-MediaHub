@@ -654,6 +654,12 @@ jobs:
       - name: Write release notes
         shell: bash
         run: |
+          set -euo pipefail
+          custom_notes="docs/releases/${TAG}.md"
+          if [[ -f "$custom_notes" ]]; then
+            cp "$custom_notes" release-notes.md
+            exit 0
+          fi
           cat > release-notes.md <<EOF
           ViiB MediaHub ${VERSION} is a 1.0 release candidate.
 
@@ -665,7 +671,7 @@ jobs:
           - **Generic Linux x64:** ViiB-MediaHub-${VERSION}-linux-amd64.tar.gz
 
           ### Web/browser builds
-          Download the `web-` ZIP matching your operating system and architecture (Windows x64/ARM64, macOS Intel/Apple Silicon, Linux x64/ARM64). Unzip and run the included executable. It serves the embedded frontend at a localhost address and opens your browser. The web build requires no separate frontend install. On Linux, the system tray requires Ayatana AppIndicator; pass `-no-tray` when unavailable.
+          Download the \`web-\` ZIP matching your operating system and architecture (Windows x64/ARM64, macOS Intel/Apple Silicon, Linux x64/ARM64). Unzip and run the included executable. It serves the embedded frontend at a localhost address and opens your browser. The web build requires no separate frontend install. On Linux, the system tray requires Ayatana AppIndicator; pass \`-no-tray\` when unavailable.
 
           SHA256SUMS.txt contains checksums for every downloadable binary.
 
