@@ -50,7 +50,15 @@ export interface SpotifyDownloadOrigin {
 import { AudioSettings } from '../types';
 import { getEventStreamURL } from './eventStreamURL';
 
-export interface SpotifySessionStatus { provider: 'oauth' | 'webplayer'; connected: boolean; authRequired: boolean; message: string }
+export interface SpotifySessionStatus {
+  provider: 'oauth' | 'webplayer';
+  connected: boolean;
+  authRequired: boolean;
+  message: string;
+  product?: 'premium' | 'free' | 'unknown';
+  canStream?: boolean;
+  canDownload?: boolean;
+}
 
 export interface SpotifyBrowserLoginStatus { id: string; state: 'pending' | 'connected' | 'canceled' | 'failed'; message?: string }
 
@@ -833,8 +841,8 @@ export const api = {
    * 
    * @returns Promise with authRequired status and optional message
    */
-  async getSpotifyAuthStatus(): Promise<SpotifySessionStatus> {
-    const response = await fetch(`${API_BASE}/spotify/auth/status`);
+  async getSpotifyAuthStatus(refreshProduct = false): Promise<SpotifySessionStatus> {
+    const response = await fetch(`${API_BASE}/spotify/auth/status${refreshProduct ? '?refreshProduct=true' : ''}`);
     return handleResponse<SpotifySessionStatus>(response);
   },
 

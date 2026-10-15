@@ -12,6 +12,12 @@ import { StateCreator } from 'zustand';
 import { AppState, SpotifySlice } from './types';
 
 export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = (set, get) => ({
+  spotifyAccountProduct: 'unknown',
+  setSpotifyAccountProduct: (product) => {
+    const next = product === 'premium' ? 'premium' : product === 'free' || product === 'open' ? 'free' : 'unknown';
+    if (get().spotifyAccountProduct === 'premium' && next !== 'premium') get().retireSpotifyPlayback();
+    set({ spotifyAccountProduct: next });
+  },
   spotifyConnected: false,
   spotifySessionGeneration: 0,
   spotifyAuthRequired: false,
@@ -22,6 +28,7 @@ export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = 
       spotifyAuthRequired: connected ? false : state.spotifyAuthRequired,
       spotifySessionGeneration: nextGeneration,
       ...(!connected ? {
+        spotifyAccountProduct: 'unknown',
         spotifyUser: null,
         spotifySearchResults: null,
         spotifyLastSearchedQuery: '',
@@ -38,6 +45,7 @@ export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = 
       const nextGeneration = state.spotifySessionGeneration + 1;
       return {
         spotifyConnected: false, spotifyAuthRequired: true,
+        spotifyAccountProduct: 'unknown',
         spotifySessionGeneration: nextGeneration,
         spotifyUser: null, spotifySearchResults: null,
         spotifyLastSearchedQuery: '',
@@ -83,6 +91,7 @@ export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = 
       return {
         spotifySessionGeneration: nextGeneration,
         spotifyAuthRequired: false,
+        spotifyAccountProduct: 'unknown',
         spotifyConnected: false,
         spotifySearchResults: null,
         spotifyLastSearchedQuery: '',

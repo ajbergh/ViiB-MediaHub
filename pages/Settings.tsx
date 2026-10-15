@@ -1,3 +1,4 @@
+import { SpotifyAccountNotice } from '../components/SpotifyAccountNotice';
 /**
  * ViiB MediaHub - Settings Page
  * 
@@ -74,6 +75,7 @@ const HOME_LAYOUT_OPTIONS: Array<{
 ];
 
 export const Settings: React.FC = () => {
+  const spotifyMediaDisabled = useStore(s => !s.spotifyConnected || s.spotifyAccountProduct !== 'premium');
   const { 
       audioSettings, setCrossfade, setGapless, setNormalization,
       setMainOutputDevice, setHeadphoneOutputDevice,
@@ -1729,6 +1731,7 @@ export const Settings: React.FC = () => {
                     Stream Spotify tracks directly without downloading first. Requires Spotify Premium.
                 </p>
                 
+                <SpotifyAccountNotice />
                 {/* Enable/Disable Streaming Toggle */}
                 <div className="flex items-center justify-between bg-surface-1 p-4 rounded-lg">
                     <div>
@@ -1736,10 +1739,12 @@ export const Settings: React.FC = () => {
                         <p className="text-xs text-text-subtle">Play Spotify tracks instantly without downloading</p>
                     </div>
                     <button
+                        disabled={spotifyMediaDisabled}
+                        aria-label="Enable Spotify streaming"
                         onClick={() => setStreamingEnabled(!streamingEnabled)}
-                        className={`relative w-12 h-6 rounded-full transition-colors ${streamingEnabled ? 'bg-brand' : 'bg-surface-3'}`}
+                        className={`relative w-12 h-6 rounded-full transition-colors ${streamingEnabled && !spotifyMediaDisabled ? 'bg-brand' : 'bg-surface-3'}`}
                     >
-                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${streamingEnabled ? 'translate-x-7' : 'translate-x-1'}`} />
+                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${streamingEnabled && !spotifyMediaDisabled ? 'translate-x-7' : 'translate-x-1'}`} />
                     </button>
                 </div>
                 
@@ -1753,6 +1758,7 @@ export const Settings: React.FC = () => {
                     </div>
                     <div className="flex gap-2 mt-3">
                         <Button
+                            disabled={spotifyMediaDisabled}
                             onClick={() => setStreamingQuality('high')}
                             variant={streamingQuality === 'high' ? 'primary' : 'secondary'}
                             className="flex-1 py-2 px-4 rounded-lg text-sm font-bold"
@@ -1760,6 +1766,7 @@ export const Settings: React.FC = () => {
                             High (320kbps)
                         </Button>
                         <Button
+                            disabled={spotifyMediaDisabled}
                             onClick={() => setStreamingQuality('medium')}
                             variant={streamingQuality === 'medium' ? 'primary' : 'secondary'}
                             className="flex-1 py-2 px-4 rounded-lg text-sm font-bold"
@@ -1767,6 +1774,7 @@ export const Settings: React.FC = () => {
                             Medium (160kbps)
                         </Button>
                         <Button
+                            disabled={spotifyMediaDisabled}
                             onClick={() => setStreamingQuality('low')}
                             variant={streamingQuality === 'low' ? 'primary' : 'secondary'}
                             className="flex-1 py-2 px-4 rounded-lg text-sm font-bold"

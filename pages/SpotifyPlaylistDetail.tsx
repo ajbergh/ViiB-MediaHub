@@ -1,3 +1,4 @@
+import { SpotifyAccountNotice } from '../components/SpotifyAccountNotice';
 import { savedLibraryDownloadOrigins } from '../lib/spotifyDownloadOrigins';
 /**
  * ViiB MediaHub - Spotify Playlist Detail Page
@@ -61,6 +62,7 @@ interface SpotifyPlaylistFull {
 }
 
 export const SpotifyPlaylistDetail: React.FC = () => {
+  const mediaDisabled = useStore(s => !s.spotifyConnected || s.spotifyAccountProduct !== 'premium');
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
@@ -81,6 +83,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
 
   // Play the entire playlist
   const handlePlayPlaylist = () => {
+    if (mediaDisabled) return;
     if (!playlist || playlistSongs.length === 0) return;
     playSong(playlistSongs[0], playlistSongs);
     addLog('info', `▶ Playing playlist: ${playlist.name}`);
@@ -88,6 +91,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
 
   // Shuffle play the playlist
   const handleShufflePlaylist = () => {
+    if (mediaDisabled) return;
     if (!playlist || playlistSongs.length === 0) return;
     const shuffled = [...playlistSongs].sort(() => Math.random() - 0.5);
     playSong(shuffled[0], shuffled);
@@ -96,6 +100,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
 
   // Play a specific track (with rest of playlist as context)
   const handlePlayTrack = (trackIndex: number) => {
+    if (mediaDisabled) return;
     if (playlistSongs.length > 0 && trackIndex < playlistSongs.length) {
       playSong(playlistSongs[trackIndex], playlistSongs, undefined, trackIndex);
     }
@@ -103,6 +108,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
 
   // Add playlist to queue
   const handleAddToQueue = () => {
+    if (mediaDisabled) return;
     if (!playlist || playlistSongs.length === 0) return;
     addToQueue(playlistSongs);
     showToast({ type: 'success', message: `Added ${playlistSongs.length} tracks to queue` });
@@ -115,6 +121,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
   };
 
   const handleDownload = async () => {
+    if (mediaDisabled) return;
     if (!playlist) return;
     
     setIsDownloading(true);
@@ -265,6 +272,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
 
   return (
     <div className="h-full overflow-y-auto">
+      <div className="px-8 pt-4"><SpotifyAccountNotice /></div>
       {/* Header */}
       <div className="bg-gradient-to-b from-brand/20 to-transparent">
         <div className="p-8">
@@ -320,6 +328,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
           onClick={handlePlayPlaylist}
           className="w-14 h-14 p-0 rounded-full shadow-xl hover:scale-105 transition-all duration-200 text-surface-0"
           aria-label="Play playlist"
+            disabled={mediaDisabled}
         >
           <Play size={24} fill="currentColor" />
         </Button>
@@ -329,6 +338,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
           className="w-10 h-10 p-0 rounded-full"
           aria-label="Shuffle playlist"
           title="Shuffle"
+            disabled={mediaDisabled}
         >
           <Shuffle size={18} />
         </Button>
@@ -338,13 +348,14 @@ export const SpotifyPlaylistDetail: React.FC = () => {
           className="w-10 h-10 p-0 rounded-full"
           aria-label="Add to queue"
           title="Add to queue"
+            disabled={mediaDisabled}
         >
           <ListPlus size={18} />
         </Button>
         <Button
           variant="secondary"
           onClick={handleDownload}
-          disabled={isDownloading}
+          disabled={mediaDisabled || isDownloading}
           leftIcon={isDownloading ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
           className="rounded-full px-4 py-2 text-sm font-bold"
           aria-label="Download playlist"
@@ -380,7 +391,8 @@ export const SpotifyPlaylistDetail: React.FC = () => {
           {playlist.tracks.items.filter(item => item.track).map((item, idx) => (
             <div 
               key={item.track.id || idx}
-              onClick={() => handlePlayTrack(idx)}
+              aria-disabled={mediaDisabled}
+              onClick={mediaDisabled ? undefined : () => handlePlayTrack(idx)}
               onContextMenu={(e) => handleTrackContextMenu(e, item.track)}
               className="grid grid-cols-[40px_60px_1fr_1fr_80px_40px] gap-4 px-4 py-3 hover:bg-surface-hover group transition-all duration-200 border-b border-surface-border last:border-0 cursor-pointer"
             >

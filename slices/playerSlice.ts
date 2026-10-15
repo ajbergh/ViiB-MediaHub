@@ -138,13 +138,16 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
         // Check if this is a Spotify streaming song (has spotifyId but no local file)
         if (playableSong.spotifyId && (!playableSong.url || playableSong.isStreaming)) {
             // Get streaming preferences
-            const { streamingEnabled, streamingQuality, preferLocalPlayback } = get();
+            const { streamingQuality } = get();
+            const streamingEnabled = get().streamingEnabled && get().spotifyAccountProduct === 'premium';
+            const preferLocalPlayback = get().preferLocalPlayback || !streamingEnabled;
             
             // If preferLocalPlayback is enabled, check for downloaded version first
             if (preferLocalPlayback) {
-                const downloadedSong = await libraryService.getSongBySpotifyId(playableSong.spotifyId);
+                const downloadedSong = get().songs?.find(candidate => candidate.spotifyId === playableSong.spotifyId && !candidate.isStreaming && (candidate.url || candidate.fileHandle))
+                    ?? await libraryService.getSongBySpotifyId(playableSong.spotifyId).catch(() => undefined);
                 
-                if (downloadedSong && downloadedSong.fileHandle) {
+                if (downloadedSong && (downloadedSong.fileHandle || downloadedSong.url)) {
                     // Use downloaded version instead of streaming
                     console.log('[Player] Found downloaded version, using local file:', downloadedSong.title);
                     playableSong = { ...downloadedSong };
@@ -152,10 +155,12 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
                     
                     // Resolve file handle to blob URL
                     try {
-                        const permitted = await libraryService.verifyPermission(downloadedSong.fileHandle);
+                        const permitted = !downloadedSong.fileHandle || await libraryService.verifyPermission(downloadedSong.fileHandle);
                         if (permitted) {
-                            const file = await downloadedSong.fileHandle.getFile();
-                            playableSong.url = managedObjectUrls.create(file);
+                            if (downloadedSong.fileHandle) {
+                                const file = await downloadedSong.fileHandle.getFile();
+                                playableSong.url = managedObjectUrls.create(file);
+                            }
                         } else {
                             console.warn('[Player] Permission denied for downloaded file, falling back to streaming');
                             // Check if streaming is enabled before falling back
@@ -573,6 +578,8 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
         }
         
         const nextTrack = queue[currentSongIndex + 1];
+        if (nextTrack.spotifyId && nextTrack.source !== 'plex' &&
+            (!get().streamingEnabled || get().spotifyAccountProduct !== 'premium')) return;
         
         // Skip if already preloaded
         if (preloadedTrackId === nextTrack.id) {

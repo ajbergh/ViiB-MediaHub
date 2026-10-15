@@ -75,7 +75,7 @@ beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     useStore.setState({
-        spotifyConnected: true,
+        spotifyAccountProduct: 'premium', spotifyConnected: true,
         spotifySessionGeneration: 10,
         playSong: play,
         addToQueue: queue,

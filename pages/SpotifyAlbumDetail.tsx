@@ -1,3 +1,4 @@
+import { SpotifyAccountNotice } from '../components/SpotifyAccountNotice';
 import { savedLibraryDownloadOrigins } from '../lib/spotifyDownloadOrigins';
 /**
  * ViiB MediaHub - Spotify Album Detail Page
@@ -56,6 +57,7 @@ interface SpotifyAlbumFull {
 }
 
 export const SpotifyAlbumDetail: React.FC = () => {
+  const mediaDisabled = useStore(s => !s.spotifyConnected || s.spotifyAccountProduct !== 'premium');
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
@@ -85,6 +87,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
   const albumSongs = useMemo(() => (album ? spotifyAlbumToSongs(album) : []), [album]);
 
   const handleDownload = async () => {
+    if (mediaDisabled) return;
     if (!album) return;
     
     setIsDownloading(true);
@@ -101,6 +104,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
 
   // Play the entire album
   const handlePlayAlbum = () => {
+    if (mediaDisabled) return;
     if (!album || albumSongs.length === 0) return;
     playSong(albumSongs[0], albumSongs);
     addLog('info', `▶ Playing album: ${album.name}`);
@@ -108,6 +112,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
 
   // Shuffle play the album
   const handleShuffleAlbum = () => {
+    if (mediaDisabled) return;
     if (!album || albumSongs.length === 0) return;
     const shuffled = [...albumSongs].sort(() => Math.random() - 0.5);
     playSong(shuffled[0], shuffled);
@@ -116,6 +121,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
 
   // Add album to queue
   const handleAddAlbumToQueue = () => {
+    if (mediaDisabled) return;
     if (!album || albumSongs.length === 0) return;
     addToQueue(albumSongs);
     showToast({ type: 'success', message: `Added ${albumSongs.length} tracks to queue` });
@@ -123,6 +129,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
 
   // Play a specific track (with rest of album as context)
   const handlePlayTrack = (trackIndex: number) => {
+    if (mediaDisabled) return;
     if (albumSongs.length > 0 && trackIndex < albumSongs.length) {
       playSong(albumSongs[trackIndex], albumSongs, undefined, trackIndex);
     }
@@ -130,6 +137,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
 
   // Download a single track
   const handleDownloadTrack = async (track: SpotifyAlbumFull['tracks']['items'][0]) => {
+    if (mediaDisabled) return;
     if (downloadingTracks.has(track.id)) return;
     
     setDownloadingTracks(prev => new Set(prev).add(track.id));
@@ -233,6 +241,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
 
   return (
     <div className="h-full overflow-y-auto">
+      <div className="px-8 pt-4"><SpotifyAccountNotice /></div>
       {/* Header */}
       <div className="bg-gradient-to-b from-brand/20 to-transparent">
         <div className="p-8">
@@ -288,6 +297,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
           onClick={handlePlayAlbum}
           className="w-14 h-14 p-0 rounded-full shadow-xl hover:scale-105 transition-all duration-200 text-surface-0"
           aria-label="Play album"
+            disabled={mediaDisabled}
         >
           <Play size={24} fill="currentColor" />
         </Button>
@@ -297,6 +307,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
           className="w-10 h-10 p-0 rounded-full"
           aria-label="Shuffle album"
           title="Shuffle"
+            disabled={mediaDisabled}
         >
           <Shuffle size={18} />
         </Button>
@@ -306,13 +317,14 @@ export const SpotifyAlbumDetail: React.FC = () => {
           className="w-10 h-10 p-0 rounded-full"
           aria-label="Add to queue"
           title="Add to queue"
+            disabled={mediaDisabled}
         >
           <ListPlus size={18} />
         </Button>
         <Button
           variant="secondary"
           onClick={handleDownload}
-          disabled={isDownloading}
+          disabled={mediaDisabled || isDownloading}
           leftIcon={isDownloading ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
           className="rounded-full px-4 py-2 text-sm font-bold"
           aria-label="Download album"
@@ -349,7 +361,8 @@ export const SpotifyAlbumDetail: React.FC = () => {
             return (
             <div 
               key={track.id}
-              onClick={() => handlePlayTrack(idx)}
+              aria-disabled={mediaDisabled}
+              onClick={mediaDisabled ? undefined : () => handlePlayTrack(idx)}
               onContextMenu={(e) => handleTrackContextMenu(e, track)}
               className="grid grid-cols-[40px_1fr_1fr_80px_80px] gap-4 px-4 py-3 hover:bg-surface-hover group transition-all duration-200 border-b border-surface-border last:border-0 cursor-pointer"
             >
@@ -382,7 +395,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
                   <Button
                     variant="ghost"
                     onClick={(e) => { e.stopPropagation(); handleDownloadTrack(track); }}
-                    disabled={downloadingTracks.has(track.id)}
+                    disabled={mediaDisabled || downloadingTracks.has(track.id)}
                     className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
                     title="Download"
                     aria-label="Download"

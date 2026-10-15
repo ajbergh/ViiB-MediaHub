@@ -1,3 +1,4 @@
+import { SpotifyAccountNotice } from '../components/SpotifyAccountNotice';
 import { savedLibraryDownloadOrigins, savedLibraryDownloadState } from '../lib/spotifyDownloadOrigins';
 /**
  * ViiB MediaHub - Spotify Page
@@ -50,6 +51,8 @@ const getSpotifyProfileWithTimeout = async () => {
 };
 
 export const Spotify: React.FC = () => {
+    const accountProduct = useStore(s => s.spotifyAccountProduct);
+    const mediaDisabled = useStore(s => !s.spotifyConnected || s.spotifyAccountProduct !== 'premium');
     const navigate = useNavigate();
     const spotifyConnected = useStore(s => s.spotifyConnected);
     const spotifySessionGeneration = useStore(s => s.spotifySessionGeneration);
@@ -218,7 +221,10 @@ export const Spotify: React.FC = () => {
             setIsRestoringSession(true);
         }
         void api.getSpotifyAuthStatus().then(status => {
-            if(active && generation === useStore.getState().spotifySessionGeneration) setSpotifyConnected(status.connected && !status.authRequired);
+            if (!active || generation !== useStore.getState().spotifySessionGeneration) return;
+            const connected = status.connected && !status.authRequired;
+            setSpotifyConnected(connected);
+            useStore.getState().setSpotifyAccountProduct(connected ? status.product : undefined);
         }).catch(() => {if(active && generation === useStore.getState().spotifySessionGeneration) setSpotifyConnected(false);}).finally(() => {if(active) setIsRestoringSession(false);});
         return () => {active=false;};
     }, [setSpotifyConnected]);
@@ -443,6 +449,7 @@ export const Spotify: React.FC = () => {
     };
 
     const handleDownloadTrack = async (track: any) => {
+        if (mediaDisabled) return;
         if (downloadingTracks.has(track.id)) return; // Already downloading
 
         setDownloadingTracks(prev => new Set(prev).add(track.id));
@@ -467,6 +474,7 @@ export const Spotify: React.FC = () => {
     };
 
     const handleDownloadAlbum = async (album: any) => {
+        if (mediaDisabled) return;
         if (downloadingAlbums.has(album.id)) return; // Already downloading
 
         setDownloadingAlbums(prev => new Set(prev).add(album.id));
@@ -489,6 +497,7 @@ export const Spotify: React.FC = () => {
     };
 
     const handleDownloadPlaylist = async (playlist: any) => {
+        if (mediaDisabled) return;
         if (downloadingPlaylists.has(playlist.id)) return; // Already downloading
 
         setDownloadingPlaylists(prev => new Set(prev).add(playlist.id));
@@ -513,6 +522,7 @@ export const Spotify: React.FC = () => {
 
     // Play a single Spotify track via streaming
     const handlePlayTrack = (track: any, allTracks?: any[]) => {
+        if (mediaDisabled) return;
         const song = spotifyTrackToSong(track);
         const context = allTracks ? spotifyTracksToSongs(allTracks) : undefined;
         playSong(song, context);
@@ -521,6 +531,7 @@ export const Spotify: React.FC = () => {
 
     // Play all search result tracks  
     const handlePlayAllTracks = () => {
+        if (mediaDisabled) return;
         if (searchTracks.length > 0) {
             handlePlayTrack(searchTracks[0], searchTracks);
         }
@@ -528,6 +539,7 @@ export const Spotify: React.FC = () => {
 
     // Play a Spotify album - fetches full album data then plays all tracks
     const handlePlayAlbum = async (album: any) => {
+        if (mediaDisabled) return;
         try {
             addLog('info', `Loading album: ${album.name}...`);
 
@@ -548,6 +560,7 @@ export const Spotify: React.FC = () => {
 
     // Play a Spotify playlist - fetches playlist tracks then plays all
     const handlePlayPlaylist = async (playlist: any) => {
+        if (mediaDisabled) return;
         try {
             addLog('info', `Loading playlist: ${playlist.name}...`);
 
@@ -572,6 +585,7 @@ export const Spotify: React.FC = () => {
 
     // Shuffle play album
     const handleShuffleAlbum = async (album: any) => {
+        if (mediaDisabled) return;
         try {
             addLog('info', `Loading album for shuffle: ${album.name}...`);
 
@@ -594,6 +608,7 @@ export const Spotify: React.FC = () => {
 
     // Shuffle play playlist
     const handleShufflePlaylist = async (playlist: any) => {
+        if (mediaDisabled) return;
         try {
             addLog('info', `Loading playlist for shuffle: ${playlist.name}...`);
 
@@ -620,6 +635,7 @@ export const Spotify: React.FC = () => {
 
     // Add track to queue
     const handleAddTrackToQueue = (track: any) => {
+        if (mediaDisabled) return;
         const song = spotifyTrackToSong(track);
         addToQueue(song);
         showToast({ type: 'success', message: `Added "${track.name}" to queue` });
@@ -627,6 +643,7 @@ export const Spotify: React.FC = () => {
 
     // Add album to queue
     const handleAddAlbumToQueue = async (album: any) => {
+        if (mediaDisabled) return;
         try {
             addLog('info', `Adding album to queue: ${album.name}...`);
 
@@ -647,6 +664,7 @@ export const Spotify: React.FC = () => {
 
     // Add playlist to queue
     const handleAddPlaylistToQueue = async (playlist: any) => {
+        if (mediaDisabled) return;
         try {
             addLog('info', `Adding playlist to queue: ${playlist.name}...`);
 
@@ -671,6 +689,7 @@ export const Spotify: React.FC = () => {
 
     // Play artist top tracks
     const handlePlayArtistTopTracks = async (artist: any) => {
+        if (mediaDisabled) return;
         try {
             addLog('info', `Loading top tracks for: ${artist.name}...`);
             const topTracksData = await SpotifyService.getArtistTopTracks(artist.id);
@@ -691,6 +710,7 @@ export const Spotify: React.FC = () => {
 
     // Shuffle artist top tracks
     const handleShuffleArtistTopTracks = async (artist: any) => {
+        if (mediaDisabled) return;
         try {
             addLog('info', `Loading top tracks for shuffle: ${artist.name}...`);
             const topTracksData = await SpotifyService.getArtistTopTracks(artist.id);
@@ -712,6 +732,7 @@ export const Spotify: React.FC = () => {
 
     // Add artist top tracks to queue
     const handleAddArtistToQueue = async (artist: any) => {
+        if (mediaDisabled) return;
         try {
             addLog('info', `Adding ${artist.name}'s top tracks to queue...`);
             const topTracksData = await SpotifyService.getArtistTopTracks(artist.id);
@@ -766,6 +787,7 @@ export const Spotify: React.FC = () => {
 
     return (
         <div className="p-8 h-full overflow-y-auto">
+            <SpotifyAccountNotice />
             <div className="flex items-center justify-between mb-8">
                 <h1 className="text-display flex items-center gap-3">
                     <Music className="text-brand" size={32} />
@@ -797,7 +819,7 @@ export const Spotify: React.FC = () => {
                         <h2 className="text-section font-bold mb-1">{spotifyUser?.display_name || "Spotify account"}</h2>
                         <div className="flex items-center gap-4 text-text-secondary text-sm mb-3">
                             {spotifyUser?.followers && <span>{spotifyUser.followers.total.toLocaleString()} followers</span>}
-                            {spotifyUser?.product && <span className="uppercase">{spotifyUser.product} Plan</span>}
+                            {accountProduct !== 'unknown' && <span className="uppercase">{accountProduct} Plan</span>}
                             {spotifyUser?.country && <span>{spotifyUser.country}</span>}
                         </div>
                         <a
@@ -965,24 +987,27 @@ export const Spotify: React.FC = () => {
                                                         <div className="absolute right-2 bottom-2 flex gap-1 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-200">
                                                             <button 
                                                                 onClick={(e) => { e.stopPropagation(); handleShuffleAlbum(album); }}
-                                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main" 
+                                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main disabled:opacity-50 disabled:cursor-not-allowed"
                                                                 aria-label="Shuffle album"
                                                                 title="Shuffle"
+                                                                disabled={mediaDisabled}
                                                             >
                                                                 <Shuffle size={14} />
                                                             </button>
                                                             <button 
                                                                 onClick={(e) => { e.stopPropagation(); handleAddAlbumToQueue(album); }}
-                                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main" 
+                                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main disabled:opacity-50 disabled:cursor-not-allowed"
                                                                 aria-label="Add to queue"
                                                                 title="Add to queue"
+                                                                disabled={mediaDisabled}
                                                             >
                                                                 <ListPlus size={14} />
                                                             </button>
                                                             <button 
                                                                 onClick={(e) => { e.stopPropagation(); handlePlayAlbum(album); }}
-                                                                className="w-10 h-10 bg-brand rounded-full flex items-center justify-center shadow-xl hover:scale-105 text-surface-0" 
+                                                                className="w-10 h-10 bg-brand rounded-full flex items-center justify-center shadow-xl hover:scale-105 text-surface-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                                                 aria-label="Play album"
+                                                                disabled={mediaDisabled}
                                                             >
                                                                 <Play size={20} fill="currentColor" />
                                                             </button>
@@ -993,7 +1018,7 @@ export const Spotify: React.FC = () => {
                                                     <p className="text-xs text-text-subtle mt-1">{album.release_date?.split('-')[0]} • Album</p>
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleDownloadAlbum(album); }}
-                                                    disabled={downloadingAlbums.has(album.id)}
+                                                    disabled={mediaDisabled || downloadingAlbums.has(album.id)}
                                                     className="absolute top-2 right-2 p-2 bg-surface-3 hover:bg-brand rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                                     title={downloadingAlbums.has(album.id) ? "Queueing..." : "Download album"}
                                                     aria-label="Download album"
@@ -1028,25 +1053,28 @@ export const Spotify: React.FC = () => {
                                                     <div className="absolute z-20 right-2 bottom-2 flex gap-1 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100 transition-all duration-200">
                                                         <button 
                                                             onClick={(e) => { e.stopPropagation(); handleShuffleArtistTopTracks(artist); }}
-                                                            className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main" 
+                                                            className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main disabled:opacity-50 disabled:cursor-not-allowed"
                                                             aria-label="Shuffle artist's top tracks"
                                                             title="Shuffle top tracks"
+                                                            disabled={mediaDisabled}
                                                         >
                                                             <Shuffle size={14} />
                                                         </button>
                                                         <button 
                                                             onClick={(e) => { e.stopPropagation(); handleAddArtistToQueue(artist); }}
-                                                            className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main" 
+                                                            className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main disabled:opacity-50 disabled:cursor-not-allowed"
                                                             aria-label="Add artist's top tracks to queue"
                                                             title="Add to queue"
+                                                            disabled={mediaDisabled}
                                                         >
                                                             <ListPlus size={14} />
                                                         </button>
                                                         <button 
                                                             onClick={(e) => { e.stopPropagation(); handlePlayArtistTopTracks(artist); }}
-                                                            className="w-10 h-10 bg-brand rounded-full flex items-center justify-center shadow-xl hover:scale-105 text-surface-0" 
+                                                            className="w-10 h-10 bg-brand rounded-full flex items-center justify-center shadow-xl hover:scale-105 text-surface-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                                             aria-label="Play artist's top tracks"
                                                             title="Play top tracks"
+                                                            disabled={mediaDisabled}
                                                         >
                                                             <Play size={20} fill="currentColor" />
                                                         </button>
@@ -1092,24 +1120,27 @@ export const Spotify: React.FC = () => {
                                                         <div className="absolute right-2 bottom-2 flex gap-1 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-200">
                                                             <button 
                                                                 onClick={(e) => { e.stopPropagation(); handleShufflePlaylist(playlist); }}
-                                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main" 
+                                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main disabled:opacity-50 disabled:cursor-not-allowed"
                                                                 aria-label="Shuffle playlist"
                                                                 title="Shuffle"
+                                                                disabled={mediaDisabled}
                                                             >
                                                                 <Shuffle size={14} />
                                                             </button>
                                                             <button 
                                                                 onClick={(e) => { e.stopPropagation(); handleAddPlaylistToQueue(playlist); }}
-                                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main" 
+                                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main disabled:opacity-50 disabled:cursor-not-allowed"
                                                                 aria-label="Add to queue"
                                                                 title="Add to queue"
+                                                                disabled={mediaDisabled}
                                                             >
                                                                 <ListPlus size={14} />
                                                             </button>
                                                             <button 
                                                                 onClick={(e) => { e.stopPropagation(); handlePlayPlaylist(playlist); }}
-                                                                className="w-10 h-10 bg-brand rounded-full flex items-center justify-center shadow-xl hover:scale-105 text-surface-0" 
+                                                                className="w-10 h-10 bg-brand rounded-full flex items-center justify-center shadow-xl hover:scale-105 text-surface-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                                                 aria-label="Play playlist"
+                                                                disabled={mediaDisabled}
                                                             >
                                                                 <Play size={20} fill="currentColor" />
                                                             </button>
@@ -1119,7 +1150,7 @@ export const Spotify: React.FC = () => {
                                                     <p className="text-sm text-text-secondary truncate">By {playlist.owner?.display_name}</p>
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleDownloadPlaylist(playlist); }}
-                                                    disabled={downloadingPlaylists.has(playlist.id)}
+                                                    disabled={mediaDisabled || downloadingPlaylists.has(playlist.id)}
                                                     className="absolute top-2 right-2 p-2 bg-surface-3 hover:bg-brand rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                                     title={downloadingPlaylists.has(playlist.id) ? "Queueing..." : "Download playlist"}
                                                     aria-label="Download playlist"
@@ -1147,7 +1178,8 @@ export const Spotify: React.FC = () => {
                                             <div 
                                                 key={track.id} 
                                                 className="flex items-center gap-4 p-3 hover:bg-surface-hover group transition-colors border-b border-surface-border last:border-0 cursor-pointer" 
-                                                onClick={() => handlePlayTrack(track, searchTracks)}
+                                                aria-disabled={mediaDisabled}
+                                                onClick={mediaDisabled ? undefined : () => handlePlayTrack(track, searchTracks)}
                                                 onContextMenu={(e) => {
                                                     e.preventDefault();
                                                     openContextMenu(e, ContextMenuType.SONG, song);
@@ -1193,8 +1225,9 @@ export const Spotify: React.FC = () => {
                                                 {/* Add to Queue button */}
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleAddTrackToQueue(track); }}
-                                                    className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                                                     title="Add to queue"
+                                                    disabled={mediaDisabled}
                                                 >
                                                     <ListPlus size={16} />
                                                 </button>
@@ -1207,7 +1240,7 @@ export const Spotify: React.FC = () => {
                                                 ) : (
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleDownloadTrack(track); }}
-                                                    disabled={downloadingTracks.has(track.id)}
+                                                    disabled={mediaDisabled || downloadingTracks.has(track.id)}
                                                     className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                                                     title={downloadingTracks.has(track.id) ? "Queueing..." : "Download for offline"}
                                                 >
@@ -1299,7 +1332,8 @@ export const Spotify: React.FC = () => {
                                 <div 
                                     key={`${item.track.id}-${idx}`} 
                                     className="flex items-center gap-4 p-3 hover:bg-surface-hover group transition-all duration-200 border-b border-surface-border last:border-0 cursor-pointer"
-                                    onClick={() => handlePlayTrack(item.track, recentTracks)}
+                                    aria-disabled={mediaDisabled}
+                                    onClick={mediaDisabled ? undefined : () => handlePlayTrack(item.track, recentTracks)}
                                     onContextMenu={(e) => {
                                         e.preventDefault();
                                         const song = spotifyTrackToSong(item.track);
@@ -1335,8 +1369,9 @@ export const Spotify: React.FC = () => {
                                     {/* Add to Queue button */}
                                     <button
                                         onClick={(e) => { e.stopPropagation(); handleAddTrackToQueue(item.track); }}
-                                        className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity"
+                                        className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                                         title="Add to queue"
+                                        disabled={mediaDisabled}
                                     >
                                         <ListPlus size={16} />
                                     </button>
@@ -1349,7 +1384,7 @@ export const Spotify: React.FC = () => {
                                     ) : (
                                         <button
                                             onClick={(e) => { e.stopPropagation(); handleDownloadTrack(item.track); }}
-                                            disabled={downloadingTracks.has(item.track.id)}
+                                            disabled={mediaDisabled || downloadingTracks.has(item.track.id)}
                                             className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
                                             title="Download for offline"
                                         >
@@ -1419,24 +1454,27 @@ export const Spotify: React.FC = () => {
                                         <div className="absolute right-2 bottom-2 flex gap-1 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-200">
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); handleShuffleAlbum(item.album); }}
-                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main"
+                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main disabled:opacity-50 disabled:cursor-not-allowed"
                                                 aria-label="Shuffle album"
                                                 title="Shuffle"
+                                                disabled={mediaDisabled}
                                             >
                                                 <Shuffle size={14} />
                                             </button>
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); handleAddAlbumToQueue(item.album); }}
-                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main"
+                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main disabled:opacity-50 disabled:cursor-not-allowed"
                                                 aria-label="Add to queue"
                                                 title="Add to queue"
+                                                disabled={mediaDisabled}
                                             >
                                                 <ListPlus size={14} />
                                             </button>
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); handlePlayAlbum(item.album); }}
-                                                className="w-10 h-10 bg-brand rounded-full flex items-center justify-center shadow-xl hover:scale-105 text-surface-0"
+                                                className="w-10 h-10 bg-brand rounded-full flex items-center justify-center shadow-xl hover:scale-105 text-surface-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                                 aria-label="Play album"
+                                                disabled={mediaDisabled}
                                             >
                                                 <Play size={20} fill="currentColor" />
                                             </button>
@@ -1447,7 +1485,7 @@ export const Spotify: React.FC = () => {
                                     <p className="text-xs text-text-subtle mt-1">{item.album.release_date?.split('-')[0]} • {item.album.total_tracks} tracks</p>
                                     <button
                                         onClick={(e) => { e.stopPropagation(); handleDownloadAlbum(item.album); }}
-                                        disabled={downloadingAlbums.has(item.album.id)}
+                                        disabled={mediaDisabled || downloadingAlbums.has(item.album.id)}
                                         className="absolute top-2 right-2 p-2 bg-surface-3 hover:bg-brand rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                         title={downloadingAlbums.has(item.album.id) ? "Queueing..." : "Download album"}
                                         aria-label="Download album"
@@ -1506,24 +1544,27 @@ export const Spotify: React.FC = () => {
                                         <div className="absolute right-2 bottom-2 flex gap-1 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-200">
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); handleShufflePlaylist(playlist); }}
-                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main"
+                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main disabled:opacity-50 disabled:cursor-not-allowed"
                                                 aria-label="Shuffle playlist"
                                                 title="Shuffle"
+                                                disabled={mediaDisabled}
                                             >
                                                 <Shuffle size={14} />
                                             </button>
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); handleAddPlaylistToQueue(playlist); }}
-                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main"
+                                                className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main disabled:opacity-50 disabled:cursor-not-allowed"
                                                 aria-label="Add to queue"
                                                 title="Add to queue"
+                                                disabled={mediaDisabled}
                                             >
                                                 <ListPlus size={14} />
                                             </button>
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); handlePlayPlaylist(playlist); }}
-                                                className="w-10 h-10 bg-brand rounded-full flex items-center justify-center shadow-xl hover:scale-105 text-surface-0"
+                                                className="w-10 h-10 bg-brand rounded-full flex items-center justify-center shadow-xl hover:scale-105 text-surface-0 disabled:opacity-50 disabled:cursor-not-allowed"
                                                 aria-label="Play playlist"
+                                                disabled={mediaDisabled}
                                             >
                                                 <Play size={20} fill="currentColor" />
                                             </button>
@@ -1534,7 +1575,7 @@ export const Spotify: React.FC = () => {
                                     <p className="text-xs text-text-subtle mt-1">{playlist.tracks.total} tracks</p>
                                     <button
                                         onClick={(e) => { e.stopPropagation(); handleDownloadPlaylist(playlist); }}
-                                        disabled={downloadingPlaylists.has(playlist.id)}
+                                        disabled={mediaDisabled || downloadingPlaylists.has(playlist.id)}
                                         className="absolute top-2 right-2 p-2 bg-surface-3 hover:bg-brand rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                         title={downloadingPlaylists.has(playlist.id) ? "Queueing..." : "Download playlist"}
                                         aria-label="Download playlist"

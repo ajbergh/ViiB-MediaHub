@@ -40,6 +40,7 @@ export const SpotifySessionConnect: React.FC<{ onConnected?: () => void }> = ({ 
                     if (useStore.getState().spotifySessionGeneration !== sessionGeneration) { setBusy(false); return; }
                     logout();
                     setConnected(session.connected && !session.authRequired);
+                    useStore.getState().setSpotifyAccountProduct(session.connected && !session.authRequired ? session.product : undefined);
                     onConnected?.();
                 } else if (status.state === 'failed') {
                     setError(status.message || 'Could not connect to Spotify. Try again.');

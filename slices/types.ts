@@ -226,6 +226,8 @@ export interface LibrarySlice {
 }
 
 export interface SpotifySlice {
+  spotifyAccountProduct: 'premium' | 'free' | 'unknown';
+  setSpotifyAccountProduct: (product?: string) => void;
   spotifyConnected: boolean;
   spotifySessionGeneration: number;
   spotifyAuthRequired: boolean;
