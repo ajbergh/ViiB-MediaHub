@@ -81,6 +81,11 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({ isOpen, on
               </button>
             </div>
 
+            <p className="mt-5 text-sm leading-6 text-text-secondary">
+              Spotify is optional. A Free account supports catalog browsing and metadata enrichment.
+              Premium also enables Spotify streaming and music downloads. Your local music plays without a Spotify subscription.
+            </p>
+
             <div className="mt-6 flex items-center justify-between border-t border-surface-border pt-5">
               <Button variant="ghost" onClick={onComplete} className="px-0 text-text-subtle hover:text-text-secondary">Set up later</Button>
               <p className="text-right text-xs text-text-subtle">Your media stays under your control.</p>

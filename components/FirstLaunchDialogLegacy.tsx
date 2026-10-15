@@ -34,6 +34,7 @@
  */
 
 import { SpotifySessionConnect } from './SpotifySessionConnect';
+import { SpotifyAccountNotice } from './SpotifyAccountNotice';
 import React, { useState, useEffect } from 'react';
 import { Music, FolderOpen, Wifi, Check, Loader2, X, Plus, ChevronRight, Sparkles, HardDrive, AlertCircle } from 'lucide-react';
 import { useStore } from '../store';
@@ -658,33 +659,39 @@ export const FirstLaunchDialog: React.FC<FirstLaunchDialogProps> = ({
 
       <div className="bg-surface-1 border border-surface-border rounded-xl p-6 mb-6">
         <p className="text-sm text-text-secondary mb-4">
-          Connect your Spotify account to automatically fetch high-quality album artwork,
-          artist images, and metadata for your local music library.
+          Sign in with a Free or Premium Spotify account to browse music and enrich your library
+          with artwork, artist images, and available metadata.
         </p>
 
-        <div className="bg-surface-2 border border-brand/30 rounded-lg p-4 mb-6">
-          <h4 className="text-sm font-bold text-white mb-2">What you'll get:</h4>
-          <ul className="text-sm text-text-secondary space-y-1">
-            <li className="flex items-start gap-2">
-              <Check size={16} className="text-brand mt-0.5 flex-shrink-0" />
-              <span>High-resolution album artwork and artist images</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Check size={16} className="text-brand mt-0.5 flex-shrink-0" />
-              <span>Rich metadata including genres, release dates, and descriptions</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <Check size={16} className="text-brand mt-0.5 flex-shrink-0" />
-              <span>Download music directly from Spotify (requires Premium)</span>
-            </li>
-          </ul>
+        <div className="grid gap-4 sm:grid-cols-2 mb-4">
+          <div className="bg-surface-2 border border-surface-border rounded-lg p-4">
+            <h3 className="text-sm font-bold text-text-main mb-2">Spotify Free</h3>
+            <ul className="text-sm text-text-secondary space-y-2 list-disc pl-4">
+              <li>Search the Spotify catalog and browse tracks, albums, artists, and playlists</li>
+              <li>Browse your saved albums and playlists</li>
+              <li>Enrich your library with artwork, artist images, and available release and genre metadata</li>
+            </ul>
+          </div>
+          <div className="bg-surface-2 border border-brand/30 rounded-lg p-4">
+            <h3 className="text-sm font-bold text-text-main mb-2">Spotify Premium</h3>
+            <p className="text-sm text-text-secondary mb-2">Everything available with Free, plus:</p>
+            <ul className="text-sm text-text-secondary space-y-2 list-disc pl-4">
+              <li>Stream Spotify tracks directly in ViiB</li>
+              <li>Download Spotify music for local playback</li>
+            </ul>
+          </div>
         </div>
+        <p className="text-xs leading-5 text-text-subtle mb-6">
+          ViiB detects your account plan after sign-in. Streaming and downloads stay disabled for Free accounts
+          or until Premium is verified. Your existing local files remain playable with either plan, or without Spotify.
+        </p>
 
         <SpotifySessionConnect />
+        <div className="mt-4"><SpotifyAccountNotice /></div>
         <div className="space-y-4 my-4">
           <div>
             <label className="block text-xs font-bold text-text-subtle uppercase mb-2">
-              Download Location (Optional)
+              Premium Download Location (Optional)
             </label>
             <p className="text-xs text-text-subtle mb-2">
               Where should Spotify downloads be saved? Leave empty for default location.
