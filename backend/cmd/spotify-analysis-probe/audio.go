@@ -26,12 +26,18 @@ var errAudioProbeFailed = errors.New("audio compatibility probe failed")
 
 // These are milestones, not claims of complete playback/download compatibility.
 type audioPass struct {
-	SessionAuthenticated bool `json:"sessionAuthenticated"`
-	StreamOpened         bool `json:"streamOpened"`
-	BytesRead            int  `json:"bytesRead"`
-	OggHeaderVerified    bool `json:"oggHeaderVerified"`
+	SessionAuthenticated     bool `json:"sessionAuthenticated"`
+	StreamOpened             bool `json:"streamOpened"`
+	BytesRead                int  `json:"bytesRead"`
+	OggHeaderVerified        bool `json:"oggHeaderVerified"`
+	VorbisNominalBitrateKbps int  `json:"vorbisNominalBitrateKbps,omitempty"`
 }
 type audioReport struct {
+	TrackID                string                `json:"trackId,omitempty"`
+	ProbeKind              string                `json:"probeKind,omitempty"`
+	AccountProduct         string                `json:"accountProduct,omitempty"`
+	RequestedBitrateKbps   int                   `json:"requestedBitrateKbps,omitempty"`
+	DownloadAssessment     string                `json:"downloadAssessment,omitempty"`
 	Download               *downloadVerification `json:"download,omitempty"`
 	Status                 string                `json:"status"`
 	Stage                  string                `json:"stage"`
@@ -52,10 +58,11 @@ func validateAudioOptions(bytes int, compare, features bool) error {
 	return nil
 }
 
-func audioMode(ctx context.Context, id string, bytes int, renew bool, out io.Writer) error {
+func audioMode(ctx context.Context, id string, bytes int, renew bool, out io.Writer, freeOnly ...bool) error {
+	checkFree := len(freeOnly) > 0 && freeOnly[0]
 	if path := os.Getenv(audioWorkerReportEnv); path != "" {
 		_ = os.Unsetenv(audioWorkerReportEnv)
-		return audioWorker(ctx, id, bytes, renew, path)
+		return audioWorker(ctx, id, bytes, renew, path, checkFree)
 	}
 	executable, err := os.Executable()
 	if err != nil {
@@ -68,6 +75,9 @@ func audioMode(ctx context.Context, id string, bytes int, renew bool, out io.Wri
 	defer os.RemoveAll(directory)
 	path := filepath.Join(directory, "milestones.json")
 	args := []string{"--enable", "--track-id", id, "--stream-read-bytes", strconv.Itoa(bytes), "--renew=" + strconv.FormatBool(renew)}
+	if checkFree {
+		args = append(args, "--free-account-test")
+	}
 	// Cookie stays in the child's environment, never its arguments or report file.
 	environment := append(os.Environ(), audioWorkerReportEnv+"="+path)
 	_ = os.Unsetenv("VIIB_SPOTIFY_SP_DC")
@@ -120,17 +130,36 @@ func executeAudioWorker(ctx context.Context, executable string, args, environmen
 	return report
 }
 func validAudioReport(r audioReport) bool {
+	if r.TrackID != "" && !bareTrackID.MatchString(r.TrackID) {
+		return false
+	}
+	if r.ProbeKind != "" && r.ProbeKind != "free_account" {
+		return false
+	}
+	if r.AccountProduct != "" && r.AccountProduct != "free" && r.AccountProduct != "premium" && r.AccountProduct != "unknown" {
+		return false
+	}
+	if r.RequestedBitrateKbps != 0 && r.RequestedBitrateKbps != 96 {
+		return false
+	}
+	if r.DownloadAssessment != "" && r.DownloadAssessment != "not_tested_music_requires_premium" {
+		return false
+	}
+	if r.ProbeKind == "free_account" && r.Status == "success" && (r.AccountProduct != "free" || !r.AuthenticationVerified || r.TrackID == "" || r.RequestedBitrateKbps != 96 || !r.Initial.OggHeaderVerified || r.Initial.VorbisNominalBitrateKbps != 96 || r.Download != nil || (r.RenewalVerified && (r.AfterRenewal == nil || r.AfterRenewal.VorbisNominalBitrateKbps != 96))) {
+		return false
+	}
 	if r.Status != "running" && r.Status != "failed" && r.Status != "success" {
 		return false
 	}
 	switch r.Stage {
-	case "authentication", "token_renewal", "audio_session", "audio_stream", "audio_read", "audio_cleanup", "complete", "audio_download", "ogg_verification", "mp3_conversion", "mp3_verification":
+	case "authentication", "product_state", "token_renewal", "audio_session", "audio_stream", "audio_read", "audio_cleanup", "complete", "audio_download", "ogg_verification", "mp3_conversion", "mp3_verification":
 	default:
 		return false
 	}
 	switch r.Code {
 	case "", "authentication_required", "provider_changed", "disabled", "temporarily_unavailable",
-		"token_request_denied", "audio_session_failed", "audio_stream_failed", "audio_key_rejected", "audio_read_failed", "ogg_header_missing", "audio_download_failed", "ogg_verification_failed", "mp3_conversion_failed", "mp3_verification_failed", "verification_limit_exceeded", "output_path_rejected":
+		"media_premium_required", "audio_credentials_rejected", "audio_endpoint_resolution_failed", "audio_connection_failed", "audio_login_failed", "audio_setup_failed",
+		"token_request_denied", "audio_session_failed", "audio_stream_failed", "audio_key_rejected", "audio_read_failed", "ogg_header_missing", "audio_download_failed", "ogg_verification_failed", "mp3_conversion_failed", "mp3_verification_failed", "verification_limit_exceeded", "output_path_rejected", "account_check_failed", "free_account_required", "vorbis_quality_unverified":
 	default:
 		return false
 	}
@@ -139,7 +168,7 @@ func validAudioReport(r audioReport) bool {
 			continue
 		}
 		if p.BytesRead < 0 || p.BytesRead > 16384 || (p.StreamOpened && !p.SessionAuthenticated) ||
-			(p.BytesRead > 0 && !p.StreamOpened) || (p.OggHeaderVerified && p.BytesRead < 4) {
+			(p.BytesRead > 0 && !p.StreamOpened) || (p.OggHeaderVerified && p.BytesRead < 4) || p.VorbisNominalBitrateKbps < 0 || p.VorbisNominalBitrateKbps > 1000 || (p.VorbisNominalBitrateKbps > 0 && !p.OggHeaderVerified) {
 			return false
 		}
 	}
@@ -164,7 +193,7 @@ func writeAudioMilestones(path string, report audioReport) error {
 	}
 	return os.Rename(temporary, path)
 }
-func audioWorker(ctx context.Context, id string, bytes int, renew bool, path string) error {
+func audioWorker(ctx context.Context, id string, bytes int, renew bool, path string, freeOnly bool) error {
 	// Worker files are confined to the parent's freshly-created temp directory.
 	root := filepath.Clean(os.TempDir())
 	dir := filepath.Dir(filepath.Clean(path))
@@ -172,7 +201,12 @@ func audioWorker(ctx context.Context, id string, bytes int, renew bool, path str
 		filepath.Base(path) != "milestones.json" {
 		return errAudioProbeFailed
 	}
-	report := audioReport{Status: "running", Stage: "authentication"}
+	report := audioReport{Status: "running", Stage: "authentication", TrackID: id}
+	if freeOnly {
+		report.ProbeKind = "free_account"
+		report.RequestedBitrateKbps = 96
+		report.DownloadAssessment = "not_tested_music_requires_premium"
+	}
 	save := func() error { return writeAudioMilestones(path, report) }
 	fail := func(code string) error {
 		report.Status = "failed"
@@ -196,10 +230,26 @@ func audioWorker(ctx context.Context, id string, bytes int, renew bool, path str
 		return fail(audioAuthCode(err))
 	}
 	report.AuthenticationVerified = true
+	if freeOnly {
+		report.Stage = "product_state"
+		if err = save(); err != nil {
+			return errAudioProbeFailed
+		}
+		report.AccountProduct, err = probeAccountProduct(ctx, token.Bearer(), nil)
+		if err != nil {
+			return fail("account_check_failed")
+		}
+		if report.AccountProduct != "free" {
+			return fail("free_account_required")
+		}
+	}
 	backend := &liveAudioBackend{directory: dir}
 	defer backend.Close()
 	if err = audioReadPass(ctx, backend, token.Bearer(), id, bytes, &report.Initial, &report, save); err != nil {
 		return fail(audioErrorCode(err, report.Stage))
+	}
+	if freeOnly && report.Initial.VorbisNominalBitrateKbps != 96 {
+		return fail("vorbis_quality_unverified")
 	}
 	if renew {
 		report.Stage = "token_renewal"
@@ -219,6 +269,9 @@ func audioWorker(ctx context.Context, id string, bytes int, renew bool, path str
 		defer backend.Close()
 		if err = audioReadPass(ctx, backend, token.Bearer(), id, bytes, report.AfterRenewal, &report, save); err != nil {
 			return fail(audioErrorCode(err, report.Stage))
+		}
+		if freeOnly && report.AfterRenewal.VorbisNominalBitrateKbps != 96 {
+			return fail("vorbis_quality_unverified")
 		}
 	}
 	report.Stage = "audio_cleanup"
@@ -294,6 +347,7 @@ func audioReadPass(ctx context.Context, backend audioBackend, bearer, id string,
 	count, err := io.ReadFull(stream, buffer)
 	pass.BytesRead = count
 	pass.OggHeaderVerified = count >= 4 && string(buffer[:4]) == "OggS"
+	pass.VorbisNominalBitrateKbps = vorbisNominalKbps(buffer[:count])
 	if saveErr := save(); saveErr != nil {
 		return saveErr
 	}
@@ -321,6 +375,24 @@ func audioAuthCode(err error) string {
 	return "temporarily_unavailable"
 }
 func audioErrorCode(err error, stage string) string {
+	// The pinned dependency returns untyped errors. Match only known protocol
+	// labels/stages; never return its raw error, endpoint, or account details.
+	if stage == "audio_session" {
+		message := err.Error()
+		for _, entry := range []struct{ marker, code string }{
+			{"PremiumAccountRequired", "media_premium_required"},
+			{"BadCredentials", "audio_credentials_rejected"},
+			{"could not get ap url", "audio_endpoint_resolution_failed"},
+			{"could not connect to", "audio_connection_failed"},
+			{"failed to login to Spotify", "audio_login_failed"},
+			{"failed to create cache directory", "audio_setup_failed"},
+			{"failed to start task context", "audio_setup_failed"},
+		} {
+			if strings.Contains(message, entry.marker) {
+				return entry.code
+			}
+		}
+	}
 	if errors.Is(err, errOggHeader) {
 		return "ogg_header_missing"
 	}

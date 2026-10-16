@@ -8,9 +8,9 @@ import (
 )
 
 // Selection compares candidates only for the same registered metric and units.
-// Freshness wins over recency; stale immutable recording facts remain explicitly
-// stale last-good candidates. Equal retrievals prefer detailed analysis for its
-// analysis context. All alternatives remain in Fields.
+// Freshness wins first, then V2 for tempo/key, then recency. Stale immutable
+// facts remain last-good candidates. Legacy ties prefer detailed analysis.
+// All alternatives remain in Fields.
 func SelectProviderScalarFields(fields []SpotifyScalarField) []SpotifyScalarField {
 	selected := map[string]SpotifyScalarField{}
 	for _, candidate := range fields {
@@ -135,6 +135,14 @@ func hasJSONObjectFields(raw json.RawMessage, required ...string) bool {
 func betterProviderScalarCandidate(candidate, previous SpotifyScalarField) bool {
 	if previous.Stale != candidate.Stale {
 		return !candidate.Stale
+	}
+	// Native mixing attributes are authoritative for tempo/key even when a
+	// legacy endpoint was retrieved more recently. Freshness still wins first.
+	if candidate.Key == "tempo_bpm" || candidate.Key == "key_mode" {
+		cv2, pv2 := candidate.Endpoint == "audio_attributes_v2", previous.Endpoint == "audio_attributes_v2"
+		if cv2 != pv2 {
+			return cv2
+		}
 	}
 	return candidate.RetrievedAt.After(previous.RetrievedAt) || (candidate.RetrievedAt.Equal(previous.RetrievedAt) && candidate.Endpoint == "audio_analysis" && previous.Endpoint != "audio_analysis")
 }

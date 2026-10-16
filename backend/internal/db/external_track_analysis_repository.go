@@ -27,7 +27,7 @@ type ExternalAnalysisStatus struct {
 }
 
 func validExternalKey(id, endpoint string) bool {
-	return ValidSpotifyRecordingID(id) && (endpoint == "audio_analysis" || endpoint == "audio_features")
+	return ValidSpotifyRecordingID(id) && (endpoint == "audio_analysis" || endpoint == "audio_features" || endpoint == "audio_attributes_v2")
 }
 
 // PutExternalAnalysis commits normalized scalars and any separate domain artifacts atomically. Its hash identifies

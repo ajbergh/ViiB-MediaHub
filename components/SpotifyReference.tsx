@@ -89,14 +89,14 @@ export function SpotifyReference({ songId, sourceIdentity }: { songId: string; s
       <div className="flex flex-wrap gap-3">
         <a href={'https://open.spotify.com/track/' + identity.link.externalId} target="_blank" rel="noopener noreferrer">Open Spotify recording</a>
         <select className="rounded border border-[var(--dj-border-light)] bg-[var(--dj-surface-1)] px-1 text-[var(--dj-text-primary)]" aria-label="Spotify reference type" value={endpoint} disabled={busy} onChange={event => setEndpoint(event.target.value as SpotifyReferenceEndpoint)}>
-          <option value="audio_features">Audio features</option><option value="audio_analysis">Detailed analysis</option>
+          <option value="audio_attributes_v2">Audio attributes V2</option><option value="audio_features">Audio features</option><option value="audio_analysis">Detailed analysis</option>
         </select>
         <button type="button" disabled={busy || !connected} onClick={() => void refresh()}>Refresh reference</button>
         <button type="button" disabled={busy} onClick={() => void unlink()}>Remove recording link</button>
       </div>
       {observation ? <div>
         <p>BPM {observation.bpm ?? 'unknown'} · Key {observation.camelot ?? 'unknown'} · BPM confidence {observation.bpmConfidence == null ? 'unknown' : Math.round(observation.bpmConfidence * 100) + '%'} · Key confidence {observation.keyConfidence == null ? 'unknown' : Math.round(observation.keyConfidence * 100) + '%'}</p>
-        <p>Spotify · {observation.sourceEndpoint === 'audio_features' ? 'Audio features' : 'Detailed analysis'} · Retrieved {new Date(observation.retrievedAt).toLocaleString()}{view?.stale ? ' · Stale' : ''}</p>
+        <p>Spotify · {observation.sourceEndpoint === 'audio_attributes_v2' ? 'Audio attributes V2' : observation.sourceEndpoint === 'audio_features' ? 'Audio features' : 'Detailed analysis'} · Retrieved {new Date(observation.retrievedAt).toLocaleString()}{view?.stale ? ' · Stale' : ''}</p>
       </div> : <p>No cached reference.</p>}
       {failure && <p role="status">{failureText[failure.code] ?? 'Spotify reference is unavailable.'}{failure.code === 'rate_limited' ? ' Retry after ' + new Date(failure.retryAt).toLocaleString() + '.' : ''}</p>}
       {!connected && <p>Connect to Spotify in Settings to refresh.</p>}

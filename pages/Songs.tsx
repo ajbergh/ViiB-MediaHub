@@ -28,14 +28,14 @@ import { LikeButton } from '../components/LikeButton';
 import { TextInput } from '../components/ui/TextInput';
 import { Button } from '../components/ui/Button';
 import { Menu, MenuItem } from '../components/ui/Menu';
-import { ListHeader } from '../components/ui/Page';
+import { ListHeader, PageHeader } from '../components/ui/Page';
 import { SongColumnMenu } from '../components/SongColumnMenu';
 import { SONG_COLUMNS, SongColumnId, SONG_COLUMNS_STORAGE_KEY, loadSongColumns, songColumnValue } from '../lib/songColumns';
 import { getCamelotColor } from '../lib/camelotColors';
 import { api } from '../services/api';
 import { TrackAnalysisFeature } from '../services/trackAnalysisContracts';
 
-const songGridClass = 'grid grid-cols-[36px_minmax(0,1fr)_52px_36px] md:grid-cols-[var(--song-columns)] gap-2 md:gap-4';
+const songGridClass = 'grid grid-cols-[36px_minmax(0,1fr)_52px_36px] md:grid-cols-[var(--song-columns)] md:min-w-[var(--song-min-width)] gap-2 md:gap-4';
 
 const CENTERED_SONG_COLUMNS: ReadonlySet<SongColumnId> = new Set([
   'plays',
@@ -106,9 +106,8 @@ const SongsHeader: React.FC<{ context?: SongsContext }> = ({ context }) => {
     };
     return (
       <ListHeader>
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-4">
-          <h1 className="text-display font-bold tracking-tight text-text-main">Songs</h1>
-                <div className="flex items-center gap-2.5 w-full md:w-auto">
+            <PageHeader heading="Songs" actions={
+                <div className="flex flex-wrap items-center gap-3 min-w-0 w-full md:w-auto">
                     <Button variant="secondary" size="sm" aria-label="Choose track columns" title="Choose columns (or right-click the header)" aria-haspopup="menu" aria-expanded={menuPosition !== null} onClick={openColumns} className="rounded-full" leftIcon={<Columns3 size={15} />}>Columns</Button>
                     {/* Sort Dropdown */}
                     <div className="relative">
@@ -153,7 +152,7 @@ const SongsHeader: React.FC<{ context?: SongsContext }> = ({ context }) => {
                     </div>
 
                     {/* Search Input */}
-                    <div className="flex-1 md:w-64">
+                    <div className="w-full md:w-72">
                       <TextInput
                         leftIcon={<Search size={16} className="text-text-secondary" aria-hidden="true" />}
                         type="text"
@@ -165,7 +164,7 @@ const SongsHeader: React.FC<{ context?: SongsContext }> = ({ context }) => {
                       />
                     </div>
                 </div>
-            </div>
+            } />
 
             {/* Header and rows share the same column order and widths. */}
             <div tabIndex={0} aria-label="Track column header" onContextMenu={openColumns}
@@ -250,7 +249,8 @@ export const Songs: React.FC = () => {
   const visibleColumns = SONG_COLUMNS.filter(column => columns.includes(column.id));
   const gridStyle = {
     '--song-columns': ['36px', 'minmax(220px, 4fr)', ...visibleColumns.map(column => column.width), '64px', '40px'].join(' '),
-    '--song-min-width': `${36 + 220 + 64 + 40 + visibleColumns.reduce((sum, column) => sum + column.minWidth, 0) + (visibleColumns.length + 3) * 16 + 96}px`,
+    // Only the grids need a minimum width; the toolbar follows the viewport.
+    '--song-min-width': `${36 + 220 + 64 + 40 + visibleColumns.reduce((sum, column) => sum + column.minWidth, 0) + (visibleColumns.length + 3) * 16 + 32}px`,
   } as React.CSSProperties;
 
   const sortedSongs = useMemo(() => {
@@ -298,7 +298,7 @@ export const Songs: React.FC = () => {
   }), []);
 
   return (
-    <div className="h-full animate-fade-in md:min-w-[var(--song-min-width)]" style={gridStyle}>
+    <div className="h-full min-w-0 animate-fade-in" style={gridStyle}>
         <Virtuoso
             useWindowScroll={false}
             customScrollParent={scrollParent}
@@ -310,7 +310,7 @@ export const Songs: React.FC = () => {
                const displayCover = song.coverUrl || albumCovers[song.album];
                
                return (
-                <div className="bg-surface-1 px-4 sm:px-6 lg:px-8">
+                <div className="bg-surface-1 px-4 sm:px-6 lg:px-7">
                     <div 
                         className={`${songGridClass} rounded-md px-4 py-2 items-center hover:bg-surface-hover group transition-colors cursor-pointer ${isCurrent ? 'bg-surface-hover' : 'bg-transparent'}`}
                         data-song-id={song.id}

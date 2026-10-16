@@ -144,7 +144,8 @@ func (d *DB) markDownloadCompletedWithRevision(ctx context.Context, id string, r
 	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO spotify_download_evidence
  (file_path,content_sha256,file_size,mtime_ns,spotify_id,completed_at,features_json)
  VALUES (?,?,?,?,?,?,COALESCE((SELECT observation_json FROM external_track_analysis
- WHERE provider='spotify' AND external_id=? AND endpoint='audio_features' AND schema_version=? AND expires_at>? AND (COALESCE(account_context,'')<>'' AND account_context=(SELECT value FROM settings WHERE key='spotify_metadata_active_context'))),''))`,
+ WHERE provider='spotify' AND external_id=? AND endpoint IN ('audio_attributes_v2','audio_features') AND schema_version=? AND expires_at>? AND (COALESCE(account_context,'')<>'' AND account_context=(SELECT value FROM settings WHERE key='spotify_metadata_active_context'))
+ ORDER BY CASE endpoint WHEN 'audio_attributes_v2' THEN 0 ELSE 1 END LIMIT 1),''))`,
 		revision.path, revision.digest, revision.size, revision.mtime, recording, time.Now().UnixMilli(), recording, ExternalAnalysisSchemaVersion, time.Now().UnixMilli())
 	if err != nil {
 		return false, err

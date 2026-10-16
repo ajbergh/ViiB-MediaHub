@@ -19,8 +19,8 @@ import (
 )
 
 // Preparation resolves identity once and enriches independent recording-scoped
-// resources. Features have precedence in the compatibility scalar path;
-// detailed alternatives and native waveform remain separate cached resources.
+// resources. Native V2 takes precedence for BPM/key; features supply scores,
+// while detailed alternatives and waveform remain separate cached resources.
 func (a *API) spotifyPreparationForSource(parent context.Context, source analysis.ResolvedSource) *spotifyanalysis.Observation {
 	runtime := a.spotifyTokens()
 	account, cancelAccount := runtime.requestContext(parent)
@@ -93,9 +93,16 @@ func (a *API) spotifyPreparationForSource(parent context.Context, source analysi
 	if link == nil || ctx.Err() != nil {
 		return nil
 	}
-	var features, detailed *spotifyanalysis.Observation
+	var features, detailed, attributes *spotifyanalysis.Observation
 	var workers sync.WaitGroup
-	workers.Add(3)
+	workers.Add(4)
+	go func() {
+		defer workers.Done()
+		result, err := service.Refresh(ctx, link.ExternalID, spotifyrefresh.AttributesV2)
+		if err == nil && result.Failure == nil && result.Cache != nil && time.Now().Before(result.Cache.ExpiresAt) {
+			attributes = &result.Cache.Observation
+		}
+	}()
 	go func() {
 		defer workers.Done()
 		features, _, _ = a.spotifyTrackFeaturesResult(ctx, link.ExternalID)
@@ -167,6 +174,7 @@ func (a *API) spotifyPreparationForSource(parent context.Context, source analysi
 		detailed.ProviderBeatGrid = privateBeatGrid
 	}
 	observation := mergePreparationObservations(spotifyanalysis.PreparationScalars(features, detailed), importedObservation)
+	observation = spotifyanalysis.PreferAudioAttributesV2(observation, attributes)
 	if observation == nil && !providerThreeBandAvailable && privateBeatGrid == nil {
 		return nil
 	}
@@ -291,11 +299,11 @@ func mergePreparationObservations(primary, fallback *spotifyanalysis.Observation
 	if primary.ProviderBeatGrid == nil {
 		primary.ProviderBeatGrid = fallback.ProviderBeatGrid
 	}
-	return primary
+	return spotifyanalysis.PreferAudioAttributesV2(primary, fallback)
 }
 
 // spotifyDownloadFeatures warms independent audio resources before final-file
-// promotion, returning only scalar features for existing file-tag compatibility.
+// promotion, returning merged scalars with V2 BPM/key for file tags.
 func (a *API) spotifyDownloadFeatures(parent context.Context, id string) *spotifyanalysis.Observation {
 	runtime := a.spotifyTokens()
 	account, stop := runtime.requestContext(parent)
@@ -312,9 +320,16 @@ func (a *API) spotifyDownloadFeatures(parent context.Context, id string) *spotif
 	if service == nil {
 		return nil
 	}
-	var features *spotifyanalysis.Observation
+	var features, attributes *spotifyanalysis.Observation
 	var workers sync.WaitGroup
-	workers.Add(4)
+	workers.Add(5)
+	go func() {
+		defer workers.Done()
+		result, err := service.Refresh(ctx, id, spotifyrefresh.AttributesV2)
+		if err == nil && result.Failure == nil && result.Cache != nil && time.Now().Before(result.Cache.ExpiresAt) {
+			attributes = &result.Cache.Observation
+		}
+	}()
 	go func() { defer workers.Done(); features, _, _ = a.spotifyTrackFeaturesResult(ctx, id) }()
 	go func() { defer workers.Done(); _, _ = service.Refresh(ctx, id, spotifyrefresh.Detailed) }()
 	go func() { defer workers.Done(); _, _, _ = a.spotifyWaveformForRecording(ctx, id) }()
@@ -345,5 +360,5 @@ func (a *API) spotifyDownloadFeatures(parent context.Context, id string) *spotif
 	if parent.Err() != nil {
 		return nil
 	}
-	return features
+	return spotifyanalysis.PreferAudioAttributesV2(features, attributes)
 }

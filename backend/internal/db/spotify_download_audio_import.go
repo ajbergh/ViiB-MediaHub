@@ -188,7 +188,7 @@ func (d *DB) queryDownloadedSpotifyScalarFields(ctx context.Context, revision do
 		if err := rows.Scan(&field.Key, &field.Metric, &field.Units, &raw, &confidence, &field.Endpoint, &field.SchemaVersion, &field.AdapterRevision, &retrieved, &expires, &checked, &attemptState); err != nil {
 			return nil, err
 		}
-		if !json.Valid([]byte(raw)) || raw == "null" {
+		if !validExternalKey(recording, field.Endpoint) || !json.Valid([]byte(raw)) || raw == "null" {
 			return nil, errors.New("invalid downloaded scalar value")
 		}
 		field.Value = json.RawMessage(raw)
@@ -221,6 +221,9 @@ func (d *DB) queryDownloadedSpotifyFieldAttempts(ctx context.Context, revision d
 		var checked int64
 		if err := rows.Scan(&attempt.Key, &attempt.Endpoint, &attempt.State, &attempt.Reason, &checked, &attempt.AdapterRevision); err != nil {
 			return nil, err
+		}
+		if !validExternalKey(recording, attempt.Endpoint) {
+			return nil, errors.New("invalid downloaded field endpoint")
 		}
 		attempt.CheckedAt = time.UnixMilli(checked).UTC()
 		attempt.DurableImport = true

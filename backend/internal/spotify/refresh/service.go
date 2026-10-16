@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	Features   = "audio_features"
-	Detailed   = "audio_analysis"
-	maxPending = 32
+	Features     = "audio_features"
+	Detailed     = "audio_analysis"
+	AttributesV2 = analysis.AttributesV2
+	maxPending   = 32
 )
 
 var ErrInvalidEndpoint = errors.New("invalid Spotify reference endpoint")
@@ -152,7 +153,7 @@ func (s *Service) Refresh(ctx context.Context, id, endpoint string) (Result, err
 	if !db.ValidSpotifyRecordingID(id) {
 		return Result{}, &analysis.Error{Code: analysis.InvalidTrackID}
 	}
-	if endpoint != Features && endpoint != Detailed {
+	if endpoint != Features && endpoint != Detailed && endpoint != AttributesV2 {
 		return Result{}, ErrInvalidEndpoint
 	}
 	if err := ctx.Err(); err != nil {
@@ -266,7 +267,15 @@ func (s *Service) execute(ctx context.Context, k key, generation uint64) (Result
 	}
 	s.mu.Unlock()
 	var observation analysis.Observation
-	if k.endpoint == Features {
+	if k.endpoint == AttributesV2 {
+		if provider, ok := s.provider.(interface {
+			FetchAudioAttributesV2(context.Context, string) (analysis.Observation, error)
+		}); ok {
+			observation, err = provider.FetchAudioAttributesV2(ctx, k.id)
+		} else {
+			err = &analysis.Error{Code: analysis.Disabled}
+		}
+	} else if k.endpoint == Features {
 		observation, err = s.provider.FetchFeatures(ctx, k.id)
 	} else {
 		observation, err = s.provider.Fetch(ctx, k.id)
