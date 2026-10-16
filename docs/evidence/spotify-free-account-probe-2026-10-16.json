@@ -1,0 +1,21 @@
+{
+  "date": "2026-10-16",
+  "trackId": "5RIh3Tsq9U7CAvivB2iB7q",
+  "probeKind": "free_account",
+  "accountProduct": "free",
+  "requestedBitrateKbps": 96,
+  "downloadAssessment": "not_tested_music_requires_premium",
+  "status": "failed",
+  "stage": "audio_session",
+  "code": "media_premium_required",
+  "authenticationVerified": true,
+  "renewalVerified": false,
+  "initial": {
+    "sessionAuthenticated": false,
+    "streamOpened": false,
+    "bytesRead": 0,
+    "oggHeaderVerified": false
+  },
+  "providerProtocolError": "PremiumAccountRequired",
+  "limitation": "One account and media transport; bitrate selection and full downloads were not reached."
+}

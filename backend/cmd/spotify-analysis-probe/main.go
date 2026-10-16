@@ -28,6 +28,7 @@ func run(ctx context.Context) error {
 	compare := flag.Bool("compare-features", false, "Compare fixed audio-analysis and audio-features routes (research only)")
 	features := flag.Bool("features", false, "Request scalar audio features instead of detailed audio analysis")
 	audioBytes := flag.Int("stream-read-bytes", 0, "Research-only short audio read (4096..16384 bytes); disabled by default")
+	freeAccount := flag.Bool("free-account-test", false, "Verify Free product state and attempt a bounded 96 kbps read; no music file saved")
 	verifyAppDownloads := flag.String("verify-app-downloads", "", "Research-only read-only full decode of isolated production app audio files")
 	catalogTrack := flag.Bool("catalog-track", false, "Research-only fixed individual and batch track normalization")
 	historyEvents := flag.Bool("history-events", false, "Research-only fixed experimental listening-history read; no production parity claim")
@@ -46,6 +47,14 @@ func run(ctx context.Context) error {
 	surface := flag.String("web-api-surface", "all", "Fixed API group: all, profile, track, search, library, catalog, recent (requires --web-api)")
 	reconnect := flag.Bool("reconnect", false, "Research-only provider disconnect/reconnect before the selected Web API group")
 	flag.Parse()
+	if *freeAccount {
+		if *download || *webAPI || *compare || *features || *reconnect || *surface != "all" {
+			return errors.New("free-account-test cannot be combined with download, Web API or analysis modes")
+		}
+		if *audioBytes == 0 {
+			*audioBytes = 4096
+		}
+	}
 	modeCount := 0
 	for _, selected := range []bool{*pathfinder, *catalogProfile, *catalogSearch, *catalogAlbum, *catalogArtist, *catalogPlaylist, *savedPlaylist, *catalogLibrary, *catalogLibraryFull, *historyContexts, *historyEvents, *catalogTrack, *verifyAppDownloads != ""} {
 		if selected {
@@ -87,7 +96,7 @@ func run(ctx context.Context) error {
 		return downloadMode(ctx, trackID, *renew, os.Stdout)
 	}
 	if *audioBytes != 0 {
-		return audioMode(ctx, trackID, *audioBytes, *renew, os.Stdout)
+		return audioMode(ctx, trackID, *audioBytes, *renew, os.Stdout, *freeAccount)
 	}
 	// Session material is never accepted as a command-line argument or saved.
 	cookie := os.Getenv("VIIB_SPOTIFY_SP_DC")
