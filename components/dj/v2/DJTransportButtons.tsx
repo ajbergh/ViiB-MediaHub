@@ -36,6 +36,8 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
   const otherEffectiveBpm = useStore(state => deck === 'A' ? state.djDeckB.effectiveBpm : state.djDeckA.effectiveBpm);
   const gridsVerified = useStore(state => canSyncBeatGrid(state.djDeckA) && canSyncBeatGrid(state.djDeckB));
   const syncMode = useStore(state => state.djMixer.syncMode);
+  const cuePoint = useStore(state => deck === 'A' ? state.djDeckA.cuePoint : state.djDeckB.cuePoint);
+  const formatCueClock = (seconds: number) => `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
 
   const { togglePlay, returnToCue, setCue, setTempo, syncBeatPhase } = useDJAudioEngineActions();
 
@@ -114,6 +116,9 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
           <span className='dj-transport-led' aria-hidden='true' />
           <SkipBack size={15} fill='currentColor' aria-hidden='true' />
           <span>CUE</span>
+          {track && cuePoint > 0 && (
+            <span className='dj-transport-cue-time' aria-hidden='true'>{formatCueClock(cuePoint)}</span>
+          )}
         </button>
         <button ref={playButtonRef} type='button' className='dj-btn dj-btn-lg dj-btn-play dj-transport-play' onClick={handlePlayPause} disabled={!track}
           aria-label={isPlaying ? `Pause deck ${deck}` : `Play deck ${deck}`} data-playing={isPlaying} style={{ ['--glow' as string]: '0' }}>

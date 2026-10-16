@@ -13,9 +13,9 @@ import React from 'react';
 import type { DeckId, EffectType } from '../../../slices/djMixerSlice';
 import { FXUnit, FX_CONFIGS } from './DJFXSection';
 
-export const DJDeckFXRack = React.memo(function DJDeckFXRack({ deck }: { deck: DeckId }) {
+export const DJDeckFXRack = React.memo(function DJDeckFXRack({ deck, open = false }: { deck: DeckId; open?: boolean }) {
   return (
-    <section className='dj-fx-rack' aria-label={`Deck ${deck} effects`} data-dj-fx-rack={deck}>
+    <section className='dj-fx-rack' aria-label={`Deck ${deck} effects`} data-dj-fx-rack={deck} hidden={!open}>
       <span className='dj-fx-rack-label' aria-hidden='true'>FX</span>
       {(Object.keys(FX_CONFIGS) as EffectType[]).map(type => (
         <FXUnit key={type} deck={deck} type={type} label={FX_CONFIGS[type].label}

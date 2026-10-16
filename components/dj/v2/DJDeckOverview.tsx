@@ -1,7 +1,7 @@
 import { reportAudioReadFailure, withSharedAudioMetadataRead } from '../../../services/audioReadDiagnostics';
 /** Draws a whole-track overview with position, loop, and cue markers. */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { api } from '../../../services/api';
 import { loadTrackThreeBand, type TrackThreeBand } from '../../../services/trackThreeBand';
 import { djTrackSourceIdentity } from '../../../lib/djBpmCorrection';
@@ -10,6 +10,48 @@ import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import { getHotCueMarkerStyle } from '../../../lib/hotCueMarkerStyle';
 import type { DeckId } from '../../../slices/djMixerSlice';
 import { DECK_WAVEFORM_PALETTE, WAVEFORM_CHROME } from './waveform/waveformPalette';
+
+export interface DeckWaveformViewState {
+  visibleSeconds: number;
+  localBands: boolean;
+  retryGeneration: number;
+}
+
+const DEFAULT_WAVEFORM_VIEW: Record<DeckId, DeckWaveformViewState> = {
+  A: { visibleSeconds: 10, localBands: false, retryGeneration: 0 },
+  B: { visibleSeconds: 10, localBands: false, retryGeneration: 0 },
+};
+
+const waveformViewState: Record<DeckId, DeckWaveformViewState> = {
+  A: { ...DEFAULT_WAVEFORM_VIEW.A },
+  B: { ...DEFAULT_WAVEFORM_VIEW.B },
+};
+const waveformViewListeners = new Set<() => void>();
+
+export function setDeckWaveformView(deck: DeckId, patch: Partial<DeckWaveformViewState>): void {
+  const prev = waveformViewState[deck];
+  const next = { ...prev, ...patch };
+  if (
+    prev.visibleSeconds === next.visibleSeconds &&
+    prev.localBands === next.localBands &&
+    prev.retryGeneration === next.retryGeneration
+  ) {
+    return;
+  }
+  waveformViewState[deck] = next;
+  waveformViewListeners.forEach(listener => listener());
+}
+
+export function useDeckWaveformView(deck: DeckId): DeckWaveformViewState {
+  return useSyncExternalStore(
+    listener => {
+      waveformViewListeners.add(listener);
+      return () => waveformViewListeners.delete(listener);
+    },
+    () => waveformViewState[deck],
+    () => DEFAULT_WAVEFORM_VIEW[deck]
+  );
+}
 
 interface DJDeckOverviewProps {
   deck: DeckId;
@@ -24,7 +66,11 @@ interface DJDeckOverviewProps {
  * without a position subscription that would re-render the surrounding deck.
  * Clicking seeks this deck only. Drawn with Canvas 2D so the split waveform
  * keeps WebGL contexts to the two main lanes. */
-export const DJDeckOverview = React.memo(({ deck, visibleSeconds, localBands = false, retryGeneration = 0, onRetryLocalBands }: DJDeckOverviewProps) => {
+export const DJDeckOverview = React.memo(({ deck, visibleSeconds: visibleSecondsProp, localBands: localBandsProp, retryGeneration: retryGenerationProp, onRetryLocalBands }: DJDeckOverviewProps) => {
+  const syncedView = useDeckWaveformView(deck);
+  const visibleSeconds = visibleSecondsProp ?? syncedView.visibleSeconds;
+  const localBands = localBandsProp ?? syncedView.localBands;
+  const retryGeneration = retryGenerationProp ?? syncedView.retryGeneration;
   const track = useStore(s => (deck === 'A' ? s.djDeckA : s.djDeckB).track);
   const duration = useStore(s => (deck === 'A' ? s.djDeckA : s.djDeckB).duration);
   const spotifySessionGeneration = useStore(s => s.spotifySessionGeneration);
@@ -174,7 +220,7 @@ export const DJDeckOverview = React.memo(({ deck, visibleSeconds, localBands = f
   const eligible = bands && bands.track === track && duration > 0 && Math.abs(bands.data.durationSeconds - duration) <= 0.1;
   return (<>
     {localBands && <span className='dj-label' role='status'>{eligible ? `${bands.data.source === 'spotify' ? 'Spotify' : 'Local'} bands - Low / Mid / High - Common peak scale${bands.data.stale ? ' · Stale' : ''}` : bands?.data.source === 'spotify' ? 'Spotify bands use a different timeline; amplitude overview shown' : 'Amplitude overview - bands unavailable or duration differs'}</span>}
-    {localBands && bandsReadFailed && track && <span className='dj-label' role='status'>Three-band waveform could not be loaded. Amplitude overview remains available. <button type='button' onClick={onRetryLocalBands ?? (() => setLocalRetryGeneration(value => value + 1))}>Retry three-band</button></span>}
+    {localBands && bandsReadFailed && track && <span className='dj-label' role='status'>Three-band waveform could not be loaded. Amplitude overview remains available. <button type='button' onClick={onRetryLocalBands ?? (() => { setLocalRetryGeneration(value => value + 1); setDeckWaveformView(deck, { retryGeneration: retryGeneration + 1 }); })}>Retry three-band</button></span>}
     <canvas
       ref={ref}
       className='dj-deck-overview'

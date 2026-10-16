@@ -96,12 +96,12 @@
   --dj-waveform-h: 172px;
   --dj-library-h: 44px;
   --dj-mixer-w: 340px;
-  --dj-track-header-h: 116px;
+  --dj-track-header-h: 120px;
   --dj-deck-inset: 12px;
   --dj-toolbar-h: 52px;
   --dj-fx-rack-h: 120px;
   --dj-footer-h: 140px;
-  --dj-jog-max: 340px;
+  --dj-jog-max: 380px;
   --dj-radius: 6px;
   --dj-radius-sm: 5px;
 }
@@ -335,29 +335,55 @@
 }
 .dj-menu-item { width: 100%; justify-content: space-between; }
 
-/* ── Split waveform (Plan §5) ───────────────────────── */
-.dj-waveform-split { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-/* Each lane is its own framed panel (mock-up); the 12px gutter between the two
-   frames is centred on the 50% line. */
+/* ── Split waveform (Stacked Parallel Phase-Aligned Lanes) ── */
+.dj-waveform-split {
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 4px;
+  padding: 5px 6px 6px;
+}
+/* Both lanes share an identical 404px control wing on the left so the scrolling
+   waveform canvases share the exact same horizontal bounds and center playhead. */
 .dj-waveform-lane {
   min-width: 0;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 5px 6px 6px;
-  padding: 4px 6px 6px;
-  background: var(--dj-bg-elevated);
+  display: grid;
+  grid-template-columns: 404px minmax(0, 1fr);
+  align-items: stretch;
+  gap: 8px;
+  padding: 4px 6px;
+  background: linear-gradient(180deg, #10151f 0%, var(--dj-bg-elevated) 100%);
   border: 1px solid var(--dj-border-subtle);
   border-radius: var(--dj-radius);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
-.dj-waveform-lane-header { flex: 0 0 28px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.dj-waveform-toolbar { display: flex; align-items: center; gap: 10px; }
-.dj-waveform-lane[data-dj-waveform-deck="A"] .dj-waveform-toolbar { margin-right: auto; }
-.dj-waveform-lane[data-dj-waveform-deck="B"] .dj-waveform-toolbar { margin-left: auto; }
-.dj-waveform-main-wrap { flex: 1 1 auto; min-height: 0; position: relative; }
+.dj-waveform-lane[data-dj-waveform-deck="A"] {
+  border-left: 3px solid var(--dj-deck-a-bright);
+}
+.dj-waveform-lane[data-dj-waveform-deck="B"] {
+  border-left: 3px solid var(--dj-deck-b-bright);
+}
+.dj-waveform-lane-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 8px;
+  border-right: 1px solid var(--dj-border-subtle);
+}
+.dj-waveform-toolbar { display: flex; align-items: center; gap: 6px; }
+.dj-waveform-main-wrap { min-width: 0; min-height: 0; position: relative; border-radius: 3px; overflow: hidden; background: #070a0f; border: 1px solid rgba(255, 255, 255, 0.05); }
 .dj-waveform-main { position: absolute; inset: 0; display: block; width: 100%; height: 100%; border-radius: 3px; }
-.dj-deck-overview { display: block; flex: 0 0 18px; width: 100%; height: 18px; border-radius: 3px; cursor: pointer; }
+.dj-deck-overview {
+  display: block;
+  width: 100%;
+  height: 20px;
+  border-radius: 3px;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.85);
+}
 .dj-upper-scope { height: 100%; display: flex; align-items: center; justify-content: center; }
 
 /* ── Deck (Plan §6, §8, §10A.6–10A.10) ──────────────── */
@@ -392,9 +418,23 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 9px var(--dj-deck-inset) 7px;
-  gap: 6px;
+  padding: 8px var(--dj-deck-inset) 6px;
+  gap: 5px;
   background: linear-gradient(180deg, rgba(6, 9, 14, 0.65) 0%, rgba(12, 16, 23, 0.3) 100%);
+}
+.dj-deck-header-overview {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.dj-deck-header-overview > .dj-label {
+  font-size: 9px;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .dj-deck-info {
   flex: 1 1 auto;
@@ -476,7 +516,7 @@
 .dj-deck-facts-warn { color: var(--dj-warning); font-size: 11px; }
 .dj-deck-empty { color: var(--dj-text-secondary); font-size: 14px; font-weight: 600; letter-spacing: 0.01em; }
 .dj-deck-empty-sub { color: var(--dj-text-muted); font-size: 11.5px; font-weight: 500; }
-.dj-deck-side { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 5px; }
+.dj-deck-side { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 4px; }
 .dj-deck-time-row {
   display: flex;
   align-items: baseline;
@@ -490,30 +530,6 @@
 .dj-time-remaining { color: var(--dj-text-primary); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 19px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
 .dj-time-elapsed { color: var(--dj-text-muted); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; font-weight: 600; line-height: 1; }
 .dj-deck-actions { display: flex; align-items: center; gap: 4px; }
-.dj-deck-progress {
-  position: relative;
-  flex: 0 0 6px;
-  height: 6px;
-  border-radius: 3px;
-  background: #070a0f;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.85);
-}
-.dj-deck-progress-fill { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 2px; }
-/* White playhead tick at the fill's leading edge — only when track is loaded/active. */
-.dj-deck-progress-fill[data-active="true"]::after {
-  content: "";
-  position: absolute;
-  top: -3px;
-  bottom: -3px;
-  right: -1px;
-  width: 2px;
-  border-radius: 1px;
-  background: var(--dj-text-primary);
-  box-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
-}
-.dj-deck[data-dj-deck="A"] .dj-deck-progress-fill { background: linear-gradient(90deg, var(--dj-deck-a-deep), var(--dj-deck-a-bright)); }
-.dj-deck[data-dj-deck="B"] .dj-deck-progress-fill { background: linear-gradient(90deg, var(--dj-deck-b-deep), var(--dj-deck-b-bright)); }
 
 .dj-deck-toolbar {
   flex: none;
@@ -521,7 +537,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 4px;
   padding: 0 var(--dj-deck-inset);
   border-top: 1px solid var(--dj-border-subtle);
   border-bottom: 1px solid rgba(0, 0, 0, 0.4);
@@ -531,24 +547,51 @@
   position: relative;
   z-index: 6;
 }
-.dj-toolbar-cluster { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-/* Deck toolbar controls are hit constantly while mixing: 38px tall with crisp hardware bevel. */
+.dj-toolbar-cluster { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+/* Deck toolbar controls are hit constantly while mixing: 34px tall with crisp hardware bevel. */
 .dj-toolbar-cluster .dj-btn {
-  min-height: 36px;
-  padding: 0 8px;
+  min-height: 34px;
+  padding: 0 5px;
+  font-size: 11px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.35);
 }
-.dj-toolbar-cluster .dj-btn-icon { padding: 0; min-width: 36px; }
+.dj-toolbar-cluster .dj-btn-icon { padding: 0; min-width: 26px; }
 .dj-toolbar-cluster .dj-select {
-  min-height: 36px;
+  min-height: 34px;
+  padding: 0 18px 0 5px;
+  font-size: 11px;
   background-color: #0b0f17;
   border-color: var(--dj-border-light);
   color: var(--dj-text-primary);
   font-family: ui-monospace, SFMono-Regular, monospace;
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.65);
 }
+.dj-toolbar-loop-badge {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #070a0f;
+  border: 1px solid var(--dj-border);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--dj-text-muted);
+}
+.dj-toolbar-loop-badge[data-active="true"] {
+  color: var(--dj-play);
+  border-color: rgba(0, 200, 104, 0.45);
+  text-shadow: 0 0 6px rgba(0, 200, 104, 0.45);
+}
+.dj-fx-active-count {
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(0, 200, 104, 0.18);
+  color: var(--dj-play);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 10px;
+  font-weight: 800;
+}
 
-/* FX rack (Plan §7, §10A.12) */
+/* FX rack (Plan §7, §10A.12 — Collapsible / Mode-Aware) */
 .dj-fx-rack {
   flex: none;
   height: var(--dj-fx-rack-h);
@@ -556,6 +599,9 @@
   grid-template-columns: 22px repeat(4, minmax(0, 1fr));
   gap: 6px;
   margin: 4px var(--dj-deck-inset) 0;
+}
+.dj-fx-rack[hidden] {
+  display: none;
 }
 .dj-fx-rack-label {
   display: flex;
@@ -640,22 +686,22 @@
 }
 .dj-fx-knobs { flex: 1 1 auto; display: flex; align-items: center; justify-content: space-evenly; gap: 2px; padding: 2px 4px 4px; }
 
-/* Jog / tempo / EQ body */
+/* Jog / tempo / EQ body — EQ strips positioned on the INNER edge next to the Mixer */
 .dj-deck-performance {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: 76px 84px minmax(0, 1fr);
+  grid-template-columns: 76px minmax(0, 1fr) 84px;
   margin: 6px var(--dj-deck-inset) 0;
   border: 1px solid var(--dj-border);
   border-radius: var(--dj-radius-sm);
-  background: radial-gradient(circle at 65% 50%, #151c28 0%, #0d121a 75%, #090d13 100%);
+  background: radial-gradient(circle at 48% 50%, #151c28 0%, #0d121a 75%, #090d13 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), inset 0 0 24px rgba(0, 0, 0, 0.5);
   overflow: hidden;
 }
 .dj-deck-performance[data-deck="B"] {
-  grid-template-columns: minmax(0, 1fr) 84px 76px;
-  background: radial-gradient(circle at 35% 50%, #151c28 0%, #0d121a 75%, #090d13 100%);
+  grid-template-columns: 84px minmax(0, 1fr) 76px;
+  background: radial-gradient(circle at 52% 50%, #151c28 0%, #0d121a 75%, #090d13 100%);
 }
 .dj-deck-tempo {
   min-height: 0;
@@ -673,8 +719,8 @@
   min-height: 0;
   background: linear-gradient(180deg, #10151f 0%, #0b0f17 100%);
 }
-.dj-deck-performance[data-deck="A"] .dj-deck-eq { border-right: 1px solid var(--dj-border-subtle); }
-.dj-deck-performance[data-deck="B"] .dj-deck-eq { border-left: 1px solid var(--dj-border-subtle); }
+.dj-deck-performance[data-deck="A"] .dj-deck-eq { border-left: 1px solid var(--dj-border-subtle); }
+.dj-deck-performance[data-deck="B"] .dj-deck-eq { border-right: 1px solid var(--dj-border-subtle); }
 .dj-eq-strip-divider {
   width: 68%;
   height: 1px;
@@ -684,7 +730,7 @@
 .dj-deck-jog { min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 8px; }
 .dj-deck-jog-size { width: min(100%, var(--dj-jog-max)); height: 100%; max-height: var(--dj-jog-max); display: flex; align-items: center; justify-content: center; }
 
-/* Hot cues and transport (Plan §10A.9) */
+/* Hot cues and transport (Full-width 8 Hot Cue pads directly above transport) */
 .dj-deck-footer {
   flex: none;
   height: var(--dj-footer-h);
@@ -694,24 +740,18 @@
   gap: 8px;
   padding: 8px var(--dj-deck-inset) 10px;
 }
-.dj-deck-cues { display: grid; grid-template-columns: 68px minmax(0, 1fr) 68px; align-items: stretch; gap: 8px; }
-.dj-deck-readout {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 2px;
-  padding: 4px 7px;
-  border-radius: 4px;
-  background: #080b10;
-  border: 1px solid var(--dj-border);
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.75);
-}
-.dj-deck-readout:last-child { align-items: flex-end; }
-.dj-deck-readout .dj-label { font-size: 9.5px; letter-spacing: 0.1em; color: var(--dj-text-muted); }
-.dj-deck-readout-value { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; font-weight: 700; color: var(--dj-text-secondary); }
-.dj-deck-readout-value[data-active="true"] { color: var(--dj-play); text-shadow: 0 0 8px rgba(0, 200, 104, 0.45); }
-.dj-deck-readout-value[data-cue="true"] { color: var(--dj-warning); text-shadow: 0 0 8px rgba(232, 152, 0, 0.45); }
+.dj-deck-cues { display: block; width: 100%; }
 .dj-deck-transport { display: flex; align-items: center; justify-content: center; }
+.dj-transport-cue-time {
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #fde68a;
+}
 
 /* Deck inspector (Plan §6.3) */
 .dj-deck-inspector {
@@ -966,9 +1006,9 @@
 .dj-transport-sync:disabled .dj-transport-led { opacity: 0.15; }
 
 /* ── Toolbar, stems and inspector details ──────────── */
-.dj-toolbar-gap { width: 6px; flex-shrink: 0; }
-.dj-deck-toolbar .dj-btn { font-size: 11.5px; padding: 0 7px; min-width: 32px; }
-.dj-deck-toolbar .dj-btn-icon { padding: 0; }
+.dj-toolbar-gap { width: 2px; flex-shrink: 0; }
+.dj-deck-toolbar .dj-btn { font-size: 11px; padding: 0 5px; min-width: 24px; gap: 4px; }
+.dj-deck-toolbar .dj-btn-icon { padding: 0; min-width: 24px; }
 .dj-stems-popover { position: relative; }
 .dj-stems-popover > summary { list-style: none; cursor: pointer; }
 .dj-stems-popover > summary::-webkit-details-marker { display: none; }
