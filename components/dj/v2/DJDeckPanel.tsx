@@ -51,7 +51,11 @@ const DeckProgress = React.memo(function DeckProgress({ deck }: { deck: DeckId }
   useEffect(() => {
     const update = () => {
       const d = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-      if (fillRef.current) fillRef.current.style.width = d.duration > 0 ? `${Math.min(100, d.position / d.duration * 100)}%` : '0';
+      if (fillRef.current) {
+        const pct = d.duration > 0 ? Math.min(100, (d.position / d.duration) * 100) : 0;
+        fillRef.current.style.width = pct > 0 ? `${pct}%` : '0';
+        fillRef.current.dataset.active = pct > 0.2 ? 'true' : 'false';
+      }
     };
     update();
     const timer = window.setInterval(update, 100);
@@ -59,10 +63,27 @@ const DeckProgress = React.memo(function DeckProgress({ deck }: { deck: DeckId }
   }, [deck]);
   return (
     <div className='dj-deck-progress' aria-hidden='true'>
-      <div ref={fillRef} className='dj-deck-progress-fill' />
+      <div ref={fillRef} className='dj-deck-progress-fill' data-active='false' />
     </div>
   );
 });
+
+const DeckVinylFallback = ({ deck }: { deck: DeckId }) => (
+  <svg width='36' height='36' viewBox='0 0 36 36' fill='none' aria-hidden='true' className='dj-deck-art-disc'>
+    <circle cx='18' cy='18' r='16' fill='#0b0e15' stroke='rgba(255,255,255,0.12)' strokeWidth='1' />
+    <circle cx='18' cy='18' r='12.5' stroke='rgba(255,255,255,0.06)' strokeWidth='0.75' />
+    <circle cx='18' cy='18' r='9.5' stroke='rgba(255,255,255,0.06)' strokeWidth='0.75' />
+    <circle
+      cx='18'
+      cy='18'
+      r='5.5'
+      fill={deck === 'A' ? 'rgba(0, 179, 255, 0.16)' : 'rgba(255, 42, 109, 0.16)'}
+      stroke={deck === 'A' ? 'var(--dj-deck-a-bright)' : 'var(--dj-deck-b-bright)'}
+      strokeWidth='1.2'
+    />
+    <circle cx='18' cy='18' r='1.8' fill='#06080c' />
+  </svg>
+);
 
 const DeckHeader = React.memo(function DeckHeader({ deck }: { deck: DeckId }) {
   const track = useStore(s => (deck === 'A' ? s.djDeckA : s.djDeckB).track);
@@ -78,7 +99,7 @@ const DeckHeader = React.memo(function DeckHeader({ deck }: { deck: DeckId }) {
       <div className='dj-deck-info'>
         <span className='dj-deck-badge' data-deck={deck} aria-hidden='true'>{deck}</span>
         <div className='dj-deck-art' aria-hidden='true'>
-          {track?.coverUrl ? <img src={track.coverUrl} alt='' /> : '♫'}
+          {track?.coverUrl ? <img src={track.coverUrl} alt='' /> : <DeckVinylFallback deck={deck} />}
         </div>
         {track ? (
           <div className='dj-deck-meta'>
@@ -89,6 +110,7 @@ const DeckHeader = React.memo(function DeckHeader({ deck }: { deck: DeckId }) {
         ) : (
           <div className='dj-deck-meta'>
             <div className='dj-deck-empty'>{`Deck ${deck} · No track loaded`}</div>
+            <div className='dj-deck-empty-sub'>Drag a track here or load from library below</div>
           </div>
         )}
         <div className='dj-deck-side'>

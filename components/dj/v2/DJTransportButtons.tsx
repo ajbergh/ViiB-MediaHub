@@ -111,15 +111,29 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
       <div className='dj-transport'>
         <button type='button' className='dj-btn dj-btn-lg dj-transport-cue' onClick={handleCue} onContextMenu={handleSetCue} disabled={!track}
           aria-label={`Cue deck ${deck}`} title='Cue: return to cue point (right-click to set)'>
-          <SkipBack size={16} aria-hidden='true' /> CUE
+          <span className='dj-transport-led' aria-hidden='true' />
+          <SkipBack size={15} fill='currentColor' aria-hidden='true' />
+          <span>CUE</span>
         </button>
         <button ref={playButtonRef} type='button' className='dj-btn dj-btn-lg dj-btn-play dj-transport-play' onClick={handlePlayPause} disabled={!track}
           aria-label={isPlaying ? `Pause deck ${deck}` : `Play deck ${deck}`} data-playing={isPlaying} style={{ ['--glow' as string]: '0' }}>
-          {isPlaying ? <Pause size={22} aria-hidden='true' /> : <Play size={22} aria-hidden='true' />}
+          <span className='dj-transport-led' aria-hidden='true' />
+          {isPlaying ? (
+            <>
+              <Pause size={18} fill='currentColor' aria-hidden='true' />
+              <span className='dj-transport-play-label'>PAUSE</span>
+            </>
+          ) : (
+            <>
+              <Play size={18} fill='currentColor' aria-hidden='true' />
+              <span className='dj-transport-play-label'>PLAY</span>
+            </>
+          )}
         </button>
-        <button type='button' className='dj-btn dj-btn-lg dj-transport-sync' data-deck-accent={deck} onClick={handleSync} disabled={syncDisabled}
+        <button type='button' className='dj-btn dj-btn-lg dj-transport-sync' data-deck-accent={deck} data-sync-active={syncMode !== 'off' && !!track} onClick={handleSync} disabled={syncDisabled}
           aria-label={`Sync deck ${deck} to other deck`} title={syncTitle}>
-          SYNC
+          <span className='dj-transport-led' aria-hidden='true' />
+          <span>SYNC</span>
           {syncMode !== 'off' && track && <span className='dj-status-dot' data-state={syncMode === 'beat-phase' ? 'warn' : 'ok'} aria-hidden='true' />}
         </button>
       </div>

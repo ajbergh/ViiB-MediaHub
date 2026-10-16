@@ -35,7 +35,7 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
   const spindleRef = useRef(false);
   const lastPlaybackPositionRef = useRef<number | null>(null);
   // Refs for RAF-driven elements (avoid React re-renders)
-  const rotationDotRef = useRef<SVGCircleElement>(null);
+  const rotationDotRef = useRef<SVGGElement>(null);
   const scratchLabelRef = useRef<HTMLDivElement>(null);
   const glowRingRef = useRef<SVGCircleElement>(null);
   const bpmTextRef = useRef<SVGTextElement>(null);
@@ -318,18 +318,30 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
   // Progress arc ref - updated in RAF
   const progressArcRef = useRef<SVGPathElement>(null);
 
-  // Generate tick marks
+  // Generate 60 precision strobe/degree tick marks around the platter
   const tickMarks = useMemo(() => {
     const marks = [];
-    for (let i = 0; i < 12; i++) {
-      const angle = i * 30;
+    for (let i = 0; i < 60; i++) {
+      const angle = i * 6;
       const isQuarter = angle % 90 === 0;
-      marks.push({ angle, length: isQuarter ? 10 : 6, width: isQuarter ? 2 : 1, quarter: isQuarter });
+      const isMajor = angle % 30 === 0;
+      marks.push({
+        angle,
+        length: isQuarter ? 9 : isMajor ? 6 : 3.5,
+        width: isQuarter ? 2 : isMajor ? 1.25 : 0.75,
+        quarter: isQuarter,
+        major: isMajor,
+      });
     }
     return marks;
   }, []);
 
   const c = computedSize / 2;
+  const platterRadius = Math.max(40, c - 20);
+  const hubOuterRadius = computedSize * 0.355;
+  const hubInnerRadius = computedSize * 0.325;
+  const hubAccentRadius = computedSize * 0.305;
+
   return (
     <div
       ref={containerRef}
@@ -347,66 +359,231 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
     >
       <svg width={computedSize} height={computedSize} viewBox={`0 0 ${computedSize} ${computedSize}`} className="touch-none" aria-hidden="true">
         <defs>
-          {/* Dark platter with a subtle inner shadow for depth — no metal texture. */}
-          <radialGradient id={`platter-${deck}`} cx="45%" cy="38%" r="70%">
-            <stop offset="0%" style={{ stopColor: 'var(--dj-surface-3)' }} />
-            <stop offset="70%" style={{ stopColor: 'var(--dj-surface-1)' }} />
-            <stop offset="100%" style={{ stopColor: 'var(--dj-bg)' }} />
+          {/* Dark machined platter base */}
+          <radialGradient id={`platter-${deck}`} cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#1b202c" />
+            <stop offset="65%" stopColor="#0f131b" />
+            <stop offset="92%" stopColor="#090c12" />
+            <stop offset="100%" stopColor="#05070b" />
           </radialGradient>
+
+          {/* Diagonal vinyl/anodized specular sheen */}
+          <linearGradient id={`platterSheen-${deck}`} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="rgba(255,255,255,0)" />
+            <stop offset="28%" stopColor="rgba(255,255,255,0.035)" />
+            <stop offset="50%" stopColor="rgba(255,255,255,0)" />
+            <stop offset="72%" stopColor="rgba(255,255,255,0.035)" />
+            <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+          </linearGradient>
+
+          {/* Center OLED glass depth gradient */}
+          <linearGradient id={`oledGlass-${deck}`} x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#0c1018" />
+            <stop offset="45%" stopColor="#06080d" />
+            <stop offset="100%" stopColor="#040508" />
+          </linearGradient>
+
           <filter id={`textGlow-${deck}`}>
             <feGaussianBlur stdDeviation="1.5" result="blur" />
             <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
           </filter>
         </defs>
 
+        {/* Outer Machined Chassis Bezel */}
+        <circle cx={c} cy={c} r={c - 1.5} fill="#07090e" stroke="rgba(255, 255, 255, 0.08)" strokeWidth="1.2" />
+
         {/* Beat-pulse glow ring - animated via ref */}
-        <circle ref={glowRingRef} cx={c} cy={c} r={computedSize / 2 - 3} fill="none" style={{ stroke: accent, display: 'none' }} strokeWidth="2" opacity="0.3" />
+        <circle ref={glowRingRef} cx={c} cy={c} r={c - 3} fill="none" style={{ stroke: accent, display: 'none' }} strokeWidth="2" opacity="0.3" />
 
-        {/* Neutral ring track; only the progress arc carries the deck color (mock-up). */}
-        <circle cx={c} cy={c} r={ringRadius} fill="none" className="dj-jog-ring-track" strokeWidth="6" />
-        <path ref={progressArcRef} d="" fill="none" style={{ stroke: accent, display: 'none' }} strokeWidth="6" strokeLinecap="round" />
+        {/* Recessed Track Progress Ring & Active Arc */}
+        <circle cx={c} cy={c} r={ringRadius} fill="none" className="dj-jog-ring-track" strokeWidth="5.5" />
+        <path ref={progressArcRef} d="" fill="none" style={{ stroke: accent, display: 'none' }} strokeWidth="5.5" strokeLinecap="round" />
 
-        {/* Neutral tick marks */}
+        {/* Platter Disc & Specular Sheen */}
+        <circle cx={c} cy={c} r={platterRadius} fill={`url(#platter-${deck})`} stroke="rgba(255, 255, 255, 0.1)" strokeWidth="1" />
+        <circle cx={c} cy={c} r={platterRadius} fill={`url(#platterSheen-${deck})`} />
+
+        {/* Precision 60-tick Strobe / Degree Ring */}
         <g>
-          {tickMarks.map(({ angle, length, width, quarter }) => (
-            <line key={angle} x1={c} y1={16} x2={c} y2={16 + length} className={quarter ? 'dj-jog-tick-major' : 'dj-jog-tick'}
-              strokeWidth={width} transform={`rotate(${angle}, ${c}, ${c})`} />
+          {tickMarks.map(({ angle, length, width, quarter, major }) => (
+            <line
+              key={angle}
+              x1={c}
+              y1={13.5}
+              x2={c}
+              y2={13.5 + length}
+              className={quarter ? 'dj-jog-tick-major' : major ? 'dj-jog-tick-mid' : 'dj-jog-tick'}
+              strokeWidth={width}
+              transform={`rotate(${angle}, ${c}, ${c})`}
+            />
           ))}
         </g>
 
-        {/* Platter and concentric neutral rings */}
-        <circle cx={c} cy={c} r={computedSize / 2 - 20} fill={`url(#platter-${deck})`} />
-        {[0.86, 0.76, 0.66].map((ratio, i) => (
-          <circle key={i} cx={c} cy={c} r={(computedSize / 2 - 20) * ratio} fill="none" className="dj-jog-groove" strokeWidth="1" />
+        {/* Tactile Concentric Vinyl Micro-Grooves */}
+        {[0.90, 0.83, 0.76, 0.69, 0.62, 0.56].map((ratio, i) => (
+          <circle
+            key={i}
+            cx={c}
+            cy={c}
+            r={platterRadius * ratio}
+            fill="none"
+            className="dj-jog-groove"
+            strokeWidth={i % 2 === 0 ? '1' : '0.6'}
+            opacity={i % 2 === 0 ? 0.9 : 0.45}
+          />
         ))}
 
-        {/* Center display ring in deck color */}
-        <circle cx={c} cy={c} r={computedSize * 0.32} className="dj-jog-center" style={{ stroke: track ? accent : undefined }} strokeWidth={track ? 2 : 1} />
+        {/* Rotating Platter Needle + Track Ring Marker (transform updated via ref in RAF loop) */}
+        <g ref={rotationDotRef} transform={`rotate(0, ${c}, ${c})`}>
+          {/* Radial platter index line */}
+          <line
+            x1={c}
+            y1={21}
+            x2={c}
+            y2={c - hubOuterRadius - 2}
+            stroke={track ? accent : 'rgba(255, 255, 255, 0.22)'}
+            strokeWidth="2"
+            strokeLinecap="round"
+            opacity={track ? 0.85 : 0.45}
+          />
+          {/* Outer ring playhead halo & core */}
+          <circle
+            cx={c}
+            cy={7}
+            r={Math.max(4.5, computedSize * 0.023)}
+            style={{ fill: accent }}
+            className="dj-jog-marker"
+          />
+          <circle
+            cx={c}
+            cy={7}
+            r={Math.max(2, computedSize * 0.01)}
+            fill="#ffffff"
+          />
+        </g>
 
-        {/* BPM (primary) */}
-        <text ref={bpmTextRef} x={c} y={computedSize * 0.42} fontFamily="ui-monospace, 'SF Mono', Consolas, monospace" fontSize={computedSize * 0.15}
-          fontWeight="700" className="dj-jog-bpm" textAnchor="middle" dominantBaseline="middle"
-          filter={track && isPlaying ? `url(#textGlow-${deck})` : undefined}>
+        {/* Center Display Outer Bezel */}
+        <circle
+          cx={c}
+          cy={c}
+          r={hubOuterRadius}
+          fill="#121620"
+          stroke="rgba(255, 255, 255, 0.14)"
+          strokeWidth="1"
+        />
+
+        {/* Center OLED Screen Glass */}
+        <circle
+          cx={c}
+          cy={c}
+          r={hubInnerRadius}
+          fill={`url(#oledGlass-${deck})`}
+          className="dj-jog-center"
+        />
+
+        {/* Deck Accent Inner Ring */}
+        <circle
+          cx={c}
+          cy={c}
+          r={hubAccentRadius}
+          fill="none"
+          style={{ stroke: track ? accent : 'rgba(255, 255, 255, 0.12)' }}
+          strokeWidth={track ? 1.75 : 1}
+          opacity={track ? 0.9 : 0.5}
+        />
+
+        {/* Top OLED Header Label */}
+        <text
+          x={c}
+          y={computedSize * 0.275}
+          fontFamily="var(--font-sans)"
+          fontSize={computedSize * 0.035}
+          fontWeight="800"
+          letterSpacing="0.16em"
+          fill={track ? accent : 'var(--dj-text-muted)'}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          opacity={track ? 0.95 : 0.6}
+        >
+          {`DECK ${deck} · BPM`}
+        </text>
+
+        {/* BPM (primary readout) */}
+        <text
+          ref={bpmTextRef}
+          x={c}
+          y={computedSize * 0.405}
+          fontFamily="ui-monospace, 'SF Mono', Consolas, monospace"
+          fontSize={computedSize * 0.142}
+          fontWeight="700"
+          className="dj-jog-bpm"
+          textAnchor="middle"
+          dominantBaseline="middle"
+          filter={track && isPlaying ? `url(#textGlow-${deck})` : undefined}
+        >
           {bpm > 0 ? bpm.toFixed(1) : '--.-'}
         </text>
 
-        {/* Pitch and range (secondary) */}
-        <text ref={tempoTextRef} x={computedSize * 0.41} y={computedSize * 0.55} fontFamily="ui-monospace, 'SF Mono', Consolas, monospace"
-          fontSize={computedSize * 0.052} className="dj-jog-secondary" style={{ fill: tempo !== 1 ? accent : undefined }} textAnchor="middle">
+        {/* Horizontal OLED Divider */}
+        <line
+          x1={c - computedSize * 0.19}
+          y1={computedSize * 0.49}
+          x2={c + computedSize * 0.19}
+          y2={computedSize * 0.49}
+          stroke="rgba(255, 255, 255, 0.1)"
+          strokeWidth="1"
+        />
+
+        {/* Pitch and range (secondary telemetry row) */}
+        <text
+          ref={tempoTextRef}
+          x={c - computedSize * 0.08}
+          y={computedSize * 0.555}
+          fontFamily="ui-monospace, 'SF Mono', Consolas, monospace"
+          fontSize={computedSize * 0.05}
+          fontWeight="700"
+          className="dj-jog-secondary"
+          style={{ fill: tempo !== 1 ? accent : 'var(--dj-text-secondary)' }}
+          textAnchor="middle"
+          dominantBaseline="middle"
+        >
           {tempoDisplay}
         </text>
-        <text x={computedSize * 0.61} y={computedSize * 0.55} fontFamily="ui-monospace, 'SF Mono', Consolas, monospace"
-          fontSize={computedSize * 0.048} className="dj-jog-secondary" textAnchor="middle">±16</text>
-
-        {/* Elapsed time (third level) - updated via ref in RAF loop */}
-        <text ref={timeTextRef} x={c} y={computedSize * 0.67} fontFamily="ui-monospace, 'SF Mono', Consolas, monospace"
-          fontSize={computedSize * 0.072} fontWeight="600" className="dj-jog-time" textAnchor="middle" dominantBaseline="middle">
-          00:00.0
+        <line
+          x1={c + computedSize * 0.015}
+          y1={computedSize * 0.525}
+          x2={c + computedSize * 0.015}
+          y2={computedSize * 0.58}
+          stroke="rgba(255, 255, 255, 0.14)"
+          strokeWidth="1"
+        />
+        <text
+          x={c + computedSize * 0.105}
+          y={computedSize * 0.555}
+          fontFamily="ui-monospace, 'SF Mono', Consolas, monospace"
+          fontSize={computedSize * 0.044}
+          fontWeight="600"
+          className="dj-jog-secondary"
+          textAnchor="middle"
+          dominantBaseline="middle"
+        >
+          ±16%
         </text>
 
-        {/* Position marker on the ring - transform updated via ref in RAF loop */}
-        <circle ref={rotationDotRef} cx={c} cy={7} r={Math.max(5, computedSize * 0.026)} style={{ fill: accent }}
-          className="dj-jog-marker" transform={`rotate(0, ${c}, ${c})`} />
+        {/* Elapsed time (third level) - updated via ref in RAF loop */}
+        <text
+          ref={timeTextRef}
+          x={c}
+          y={computedSize * 0.665}
+          fontFamily="ui-monospace, 'SF Mono', Consolas, monospace"
+          fontSize={computedSize * 0.072}
+          fontWeight="700"
+          className="dj-jog-time"
+          textAnchor="middle"
+          dominantBaseline="middle"
+        >
+          00:00.0
+        </text>
       </svg>
 
       {track && !scratchAvailability.ready && <div className="dj-jog-status" role="status">

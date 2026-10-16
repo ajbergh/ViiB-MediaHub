@@ -110,12 +110,14 @@ export const DJDeckEQStrip = React.memo<DJDeckEQStripProps>(({
   const filterEnabled = useStore(s => isA ? s.djDeckA.filter.enabled: s.djDeckB.filter.enabled);
   const volume        = useStore(s => isA ? s.djDeckA.volume        : s.djDeckB.volume);
 
-  const filterKnobValue = ((filterValue + 1) / 2) * 36 - 24;
+  // Map filterValue (-1..+1) so 0 (OFF) sits at knobValue = 0 (12 o'clock detent),
+  // -1 (LP 100%) sits at -24, and +1 (HP 100%) sits at +12.
+  const filterKnobValue = filterValue <= 0 ? filterValue * 24 : filterValue * 12;
 
   // Compact mode hides each knob's value bar + numeric readout, saving ~22px
   // per knob (×5) so the column fits in the available deck height even at 1080p.
   return (
-    <div className='flex flex-col items-center justify-evenly h-full py-2 px-1 gap-0.5'>
+    <div className='dj-eq-strip-inner flex flex-col items-center justify-between h-full py-1.5 px-1'>
       <DJEQKnob
         label='TRIM'
         valueText={volume > 0 ? `${(20 * Math.log10(volume)).toFixed(1)} dB` : '−∞ dB'}
@@ -125,19 +127,21 @@ export const DJDeckEQStrip = React.memo<DJDeckEQStripProps>(({
           onVolumeChange(deckId, Math.max(0, Math.min(1, normalized * 1.5)));
         }}
         color={accentColor}
-        size={48}
+        size={46}
         compact
       />
-      <DJEQKnob label='HIGH'   value={eqHigh}          onChange={v => onEQChange(deckId, 'high', v)}   color='var(--dj-info)' size={48} compact />
-      <DJEQKnob label='MID'    value={eqMid}           onChange={v => onEQChange(deckId, 'mid', v)}    color='var(--dj-play)' size={48} compact />
-      <DJEQKnob label='LOW'    value={eqLow}           onChange={v => onEQChange(deckId, 'low', v)}    color='var(--dj-warning)' size={48} compact />
+      <div className='dj-eq-strip-divider' aria-hidden='true' />
+      <DJEQKnob label='HIGH'   value={eqHigh}          onChange={v => onEQChange(deckId, 'high', v)}   color='var(--dj-info)' size={46} compact />
+      <DJEQKnob label='MID'    value={eqMid}           onChange={v => onEQChange(deckId, 'mid', v)}    color='var(--dj-play)' size={46} compact />
+      <DJEQKnob label='LOW'    value={eqLow}           onChange={v => onEQChange(deckId, 'low', v)}    color='var(--dj-warning)' size={46} compact />
+      <div className='dj-eq-strip-divider' aria-hidden='true' />
       <DJEQKnob
         label='FILT'
         valueText={!filterEnabled || Math.abs(filterValue) < 0.001 ? 'OFF' : `${filterValue < 0 ? 'LP' : 'HP'} ${Math.round(Math.abs(filterValue) * 100)}%`}
         value={filterKnobValue}
         onChange={v => onFilterChange(deckId, v)}
         color={filterEnabled ? 'var(--dj-danger)' : 'var(--dj-text-muted)'}
-        size={48}
+        size={46}
         compact
       />
     </div>
@@ -164,6 +168,7 @@ export const DJMasterKnob = React.memo<DJMasterKnobProps>(({ onChange }) => {
       onChange={onChange}
       size={48}
       color='var(--dj-text-primary)'
+      unipolar
     />
   );
 });

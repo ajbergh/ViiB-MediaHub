@@ -296,8 +296,8 @@ const DJModeV2Inner: React.FC = () => {
   // skipping repeats avoids two no-op store/engine writes per tick.
   const lastFilterRef = useRef<{ A: number | null; B: number | null }>({ A: null, B: null });
   const handleFilterChange = useCallback((deck: DeckId, knobValue: number) => {
-    const normalized = (knobValue + 24) / 36;          // 0..1
-    const clamped = Math.max(-1, Math.min(1, normalized * 2 - 1));
+    const raw = knobValue <= 0 ? knobValue / 24 : knobValue / 12;
+    const clamped = Math.max(-1, Math.min(1, raw));
 
     if (lastFilterRef.current[deck] === clamped) return;
     lastFilterRef.current[deck] = clamped;

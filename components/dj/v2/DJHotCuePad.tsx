@@ -131,17 +131,37 @@ export const DJHotCuePad: React.FC<DJHotCuePadProps> = ({
               ${isLongPress ? 'scale-90 opacity-50' : ''}
               ${isPressed && !isLongPress ? 'scale-95' : ''}
             `}
-            style={isActive && track ? {
-              backgroundColor: color,
-              boxShadow: `0 2px 8px color-mix(in srgb, ${color} 31%, transparent), inset 0 1px 0 rgba(255,255,255,0.25)`,
-            } : undefined}
+            style={
+              consoleLayout
+                ? ({
+                    ['--cue-color' as string]: color,
+                  } as React.CSSProperties)
+                : isActive && track
+                  ? {
+                      backgroundColor: color,
+                      boxShadow: `0 2px 8px color-mix(in srgb, ${color} 31%, transparent), inset 0 1px 0 rgba(255,255,255,0.25)`,
+                    }
+                  : undefined
+            }
             title={
               hotCue 
                 ? `Hot Cue ${displayNum}: ${formatTime(hotCue.position)}\n${isAnalysis ? `Auto · ${hotCue.kind || 'cue'} · ${Math.round((hotCue.confidence ?? 0) * 100)}% · ${hotCue.rationale || hotCue.generatorVersion || 'analysis'}` : 'User cue'}${hotCue.downbeatAligned ? '\nMeasured/manual downbeat aligned' : ''}${hotCue.locked ? '\nLocked against refresh' : ''}\nClick=Jump, Hold=Delete`
                 : `Hot Cue ${displayNum}: Empty\nRight-click to set`
             }
           >
-            {displayNum}
+            {consoleLayout ? (
+              <>
+                <span className="dj-hotcue-led" aria-hidden="true" />
+                <span className="dj-hotcue-num">{displayNum}</span>
+                {hotCue && (
+                  <span className="dj-hotcue-time" aria-hidden="true">
+                    {formatTime(hotCue.position)}
+                  </span>
+                )}
+              </>
+            ) : (
+              displayNum
+            )}
             {isAnalysis && <span className="absolute -right-0.5 -top-1 rounded bg-[var(--dj-bg)] px-0.5 text-[7px] leading-3 text-white">A</span>}
             {hotCue?.locked && <span className="absolute -bottom-0.5 -right-0.5 rounded bg-[var(--dj-bg)] px-0.5 text-[7px] leading-3 text-white">L</span>}
           </button>

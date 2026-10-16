@@ -242,16 +242,17 @@ export const FXUnit = memo<FXUnitProps>(({ deck, type, label, color, enabledColo
   if (rack) {
     const knobColor = isEnabled ? `var(--dj-deck-${deck === 'A' ? 'a' : 'b'}-bright)` : 'var(--dj-text-muted)';
     return (
-      <div className='dj-fx-module' data-enabled={isEnabled} data-fx={type}>
+      <div className='dj-fx-module' data-enabled={isEnabled} data-fx={type} data-deck={deck}>
         <button type='button' className='dj-fx-module-toggle' onClick={handleToggle} aria-pressed={isEnabled}
           aria-label={`${label} on Deck ${deck}`} title={`${isEnabled ? 'Disable' : 'Enable'} ${label.toLowerCase()} on Deck ${deck}`}>
-          {label}
+          <span className='dj-fx-module-title'>{label}</span>
+          <span className='dj-fx-module-led' data-enabled={isEnabled} aria-hidden='true' />
         </button>
         <div className='dj-fx-knobs'>
-          <DJEQKnob label={params.param1.label} ariaLabel={`${label.charAt(0) + label.slice(1).toLowerCase()} ${params.param1.label}, Deck ${deck}`} valueText={valueText1} value={params.param1.value} onChange={handleKnobParam1} color={knobColor} size={44} compact labelBelow className='dj-fx-knob' />
-          <DJEQKnob label={params.param2.label} ariaLabel={`${label.charAt(0) + label.slice(1).toLowerCase()} ${params.param2.label}, Deck ${deck}`} valueText={valueText2} value={params.param2.value} onChange={handleKnobParam2} color={knobColor} size={44} compact labelBelow className='dj-fx-knob' />
+          <DJEQKnob label={params.param1.label} ariaLabel={`${label.charAt(0) + label.slice(1).toLowerCase()} ${params.param1.label}, Deck ${deck}`} valueText={valueText1} value={params.param1.value} onChange={handleKnobParam1} color={knobColor} size={42} compact labelBelow unipolar className='dj-fx-knob' />
+          <DJEQKnob label={params.param2.label} ariaLabel={`${label.charAt(0) + label.slice(1).toLowerCase()} ${params.param2.label}, Deck ${deck}`} valueText={valueText2} value={params.param2.value} onChange={handleKnobParam2} color={knobColor} size={42} compact labelBelow unipolar className='dj-fx-knob' />
           {params.hasWet && (
-            <DJEQKnob label={params.wet.label} ariaLabel={`${label.charAt(0) + label.slice(1).toLowerCase()} ${params.wet.label}, Deck ${deck}`} valueText={wetText} value={params.wet.value} onChange={handleKnobWet} color={knobColor} size={44} compact labelBelow className='dj-fx-knob' />
+            <DJEQKnob label={params.wet.label} ariaLabel={`${label.charAt(0) + label.slice(1).toLowerCase()} ${params.wet.label}, Deck ${deck}`} valueText={wetText} value={params.wet.value} onChange={handleKnobWet} color={knobColor} size={42} compact labelBelow unipolar className='dj-fx-knob' />
           )}
         </div>
       </div>

@@ -23,6 +23,8 @@ interface DJEQKnobProps {
   labelBelow?: boolean;
   /** Accessible name when the visible label is ambiguous (e.g. FX parameters). */
   ariaLabel?: string;
+  /** Unipolar pot (0..100% sweep from -135° to +135°, used for FX params and Master level). Defaults to false (bipolar center-detent at 0 dB = 12 o'clock). */
+  unipolar?: boolean;
 }
 
 export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
@@ -36,6 +38,7 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
   className = '',
   labelBelow = false,
   ariaLabel,
+  unipolar = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -45,14 +48,21 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
   // Per-instance unique IDs for SVG <defs> — without this, knobs sharing a label
   // (e.g. HIGH on both decks) collide globally and share filter/gradient state.
   const uid = useId().replace(/[:]/g, '');
-  const metalId  = `knobMetal-${uid}`;
-  const innerId  = `knobInner-${uid}`;
-  const glowId   = `knobGlow-${uid}`;
+  const capGradId = `knobCap-${uid}`;
+  const skirtGradId = `knobSkirt-${uid}`;
+  const shadowId = `knobShadow-${uid}`;
 
-  // Map value (-24 to +12) to angle (-135° to +135°)
+  // Bipolar (EQ/Trim/Filter): 0 dB sits at 0° (12 o'clock), -24 at -135°, +12 at +135°.
+  // Unipolar (FX/Main): -24..+12 maps linearly across -135°..+135° (midpoint -6 at 12 o'clock).
   const valueToAngle = (v: number): number => {
-    const normalized = (v + 24) / 36;
-    return (normalized * 270) - 135;
+    const clamped = Math.max(-24, Math.min(12, v));
+    if (unipolar) {
+      return ((clamped + 24) / 36) * 270 - 135;
+    }
+    if (clamped <= 0) {
+      return (clamped / 24) * 135;
+    }
+    return (clamped / 12) * 135;
   };
 
   const angle = valueToAngle(value);
@@ -115,11 +125,40 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
 
   const roundedValue = Math.round(value * 10) / 10;
   const displayValue = roundedValue > 0 ? `+${roundedValue}` : `${roundedValue}`;
-  
-  // Calculate indicator bar width (centered at 0)
-  const indicatorPercent = ((value + 24) / 36) * 100;
-  const isPositive = value > 0;
+
+  // Calculate indicator bar width (centered at 50% for 0 dB)
+  const indicatorPercent = unipolar
+    ? ((Math.max(-24, Math.min(12, value)) + 24) / 36) * 100
+    : value <= 0
+      ? 50 + (Math.max(-24, value) / 24) * 50
+      : 50 + (Math.min(12, value) / 12) * 50;
   const isNegative = value < 0;
+
+  // SVG arc helper (0° = 12 o'clock, clockwise positive)
+  const arcRadius = 17;
+  const polarToCartesian = (cx: number, cy: number, r: number, deg: number) => {
+    const rad = ((deg - 90) * Math.PI) / 180;
+    return {
+      x: cx + r * Math.cos(rad),
+      y: cy + r * Math.sin(rad),
+    };
+  };
+
+  const describeArc = (startDeg: number, endDeg: number) => {
+    const start = polarToCartesian(20, 20, arcRadius, startDeg);
+    const end = polarToCartesian(20, 20, arcRadius, endDeg);
+    const sweep = endDeg >= startDeg ? 1 : 0;
+    const largeArc = Math.abs(endDeg - startDeg) > 180 ? 1 : 0;
+    return `M ${start.x.toFixed(2)} ${start.y.toFixed(2)} A ${arcRadius} ${arcRadius} 0 ${largeArc} ${sweep} ${end.x.toFixed(2)} ${end.y.toFixed(2)}`;
+  };
+
+  const trackArcPath = describeArc(-135, 135);
+  const hasActiveArc = unipolar ? angle > -133 : Math.abs(value) > 0.05;
+  const activeArcPath = hasActiveArc
+    ? unipolar
+      ? describeArc(-135, angle)
+      : describeArc(0, angle)
+    : '';
 
   return (
     <div 
@@ -129,8 +168,8 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
     >
       {/* Label */}
       <span
-        className={`dj-eq-knob-label text-[12px] font-bold uppercase tracking-wider ${compact ? 'leading-none mb-0' : 'mb-0.5'} ${labelBelow ? 'order-last mt-1' : ''}`}
-        style={{ color: 'var(--dj-text-secondary)' }}
+        className={`dj-eq-knob-label text-[11px] font-bold uppercase tracking-wider ${compact ? 'leading-none mb-0.5' : 'mb-0.5'} ${labelBelow ? 'order-last mt-1' : ''}`}
+        style={{ color: value !== 0 ? 'var(--dj-text-primary)' : 'var(--dj-text-secondary)' }}
       >
         {label}
       </span>
@@ -159,79 +198,145 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
           width={knobSize}
           height={knobSize}
           viewBox="0 0 40 40"
-          className="touch-none"
+          className="touch-none overflow-visible"
         >
           <defs>
-            {/* Metallic gradient */}
-            <radialGradient id={metalId} cx="35%" cy="30%" r="70%">
-              <stop offset="0%" stopColor="var(--dj-text-muted)"/>
-              <stop offset="40%" stopColor="var(--dj-border-hover)"/>
-              <stop offset="100%" stopColor="var(--dj-surface-3)"/>
-            </radialGradient>
+            {/* Machined anodized cap gradient */}
+            <linearGradient id={capGradId} x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#2c3344" />
+              <stop offset="48%" stopColor="#171b24" />
+              <stop offset="100%" stopColor="#0b0e14" />
+            </linearGradient>
 
-            {/* Inner shadow */}
-            <filter id={innerId}>
-              <feDropShadow dx="1" dy="2" stdDeviation="2" floodColor="#000" floodOpacity="0.5"/>
-            </filter>
+            {/* Outer skirt bevel gradient */}
+            <linearGradient id={skirtGradId} x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#1e2430" />
+              <stop offset="100%" stopColor="#090b10" />
+            </linearGradient>
 
-            {/* Glow when adjusted */}
-            <filter id={glowId} x="-50%" y="-50%" width="200%" height="200%">
-              <feGaussianBlur stdDeviation="2" result="blur"/>
-              <feMerge>
-                <feMergeNode in="blur"/>
-                <feMergeNode in="SourceGraphic"/>
-              </feMerge>
+            {/* Hardware drop shadow */}
+            <filter id={shadowId} x="-25%" y="-25%" width="150%" height="150%">
+              <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" floodColor="#000" floodOpacity="0.75" />
             </filter>
           </defs>
 
-          {/* Knob shadow ring */}
-          <circle cx="20" cy="20" r="16" fill="var(--dj-surface-2)" />
+          {/* 270° Recessed LED Track Arc */}
+          <path
+            d={trackArcPath}
+            fill="none"
+            stroke="rgba(255, 255, 255, 0.1)"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+          />
 
-          {/* Knob body */}
+          {/* 12 o'clock Center Detent Calibration Tick */}
+          <line
+            x1="20"
+            y1="0.6"
+            x2="20"
+            y2="2.6"
+            stroke={value === 0 ? 'rgba(255, 255, 255, 0.55)' : 'rgba(255, 255, 255, 0.25)'}
+            strokeWidth="1.2"
+            strokeLinecap="round"
+          />
+
+          {/* Min / Max End Ticks (-135° and +135°) */}
+          <line
+            x1="20"
+            y1="1.2"
+            x2="20"
+            y2="2.6"
+            stroke="rgba(255, 255, 255, 0.22)"
+            strokeWidth="1"
+            transform="rotate(-135, 20, 20)"
+          />
+          <line
+            x1="20"
+            y1="1.2"
+            x2="20"
+            y2="2.6"
+            stroke="rgba(255, 255, 255, 0.22)"
+            strokeWidth="1"
+            transform="rotate(135, 20, 20)"
+          />
+
+          {/* Active LED Value Arc */}
+          {hasActiveArc && (
+            <path
+              d={activeArcPath}
+              fill="none"
+              stroke={color}
+              strokeWidth="2.4"
+              strokeLinecap="round"
+            />
+          )}
+
+          {/* Outer Knurled Skirt */}
           <circle
             cx="20"
             cy="20"
-            r="14"
-            fill={`url(#${metalId})`}
-            filter={`url(#${innerId})`}
+            r="14.2"
+            fill={`url(#${skirtGradId})`}
+            stroke="rgba(255, 255, 255, 0.08)"
+            strokeWidth="0.75"
+            filter={`url(#${shadowId})`}
           />
 
-          {/* Rim highlight */}
-          <circle cx="20" cy="20" r="14" fill="none" stroke="var(--dj-text-muted)" strokeWidth="0.5" />
-
-          {/* Inner circle detail */}
-          <circle cx="20" cy="20" r="10" fill="none" stroke="var(--dj-border-light)" strokeWidth="0.5" />
-
-          {/* Notch marks around edge */}
+          {/* Subtle Knurl Ticks on Skirt */}
           {[-135, -90, -45, 0, 45, 90, 135].map((markAngle) => (
             <line
               key={markAngle}
               x1="20"
-              y1="5"
+              y1="5.8"
               x2="20"
-              y2={markAngle === 0 ? 8 : 7}
-              stroke={markAngle === 0 ? 'var(--dj-text-muted)' : 'var(--dj-border-hover)'}
-              strokeWidth={markAngle === 0 ? 2 : 1}
+              y2="7.2"
+              stroke="rgba(255, 255, 255, 0.14)"
+              strokeWidth="0.8"
               transform={`rotate(${markAngle}, 20, 20)`}
             />
           ))}
 
-          {/* Dark outline keeps the pointer legible over metallic highlights. */}
-          <line x1="20" y1="7" x2="20" y2="18" stroke="var(--dj-bg)" strokeWidth="5" strokeLinecap="round" transform={`rotate(${angle}, 20, 20)`} />
-          {/* White pointer rotates with the actual knob value, including at zero. */}
-          <line
-            x1="20"
-            y1="7"
-            x2="20"
-            y2="18"
-            stroke="var(--dj-text-primary)"
-            strokeWidth="3"
-            strokeLinecap="round"
-            transform={`rotate(${angle}, 20, 20)`}
+          {/* Machined Top Cap */}
+          <circle
+            cx="20"
+            cy="20"
+            r="11.8"
+            fill={`url(#${capGradId})`}
+            stroke="rgba(255, 255, 255, 0.18)"
+            strokeWidth="0.75"
           />
 
-          {/* Center dot */}
-          <circle cx="20" cy="20" r="2" fill="var(--dj-surface-3)" stroke="var(--dj-border-light)" strokeWidth="0.5" />
+          {/* Inner Recessed Dish */}
+          <circle
+            cx="20"
+            cy="20"
+            r="8.8"
+            fill="#0e121a"
+            stroke="rgba(255, 255, 255, 0.06)"
+            strokeWidth="0.6"
+          />
+
+          {/* Pointer Slot Cutout + High-Contrast Indicator Line */}
+          <g transform={`rotate(${angle}, 20, 20)`}>
+            <line
+              x1="20"
+              y1="7.2"
+              x2="20"
+              y2="16.5"
+              stroke="#05070b"
+              strokeWidth="3.2"
+              strokeLinecap="round"
+            />
+            <line
+              x1="20"
+              y1="7.6"
+              x2="20"
+              y2="16.2"
+              stroke={value !== 0 ? color : '#f8fafc'}
+              strokeWidth="1.8"
+              strokeLinecap="round"
+            />
+          </g>
         </svg>
       </div>
       {compact && (
@@ -252,10 +357,10 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
               className="absolute h-full rounded-sm transition-all duration-50"
               style={{
                 backgroundColor: color,
-                left: isNegative ? `${indicatorPercent}%` : '66.7%',
+                left: isNegative ? `${indicatorPercent}%` : '50%',
                 width: isNegative
-                  ? `${66.7 - indicatorPercent}%`
-                  : `${indicatorPercent - 66.7}%`,
+                  ? `${50 - indicatorPercent}%`
+                  : `${indicatorPercent - 50}%`,
                 boxShadow: `0 0 4px color-mix(in srgb, ${color} 25%, transparent)`,
               }}
             />
