@@ -32,6 +32,30 @@ func (p *fixtureProvider) FetchFeatures(ctx context.Context, id string) (analysi
 	return p.fn(ctx, id, Features)
 }
 
+func (p *fixtureProvider) FetchAudioAttributesV2(ctx context.Context, id string) (analysis.Observation, error) {
+	p.calls.Add(1)
+	return p.fn(ctx, id, AttributesV2)
+}
+
+func TestV2RefreshUsesIndependentCache(t *testing.T) {
+	var clock *fixtureClock
+	service, _, provider, c := fixture(t, func(ctx context.Context, id, endpoint string) (analysis.Observation, error) {
+		if endpoint != AttributesV2 {
+			t.Errorf("wrong dispatch %s", endpoint)
+		}
+		return observation(id, endpoint, clock.now()), nil
+	})
+	clock = c
+	first, err := service.Refresh(t.Context(), idA, AttributesV2)
+	if err != nil || first.Cache == nil || first.FromCache || first.Cache.Observation.SourceEndpoint != AttributesV2 {
+		t.Fatalf("V2 refresh: %+v %v", first, err)
+	}
+	second, err := service.Refresh(t.Context(), idA, AttributesV2)
+	if err != nil || !second.FromCache || provider.calls.Load() != 1 {
+		t.Fatalf("V2 cache: %+v %v", second, err)
+	}
+}
+
 type fixtureClock struct {
 	mu sync.Mutex
 	at time.Time

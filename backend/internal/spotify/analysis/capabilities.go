@@ -43,8 +43,10 @@ func Capabilities() []CapabilityDefinition {
 	for i := range values {
 		switch values[i].Key {
 		case "tempo_bpm":
+			values[i].SpotifyResources = []string{AttributesV2, "audio_features", "audio_analysis"}
 			values[i].EstimatorVersion = localcontract.TempoAlgorithmVersion
 		case "key_mode":
+			values[i].SpotifyResources = []string{AttributesV2, "audio_features", "audio_analysis"}
 			values[i].EstimatorVersion = localcontract.KeyAlgorithmVersion
 		}
 	}

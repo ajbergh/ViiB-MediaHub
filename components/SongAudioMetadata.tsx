@@ -23,13 +23,15 @@ const value = (field: SpotifyScalarField) => typeof field.value === 'number'
   ? String(field.value)
   : `${['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'][field.value.tonic] ?? `Tonic ${field.value.tonic}`} ${field.value.mode === 1 ? 'major' : field.value.mode === 0 ? 'minor' : `mode ${field.value.mode}`}`;
 
+const endpointLabel = (endpoint: string) => endpoint === 'audio_attributes_v2' ? 'Audio attributes V2' : endpoint === 'audio_features' ? 'Audio features' : 'Detailed analysis';
+
 function ProviderField({ field }: { field: SpotifyScalarField }) {
   return <div className="rounded-lg border border-surface-border p-3">
     <div className="capitalize text-text-secondary">{label(field.key)}</div>
     <div className="font-mono text-text-main">{value(field)} <span className="text-text-subtle">{field.units.replaceAll('_', ' ')}</span>{field.stale && <span className="ml-2 text-text-secondary">Stale</span>}</div>
     {field.confidence != null && <div>Confidence {Math.round(field.confidence * 100)}%</div>}
     <details className="mt-1 text-text-subtle"><summary>Observation details</summary>
-      <p>Spotify · {field.endpoint === 'audio_features' ? 'Audio features' : 'Detailed analysis'}</p>
+      <p>Spotify · {endpointLabel(field.endpoint)}</p>
       <p>Retrieved {new Date(field.retrievedAt).toLocaleString()}</p>
       <p>Fresh until {new Date(field.expiresAt).toLocaleString()}</p>
     </details>
@@ -64,7 +66,7 @@ export function SongAudioMetadata({ songId }: { songId: string }) {
   const providerFields = provider?.selected ?? [];
   const providerAttempts = provider?.attempts ?? [];
   const attemptValue = (attempt: NonNullable<TrackAnalysisFeature['providerScalars']>['attempts'][number]) => {
-    const endpoint = attempt.endpoint === 'audio_features' ? 'Audio features' : 'Detailed analysis';
+    const endpoint = endpointLabel(attempt.endpoint);
     const origin = attempt.durableImport ? 'Downloaded import · ' : 'Spotify · ';
     const state = attempt.state === 'not_returned' ? 'not returned' : attempt.state === 'invalid_field' ? `rejected${attempt.reason ? ` (${attempt.reason})` : ''}` : 'returned';
     return `${origin}${endpoint}: ${state} · checked ${new Date(attempt.checkedAt).toLocaleString()}${attempt.durableImport ? ' · retained with downloaded file' : ''}`;
@@ -144,7 +146,7 @@ export function SongAudioMetadata({ songId }: { songId: string }) {
       <a href={`https://open.spotify.com/track/${provider.recordingId}`} target="_blank" rel="noopener noreferrer">Open Spotify recording</a>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{provider.selected.map(field => <ProviderField key={field.key} field={field} />)}</div>
       <details><summary>All provider observations</summary>{provider.fields.map((field, index) => <ProviderField key={`${field.key}:${field.endpoint}:${field.durableImport ? 'download' : 'private'}:${field.retrievedAt}:${index}`} field={field} />)}</details>
-      <details><summary>Latest field availability</summary>{provider.attempts.map((attempt, index) => <p key={`${attempt.key}:${attempt.endpoint}:${attempt.durableImport ? 'download' : 'private'}:${attempt.checkedAt}:${index}`}>{label(attempt.key)} · {attempt.endpoint === 'audio_features' ? 'Audio features' : 'Detailed analysis'} · {attempt.state === 'available' ? 'Available' : attempt.state === 'not_returned' ? 'Not returned' : 'Invalid field'} · {new Date(attempt.checkedAt).toLocaleString()}</p>)}</details>
+      <details><summary>Latest field availability</summary>{provider.attempts.map((attempt, index) => <p key={`${attempt.key}:${attempt.endpoint}:${attempt.durableImport ? 'download' : 'private'}:${attempt.checkedAt}:${index}`}>{label(attempt.key)} · {endpointLabel(attempt.endpoint)} · {attempt.state === 'available' ? 'Available' : attempt.state === 'not_returned' ? 'Not returned' : 'Invalid field'} · {new Date(attempt.checkedAt).toLocaleString()}</p>)}</details>
     </> : <p>No eligible Spotify observations for this file.</p>}
   </section>{catalog}</>;
 }

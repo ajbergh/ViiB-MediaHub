@@ -1,7 +1,10 @@
 // Adds external recording identity, reference cache, and refresh-status schema without replacing local analysis.
 package db
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // EnsureExternalTrackAnalysisSchema installs inert, additive reference storage.
 // No credential material or raw provider responses belong in these tables.
@@ -35,7 +38,7 @@ func (d *DB) EnsureExternalTrackAnalysisSchema() error {
  CREATE TABLE IF NOT EXISTS external_track_analysis (
  provider TEXT NOT NULL CHECK(provider='spotify'),
  external_id TEXT NOT NULL,
- endpoint TEXT NOT NULL CHECK(endpoint IN ('audio_analysis','audio_features')),
+ endpoint TEXT NOT NULL CHECK(endpoint IN ('audio_analysis','audio_features','audio_attributes_v2')),
  schema_version INTEGER NOT NULL,
  observation_json TEXT NOT NULL CHECK(length(observation_json)<=16384),
  observation_hash TEXT NOT NULL,
@@ -46,7 +49,7 @@ func (d *DB) EnsureExternalTrackAnalysisSchema() error {
  CREATE TABLE IF NOT EXISTS external_track_analysis_status (
  provider TEXT NOT NULL CHECK(provider='spotify'),
  external_id TEXT NOT NULL,
- endpoint TEXT NOT NULL CHECK(endpoint IN ('audio_analysis','audio_features')),
+ endpoint TEXT NOT NULL CHECK(endpoint IN ('audio_analysis','audio_features','audio_attributes_v2')),
  schema_version INTEGER NOT NULL,
  code TEXT NOT NULL,
  checked_at INTEGER NOT NULL,
@@ -123,7 +126,45 @@ func (d *DB) EnsureExternalTrackAnalysisSchema() error {
 		if e := ensureTextColumn(d, "external_track_analysis_status", "account_context"); e != nil {
 			return e
 		}
+		if e := d.migrateAudioAttributesV2(); e != nil {
+			return e
+		}
 		d.externalSchemaReady = true
 	}
 	return err
+}
+
+// SQLite cannot alter a CHECK constraint. Rebuild both compatibility tables
+// transactionally, preserving every legacy row and account ownership column.
+func (d *DB) migrateAudioAttributesV2() error {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, table := range []string{"external_track_analysis", "external_track_analysis_status"} {
+		var definition string
+		if err := tx.QueryRow("SELECT sql FROM sqlite_master WHERE name=?", table).Scan(&definition); err != nil {
+			return err
+		}
+		if strings.Contains(definition, "audio_attributes_v2") {
+			continue
+		}
+		next := table + "_v2"
+		definition = strings.Replace(definition, table, next, 1)
+		definition = strings.ReplaceAll(definition, "'audio_analysis','audio_features'", "'audio_analysis','audio_features','audio_attributes_v2'")
+		if !strings.Contains(definition, "audio_attributes_v2") {
+			return fmt.Errorf("unsupported Spotify cache schema for %s", table)
+		}
+		if _, err = tx.Exec(definition); err != nil {
+			return err
+		}
+		if _, err = tx.Exec("INSERT INTO " + next + " SELECT * FROM " + table + "; DROP TABLE " + table + "; ALTER TABLE " + next + " RENAME TO " + table); err != nil {
+			return err
+		}
+	}
+	if _, err = tx.Exec("CREATE INDEX IF NOT EXISTS idx_external_analysis_cooldown ON external_track_analysis_status(provider,code,schema_version,retry_at)"); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

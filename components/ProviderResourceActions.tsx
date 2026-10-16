@@ -35,6 +35,7 @@ export function ProviderResourceActions({ songId, fingerprint, session, onReload
   };
   return <div className="space-y-2">
     <div className="flex flex-wrap gap-2">
+	  <button type="button" className="rounded border border-surface-border px-3 py-1 disabled:opacity-50" disabled={!connected || !recording || visible?.busy} onClick={() => void refresh('audio_attributes_v2')}>Refresh audio attributes V2</button>
       <button type="button" className="rounded border border-surface-border px-3 py-1 disabled:opacity-50" disabled={!connected || !recording || visible?.busy} onClick={() => void refresh('audio_features')}>Refresh audio features</button>
       <button type="button" className="rounded border border-surface-border px-3 py-1 disabled:opacity-50" disabled={!connected || !recording || visible?.busy} onClick={() => void refresh('audio_analysis')}>Refresh detailed analysis</button>
     </div>

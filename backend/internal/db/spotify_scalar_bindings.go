@@ -53,7 +53,7 @@ func checkSpotifyBindings(executor preparationExecutor, a TrackAnalysis) error {
 			continue
 		}
 		b := v.binding
-		if !validExternalKey(b.TrackID, b.Endpoint) || b.SourceFingerprint != a.SourceFingerprint || (b.Endpoint != "audio_features" && b.Endpoint != "audio_analysis") || len(b.AccountContext) > 1024 {
+		if !validExternalKey(b.TrackID, b.Endpoint) || b.SourceFingerprint != a.SourceFingerprint || len(b.AccountContext) > 1024 {
 			return errors.New("invalid Spotify scalar binding")
 		}
 		if !b.Durable && (b.AccountContext == "" || b.AccountContext != active) {

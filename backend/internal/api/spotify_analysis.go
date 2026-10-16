@@ -37,7 +37,7 @@ func spotifyCacheEndpoint(r *http.Request) (string, bool) {
 	if endpoint == "" {
 		endpoint = "audio_features"
 	}
-	return endpoint, endpoint == "audio_features" || endpoint == "audio_analysis"
+	return endpoint, endpoint == "audio_features" || endpoint == "audio_analysis" || endpoint == spotifyanalysis.AttributesV2
 }
 func (a *API) getSpotifyAnalysisStatus(w http.ResponseWriter, r *http.Request) {
 	a.spotifyAuthMu.Lock()
@@ -358,7 +358,7 @@ func (a *API) initSpotifyAnalysis() {
 	}
 	client := spotifyanalysis.NewClient(runtime, spotifyanalysis.Options{Enabled: true, AppVersion: contract.AppVersion, AccountContext: accountContext})
 	store := spotifyRuntimeRefreshStore{DB: a.db, fence: db.SpotifyMetadataFence{Epoch: epoch, ContextKey: accountContext}}
-	service, err := spotifyrefresh.New(store, client, spotifyrefresh.Options{Enabled: true, AdapterRevision: contract.Revision})
+	service, err := spotifyrefresh.New(store, client, spotifyrefresh.Options{Enabled: true, AdapterRevision: contract.Revision + ";" + spotifyanalysis.AttributesV2Revision})
 	if err != nil {
 		logger.API("Could not initialize Spotify reference service")
 		return

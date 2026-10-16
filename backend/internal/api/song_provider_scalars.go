@@ -218,7 +218,7 @@ func (a *API) readSongProviderScalars(ctx context.Context, songID, fingerprint s
 	if selected == nil {
 		selected = []db.SpotifyScalarField{}
 	}
-	return &SongProviderScalars{ReadOnly: true, Unverified: fence != nil && fence.Pending, Provenance: provenance, RecordingID: link.ExternalID, SourceFingerprint: fingerprint, Fields: fields, Attempts: attempts, Selected: selected, SelectionPolicy: "fresh_then_newest_v1", DurableImportStatus: importedStatus}, nil
+	return &SongProviderScalars{ReadOnly: true, Unverified: fence != nil && fence.Pending, Provenance: provenance, RecordingID: link.ExternalID, SourceFingerprint: fingerprint, Fields: fields, Attempts: attempts, Selected: selected, SelectionPolicy: "fresh_then_v2_then_newest_v2", DurableImportStatus: importedStatus}, nil
 }
 
 func selectProviderScalarFields(fields []db.SpotifyScalarField) []db.SpotifyScalarField {

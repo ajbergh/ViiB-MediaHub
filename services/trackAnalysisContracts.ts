@@ -11,7 +11,7 @@ export interface SpotifyScalarField {
   units: string;
   value: number | { tonic: number; mode: number; modeConfidence?: number };
   confidence?: number;
-  endpoint: 'audio_features' | 'audio_analysis';
+  endpoint: 'audio_features' | 'audio_analysis' | 'audio_attributes_v2';
   schemaVersion: number;
   adapterRevision: string;
   retrievedAt: string;
@@ -22,7 +22,7 @@ export interface SpotifyScalarField {
 
 /** Source-bound candidates; stale provider evidence is inspection-only here. */
 export interface EffectiveScalarCandidate extends Omit<SpotifyScalarField, 'endpoint'> {
-  endpoint: 'audio_features' | 'audio_analysis' | '';
+  endpoint: 'audio_features' | 'audio_analysis' | 'audio_attributes_v2' | '';
   source: 'manual' | 'local' | 'spotify_private' | 'spotify_download_import';
   sourceFingerprint: string;
   locked?: boolean;
@@ -39,7 +39,7 @@ export interface TrackAnalysisFeature {
   /** Presence hint; the beatgrid endpoint still validates the source and artifact. */
   hasManualBeatGrid?: boolean;
   effectiveFields?: EffectiveScalar[];
-  providerScores?: Record<string, { value: number; stale: boolean; retrievedAt: string; expiresAt: string; endpoint: 'audio_features' | 'audio_analysis' }>;
+  providerScores?: Record<string, { value: number; stale: boolean; retrievedAt: string; expiresAt: string; endpoint: 'audio_features' | 'audio_analysis' | 'audio_attributes_v2' }>;
   providerScoresUnverified?: boolean;
   providerScalars?: {
     readOnly?: boolean;
@@ -51,7 +51,7 @@ export interface TrackAnalysisFeature {
     fields: SpotifyScalarField[];
     attempts: Array<{
       key: string;
-      endpoint: 'audio_features' | 'audio_analysis';
+      endpoint: 'audio_features' | 'audio_analysis' | 'audio_attributes_v2';
       state: 'available' | 'not_returned' | 'invalid_field';
       reason?: string;
       checkedAt: string;
@@ -59,7 +59,7 @@ export interface TrackAnalysisFeature {
       durableImport?: boolean;
     }>;
     selected: SpotifyScalarField[];
-    selectionPolicy: 'fresh_then_newest_v1';
+    selectionPolicy: 'fresh_then_v2_then_newest_v2';
   };
   songId: string;
   status: 'pending' | 'running' | 'complete' | 'partial' | 'failed' | 'unsupported';
