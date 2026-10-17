@@ -63,7 +63,8 @@ export function useDJWebGL(options: UseDJWebGLOptions = {}): UseDJWebGLReturn {
       isReadyRef.current = true;
       console.log('[useDJWebGL] Renderer initialized');
     } else {
-      console.error('[useDJWebGL] Failed to initialize renderer');
+      renderer.dispose();
+      console.info('[useDJWebGL] Canvas fallback selected');
     }
 
     // Set up resize observer

@@ -462,7 +462,7 @@ const createDefaultMixerState = (): MixerState => ({
   slipModeB: false,        // Default slip mode OFF
   autoGainA: false,        // Default auto-gain OFF
   autoGainB: false,        // Default auto-gain OFF
-  useWebGLWaveform: false, // Default Canvas 2D (safer fallback)
+  useWebGLWaveform: true, // Prefer GPU rendering; context creation detects support and falls back to Canvas.
   djLayoutMode: 'perf',   // Default layout mode: performance workspace (split waveforms visible)
 });
 

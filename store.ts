@@ -23,7 +23,8 @@
 import { useMemo } from 'react';
 import { splitArtistNames } from './lib/artistNames';
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
+import { deduplicatingPersistStorage } from './lib/deduplicatingPersistStorage';
 import { Album, Artist } from './types';
 import { AppState } from './slices/types';
 import { createPlayerSlice } from './slices/playerSlice';
@@ -46,6 +47,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'mediahub-storage',
+      storage: deduplicatingPersistStorage(createJSONStorage<Partial<AppState>>(() => localStorage)),
       // v2: removes legacy renderer secrets and persists Spotify playback preferences.
       // v3: DJv2 workstation defaults to the performance layout. 'fx' was the old
       //     default, so returning users are moved to 'perf' once.
@@ -107,7 +109,10 @@ export const useStore = create<AppState>()(
           audioSettings: {
             ...currentState.audioSettings,
             ...(persisted?.audioSettings || {})
-          }
+          },
+          // Supply new defaults to old preference objects while preserving an
+          // explicit Canvas/WebGL choice saved by a returning user.
+          djMixer: { ...currentState.djMixer, ...(persisted?.djMixer || {}) },
         };
       },
       onRehydrateStorage: () => (state) => {

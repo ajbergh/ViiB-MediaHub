@@ -95,7 +95,7 @@ const SettingsMenu: React.FC<{ onShowShortcuts: () => void }> = ({ onShowShortcu
           <div className='dj-segmented' style={{ marginBottom: 10 }}>
             <button type='button' className='dj-btn dj-btn-xs' aria-pressed={advancedWebGLEnabled && !!useWebGLWaveform}
               disabled={!advancedWebGLEnabled} onClick={() => { if (!useWebGLWaveform) toggleWebGLWaveform(); }}
-              title={advancedWebGLEnabled ? 'GPU-accelerated waveform' : 'Canvas waveform is used in the macOS desktop app for stability'}>WebGL</button>
+              title={advancedWebGLEnabled ? 'Prefer GPU-accelerated waveform; falls back to Canvas if unavailable' : 'WebGL is unavailable in this runtime'}>WebGL</button>
             <button type='button' className='dj-btn dj-btn-xs' aria-pressed={!advancedWebGLEnabled || !useWebGLWaveform}
               onClick={() => { if (useWebGLWaveform) toggleWebGLWaveform(); }} title='Canvas 2D waveform'>Canvas 2D</button>
           </div>

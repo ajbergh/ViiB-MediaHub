@@ -25,7 +25,7 @@ import {
   djCuePointFragmentShader,
   toDJWebGL1FragmentShader,
 } from './DJWaveformShaders';
-import { getPreferredWebGLVersion } from '../../../../lib/webglSafety';
+import { createPreferredWebGLContext } from '../../../../lib/webglSafety';
 import type { Loop } from '../../../../slices/djMixerSlice';
 import { DECK_WAVEFORM_PALETTE, WAVEFORM_CHROME, hexToRgbFloat } from '../waveform/waveformPalette';
 
@@ -155,41 +155,14 @@ export class DJWebGLRenderer {
     
     this.canvas = canvas;
     
-    const preferWebGL1 = getPreferredWebGLVersion() === 'webgl1';
-    // Modern WKWebView supports WebGL 2. Older system WebKit installations
-    // fall through to the WebGL 1 shader path.
-    let gl: WebGL2RenderingContext | WebGLRenderingContext | null = preferWebGL1 ? null : canvas.getContext('webgl2', {
-      alpha: true,
-      antialias: false,
-      depth: false,
-      stencil: false,
-      premultipliedAlpha: true,
-      preserveDrawingBuffer: false,
-    });
-    
-    if (gl) {
-      this.isWebGL2 = true;
-      console.log('[DJWebGL] Using WebGL2');
-    } else {
-      gl = canvas.getContext('webgl', {
-        alpha: true,
-        antialias: false,
-        depth: false,
-        stencil: false,
-        premultipliedAlpha: true,
-      });
-      
-      if (gl) {
-        this.isWebGL2 = false;
-        console.log('[DJWebGL] Using WebGL1 fallback');
-      }
-    }
-    
-    if (!gl) {
-      console.error('[DJWebGL] WebGL not supported');
+    const context = createPreferredWebGLContext(canvas);
+    if (!context) {
+      console.info('[DJWebGL] WebGL unavailable; using Canvas fallback');
       return false;
     }
-    
+    const { gl } = context;
+    this.isWebGL2 = context.webgl2;
+    console.log(`[DJWebGL] Using ${context.webgl2 ? 'WebGL2' : 'WebGL1 fallback'}`);
     this.gl = gl;
     
     try {

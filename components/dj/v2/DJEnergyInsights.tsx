@@ -6,6 +6,7 @@ import { PROVIDER_SCORE_OPTIONS } from '../../../lib/djProviderScores';
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../../../store';
 import { getDJAudioEngine, type SynchronizedPreviewSources } from '../../../lib/djAudio';
 import { hasSeparateHeadphoneRoute, isPreviewDeckOffAir, isPristineEmptyPreviewDeck, isRestorableOccupiedPreviewDeck, stillOwnsDeckSnapshot, stillOwnsPreviewRoute } from '../../../lib/testMixPreviewGuard';
@@ -119,8 +120,17 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   const genreOptions = useMemo(() => Array.from(new Map(librarySongs.flatMap(song => (song.genre ?? [])
     .map(value => value.trim().replace(/\s+/g, ' ')).filter(Boolean).map(value => [value.toLocaleLowerCase(), value] as const))).values()).sort((a, b) => a.localeCompare(b)), [librarySongs]);
   const previewDeckID = deck === 'A' ? 'B' : 'A';
-  const previewDeckState = useStore(state => previewDeckID === 'A' ? state.djDeckA : state.djDeckB);
-  const phaseReferenceState = useStore(state => deck === 'B' ? state.djDeckB : state.djDeckA);
+  const previewDeckState = useStore(useShallow(state => {
+    const current = previewDeckID === 'A' ? state.djDeckA : state.djDeckB;
+    return { track: current.track, cueEnabled: current.cueEnabled, analysisStatus: current.analysisStatus, isPlaying: current.isPlaying };
+  }));
+  // Subscribe to guard results instead of the transport position itself.
+  const previewDeckEmpty = useStore(state => isPristineEmptyPreviewDeck(previewDeckID === 'A' ? state.djDeckA : state.djDeckB));
+  const phaseReferenceState = useStore(useShallow(state => {
+    const current = deck === 'B' ? state.djDeckB : state.djDeckA;
+    return { track: current.track, beatGrid: current.beatGrid, downbeatIndices: current.downbeatIndices,
+      beatGridLocked: current.beatGridLocked, beatGridSource: current.beatGridSource };
+  }));
   const crossfader = useStore(state => state.djMixer.crossfader);
   const masterCueEnabled = useStore(state => state.djMixer.masterCueEnabled);
   const autoGainEnabled = useStore(state => previewDeckID === 'A' ? state.djMixer.autoGainA : state.djMixer.autoGainB);
@@ -291,8 +301,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
   const engine = getDJAudioEngine();
   const headphoneDeviceId = engine.getHeadphoneOutputDeviceId();
   const mainDeviceId = engine.getMainOutputDeviceId();
-  const previewDeckEmpty = isPristineEmptyPreviewDeck(previewDeckState);
-  const previewDeckOccupied = isRestorableOccupiedPreviewDeck(previewDeckState, engine.getDeckLoadedTrackId(previewDeckID))
+  const previewDeckOccupied = isRestorableOccupiedPreviewDeck(useStore.getState()[previewDeckID === 'A' ? 'djDeckA' : 'djDeckB'], engine.getDeckLoadedTrackId(previewDeckID))
     && engine.isLoaded(previewDeckID) && !engine.isScratching(previewDeckID)
     && previewDeckState.isPlaying === engine.isPlaying(previewDeckID);
   const previewAllowed = !!deck && !!candidateTrack && engine.initialized
@@ -309,7 +318,9 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
             : autoGainEnabled ? 'Turn off auto-gain for the preview deck first.'
               : !hasSeparateHeadphoneRoute(headphoneDeviceId, mainDeviceId) ? 'Select a separate headphone output device first.' : '';
 
-  const acceptanceTargetState = previewDeckState;
+  // The boolean subscription above covers every pristine-deck guard field.
+  // Read the complete snapshot for the shared guard without subscribing to ticks.
+  const acceptanceTargetState = useStore.getState()[previewDeckID === 'A' ? 'djDeckA' : 'djDeckB'];
   const acceptanceAllowed = !!deck && !!candidateTrack && engine.initialized
     && canAcceptMixNextCandidate({
       targetDeck: previewDeckID, targetState: acceptanceTargetState,

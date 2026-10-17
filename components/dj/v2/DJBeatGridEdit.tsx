@@ -2,6 +2,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Lock, RotateCcw, Unlock } from 'lucide-react';
 import type { DeckId } from '../../../slices/djMixerSlice';
+import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../../../store';
 import { api } from '../../../services/api';
 
@@ -10,7 +11,12 @@ interface DJBeatGridEditProps { deck: DeckId; }
 const BTN = 'w-11 h-11 rounded bg-[var(--dj-surface-3)] text-[var(--dj-text-secondary)] hover:text-white border border-[var(--dj-border-light)] hover:border-[var(--dj-text-muted)] transition-colors flex items-center justify-center flex-shrink-0 disabled:cursor-not-allowed disabled:opacity-40';
 
 export const DJBeatGridEdit: React.FC<DJBeatGridEditProps> = ({ deck }) => {
-  const deckState = useStore(state => deck === 'A' ? state.djDeckA : state.djDeckB);
+  const deckState = useStore(useShallow(state => {
+    const current = deck === 'A' ? state.djDeckA : state.djDeckB;
+    return { track: current.track, beatGrid: current.beatGrid, downbeatIndices: current.downbeatIndices,
+      beatGridLocked: current.beatGridLocked, beatGridSourceFingerprint: current.beatGridSourceFingerprint,
+      originalBpm: current.originalBpm };
+  }));
   const setDeckAnalysis = useStore(state => state.setDeckAnalysis);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
