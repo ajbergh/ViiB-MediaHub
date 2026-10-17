@@ -1,10 +1,9 @@
 /**
  * ViiB MediaHub - DJ Deck Toolbar (v2)
  *
- * The one continuously needed controls row beneath the track header
- * (Plan §6.2): beat jump with a jump-size select, beat loops with
- * IN / OUT / RELOOP, and the compact stem switch. Everything fits the
- * authored deck width without horizontal scrolling.
+ * Two rows beneath the track header: full-width beat loops with
+ * IN / OUT / RELOOP, then beat jump, FX and compact stem controls.
+ * Everything fits the authored deck width without horizontal scrolling.
  *
  * @module components/dj/v2/DJDeckToolbar
  */

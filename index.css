@@ -633,7 +633,7 @@
 .dj-deck-facts-warn { color: var(--dj-warning); font-size: 11px; }
 .dj-deck-empty { color: var(--dj-text-secondary); font-size: 14px; font-weight: 600; letter-spacing: 0.01em; }
 .dj-deck-empty-sub { color: var(--dj-text-muted); font-size: 11.5px; font-weight: 500; }
-.dj-deck-side { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 4px; }
+.dj-deck-side { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; gap: 2px; }
 .dj-deck-time-row {
   display: flex;
   align-items: baseline;
@@ -650,12 +650,13 @@
 
 .dj-deck-toolbar {
   flex: none;
-  height: var(--dj-toolbar-h);
-  display: flex;
+  height: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   justify-content: space-between;
-  gap: 4px;
-  padding: 0 var(--dj-deck-inset);
+  gap: 6px;
+  padding: 5px var(--dj-deck-inset);
   border-top: 1px solid var(--dj-border-subtle);
   border-bottom: 1px solid rgba(0, 0, 0, 0.4);
   background: linear-gradient(180deg, rgba(20, 26, 36, 0.55) 0%, rgba(12, 16, 24, 0.55) 100%);
@@ -687,10 +688,10 @@
 }
 .dj-toolbar-cluster .dj-btn-icon { padding: 0; min-width: 26px; }
 .dj-workstation[data-dj-waveform-orientation="vertical"] .dj-toolbar-cluster .dj-btn-icon { min-width: 21px; }
-.dj-workstation[data-dj-waveform-orientation="vertical"] .dj-toolbar-loop { grid-column: 1 / -1; grid-row: 1; gap: 6px; }
-.dj-workstation[data-dj-waveform-orientation="vertical"] .dj-toolbar-loop .dj-btn { flex: 1; min-height: 48px; min-width: 44px; padding-inline: 8px; font-size: 13px; }
-.dj-workstation[data-dj-waveform-orientation="vertical"] .dj-toolbar-loop .dj-toolbar-gap { flex: 0 0 6px; }
-.dj-workstation[data-dj-waveform-orientation="vertical"] .dj-toolbar-loop .dj-loop-reloop { flex: 1.8; min-width: 112px; }
+.dj-workstation[data-dj-waveform-orientation] .dj-toolbar-loop { grid-column: 1 / -1; grid-row: 1; gap: 6px; }
+.dj-workstation[data-dj-waveform-orientation] .dj-toolbar-loop .dj-btn { flex: 1; min-height: 48px; min-width: 44px; padding-inline: 8px; font-size: 13px; }
+.dj-workstation[data-dj-waveform-orientation] .dj-toolbar-loop .dj-toolbar-gap { flex: 0 0 6px; }
+.dj-workstation[data-dj-waveform-orientation] .dj-toolbar-loop .dj-loop-reloop { flex: 1.8; min-width: 112px; }
 .dj-toolbar-cluster .dj-select {
   min-height: 34px;
   padding: 0 18px 0 5px;
