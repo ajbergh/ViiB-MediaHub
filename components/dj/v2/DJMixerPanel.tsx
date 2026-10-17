@@ -32,15 +32,15 @@ interface DJMixerPanelProps {
 }
 
 const SYNC_MODES = [
-  { mode: 'off', label: 'OFF', title: 'Sync off' },
-  { mode: 'bpm', label: 'BPM', title: 'Sync matches BPM only' },
-  { mode: 'beat-phase', label: 'PHASE', title: 'Sync matches BPM and beat phase (needs verified grids)' },
+  { mode: 'off', label: 'OFF', title: 'Disable deck SYNC actions; existing tempo is retained' },
+  { mode: 'bpm', label: 'BPM', title: 'Deck SYNC matches the other deck’s BPM; press SYNC on the deck to apply' },
+  { mode: 'beat-phase', label: 'PHASE', title: 'Deck SYNC matches BPM and beat phase; review and lock both manual grids, then press deck SYNC' },
 ] as const;
 
 const CURVES = [
-  { curve: 'linear', label: 'LIN', title: 'Crossfader curve: Linear' },
-  { curve: 'constant-power', label: 'CP', title: 'Crossfader curve: Constant Power' },
-  { curve: 'sharp', label: 'CUT', title: 'Crossfader curve: Sharp / Cut' },
+  { curve: 'linear', label: 'LIN', title: 'Linear fade: both decks at 50% gain in the center' },
+  { curve: 'constant-power', label: 'CP', title: 'Constant-power fade: both decks at about 71% gain in the center' },
+  { curve: 'sharp', label: 'CUT', title: 'Cut: both decks at full gain across the middle; 5% fade at each end' },
 ] as const;
 
 const MixerHeader = React.memo(function MixerHeader() {
@@ -71,7 +71,7 @@ const SyncRow = React.memo(function SyncRow() {
           aria-pressed={syncMode === mode} title={title} onClick={() => setSyncMode(mode)}>{label}</button>
       ))}
       <button type='button' className='dj-btn dj-btn-icon' aria-pressed={!!quantize} onClick={toggleQuantize}
-        title={`Quantize ${quantize ? 'ON' : 'OFF'} - Snap actions to beat grid`} aria-label='Quantize'>Q</button>
+        title={`Loop quantize ${quantize ? 'ON' : 'OFF'} — snap beat-loop buttons to a reviewed, locked manual grid; otherwise start at the playhead`} aria-label='Quantize'>Q</button>
     </div>
   );
 });

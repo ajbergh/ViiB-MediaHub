@@ -336,7 +336,7 @@ try {
   assert.deepEqual(await deckState(), playing, 'browsing changes playing decks');
   await page.waitForFunction((prev) => { const s = window.__djAuditStore.getState(); return s.djDeckA.position > prev[0] && s.djDeckB.position > prev[1]; }, positions);
   await page.keyboard.press('w'); await page.keyboard.press('p');
-  await page.getByRole('button', { name: 'BROWSE', exact: true }).click();
+  await page.locator('.dj-topbar').getByRole('button', { name: 'LIBRARY', exact: true }).click();
   assert.equal(await drawer.isVisible(), true);
   await search.press('Escape');
   await page.getByRole('button', { name: 'Enter fullscreen (F11)', exact: true }).click();

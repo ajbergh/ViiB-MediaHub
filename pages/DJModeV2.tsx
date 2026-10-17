@@ -7,7 +7,7 @@
  *
  * Layout (docs/archive/completed/DJV2_UI_REFACTOR_ENGINEERING_PLAN.md §3):
  * ┌──────────────────────────────────────────────────────────────────────┐
- * │ Top bar: DJ · LIBRARY · BROWSE · FX · SCOPE      REC MIDI AUDIO ⚙ FS │
+ * │ Top bar: PERFORMANCE · LIBRARY · FX · SCOPE     REC MIDI AUDIO ⚙ FS │
  * ├──────────────────────────────────┬───────────────────────────────────┤
  * │ Deck A waveform lane (50%)       │ Deck B waveform lane (50%)        │
  * ├──────────────────────┬───────────┴──────────┬────────────────────────┤
@@ -21,6 +21,7 @@
 
 import React, { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react';
 import { useStore } from '../store';
+import { syncUnavailableReason } from '../lib/djMixerControls';
 import { useDJAudioEngineActions, useDJAudioEngineSync } from '../hooks/useDJAudioEngine';
 import { DJTopBar, type DJUpperView } from '../components/dj/v2/DJTopBar';
 import { DJSplitWaveform, DJWaveformLane } from '../components/dj/v2/DJSplitWaveform';
@@ -254,7 +255,7 @@ const DJModeV2Inner: React.FC = () => {
     const state = useStore.getState();
     const thisDeck = deck === 'A' ? state.djDeckA : state.djDeckB;
     const otherDeck = deck === 'A' ? state.djDeckB : state.djDeckA;
-    if (!thisDeck.originalBpm || !otherDeck.effectiveBpm) return;
+    if (syncUnavailableReason(state, deck) || !thisDeck.originalBpm || !otherDeck.effectiveBpm) return;
     const clampedTempo = Math.max(0.5, Math.min(1.5, otherDeck.effectiveBpm / thisDeck.originalBpm));
     setTempo(deck, clampedTempo);
     if (state.djMixer.syncMode === 'beat-phase') syncBeatPhase(deck);
@@ -263,9 +264,10 @@ const DJModeV2Inner: React.FC = () => {
   const handleLayoutModeChange = useCallback((mode: DJLayoutMode) => {
     setDJLayoutMode(mode);
     if (mode === 'browse') libraryRef.current?.open();
+    if (mode === 'perf') libraryRef.current?.close();
   }, [setDJLayoutMode]);
 
-  // BROWSE means "library open"; closing the library returns to the DJ layout.
+  // Normalize the legacy persisted browse layout when its drawer closes.
   const handleLibraryOpenChange = useCallback((open: boolean) => {
     setLibraryOpen(open);
     if (!open && useStore.getState().djMixer?.djLayoutMode === 'browse') setDJLayoutMode('perf');

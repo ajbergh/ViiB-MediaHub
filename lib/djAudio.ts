@@ -2,6 +2,7 @@
 
 import { createReverbImpulse, getBeatFXDelayTime } from './djAudioEffects';
 import { canSyncBeatGrid } from './beatGridConfidence';
+import { crossfaderGains, beatPhaseCorrection } from './djMixerControls';
 import type { DeckSource } from './deckSource';
 import { StemDeckSource, type StemBus, type StemDeckState, type StemDeckStatus } from './stemDeckSource';
 import { SingleTrackDeckSource } from './singleTrackDeckSource';
@@ -1614,7 +1615,7 @@ export class DJAudioEngine {
 
   /**
    * Set crossfader position (-1 = full A, 0 = center, 1 = full B)
-   * Uses constant-power crossfade curve
+   * Applies the selected linear, constant-power or sharp/cut curve.
    */
   setCrossfader(position: number): void {
     if (!this.crossfaderGainA || !this.crossfaderGainB || !this.audioContext) return;
@@ -1624,12 +1625,9 @@ export class DJAudioEngine {
       ? Math.max(-1, Math.min(1, position))
       : 0;
 
-    // Constant-power crossfade
-    // At position -1: A=1, B=0
-    // At position 0: A=0.707, B=0.707
-    // At position 1: A=0, B=1
-    const gainA = Math.cos((pos + 1) * Math.PI / 4);
-    const gainB = Math.cos((1 - pos) * Math.PI / 4);
+    // Curve selection is read here as well as forwarded by the sync hook,
+    // so direct pointer/MIDI actions and restored settings use the same law.
+    const { a: gainA, b: gainB } = crossfaderGains(pos, useStore.getState().djMixer.crossfaderCurve);
 
     const now = this.audioContext.currentTime;
     this.crossfaderGainA.gain.setValueAtTime(gainA, now);
@@ -2103,48 +2101,16 @@ export class DJAudioEngine {
       return;
     }
     
-    const targetPosition = targetSource.getPosition();
-    
-    // Find current beat in source
-    let sourceBeatIndex = 0;
-    for (let i = 0; i < sourceBeatGrid.length - 1; i++) {
-      if (sourcePosition >= sourceBeatGrid[i] && sourcePosition < sourceBeatGrid[i + 1]) {
-        sourceBeatIndex = i;
-        break;
-      }
-    }
-    
-    // Calculate source's phase within current beat (0-1)
-    const sourceBeatStart = sourceBeatGrid[sourceBeatIndex];
-    const sourceBeatEnd = sourceBeatGrid[sourceBeatIndex + 1] || sourceBeatStart + 0.5;
-    const sourceBeatDuration = sourceBeatEnd - sourceBeatStart;
-    const sourcePhase = (sourcePosition - sourceBeatStart) / sourceBeatDuration;
-    
-    // Find current beat in target
-    let targetBeatIndex = 0;
-    for (let i = 0; i < targetBeatGrid.length - 1; i++) {
-      if (targetPosition >= targetBeatGrid[i] && targetPosition < targetBeatGrid[i + 1]) {
-        targetBeatIndex = i;
-        break;
-      }
-    }
-    
-    // Calculate where target should be to match source phase
-    const targetBeatStart = targetBeatGrid[targetBeatIndex];
-    const targetBeatEnd = targetBeatGrid[targetBeatIndex + 1] || targetBeatStart + 0.5;
-    const targetBeatDuration = targetBeatEnd - targetBeatStart;
-    const targetIdealPosition = targetBeatStart + (sourcePhase * targetBeatDuration);
-    
-    // Calculate offset needed
-    const phaseOffset = targetIdealPosition - targetPosition;
-    
-    // Only nudge if offset is significant but not too large (avoid jumping beats)
-    const maxOffset = targetBeatDuration / 2;  // Max half a beat
-    if (Math.abs(phaseOffset) > 0.005 && Math.abs(phaseOffset) < maxOffset) {
+    const target = targetDeck === 'A' ? state.djDeckA : state.djDeckB;
+    const source = targetDeck === 'A' ? state.djDeckB : state.djDeckA;
+    const liveSourcePosition = this.getDeckSource(targetDeck === 'A' ? 'B' : 'A')?.getPosition() ?? sourcePosition;
+    const phaseOffset = beatPhaseCorrection(
+      { beatGrid: targetBeatGrid, beatGridOffset: target.beatGridOffset },
+      { beatGrid: sourceBeatGrid, beatGridOffset: source.beatGridOffset },
+      targetSource.getPosition(), liveSourcePosition,
+    );
+    if (Number.isFinite(phaseOffset) && Math.abs(phaseOffset) > 0.005) {
       this.nudgePosition(targetDeck, phaseOffset * 1000);
-      console.log(`🎯 Beat-phase sync: Deck ${targetDeck} nudged by ${(phaseOffset * 1000).toFixed(1)}ms`);
-    } else if (Math.abs(phaseOffset) >= maxOffset) {
-      console.log(`🎯 Beat-phase sync: Offset too large (${(phaseOffset * 1000).toFixed(1)}ms), skipping nudge`);
     }
   }
 

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const state = {
   djDeckA: { tempo: 1, loop: { start: 2, end: 4, enabled: true, pendingIn: null }, beatGrid: [0, 0.5, 1], beatGridOffset: 0, beatGridSource: 'manual', beatGridLocked: true, effectiveBpm: 120, originalBpm: 120 },
   djDeckB: { tempo: 1, loop: { start: 0, end: 0, enabled: false, pendingIn: null }, beatGrid: [0, 0.5, 1], beatGridOffset: 0, beatGridSource: 'manual', beatGridLocked: true, effectiveBpm: 120, originalBpm: 120 },
-  djMixer: { quantize: false, slipModeA: false, slipModeB: false },
+  djMixer: { quantize: false, slipModeA: false, slipModeB: false, crossfaderCurve: 'constant-power' },
   setDeckPosition: vi.fn(), setDeckPlaying: vi.fn(), setDeckDuration: vi.fn(),
   setLoop: vi.fn(), setPendingLoopIn: vi.fn(), toggleLoop: vi.fn(), clearLoop: vi.fn(),
 };
@@ -32,6 +32,33 @@ function fakeSource(position = 3.9) {
 
 describe('DJAudioEngine DeckSource integration', () => {
   afterEach(() => { vi.restoreAllMocks(); });
+
+  it('applies the selected curve to the actual crossfader gain nodes at the current position', () => {
+    const engine = new DJAudioEngine();
+    const a = vi.fn(), b = vi.fn();
+    Object.assign(engine, { audioContext: { currentTime: 7 }, crossfaderGainA: { gain: { setValueAtTime: a } },
+      crossfaderGainB: { gain: { setValueAtTime: b } } });
+    try {
+      for (const [curve, expected] of [['linear', 0.5], ['constant-power', Math.SQRT1_2], ['sharp', 1]] as const) {
+        state.djMixer.crossfaderCurve = curve;
+        engine.setCrossfader(0);
+        expect(a.mock.lastCall![0]).toBeCloseTo(expected);
+        expect(b.mock.lastCall![0]).toBeCloseTo(expected);
+        expect(a.mock.lastCall![1]).toBe(7);
+      }
+    } finally { state.djMixer.crossfaderCurve = 'constant-power'; }
+  });
+
+  it('Q off leaves a reviewed-grid beat loop anchored at the playhead', () => {
+    const engine = new DJAudioEngine();
+    Object.assign(engine, { deckSourceA: fakeSource(0.3).source });
+    const previous = state.djMixer.quantize;
+    try {
+      state.djMixer.quantize = false;
+      engine.setLoopBeats('A', 1);
+      expect(state.setLoop).toHaveBeenLastCalledWith('A', 0.3, 0.8);
+    } finally { state.djMixer.quantize = previous; }
+  });
 
   it('runs the fallback loop ticker only for playing, non-scratched non-native loops', async () => {
     const created: Array<{ terminate: ReturnType<typeof vi.fn>; onerror?: () => void }> = [];
@@ -128,7 +155,7 @@ describe('DJAudioEngine DeckSource integration', () => {
 
     sourceState.position = 0.2;
     engine.syncBeatPhase('B', [0, 0.5, 1], [0, 0.5, 1], 0.3);
-    expect(source.seek).toHaveBeenLastCalledWith(0.3);
+    expect(source.seek.mock.lastCall![0]).toBeCloseTo(0.3);
   });
 
   it('exposes playback and loaded state from the source', async () => {

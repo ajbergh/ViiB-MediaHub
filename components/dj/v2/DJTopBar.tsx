@@ -4,9 +4,8 @@
  * Compact global navigation strip (Plan §10A.4). One mode group replaces the
  * former SCOPE/TIMELINE/RACKS + PERF/BROWSE/FX pair:
  *
- *   DJ      performance workspace (split waveforms, full decks)
+ *   PERFORMANCE restores the decks and waveforms and closes the library
  *   LIBRARY toggles the library drawer
- *   BROWSE  performance geometry with the library open
  *   FX      brings the mixer's FX pad (X-Y pad + Beat FX) forward
  *   SCOPE   swaps the waveform band for the diagnostic scope
  *
@@ -115,11 +114,10 @@ export const DJTopBar: React.FC<DJTopBarProps> = ({
   isRecording, recordingDuration, onRecordToggle, midiEnabled, onOpenMidi, onOpenAudio, onShowShortcuts,
 }) => {
   const modes: ReadonlyArray<{ mode: DJLayoutMode; label: string; title: string }> = [
-    { mode: 'perf', label: 'DJ', title: 'Performance workspace — split waveforms and full decks' },
-    { mode: 'browse', label: 'BROWSE', title: 'Browse — performance geometry with the library open' },
+    { mode: 'perf', label: 'PERFORMANCE', title: 'Return to the decks and waveforms; close the library' },
     { mode: 'fx', label: 'FX', title: 'FX — X-Y pad and Beat FX in the mixer' },
   ];
-  const [dj, browse, fx] = modes;
+  const [performance, fx] = modes;
   const modeButton = ({ mode, label, title }: typeof modes[number]) => (
     <button key={mode} type='button' className='dj-btn dj-topbar-mode' aria-pressed={layoutMode === mode} title={title}
       onClick={() => { onLayoutModeChange(mode); if (mode === 'perf') onUpperViewChange('waveform'); }}>{label}</button>
@@ -128,10 +126,9 @@ export const DJTopBar: React.FC<DJTopBarProps> = ({
   return (
     <header className='dj-topbar'>
       <nav className='dj-topbar-group' aria-label='DJ workspace modes'>
-        {modeButton(dj)}
+        {modeButton(performance)}
         <button type='button' className='dj-btn dj-topbar-mode' aria-expanded={libraryOpen} aria-controls='dj-library-drawer'
           title='Toggle the library (/)' onClick={onToggleLibrary}>LIBRARY</button>
-        {modeButton(browse)}
         {modeButton(fx)}
         <button type='button' className='dj-btn dj-topbar-mode' aria-pressed={upperView === 'scope'}
           title='Swap the waveform band for the signal scope' onClick={() => onUpperViewChange(upperView === 'scope' ? 'waveform' : 'scope')}>SCOPE</button>
