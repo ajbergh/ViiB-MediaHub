@@ -361,10 +361,10 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
         <defs>
           {/* Dark machined platter base */}
           <radialGradient id={`platter-${deck}`} cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#1b202c" />
-            <stop offset="65%" stopColor="#0f131b" />
-            <stop offset="92%" stopColor="#090c12" />
-            <stop offset="100%" stopColor="#05070b" />
+            <stop offset="0%" stopColor="var(--dj-border-subtle)" />
+            <stop offset="65%" stopColor="var(--dj-surface-1)" />
+            <stop offset="92%" stopColor="var(--dj-bg)" />
+            <stop offset="100%" stopColor="var(--dj-bg)" />
           </radialGradient>
 
           {/* Diagonal vinyl/anodized specular sheen */}
@@ -378,9 +378,9 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
 
           {/* Center OLED glass depth gradient */}
           <linearGradient id={`oledGlass-${deck}`} x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#0c1018" />
-            <stop offset="45%" stopColor="#06080d" />
-            <stop offset="100%" stopColor="#040508" />
+            <stop offset="0%" stopColor="var(--dj-bg-elevated)" />
+            <stop offset="45%" stopColor="var(--dj-bg)" />
+            <stop offset="100%" stopColor="var(--dj-bg)" />
           </linearGradient>
 
           <filter id={`textGlow-${deck}`}>
@@ -390,7 +390,7 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
         </defs>
 
         {/* Outer Machined Chassis Bezel */}
-        <circle cx={c} cy={c} r={c - 1.5} fill="#07090e" stroke="rgba(255, 255, 255, 0.08)" strokeWidth="1.2" />
+        <circle cx={c} cy={c} r={c - 1.5} fill="var(--dj-bg)" stroke="rgba(255, 255, 255, 0.08)" strokeWidth="1.2" />
 
         {/* Beat-pulse glow ring - animated via ref */}
         <circle ref={glowRingRef} cx={c} cy={c} r={c - 3} fill="none" style={{ stroke: accent, display: 'none' }} strokeWidth="2" opacity="0.3" />
@@ -458,7 +458,7 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
             cx={c}
             cy={7}
             r={Math.max(2, computedSize * 0.01)}
-            fill="#ffffff"
+            fill="var(--dj-text-primary)"
           />
         </g>
 
@@ -467,7 +467,7 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
           cx={c}
           cy={c}
           r={hubOuterRadius}
-          fill="#121620"
+          fill="var(--dj-surface-2)"
           stroke="rgba(255, 255, 255, 0.14)"
           strokeWidth="1"
         />

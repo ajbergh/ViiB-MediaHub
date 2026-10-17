@@ -104,15 +104,15 @@ const SamplerPadButton = memo(({
             ? 'scale-[0.98] translate-y-px'
             : hasAssignment
               ? 'hover:brightness-125 active:scale-[0.98] active:translate-y-px'
-              : 'hover:border-slate-500 active:scale-[0.98]'
+              : 'hover:border-[var(--dj-border-hover)] active:scale-[0.98]'
         }`}
         style={{
-          borderColor: hasAssignment ? pad.color : '#232c3d',
+          borderColor: hasAssignment ? pad.color : 'var(--dj-border)',
           background: pad.isPlaying
-            ? `linear-gradient(180deg, color-mix(in srgb, ${pad.color} 44%, #182030) 0%, color-mix(in srgb, ${pad.color} 22%, #101520) 100%)`
+            ? `linear-gradient(180deg, color-mix(in srgb, ${pad.color} 44%, var(--dj-border-subtle)) 0%, color-mix(in srgb, ${pad.color} 22%, var(--dj-surface-1)) 100%)`
             : hasAssignment
-              ? `linear-gradient(180deg, color-mix(in srgb, ${pad.color} 22%, #182030) 0%, color-mix(in srgb, ${pad.color} 10%, #101520) 100%)`
-              : 'linear-gradient(180deg, #161d2a 0%, #0e131d 100%)',
+              ? `linear-gradient(180deg, color-mix(in srgb, ${pad.color} 22%, var(--dj-border-subtle)) 0%, color-mix(in srgb, ${pad.color} 10%, var(--dj-surface-1)) 100%)`
+              : 'linear-gradient(180deg, var(--dj-border-subtle) 0%, var(--dj-surface-1) 100%)',
           boxShadow: pad.isPlaying
             ? `inset 0 1px 0 rgba(255,255,255,0.35), 0 0 14px color-mix(in srgb, ${pad.color} 55%, transparent)`
             : hasAssignment
@@ -158,7 +158,7 @@ const SamplerPadButton = memo(({
             {needsRelink ? 'RELINK' : pad.isPlaying ? pad.mode.toUpperCase() : pad.id + 1}
           </span>
         ) : (
-          <span className="relative z-10 text-[9px] font-mono text-slate-600 leading-none mt-0.5">LOAD</span>
+          <span className="relative z-10 text-[9px] font-mono text-[var(--dj-text-muted)] leading-none mt-0.5">LOAD</span>
         )}
       </button>
       

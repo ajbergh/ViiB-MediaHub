@@ -109,9 +109,8 @@ const DJFXToggleButton = React.memo(function DJFXToggleButton({
   onToggle: () => void;
 }) {
   const activeCount = useStore(s => {
-    const fx = deck === 'A' ? s.djFX?.deckA : s.djFX?.deckB;
-    if (!fx) return 0;
-    return (fx.filter?.enabled ? 1 : 0) + (fx.delay?.enabled ? 1 : 0) + (fx.reverb?.enabled ? 1 : 0) + (fx.flanger?.enabled ? 1 : 0);
+    const fx = (deck === 'A' ? s.djDeckA : s.djDeckB).fx;
+    return (fx.filter.enabled ? 1 : 0) + (fx.delay.enabled ? 1 : 0) + (fx.reverb.enabled ? 1 : 0) + (fx.flanger.enabled ? 1 : 0);
   });
 
   return (

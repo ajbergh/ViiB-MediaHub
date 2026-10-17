@@ -2,11 +2,10 @@
  * ViiB MediaHub - DJ Split Waveform (v2)
  *
  * Stacked parallel detail waveforms (Deck A on top, Deck B directly below)
- * sharing a single continuous vertical center playhead line so beat grids
- * and transients can be phase-aligned visually (Serato / Rekordbox style).
- * Each lane docks its badge, color mode, three-band and zoom controls in a
- * fixed-width left control wing so both waveform canvases have identical
- * horizontal bounds. Whole-track overview bars live in each Deck Header.
+ * sharing one aligned playhead position in a full-lane coordinate space.
+ * Each lane places its badge, color mode, three-band and zoom controls at its
+ * outer end, with the timeline filling the remaining width to the opposite edge.
+ * Whole-track overview bars live in each Deck Header.
  *
  * Renderer: WebGL per lane when enabled and available, otherwise Canvas 2D.
  * A lane that fails to create a WebGL context falls back on its own.

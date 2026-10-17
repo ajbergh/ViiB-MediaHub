@@ -134,7 +134,7 @@ export const DJHotCuePad: React.FC<DJHotCuePadProps> = ({
             style={
               consoleLayout
                 ? ({
-                    ['--cue-color' as string]: color,
+                    ['--cue-color' as string]: `var(--dj-deck-${deck === 'A' ? 'a' : 'b'}-bright)`,
                   } as React.CSSProperties)
                 : isActive && track
                   ? {

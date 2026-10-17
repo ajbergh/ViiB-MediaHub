@@ -133,7 +133,7 @@ export const DJHeadphoneMix: React.FC<DJHeadphoneMixProps> = ({
       {/* Mix Slider */}
       <div
         ref={sliderRef}
-        className="relative h-5 bg-[#070a0f] rounded cursor-pointer border border-[var(--dj-border)] shadow-[inset_0_1px_3px_rgba(0,0,0,0.85)]"
+        className="relative h-5 bg-[var(--dj-bg)] rounded cursor-pointer border border-[var(--dj-border)] shadow-[inset_0_1px_3px_rgba(0,0,0,0.85)]"
         style={{ width }}
         onMouseDown={handleMouseDown}
         onDoubleClick={handleDoubleClick}
@@ -148,21 +148,21 @@ export const DJHeadphoneMix: React.FC<DJHeadphoneMixProps> = ({
         title="Headphone Mix - Cue ↔ Master (double-click to center)"
       >
         {/* Recessed track slot + center calibration tick */}
-        <div className="absolute inset-x-2 top-1/2 -translate-y-1/2 h-1 rounded-full bg-[#161d2a] border border-[#222c3f]" />
+        <div className="absolute inset-x-2 top-1/2 -translate-y-1/2 h-1 rounded-full bg-[var(--dj-border-subtle)] border border-[var(--dj-border)]" />
         <div className="absolute inset-y-0.5 left-1/2 -translate-x-1/2 w-0.5 bg-[var(--dj-border-hover)]" />
         
         {/* Hardware Fader Cap */}
         <div
-          className="absolute top-0.5 w-3.5 h-3.5 rounded-[2px] border border-slate-500/80 shadow-[0_2px_4px_rgba(0,0,0,0.75)] flex items-center justify-center transition-colors"
+          className="absolute top-0.5 w-3.5 h-3.5 rounded-[2px] border border-[var(--dj-border-hover)] shadow-[0_2px_4px_rgba(0,0,0,0.75)] flex items-center justify-center transition-colors"
           style={{
             left: (width - 14) * mix,
-            background: 'linear-gradient(180deg, #475569 0%, #1e293b 50%, #0f172a 100%)',
+            background: 'linear-gradient(180deg, var(--dj-text-disabled) 0%, var(--dj-surface-3) 50%, var(--dj-surface-2) 100%)',
           }}
         >
           <span
             className="w-0.5 h-2.5 rounded-full"
             style={{
-              backgroundColor: mix < 0.5 ? 'var(--dj-warning)' : mix > 0.5 ? 'var(--dj-info)' : '#f8fafc',
+              backgroundColor: mix < 0.5 ? 'var(--dj-warning)' : mix > 0.5 ? 'var(--dj-info)' : 'var(--dj-text-primary)',
             }}
           />
         </div>

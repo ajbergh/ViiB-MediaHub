@@ -15,7 +15,7 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
 import { useStore } from '../../../store';
-import type { DeckId, DeckEQ } from '../../../slices/djMixerSlice';
+import type { DeckId, DeckEQ, DJLayoutMode } from '../../../slices/djMixerSlice';
 import { DeckTimeDisplay, DeckHasTrack } from './DJDeckComponents';
 import { DeckFacts } from './DJDeckFacts';
 import { DJDeckStatusBar } from './DJDeckStatusBar';
@@ -46,7 +46,7 @@ export interface DJDeckPanelProps {
 
 const DeckVinylFallback = ({ deck }: { deck: DeckId }) => (
   <svg width='36' height='36' viewBox='0 0 36 36' fill='none' aria-hidden='true' className='dj-deck-art-disc'>
-    <circle cx='18' cy='18' r='16' fill='#0b0e15' stroke='rgba(255,255,255,0.12)' strokeWidth='1' />
+    <circle cx='18' cy='18' r='16' fill='var(--dj-bg-elevated)' stroke='rgba(255,255,255,0.12)' strokeWidth='1' />
     <circle cx='18' cy='18' r='12.5' stroke='rgba(255,255,255,0.06)' strokeWidth='0.75' />
     <circle cx='18' cy='18' r='9.5' stroke='rgba(255,255,255,0.06)' strokeWidth='0.75' />
     <circle
@@ -57,7 +57,7 @@ const DeckVinylFallback = ({ deck }: { deck: DeckId }) => (
       stroke={deck === 'A' ? 'var(--dj-deck-a-bright)' : 'var(--dj-deck-b-bright)'}
       strokeWidth='1.2'
     />
-    <circle cx='18' cy='18' r='1.8' fill='#06080c' />
+    <circle cx='18' cy='18' r='1.8' fill='var(--dj-bg)' />
   </svg>
 );
 
@@ -124,9 +124,11 @@ export const DJDeckPanel = React.memo(function DJDeckPanel({
 }: DJDeckPanelProps) {
   const hasTrack = useStore(s => Boolean((deck === 'A' ? s.djDeckA : s.djDeckB).track));
   const layoutMode = useStore(s => s.djMixer?.djLayoutMode || 'perf');
-  const [fxDrawerOpen, setFxDrawerOpen] = useState(false);
-  const fxOpen = layoutMode === 'fx' || fxDrawerOpen;
-  const handleToggleFX = useCallback(() => setFxDrawerOpen(open => !open), []);
+  const [fxDrawerOpen, setFxDrawerOpen] = useState<Partial<Record<DJLayoutMode, boolean>>>({});
+  const fxOpen = fxDrawerOpen[layoutMode] ?? layoutMode === 'fx';
+  const handleToggleFX = useCallback(() => {
+    setFxDrawerOpen(previous => ({ ...previous, [layoutMode]: !(previous[layoutMode] ?? layoutMode === 'fx') }));
+  }, [layoutMode]);
   const handleTempo = useCallback((value: number) => onTempoChange(deck, value), [deck, onTempoChange]);
 
   const tempo = (

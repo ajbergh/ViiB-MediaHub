@@ -203,15 +203,15 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
           <defs>
             {/* Machined anodized cap gradient */}
             <linearGradient id={capGradId} x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#2c3344" />
-              <stop offset="48%" stopColor="#171b24" />
-              <stop offset="100%" stopColor="#0b0e14" />
+              <stop offset="0%" stopColor="var(--dj-border)" />
+              <stop offset="48%" stopColor="var(--dj-surface-2)" />
+              <stop offset="100%" stopColor="var(--dj-bg-elevated)" />
             </linearGradient>
 
             {/* Outer skirt bevel gradient */}
             <linearGradient id={skirtGradId} x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#1e2430" />
-              <stop offset="100%" stopColor="#090b10" />
+              <stop offset="0%" stopColor="var(--dj-surface-3)" />
+              <stop offset="100%" stopColor="var(--dj-bg)" />
             </linearGradient>
 
             {/* Hardware drop shadow */}
@@ -311,7 +311,7 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
             cx="20"
             cy="20"
             r="8.8"
-            fill="#0e121a"
+            fill="var(--dj-surface-1)"
             stroke="rgba(255, 255, 255, 0.06)"
             strokeWidth="0.6"
           />
@@ -323,7 +323,7 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
               y1="7.2"
               x2="20"
               y2="16.5"
-              stroke="#05070b"
+              stroke="var(--dj-bg)"
               strokeWidth="3.2"
               strokeLinecap="round"
             />
@@ -332,7 +332,7 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
               y1="7.6"
               x2="20"
               y2="16.2"
-              stroke={value !== 0 ? color : '#f8fafc'}
+              stroke={value !== 0 ? color : 'var(--dj-text-primary)'}
               strokeWidth="1.8"
               strokeLinecap="round"
             />
@@ -352,13 +352,13 @@ export const DJEQKnob: React.FC<DJEQKnobProps> = React.memo(({
           <div className="absolute left-1/2 -translate-x-1/2 top-0 w-0.5 h-full bg-[var(--dj-border-hover)]" />
 
           {/* Value fill */}
-          {value !== 0 && (
+          {(unipolar ? indicatorPercent > 0 : value !== 0) && (
             <div
               className="absolute h-full rounded-sm transition-all duration-50"
               style={{
                 backgroundColor: color,
-                left: isNegative ? `${indicatorPercent}%` : '50%',
-                width: isNegative
+                left: unipolar ? '0%' : isNegative ? `${indicatorPercent}%` : '50%',
+                width: unipolar ? `${indicatorPercent}%` : isNegative
                   ? `${50 - indicatorPercent}%`
                   : `${indicatorPercent - 50}%`,
                 boxShadow: `0 0 4px color-mix(in srgb, ${color} 25%, transparent)`,

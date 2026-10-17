@@ -13,7 +13,7 @@ it('draws three common-scale lanes while preserving local timeline markers',()=>
 it('draws vertical scrolling waveform with horizontal playhead when orientation is vertical',()=>{
  const methods=new Map<string,ReturnType<typeof vi.fn>>();
  const ctx=new Proxy({},{get:(_,key)=>{const name=String(key);if(!methods.has(name))methods.set(name,vi.fn());return methods.get(name);},set:()=>true}) as CanvasRenderingContext2D;
- drawMainWaveform(ctx,30,20,{deck:'B',peaks:[0.8,0.5,0.9,0.4],position:1,duration:2,beatGrid:[1],beatGridOffset:0,cuePoint:0.5,hotCues:[{slot:1,position:1.2,color:'#22c55e',source:'user'}],loop:{start:0.5,end:1.5,enabled:true} as any,visibleSeconds:2,colorMode:'single',hasTrack:true,orientation:'vertical'});
+ drawMainWaveform(ctx,30,20,{deck:'B',peaks:[0.8,0.5,0.9,0.4],position:1,duration:2,beatGrid:[1],beatGridOffset:0,cuePoint:0.5,hotCues:[{slot:1,position:1.2,color:'green',origin:'user'}],loop:{start:0.5,end:1.5,enabled:true} as any,visibleSeconds:2,colorMode:'single',hasTrack:true,orientation:'vertical'});
  const rectangles=methods.get('rect')!.mock.calls;
  expect(rectangles.length).toBeGreaterThan(0);
  expect(rectangles.every(args=>args[3]===1)).toBe(true);
