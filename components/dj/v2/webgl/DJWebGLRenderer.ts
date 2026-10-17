@@ -27,6 +27,9 @@ import {
 } from './DJWaveformShaders';
 import { createPreferredWebGLContext } from '../../../../lib/webglSafety';
 import type { Loop } from '../../../../slices/djMixerSlice';
+import type { DJThreeBands } from '../../../../hooks/useDJThreeBands';
+import type { WaveformBandSelection } from '../waveform/canvasWaveformRenderer';
+import { packThreeBandTexture } from './packThreeBandTexture';
 import { DECK_WAVEFORM_PALETTE, WAVEFORM_CHROME, hexToRgbFloat } from '../waveform/waveformPalette';
 
 export type DeckId = 'A' | 'B';
@@ -38,6 +41,8 @@ export interface HotCue {
 }
 
 export interface DJWaveformRenderState {
+  threeBands?: DJThreeBands;
+  bandSelection?: WaveformBandSelection;
   /** Waveform peak data (0-1 normalized amplitudes) */
   peaks: number[] | Float32Array | null;
   /** Current playback position in seconds */
@@ -121,6 +126,9 @@ export class DJWebGLRenderer {
   // Textures (per-deck waveform data)
   private waveformTextureA: WebGLTexture | null = null;
   private waveformTextureB: WebGLTexture | null = null;
+  private bandTextures: Partial<Record<DeckId, WebGLTexture>> = {};
+  private sourceBands: Partial<Record<DeckId, DJThreeBands>> = {};
+  private bandShapes: Partial<Record<DeckId, { width: number; height: number; count: number }>> = {};
   private textureWidth: number = 4096; // High resolution for smooth scrolling
   
   // State
@@ -296,6 +304,12 @@ export class DJWebGLRenderer {
         // Re-upload waveform data
         this.updateWaveformData('A', this.sourcePeaksA);
         this.updateWaveformData('B', this.sourcePeaksB);
+        this.bandTextures = {};
+        const previousBands = this.sourceBands;
+        this.sourceBands = {};
+        for (const deck of ['A', 'B'] as const) {
+          if (previousBands[deck]) this.updateThreeBandData(deck, previousBands[deck]);
+        }
         
         console.log('[DJWebGL] Context restored successfully');
       } catch (error) {
@@ -458,9 +472,24 @@ export class DJWebGLRenderer {
     gl.bindTexture(gl.TEXTURE_2D, null);
   }
 
-  /**
-   * Resizes the renderer
-   */
+  private updateThreeBandData(deck: DeckId, bands: DJThreeBands): void {
+    if (!this.gl || this.sourceBands[deck] === bands) return;
+    const gl = this.gl;
+    const packed = packThreeBandTexture(bands, Number(gl.getParameter(gl.MAX_TEXTURE_SIZE)) || 4096);
+    const texture = this.bandTextures[deck] ?? gl.createTexture();
+    if (!texture) throw new Error('Unable to allocate three-band texture');
+    this.bandTextures[deck] = texture;
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, packed.width, packed.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, packed.pixels);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this.sourceBands[deck] = bands;
+    this.bandShapes[deck] = { width: packed.width, height: packed.height, count: packed.count };
+  }
+
+  /** Resizes the renderer. */
   resize(width: number, height: number): void {
     if (width <= 0 || height <= 0) return;
     
@@ -484,7 +513,9 @@ export class DJWebGLRenderer {
     
     const gl = this.gl;
     const prog = this.waveformProgram;
-    const texture = state.deck === 'A' ? this.waveformTextureA : this.waveformTextureB;
+    if (state.threeBands) this.updateThreeBandData(state.deck, state.threeBands);
+    const texture = state.threeBands ? this.bandTextures[state.deck]
+      : state.deck === 'A' ? this.waveformTextureA : this.waveformTextureB;
     const deckColor = state.deck === 'A' ? this.options.deckAColor : this.options.deckBColor;
     
     // Clear
@@ -496,10 +527,11 @@ export class DJWebGLRenderer {
     
     // Set uniforms
     const dpr = Math.min(window.devicePixelRatio || 1, this.isWebGL2 ? 2 : 1.5);
-    const hasPeaks = state.peaks && state.peaks.length > 0 && state.duration > 0;
+    const hasPeaks = state.duration > 0 && (state.threeBands ? state.threeBands.data.low.length > 0 : !!state.peaks?.length);
     const position = hasPeaks ? state.position / state.duration : 0;
     const visibleRange = hasPeaks ? state.visibleSeconds / state.duration : 0.1;
-    const textureShape = state.deck === 'A' ? this.textureShapeA : this.textureShapeB;
+    const textureShape = state.threeBands ? this.bandShapes[state.deck]!
+      : state.deck === 'A' ? this.textureShapeA : this.textureShapeB;
     
     gl.uniform1i(this.getUniform(prog, 'u_waveformTex'), 0);
     gl.uniform1f(this.getUniform(prog, 'u_position'), position);
@@ -515,6 +547,8 @@ export class DJWebGLRenderer {
     gl.uniform1f(this.getUniform(prog, 'u_loopEnd'), state.loop.end > state.loop.start ? state.loop.end / state.duration : -1);
     gl.uniform1i(this.getUniform(prog, 'u_loopEnabled'), state.loop.enabled ? 1 : 0);
     gl.uniform1i(this.getUniform(prog, 'u_colorMode'), state.colorMode);
+    gl.uniform1i(this.getUniform(prog, 'u_threeBands'), state.threeBands ? 1 : 0);
+    gl.uniform1i(this.getUniform(prog, 'u_bandSelection'), ({ all: -1, low: 0, mid: 1, high: 2 })[state.bandSelection ?? 'all']);
     const gradient = state.deck === 'A' ? this.options.gradientA : this.options.gradientB;
     gl.uniform3fv(this.getUniform(prog, 'u_gradCenter'), gradient[0]);
     gl.uniform3fv(this.getUniform(prog, 'u_gradMid'), gradient[1]);
@@ -826,6 +860,7 @@ export class DJWebGLRenderer {
       // Delete textures
       if (this.waveformTextureA) gl.deleteTexture(this.waveformTextureA);
       if (this.waveformTextureB) gl.deleteTexture(this.waveformTextureB);
+      for (const texture of Object.values(this.bandTextures)) gl.deleteTexture(texture);
       
       // Delete buffers
       if (this.quadBuffer) gl.deleteBuffer(this.quadBuffer);
@@ -851,6 +886,9 @@ export class DJWebGLRenderer {
     }
     
     this.canvas = null;
+    this.bandTextures = {};
+    this.sourceBands = {};
+    this.bandShapes = {};
     this.gl = null;
     this.initialized = false;
     this.contextLost = false;

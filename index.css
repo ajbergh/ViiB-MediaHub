@@ -482,6 +482,7 @@
 }
 .dj-waveform-main-wrap { min-width: 0; min-height: 0; position: relative; border-radius: 3px; overflow: hidden; background: var(--dj-bg); border: 1px solid rgba(255, 255, 255, 0.05); }
 .dj-waveform-main { position: absolute; inset: 0; display: block; width: 100%; height: 100%; border-radius: 3px; }
+.dj-waveform-band-labels { position: absolute; inset: 0; display: grid; padding: 2px 4px; pointer-events: none; color: var(--dj-text-secondary); font: 9px system-ui; }
 /* Both canvases cover the same full-lane coordinate space. Their wrappers clip
    the part behind each control panel, keeping playheads and time scales aligned.
    Seek/scratch use the canvas bounds, so their coordinates follow this space. */

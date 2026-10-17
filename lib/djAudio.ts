@@ -251,6 +251,9 @@ export class DJAudioEngine {
   private positionIdleTimer: ReturnType<typeof setTimeout> | null = null;
   private loopWorker: Worker | null = null;
   private loopCheckTimer: ReturnType<typeof setInterval> | null = null;
+  private loopTrackingActive = false;
+  private loopWorkerFailed = false;
+  private loopStoreUnsubscribe: (() => void) | null = null;
   private sourceListeners: Partial<Record<DeckId, {
     source: DeckSource;
     ended: () => void;
@@ -885,6 +888,7 @@ export class DJAudioEngine {
     if (!source) return;
     const deckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
     source.setLoop(deckState.loop.start, deckState.loop.end, deckState.loop.enabled);
+    this.reconcileLoopTicker();
   }
 
   // ============================================================================
@@ -1027,6 +1031,7 @@ export class DJAudioEngine {
     this.clearScratchAudio(deck);
     delete this.deckAudioUrls[deck];
     this.getDeckSource(deck)?.unload();
+    this.reconcileLoopTicker();
   }
 
   /** Monotonic operation epoch used by reversible off-air preview sessions. */
@@ -1215,7 +1220,7 @@ export class DJAudioEngine {
       try { source.outputNode.disconnect(gain); } catch { /* no connection */ }
       try { current.outputNode.connect(gain); } catch { /* engine is no longer safely swappable */ }
       this.bindDeckSourceListeners(deck, current);
-      if (retained.wasPlaying) void current.play();
+      if (retained.wasPlaying) void current.play().then(() => this.reconcileLoopTicker());
       this.discardPreparedTrack(prepared);
       console.error(`Unable to connect prepared source for Deck ${deck}`, error);
       return null;
@@ -1268,7 +1273,7 @@ export class DJAudioEngine {
     retained.state = 'restored';
     beforeResume?.();
     current.dispose();
-    if (retained.wasPlaying) void source.play();
+    if (retained.wasPlaying) void source.play().then(() => this.reconcileLoopTicker());
     return true;
   }
 
@@ -1304,6 +1309,7 @@ export class DJAudioEngine {
   private setActiveDeckSource(deck: DeckId, source: DeckSource): void {
     if (deck === 'A') this.deckSourceA = source;
     else this.deckSourceB = source;
+    this.reconcileLoopTicker();
   }
 
   /** User-visible transport actions, separate from natural playback position updates. */
@@ -1329,6 +1335,7 @@ export class DJAudioEngine {
         await this.audioContext.resume();
       }
       await source.play();
+      this.reconcileLoopTicker();
     }
   }
 
@@ -1341,6 +1348,7 @@ export class DJAudioEngine {
     if (scratch) scratch.wasPlaying = false;
     if (scratch?.coasting) this.endScratch(deck, 0, false);
     this.getDeckSource(deck)?.pause();
+    this.reconcileLoopTicker();
   }
 
   /**
@@ -1504,6 +1512,7 @@ export class DJAudioEngine {
     }
     source.pause();
     void this.audioContext?.resume().catch(() => {});
+    this.reconcileLoopTicker();
     this.scratchPort(deck)?.postMessage({ type: 'start', position: scratch.position, token: scratch.token });
     return true;
   }
@@ -1545,10 +1554,11 @@ export class DJAudioEngine {
     source.setTempo(deck === 'A' ? state.djDeckA.tempo : state.djDeckB.tempo);
     state.setDeckPosition(deck, source.getPosition());
     if (resumePlayback && scratch.wasPlaying) {
-      source.play().catch(() => state.setDeckPlaying(deck, false));
+      source.play().then(() => this.reconcileLoopTicker()).catch(() => state.setDeckPlaying(deck, false));
     } else {
       source.pause();
     }
+    this.reconcileLoopTicker();
   }
 
   /**
@@ -2650,67 +2660,77 @@ export class DJAudioEngine {
   // ============================================================================
 
   private startPositionTracking(): void {
-    if (typeof Worker !== 'undefined' && !this.loopWorker) {
-      try {
-        this.loopWorker = new Worker(new URL('./djLoopTicker.worker.ts', import.meta.url), { type: 'module' });
-        this.loopWorker.onmessage = () => this.wrapActiveLoops();
-        this.loopWorker.onerror = () => {
-          this.loopWorker?.terminate();
-          this.loopWorker = null;
-          if (!this.loopCheckTimer) this.loopCheckTimer = setInterval(() => this.wrapActiveLoops(), 5);
-        };
-      } catch (error) {
-        console.warn('[DJAudio] Loop worker unavailable; using timer fallback', error);
-      }
-    }
-    if (!this.loopWorker && !this.loopCheckTimer) this.loopCheckTimer = setInterval(() => this.wrapActiveLoops(), 5);
+    this.loopTrackingActive = true;
+    this.loopWorkerFailed = false;
+    this.loopStoreUnsubscribe?.();
+    this.loopStoreUnsubscribe = useStore.subscribe((state, previous) => {
+      if (state.djDeckA.loop !== previous.djDeckA.loop) this.setDeckLoopOnSource('A');
+      if (state.djDeckB.loop !== previous.djDeckB.loop) this.setDeckLoopOnSource('B');
+      this.reconcileLoopTicker();
+    });
+    this.reconcileLoopTicker();
     const updatePositions = () => {
+      this.reconcileLoopTicker();
       const storeState = useStore.getState();
       const now = performance.now();
       const aPaused = !this.deckSourceA || !this.deckSourceA.isPlaying();
       const bPaused = !this.deckSourceB || !this.deckSourceB.isPlaying();
       const aScratch = this.scratchStateA?.active ?? false;
       const bScratch = this.scratchStateB?.active ?? false;
-      
-      // Deck A position and loop handling — also update during scratch even when paused
-      if (this.deckSourceA && (!aPaused || aScratch)) {
-        const currentTime = this.getPosition('A');
-        
-        // Throttle state updates to reduce React re-renders (~15 fps)
-        if (now - this.lastPositionUpdateA >= this.POSITION_UPDATE_INTERVAL) {
-          this.lastPositionUpdateA = now;
-          this.onPositionUpdate?.('A', currentTime);
-          storeState.setDeckPosition('A', currentTime);
-        }
+
+      if (this.deckSourceA && (!aPaused || aScratch) && now - this.lastPositionUpdateA >= this.POSITION_UPDATE_INTERVAL) {
+        this.lastPositionUpdateA = now;
+        const position = this.getPosition('A');
+        this.onPositionUpdate?.('A', position);
+        storeState.setDeckPosition('A', position);
       }
-      
-      // Deck B position and loop handling — also update during scratch even when paused
-      if (this.deckSourceB && (!bPaused || bScratch)) {
-        const currentTime = this.getPosition('B');
-        
-        // Throttle state updates to reduce React re-renders (~15 fps)
-        if (now - this.lastPositionUpdateB >= this.POSITION_UPDATE_INTERVAL) {
-          this.lastPositionUpdateB = now;
-          this.onPositionUpdate?.('B', currentTime);
-          storeState.setDeckPosition('B', currentTime);
-        }
+      if (this.deckSourceB && (!bPaused || bScratch) && now - this.lastPositionUpdateB >= this.POSITION_UPDATE_INTERVAL) {
+        this.lastPositionUpdateB = now;
+        const position = this.getPosition('B');
+        this.onPositionUpdate?.('B', position);
+        storeState.setDeckPosition('B', position);
       }
-      
-      // Throttle to ~4fps when both decks paused AND not scratching
-      if ((aPaused && !aScratch) && (bPaused && !bScratch)) {
-        if (this.positionIdleTimer) clearTimeout(this.positionIdleTimer);
-        this.positionIdleTimer = setTimeout(() => {
-          this.animationFrameId = requestAnimationFrame(updatePositions);
-        }, 250);
-      } else {
-        if (this.positionIdleTimer) {
-          clearTimeout(this.positionIdleTimer);
-          this.positionIdleTimer = null;
-        }
-        this.animationFrameId = requestAnimationFrame(updatePositions);
-      }
+      if (aPaused && !aScratch && bPaused && !bScratch) {
+        this.positionIdleTimer = setTimeout(() => { this.animationFrameId = requestAnimationFrame(updatePositions); }, 250);
+      } else this.animationFrameId = requestAnimationFrame(updatePositions);
     };
     this.animationFrameId = requestAnimationFrame(updatePositions);
+  }
+
+  private needsFallbackLoopTick(): boolean {
+    const state = useStore.getState();
+    return (['A', 'B'] as const).some(deck => {
+      const source = this.getDeckSource(deck);
+      const loop = (deck === 'A' ? state.djDeckA : state.djDeckB).loop;
+      return source?.isPlaying() && !this.isScratching(deck) && loop.enabled && loop.end > loop.start
+        && !(source instanceof StemDeckSource && source.getStemStatus().supportsSampleAccurateLoop);
+    });
+  }
+
+  private stopLoopTicker(): void {
+    this.loopWorker?.terminate(); this.loopWorker = null;
+    if (this.loopCheckTimer) clearInterval(this.loopCheckTimer);
+    this.loopCheckTimer = null;
+  }
+
+  private reconcileLoopTicker(): void {
+    if (!this.loopTrackingActive || !this.needsFallbackLoopTick()) { this.stopLoopTicker(); return; }
+    if (this.loopWorker || this.loopCheckTimer) return;
+    if (typeof Worker !== 'undefined' && !this.loopWorkerFailed) {
+      try {
+        this.loopWorker = new Worker(new URL('./djLoopTicker.worker.ts', import.meta.url), { type: 'module' });
+        this.loopWorker.onmessage = () => this.wrapActiveLoops();
+        this.loopWorker.onerror = () => {
+          this.loopWorkerFailed = true;
+          this.stopLoopTicker();
+          this.reconcileLoopTicker();
+        };
+      } catch (error) {
+        this.loopWorkerFailed = true;
+        console.warn('[DJAudio] Loop worker unavailable; using timer fallback', error);
+      }
+    }
+    if (!this.loopWorker && !this.loopCheckTimer) this.loopCheckTimer = setInterval(() => this.wrapActiveLoops(), 5);
   }
 
   private wrapActiveLoops(): void {
@@ -2719,7 +2739,6 @@ export class DJAudioEngine {
       const source = this.getDeckSource(deck);
       const loop = (deck === 'A' ? state.djDeckA : state.djDeckB).loop;
       if (source instanceof StemDeckSource && source.getStemStatus().supportsSampleAccurateLoop) {
-        source.setLoop(loop.start, loop.end, loop.enabled);
         continue;
       }
       if (!source || !source.isPlaying() || (this.scratchStateA?.active && deck === 'A') || (this.scratchStateB?.active && deck === 'B')) continue;
@@ -2831,6 +2850,9 @@ export class DJAudioEngine {
    * Clean up and release resources
    */
   dispose(): void {
+    this.loopTrackingActive = false;
+    this.loopStoreUnsubscribe?.(); this.loopStoreUnsubscribe = null;
+    this.stopLoopTicker();
     ++this.trackLoadGenerationA;
     ++this.trackLoadGenerationB;
     this.clearScratchAudio('A');

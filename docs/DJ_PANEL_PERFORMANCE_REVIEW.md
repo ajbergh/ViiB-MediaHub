@@ -11,7 +11,7 @@ Reviewed October 17, 2026 against the running `/dj` page and current branch.
 | Medium | GPU path was opt-in | New mixer defaults set `useWebGLWaveform` to false, although the renderer already supported GPU rendering. | New settings prefer WebGL. Detect support on the rendering canvas: WebGL2, then WebGL1, then Canvas. Preserve saved Canvas choices and merge missing mixer defaults. |
 | Medium | Some remaining work wakes up independently | Six VU canvas loops; a 5 ms loop-worker ticker after audio initialization; separate waveform, jog and engine loops. | Candidates for the next measured optimization, not changed in this pass. |
 
-The early `shouldUseAdvancedWebGL` check is browser eligibility, not a capability guarantee. The actual renderer now uses a tested context-creation helper which handles null returns and exceptions without creating an additional probe context. Shader initialization failure also retains Canvas fallback. Three-band and vertical waveforms still use Canvas; this change does not add those features to WebGL.
+The early `shouldUseAdvancedWebGL` check is browser eligibility, not a capability guarantee. The actual renderer uses a tested context-creation helper which handles null returns and exceptions without creating an additional probe context. Shader initialization failure also retains Canvas fallback. At the initial review, three-band and vertical waveforms used Canvas; the follow-up below adds horizontal three-band GPU rendering and a Canvas worker path.
 
 ## Measurements
 
@@ -29,7 +29,9 @@ These are diagnostic observations, not a controlled production speedup claim. Th
 
 A separate synthetic Canvas draw probe used a 30-minute duration, 100,000 peak samples, a stress grid of 30,000 markers, a 1856×72 canvas, a ten-second window, ten warmup draws and 100 timed draws. Mean CPU submission/drawing time was 0.584 ms, p95 1.0 ms on this environment. It excludes compositing/GPU completion and audio processing. Canvas is therefore a valid fallback here; expensive hidden React work was the stronger measured bottleneck.
 
-## Next techniques, in recommended order
+## Technique plan from the initial review
+
+Items 1–5 are implemented in the follow-up below, covering the four grouped recommendations presented to the user. Item 6 remains conditional future GPU profiling work.
 
 1. **Move three-band rendering onto the GPU.** Upload three amplitude textures when track data changes; select a band through uniforms and draw its full-height geometry. Keep the provider/source/timeline validation and existing Canvas path. This is the largest feature gap in the current GPU route; benchmark large local/provider artifacts before committing to the implementation.
 2. **Use multiresolution peak data and cached drawing tiles for Canvas.** Precompute max-pooled levels once per track/source and choose the resolution matching the visible pixel density. Cache static waveform tiles, then composite moving windows and dynamic cue/grid overlays. Maintain peak maxima, original time mapping and scratch/seek behavior. MDN recommends caching repeated drawing in an offscreen canvas: [Optimizing canvas](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial/Optimizing_canvas).
@@ -48,3 +50,22 @@ The audio engine already uses AudioWorklets for key transport/scratch processing
 - Playback was paused after profiling.
 
 For a repeatable production benchmark, serve the production build, load the same tracks, fix viewport/DPR and zoom, warm up, then compare multiple five-second foreground runs without running tests simultaneously. Record frame intervals, long tasks, CPU profiles, storage calls and audio underruns separately. Repeat on the target Wails WebViews and an integrated GPU before choosing a worker/GPU-resolution strategy.
+
+## Implementation follow-up
+
+Implemented the four requested improvement groups:
+
+| Improvement | Implementation |
+| --- | --- |
+| GPU three-band drawing | Packed RGBA byte textures work in both WebGL2 and WebGL1 without float-texture extensions. Low/Mid/High preserve common scaling, channel colors and full-height isolation. A shared loader validates track identity, session and duration; animation callbacks recheck ownership before drawing. |
+| Multiresolution peaks and Canvas tiles | Immutable arrays have exact max-pooling pyramids. A bounded LRU stores 512-CSS-pixel static timeline tiles; moving frames composite tiles and redraw dynamic grid/loop/cue/playhead overlays. Zoom, resize, source, band, palette and orientation changes invalidate the cache. The limit is 24 tiles with an approximate 16 MiB target and a two-tile minimum per renderer. |
+| Shared meters and sleeping loop checks | Three stereo canvases replace six channel canvases, sharing one visual scheduler, cached segment backgrounds and change-based repainting. Idle/hidden visual clocks sleep. The 5 ms audio loop ticker starts only for playing, enabled fallback loops and stops for pause, loop-off, unload or scratching. Native sample-accurate worklet loops remain independent. |
+| Worker drawing | The worker owns an OffscreenCanvas and returns transferable ImageBitmaps. Main-thread pointer/transport logic is unchanged. One outstanding frame plus one latest request bounds queue growth. Delta state messages avoid repeatedly cloning unchanged peaks, bands, grids and cues; generations reject stale results. Startup failure, timeout, missing OffscreenCanvas or worker failure retain a usable main-thread Canvas renderer. The DOM canvas is never irreversibly transferred. |
+
+Browser checks with real loaded tracks confirmed WebGL three-band drawing, isolated bands, vertical worker drawing, and identical horizontal playhead coordinates (754.739 px at the checked 1440 px viewport). A forced WebGL1 context rendered real three-band data successfully. Simulated unavailable WebGL plus failed Worker construction or absent OffscreenCanvas produced usable Canvas lanes. A one-second double-click seek offset moved the source by 0.995 seconds. A real fallback loop created its ticker while playing and removed it on pause.
+
+A same-run synthetic comparison (30-minute duration, 100k peaks, 30k grid markers, 1856×72 pixels, ten-second zoom, 120 moving frames after warmup) measured direct drawing at 0.691 ms mean / 1.4 ms p95 and cached drawing at 0.449 ms mean / 0.9 ms p95. The cache built five tiles and reused tiles 619 times including warmup. These are CPU submission/drawing observations, not end-to-end production or GPU-completion measurements.
+
+Additional regression tests cover exact range maxima including unpaired trailing peaks, cache reuse/invalidation in both orientations, worker backpressure/state deltas/stale results/timeouts, texture channel packing and silent data, current-source ownership, shared scheduling, fallback loop lifecycle, and native-loop exclusion. Target Wails/WKWebView hardware qualification remains separate from browser verification.
+
+Final follow-up validation: `npm run check` passed with 129 test files / 561 tests, TypeScript, both style checks and the production build. The captured log is `output/dj-performance-check.log`. Existing mixed-import and bundle-size warnings remain. The preferred renderer was restored to WebGL and playback was left paused after browser checks.

@@ -33,6 +33,50 @@ function fakeSource(position = 3.9) {
 describe('DJAudioEngine DeckSource integration', () => {
   afterEach(() => { vi.restoreAllMocks(); });
 
+  it('runs the fallback loop ticker only for playing, non-scratched non-native loops', async () => {
+    const created: Array<{ terminate: ReturnType<typeof vi.fn>; onerror?: () => void }> = [];
+    class FakeWorker { terminate = vi.fn(); onerror?: () => void; constructor() { created.push(this); } }
+    vi.stubGlobal('Worker', FakeWorker);
+    const engine = new DJAudioEngine();
+    const { source, state: transport } = fakeSource();
+    const ticker = engine as unknown as { loopTrackingActive: boolean; reconcileLoopTicker: () => void; loopCheckTimer: unknown; scratchStateA: unknown };
+    Object.assign(engine, { deckSourceA: source });
+    ticker.loopTrackingActive = true;
+    const originalEnabled = state.djDeckA.loop.enabled;
+    try {
+      state.djDeckA.loop.enabled = false;
+      ticker.reconcileLoopTicker(); expect(created).toHaveLength(0);
+      state.djDeckA.loop.enabled = true;
+      transport.playing = false;
+      ticker.reconcileLoopTicker(); expect(created).toHaveLength(0);
+      await engine.play('A'); expect(created).toHaveLength(1);
+      engine.pause('A'); expect(created[0].terminate).toHaveBeenCalledOnce();
+      await engine.play('A'); expect(created).toHaveLength(2);
+      ticker.scratchStateA = { active: true };
+      ticker.reconcileLoopTicker(); expect(created[1].terminate).toHaveBeenCalledOnce();
+      ticker.scratchStateA = null;
+      ticker.reconcileLoopTicker(); expect(created).toHaveLength(3);
+      created[2].onerror?.();
+      expect(created[2].terminate).toHaveBeenCalledOnce();
+      expect(ticker.loopCheckTimer).not.toBeNull();
+      state.djDeckA.loop.enabled = false;
+      ticker.reconcileLoopTicker(); expect(ticker.loopCheckTimer).toBeNull();
+    } finally {
+      state.djDeckA.loop.enabled = originalEnabled;
+      ticker.loopTrackingActive = false; ticker.reconcileLoopTicker();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('leaves sample-accurate worklet loops independent from fallback ticking', () => {
+    const engine = new DJAudioEngine();
+    const source = Object.assign(Object.create(StemDeckSource.prototype), {
+      isPlaying: () => true, getStemStatus: () => ({ supportsSampleAccurateLoop: true }),
+    });
+    Object.assign(engine, { deckSourceA: source });
+    expect((engine as unknown as { needsFallbackLoopTick: () => boolean }).needsFallbackLoopTick()).toBe(false);
+  });
+
   it.each(['spotify', 'inferred-from-meter', 'manual'])('only snaps loops to reviewed manual timing (%s)', provenance => {
     const engine = new DJAudioEngine();
     const { source } = fakeSource(0.3);

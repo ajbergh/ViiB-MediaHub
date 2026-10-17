@@ -1,4 +1,5 @@
 import type { TrackThreeBand } from '../../../../services/trackThreeBand';
+import { peakRangeMax } from './peakPyramid';
 /**
  * Canvas 2D drawing helpers for one deck's scrolling waveform.
  *
@@ -21,6 +22,7 @@ export function getWaveformBandIndices(selection: WaveformBandSelection = 'all')
 }
 
 export interface MainWaveformFrame {
+  sourceKey?: string;
   threeBands?: { data: TrackThreeBand; peak: number };
   deck: DeckId;
   peaks: number[] | null;
@@ -40,15 +42,16 @@ export interface MainWaveformFrame {
 
 /** Max absolute peak between two sample indices. */
 function peakBetween(peaks: number[], first: number, last: number): number {
-  let peak = 0;
-  for (let index = first; index < last; index++) peak = Math.max(peak, peaks[index] || 0);
-  return peak;
+  return peakRangeMax(peaks, first, last);
 }
 
+export type WaveformDrawContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+export interface WaveformDrawOptions { waveformOnly?: boolean; omitWaveform?: boolean; skipBandLabels?: boolean }
+
 /** Draw one deck's main scrolling waveform into a CSS-pixel sized context. */
-export function drawMainWaveform(ctx: CanvasRenderingContext2D, width: number, h: number, frame: MainWaveformFrame): void {
+export function drawMainWaveform(ctx: WaveformDrawContext, width: number, h: number, frame: MainWaveformFrame, options: WaveformDrawOptions = {}): void {
   if (frame.orientation === 'vertical') {
-    drawVerticalMainWaveform(ctx, width, h, frame);
+    drawVerticalMainWaveform(ctx, width, h, frame, options);
     return;
   }
   const { deck, peaks, position, duration, beatGrid, beatGridOffset, cuePoint, loop, visibleSeconds, colorMode } = frame;
@@ -57,7 +60,7 @@ export function drawMainWaveform(ctx: CanvasRenderingContext2D, width: number, h
   const playheadX = width / 2;
 
   ctx.fillStyle = WAVEFORM_CHROME.background;
-  ctx.fillRect(0, 0, width, h);
+  if (!options.omitWaveform) ctx.fillRect(0, 0, width, h);
 
   if ((!frame.threeBands && (!peaks || peaks.length === 0)) || !duration || duration <= 0) {
     ctx.strokeStyle = WAVEFORM_CHROME.placeholderGrid;
@@ -89,6 +92,7 @@ export function drawMainWaveform(ctx: CanvasRenderingContext2D, width: number, h
     return peakBetween(peaks ?? [], first, last);
   };
 
+  if (!options.omitWaveform) {
   if (frame.threeBands) {
     const { data, peak } = frame.threeBands;
     const arrays = [data.low, data.mid, data.high];
@@ -111,7 +115,7 @@ export function drawMainWaveform(ctx: CanvasRenderingContext2D, width: number, h
       ctx.fill();
       ctx.font = '9px system-ui';
       ctx.textAlign = 'left';
-      ctx.fillText(`${data.source === 'spotify' ? 'Spotify' : 'Local'} ${['Low', 'Mid', 'High'][band]}`, 4, lane * h / indices.length + 10);
+      if (!options.skipBandLabels) ctx.fillText(`${data.source === 'spotify' ? 'Spotify' : 'Local'} ${['Low', 'Mid', 'High'][band]}`, 4, lane * h / indices.length + 10);
     }
   } else if (colorMode === '3band') {
     // Level mode uses amplitude thresholds and therefore separate fills.
@@ -138,6 +142,9 @@ export function drawMainWaveform(ctx: CanvasRenderingContext2D, width: number, h
     }
     ctx.fill();
   }
+
+  }
+  if (options.waveformOnly) return;
 
   // Loop region and boundaries sit behind the grid/playhead markers.
   if (loop.end > loop.start) {
@@ -224,14 +231,14 @@ export function drawMainWaveform(ctx: CanvasRenderingContext2D, width: number, h
  * Time runs vertically along `y` (`playheadY = h / 2`), and amplitude expands
  * horizontally from `centerX = width / 2`.
  */
-function drawVerticalMainWaveform(ctx: CanvasRenderingContext2D, width: number, h: number, frame: MainWaveformFrame): void {
+function drawVerticalMainWaveform(ctx: WaveformDrawContext, width: number, h: number, frame: MainWaveformFrame, options: WaveformDrawOptions): void {
   const { deck, peaks, position, duration, beatGrid, beatGridOffset, cuePoint, loop, visibleSeconds, colorMode } = frame;
   const palette = DECK_WAVEFORM_PALETTE[deck];
   const centerX = width / 2;
   const playheadY = h / 2;
 
   ctx.fillStyle = WAVEFORM_CHROME.background;
-  ctx.fillRect(0, 0, width, h);
+  if (!options.omitWaveform) ctx.fillRect(0, 0, width, h);
 
   // Subtle center spine
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
@@ -268,6 +275,7 @@ function drawVerticalMainWaveform(ctx: CanvasRenderingContext2D, width: number, 
     return peakBetween(peaks ?? [], first, last);
   };
 
+  if (!options.omitWaveform) {
   if (frame.threeBands) {
     const { data, peak } = frame.threeBands;
     const arrays = [data.low, data.mid, data.high];
@@ -312,6 +320,9 @@ function drawVerticalMainWaveform(ctx: CanvasRenderingContext2D, width: number, 
     }
     ctx.fill();
   }
+
+  }
+  if (options.waveformOnly) return;
 
   // Loop region (horizontal bands)
   if (loop.end > loop.start) {

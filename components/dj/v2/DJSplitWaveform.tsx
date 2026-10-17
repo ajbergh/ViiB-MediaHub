@@ -43,7 +43,7 @@ export const DJWaveformLane = React.memo(function DJWaveformLane({
   const [colorMode, setColorMode] = useState<WaveformColorMode>('rgb');
   const [webglUnavailable, setWebglUnavailable] = useState(false);
   const markUnavailable = useCallback(() => setWebglUnavailable(true), []);
-  const renderWebGL = orientation === 'horizontal' && useWebGL && !webglUnavailable && !localBands;
+  const renderWebGL = orientation === 'horizontal' && useWebGL && !webglUnavailable;
 
   const updateVisibleSeconds = useCallback((next: number | ((prev: number) => number)) => {
     const resolved = clampSeconds(typeof next === 'function' ? next(visibleSeconds) : next);
@@ -114,7 +114,7 @@ export const DJWaveformLane = React.memo(function DJWaveformLane({
       <div className='dj-waveform-main-wrap'>
         <DJErrorBoundary componentName={`Deck ${deck} waveform`}>
           {renderWebGL
-            ? <DJWebGLWaveformDeck deck={deck} visibleSeconds={visibleSeconds} colorMode={colorMode} onUnavailable={markUnavailable} />
+            ? <DJWebGLWaveformDeck deck={deck} visibleSeconds={visibleSeconds} colorMode={colorMode} onUnavailable={markUnavailable} localBands={localBands} retryGeneration={retryGeneration} bandSelection={bandSelection} />
             : <DJCanvasWaveformDeck deck={deck} visibleSeconds={visibleSeconds} colorMode={colorMode} localBands={localBands} retryGeneration={retryGeneration} orientation={orientation} bandSelection={bandSelection} />}
         </DJErrorBoundary>
       </div>
