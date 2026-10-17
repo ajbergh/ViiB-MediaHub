@@ -4,6 +4,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { createPreferredWebGLContext, getPreferredWebGLVersion, isMacOSWails, shouldUseAdvancedWebGL } from './webglSafety';
 
 describe('WebGL safety policy', () => {
+  it('recognizes the Darwin custom scheme without treating Safari as the native shell', () => {
+    const userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 12_0) AppleWebKit/605.1.15';
+    expect(isMacOSWails({ hostname: 'wails', protocol: 'wails:', userAgent })).toBe(true);
+    expect(isMacOSWails({ hostname: 'wails', protocol: 'https:', userAgent })).toBe(false);
+    expect(isMacOSWails({ hostname: 'localhost', protocol: 'http:', userAgent })).toBe(false);
+    expect(isMacOSWails({ hostname: 'wails', protocol: 'wails:', userAgent: 'Windows NT 10.0' })).toBe(false);
+    expect(isMacOSWails(null)).toBe(false);
+  });
   it('detects WebGL2 on the rendering canvas without creating a separate probe', () => {
     const gl = {};
     const canvas = { getContext: vi.fn((_kind: string) => gl) };

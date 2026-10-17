@@ -8,6 +8,7 @@
 
 export interface WebGLRuntime {
   hostname: string;
+  protocol?: string;
   userAgent: string;
 }
 
@@ -20,6 +21,7 @@ function getRuntime(): WebGLRuntime | null {
 
   return {
     hostname: window.location.hostname,
+    protocol: window.location.protocol,
     userAgent: navigator.userAgent,
   };
 }
@@ -27,7 +29,8 @@ function getRuntime(): WebGLRuntime | null {
 export function isMacOSWails(runtime: WebGLRuntime | null = getRuntime()): boolean {
   return Boolean(
     runtime
-    && runtime.hostname === 'wails.localhost'
+    && ((runtime.protocol === 'wails:' && runtime.hostname === 'wails')
+      || runtime.hostname === 'wails.localhost')
     && /Macintosh|Mac OS X/i.test(runtime.userAgent),
   );
 }

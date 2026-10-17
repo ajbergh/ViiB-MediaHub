@@ -13,6 +13,7 @@
 
 import React, { useRef, useEffect, memo } from 'react';
 import { djVisualScheduler } from '../../../lib/djVisualScheduler';
+import { canvasRoundedRect } from '../../../lib/canvasRoundedRect';
 
 interface DJVUMeterProps {
   /** Function that returns current level (0-1) when called */
@@ -86,7 +87,7 @@ const MeterCanvas = memo(function MeterCanvas({ readLevels, channels, height, wi
     }));
     for (let channel = 0; channel < channels; channel++) for (const segment of geometry) {
       bg.fillStyle = segment.dim; bg.globalAlpha = 0.4;
-      bg.beginPath(); bg.roundRect(channel * (width + gap), segment.y, width, segmentHeight, Math.min(1.5, segmentHeight / 2, width / 2)); bg.fill();
+      bg.beginPath(); canvasRoundedRect(bg, channel * (width + gap), segment.y, width, segmentHeight, 1.5); bg.fill();
     }
     const states = Array.from({ length: channels }, () => ({ level: 0, peak: 0, holdUntil: 0, overloadUntil: 0 }));
     let lastKey = '';
@@ -118,7 +119,7 @@ const MeterCanvas = memo(function MeterCanvas({ readLevels, channels, height, wi
         geometry.forEach((segment, i) => {
           if (i >= frame.lit && (i !== frame.peak || i < frame.lit)) return;
           ctx.fillStyle = segment.color; ctx.globalAlpha = i < frame.lit ? 0.95 : 0.8;
-          ctx.beginPath(); ctx.roundRect(x, segment.y, width, segmentHeight, Math.min(1.5, segmentHeight / 2, width / 2)); ctx.fill();
+          ctx.beginPath(); canvasRoundedRect(ctx, x, segment.y, width, segmentHeight, 1.5); ctx.fill();
         });
         ctx.globalAlpha = 1;
         if (frame.overload) { ctx.fillStyle = danger; ctx.fillRect(x, 0, width, 5); }
