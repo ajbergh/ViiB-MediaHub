@@ -20,6 +20,7 @@ import { Maximize2, Minimize2, Settings, Volume2, Cable } from 'lucide-react';
 import { useStore } from '../../../store';
 import { shouldUseAdvancedWebGL } from '../../../lib/webglSafety';
 import type { DJLayoutMode } from '../../../slices/djMixerSlice';
+import type { WaveformOrientation } from './waveform/canvasWaveformRenderer';
 
 export type DJUpperView = 'waveform' | 'scope';
 
@@ -28,6 +29,8 @@ interface DJTopBarProps {
   onLayoutModeChange: (mode: DJLayoutMode) => void;
   upperView: DJUpperView;
   onUpperViewChange: (view: DJUpperView) => void;
+  waveformOrientation?: WaveformOrientation;
+  onWaveformOrientationChange?: (orientation: WaveformOrientation) => void;
   libraryOpen: boolean;
   onToggleLibrary: () => void;
   isRecording: boolean;
@@ -106,7 +109,9 @@ const SettingsMenu: React.FC<{ onShowShortcuts: () => void }> = ({ onShowShortcu
 };
 
 export const DJTopBar: React.FC<DJTopBarProps> = ({
-  layoutMode, onLayoutModeChange, upperView, onUpperViewChange, libraryOpen, onToggleLibrary,
+  layoutMode, onLayoutModeChange, upperView, onUpperViewChange,
+  waveformOrientation = 'horizontal', onWaveformOrientationChange,
+  libraryOpen, onToggleLibrary,
   isRecording, recordingDuration, onRecordToggle, midiEnabled, onOpenMidi, onOpenAudio, onShowShortcuts,
 }) => {
   const modes: ReadonlyArray<{ mode: DJLayoutMode; label: string; title: string }> = [
@@ -130,6 +135,28 @@ export const DJTopBar: React.FC<DJTopBarProps> = ({
         {modeButton(fx)}
         <button type='button' className='dj-btn dj-topbar-mode' aria-pressed={upperView === 'scope'}
           title='Swap the waveform band for the signal scope' onClick={() => onUpperViewChange(upperView === 'scope' ? 'waveform' : 'scope')}>SCOPE</button>
+        <div className='dj-segmented dj-topbar-wave-toggle' role='group' aria-label='Waveform orientation'>
+          <button
+            type='button'
+            className='dj-btn dj-btn-xs'
+            aria-pressed={waveformOrientation === 'horizontal'}
+            aria-label='Horizontal waveforms'
+            title='Horizontal stacked waveforms (top band)'
+            onClick={() => { onWaveformOrientationChange?.('horizontal'); if (upperView === 'scope') onUpperViewChange('waveform'); }}
+          >
+            HORIZ
+          </button>
+          <button
+            type='button'
+            className='dj-btn dj-btn-xs'
+            aria-pressed={waveformOrientation === 'vertical'}
+            aria-label='Vertical waveforms'
+            title='Vertical scrolling waveforms flanking the mixer'
+            onClick={() => { onWaveformOrientationChange?.('vertical'); if (upperView === 'scope') onUpperViewChange('waveform'); }}
+          >
+            VERT
+          </button>
+        </div>
       </nav>
       <div className='dj-topbar-group'>
         <button type='button' className='dj-btn dj-btn-danger' onClick={onRecordToggle} aria-pressed={isRecording}

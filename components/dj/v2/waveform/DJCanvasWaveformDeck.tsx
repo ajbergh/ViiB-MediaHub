@@ -18,7 +18,7 @@ import { useWaveformScratch } from '../../../../hooks/useWaveformScratch';
 import { useDJAudioEngineActions } from '../../../../hooks/useDJAudioEngine';
 import { getDJAudioEngine } from '../../../../lib/djAudio';
 import type { DeckId } from '../../../../slices/djMixerSlice';
-import { drawMainWaveform, timeAtLaneX } from './canvasWaveformRenderer';
+import { drawMainWaveform, timeAtLaneX, type WaveformOrientation } from './canvasWaveformRenderer';
 import type { WaveformColorMode } from './waveformPalette';
 
 interface DJCanvasWaveformDeckProps {
@@ -27,9 +27,10 @@ interface DJCanvasWaveformDeckProps {
   deck: DeckId;
   visibleSeconds: number;
   colorMode: WaveformColorMode;
+  orientation?: WaveformOrientation;
 }
 
-export const DJCanvasWaveformDeck = React.memo(function DJCanvasWaveformDeck({ deck, visibleSeconds, colorMode, localBands = false, retryGeneration = 0 }: DJCanvasWaveformDeckProps) {
+export const DJCanvasWaveformDeck = React.memo(function DJCanvasWaveformDeck({ deck, visibleSeconds, colorMode, localBands = false, retryGeneration = 0, orientation = 'horizontal' }: DJCanvasWaveformDeckProps) {
   const track = useStore(s => (deck === 'A' ? s.djDeckA : s.djDeckB).track);
   const spotifySessionGeneration = useStore(s => s.spotifySessionGeneration);
   const trackSourceIdentity = djTrackSourceIdentity(track);
@@ -53,7 +54,7 @@ export const DJCanvasWaveformDeck = React.memo(function DJCanvasWaveformDeck({ d
     return () => { active = false; };
   }, [localBands, track, trackSourceIdentity, spotifySessionGeneration, retryGeneration]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const scratch = useWaveformScratch(deck, visibleSeconds);
+  const scratch = useWaveformScratch(deck, visibleSeconds, true, orientation);
   const { seek } = useDJAudioEngineActions();
 
   useEffect(() => {
@@ -93,7 +94,7 @@ export const DJCanvasWaveformDeck = React.memo(function DJCanvasWaveformDeck({ d
       const usableBands = localBands && bands?.track === d.track && d.duration > 0 && Math.abs(bands.data.durationSeconds - d.duration) <= 0.1 ? bands : undefined;
       const visual = {
         bands: usableBands, position, peaks: d.waveformPeaks, duration: d.duration, grid: d.beatGrid, offset: d.beatGridOffset,
-        cue: d.cuePoint, hot: d.hotCues, loop: d.loop, track: d.track?.id, w: canvas.width, h: canvas.height,
+        cue: d.cuePoint, hot: d.hotCues, loop: d.loop, track: d.track?.id, w: canvas.width, h: canvas.height, orientation,
       };
       const unchanged = last && Object.keys(visual).every(key => (visual as Record<string, unknown>)[key] === last![key]);
       if (!unchanged) {
@@ -112,6 +113,7 @@ export const DJCanvasWaveformDeck = React.memo(function DJCanvasWaveformDeck({ d
           visibleSeconds,
           colorMode,
           hasTrack: !!d.track,
+          orientation,
         });
         last = visual;
       }
@@ -125,16 +127,21 @@ export const DJCanvasWaveformDeck = React.memo(function DJCanvasWaveformDeck({ d
       cancelAnimationFrame(frameId);
       if (idleTimer) clearTimeout(idleTimer);
     };
-  }, [deck, visibleSeconds, colorMode, localBands, bands]);
+  }, [deck, visibleSeconds, colorMode, localBands, bands, orientation]);
 
   const handleDoubleClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const d = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
     if (!d.duration) return;
+    if (orientation === 'vertical') {
+      const y = (event.clientY - rect.top) * (event.currentTarget.clientHeight / rect.height);
+      seek(deck, timeAtLaneX(y, event.currentTarget.clientHeight, getDJAudioEngine().getPosition(deck), visibleSeconds, d.duration));
+      return;
+    }
     // Rect is post-transform; convert click x back into canvas CSS px.
     const x = (event.clientX - rect.left) * (event.currentTarget.clientWidth / rect.width);
     seek(deck, timeAtLaneX(x, event.currentTarget.clientWidth, getDJAudioEngine().getPosition(deck), visibleSeconds, d.duration));
-  }, [deck, seek, visibleSeconds]);
+  }, [deck, seek, visibleSeconds, orientation]);
 
   return (
     <canvas

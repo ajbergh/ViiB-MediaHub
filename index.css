@@ -224,6 +224,9 @@
   overflow: hidden;
   background: var(--dj-bg);
 }
+.dj-workstation[data-dj-waveform-orientation="vertical"] .dj-main-grid {
+  grid-template-columns: minmax(0, 1fr) 118px var(--dj-mixer-w) 118px minmax(0, 1fr);
+}
 
 /* ── Panels ─────────────────────────────────────────── */
 .dj-panel {
@@ -321,6 +324,16 @@
 }
 .dj-topbar-group { display: flex; align-items: center; gap: 6px; }
 .dj-topbar .dj-btn { min-height: 34px; padding: 0 16px; }
+.dj-topbar .dj-topbar-wave-toggle {
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid var(--dj-border-subtle);
+}
+.dj-topbar .dj-topbar-wave-toggle .dj-btn {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 11px;
+}
 .dj-topbar-mode[aria-pressed="true"] { background: linear-gradient(180deg, var(--dj-primary-hover), var(--dj-primary)); }
 .dj-rec-time { font-family: ui-monospace, monospace; font-size: 12px; color: var(--dj-danger); min-width: 44px; }
 .dj-popover {
@@ -373,6 +386,55 @@
   border-right: 1px solid var(--dj-border-subtle);
 }
 .dj-waveform-toolbar { display: flex; align-items: center; gap: 6px; }
+/* Vertical waveform columns flanking the mixer */
+.dj-waveform-lane[data-dj-waveform-orientation="vertical"] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 6px;
+  padding: 6px 5px;
+  border-left: 1px solid var(--dj-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.dj-waveform-lane[data-dj-waveform-orientation="vertical"][data-dj-waveform-deck="A"] {
+  border-top: 3px solid var(--dj-deck-a-bright);
+}
+.dj-waveform-lane[data-dj-waveform-orientation="vertical"][data-dj-waveform-deck="B"] {
+  border-top: 3px solid var(--dj-deck-b-bright);
+}
+.dj-waveform-lane[data-dj-waveform-orientation="vertical"] .dj-waveform-lane-header {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding-right: 0;
+  padding-bottom: 6px;
+  border-right: 0;
+  border-bottom: 1px solid var(--dj-border-subtle);
+}
+.dj-waveform-lane[data-dj-waveform-orientation="vertical"] .dj-deck-badge-sm {
+  width: 100%;
+  height: 20px;
+  font-size: 11px;
+}
+.dj-waveform-lane[data-dj-waveform-orientation="vertical"] .dj-waveform-toolbar {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+.dj-waveform-lane[data-dj-waveform-orientation="vertical"] .dj-waveform-toolbar .dj-segmented {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+}
+.dj-waveform-lane[data-dj-waveform-orientation="vertical"] .dj-waveform-toolbar .dj-btn {
+  padding: 0 3px;
+  font-size: 10px;
+  min-width: 0;
+}
+.dj-waveform-lane[data-dj-waveform-orientation="vertical"] .dj-waveform-toolbar .dj-select {
+  width: 100%;
+  padding: 0 14px 0 4px;
+  font-size: 10px;
+}
 .dj-waveform-main-wrap { min-width: 0; min-height: 0; position: relative; border-radius: 3px; overflow: hidden; background: #070a0f; border: 1px solid rgba(255, 255, 255, 0.05); }
 .dj-waveform-main { position: absolute; inset: 0; display: block; width: 100%; height: 100%; border-radius: 3px; }
 .dj-deck-overview {
@@ -555,7 +617,18 @@
   font-size: 11px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.35);
 }
+.dj-workstation[data-dj-waveform-orientation="vertical"] .dj-deck-toolbar {
+  padding: 0 6px;
+  gap: 3px;
+}
+.dj-workstation[data-dj-waveform-orientation="vertical"] .dj-toolbar-cluster { gap: 2px; }
+.dj-workstation[data-dj-waveform-orientation="vertical"] .dj-toolbar-cluster .dj-btn {
+  padding: 0 3.5px;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
 .dj-toolbar-cluster .dj-btn-icon { padding: 0; min-width: 26px; }
+.dj-workstation[data-dj-waveform-orientation="vertical"] .dj-toolbar-cluster .dj-btn-icon { min-width: 21px; }
 .dj-toolbar-cluster .dj-select {
   min-height: 34px;
   padding: 0 18px 0 5px;

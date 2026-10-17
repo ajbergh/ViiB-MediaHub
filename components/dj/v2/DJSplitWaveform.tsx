@@ -21,6 +21,7 @@ import type { DeckId } from '../../../slices/djMixerSlice';
 import { DJErrorBoundary } from './DJErrorBoundary';
 import { setDeckWaveformView, useDeckWaveformView } from './DJDeckOverview';
 import { DJCanvasWaveformDeck } from './waveform/DJCanvasWaveformDeck';
+import type { WaveformOrientation } from './waveform/canvasWaveformRenderer';
 import { DJWebGLWaveformDeck } from './webgl/DJWebGLWaveformDeck';
 import { WAVEFORM_COLOR_MODES, type WaveformColorMode } from './waveform/waveformPalette';
 
@@ -30,12 +31,20 @@ const ZOOM_PRESETS = [4, 8, 10, 16, 32] as const;
 
 const clampSeconds = (value: number) => Math.max(VISIBLE_SECONDS_MIN, Math.min(VISIBLE_SECONDS_MAX, value));
 
-const DJWaveformLane = React.memo(function DJWaveformLane({ deck, useWebGL }: { deck: DeckId; useWebGL: boolean }) {
+export const DJWaveformLane = React.memo(function DJWaveformLane({
+  deck,
+  useWebGL = false,
+  orientation = 'horizontal',
+}: {
+  deck: DeckId;
+  useWebGL?: boolean;
+  orientation?: WaveformOrientation;
+}) {
   const { visibleSeconds, localBands, retryGeneration } = useDeckWaveformView(deck);
   const [colorMode, setColorMode] = useState<WaveformColorMode>('rgb');
   const [webglUnavailable, setWebglUnavailable] = useState(false);
   const markUnavailable = useCallback(() => setWebglUnavailable(true), []);
-  const renderWebGL = useWebGL && !webglUnavailable && !localBands;
+  const renderWebGL = orientation === 'horizontal' && useWebGL && !webglUnavailable && !localBands;
 
   const updateVisibleSeconds = useCallback((next: number | ((prev: number) => number)) => {
     const resolved = clampSeconds(typeof next === 'function' ? next(visibleSeconds) : next);
@@ -81,7 +90,13 @@ const DJWaveformLane = React.memo(function DJWaveformLane({ deck, useWebGL }: { 
   const badge = <span className='dj-deck-badge dj-deck-badge-sm' data-deck={deck} aria-hidden='true'>{deck}</span>;
 
   return (
-    <section className='dj-waveform-lane' data-dj-waveform-deck={deck} aria-label={`Deck ${deck} waveform`} onWheel={handleWheel}>
+    <section
+      className='dj-waveform-lane'
+      data-dj-waveform-deck={deck}
+      data-dj-waveform-orientation={orientation}
+      aria-label={`Deck ${deck} waveform`}
+      onWheel={handleWheel}
+    >
       <header className='dj-waveform-lane-header'>
         {badge}
         {toolbar}
@@ -90,20 +105,25 @@ const DJWaveformLane = React.memo(function DJWaveformLane({ deck, useWebGL }: { 
         <DJErrorBoundary componentName={`Deck ${deck} waveform`}>
           {renderWebGL
             ? <DJWebGLWaveformDeck deck={deck} visibleSeconds={visibleSeconds} colorMode={colorMode} onUnavailable={markUnavailable} />
-            : <DJCanvasWaveformDeck deck={deck} visibleSeconds={visibleSeconds} colorMode={colorMode} localBands={localBands} retryGeneration={retryGeneration} />}
+            : <DJCanvasWaveformDeck deck={deck} visibleSeconds={visibleSeconds} colorMode={colorMode} localBands={localBands} retryGeneration={retryGeneration} orientation={orientation} />}
         </DJErrorBoundary>
       </div>
     </section>
   );
 });
 
-export const DJSplitWaveform: React.FC = React.memo(() => {
+export const DJSplitWaveform: React.FC<{ orientation?: WaveformOrientation }> = React.memo(({ orientation = 'horizontal' }) => {
   const useWebGLWaveform = useStore(s => s.djMixer?.useWebGLWaveform);
-  const useWebGL = shouldUseAdvancedWebGL() && !!useWebGLWaveform;
+  const useWebGL = shouldUseAdvancedWebGL() && !!useWebGLWaveform && orientation === 'horizontal';
   return (
-    <div className='dj-waveform-split' data-dj-waveform-split data-dj-renderer={useWebGL ? 'webgl' : 'canvas'}>
-      <DJWaveformLane deck='A' useWebGL={useWebGL} />
-      <DJWaveformLane deck='B' useWebGL={useWebGL} />
+    <div
+      className='dj-waveform-split'
+      data-dj-waveform-split
+      data-dj-waveform-orientation={orientation}
+      data-dj-renderer={useWebGL ? 'webgl' : 'canvas'}
+    >
+      <DJWaveformLane deck='A' useWebGL={useWebGL} orientation={orientation} />
+      <DJWaveformLane deck='B' useWebGL={useWebGL} orientation={orientation} />
     </div>
   );
 });
