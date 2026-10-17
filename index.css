@@ -673,8 +673,11 @@
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 .dj-workstation[data-dj-waveform-orientation="vertical"] .dj-deck-toolbar {
-  padding: 0 6px;
-  gap: 3px;
+  height: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 8px;
+  gap: 8px;
 }
 .dj-workstation[data-dj-waveform-orientation="vertical"] .dj-toolbar-cluster { gap: 2px; }
 .dj-workstation[data-dj-waveform-orientation="vertical"] .dj-toolbar-cluster .dj-btn {
@@ -684,6 +687,10 @@
 }
 .dj-toolbar-cluster .dj-btn-icon { padding: 0; min-width: 26px; }
 .dj-workstation[data-dj-waveform-orientation="vertical"] .dj-toolbar-cluster .dj-btn-icon { min-width: 21px; }
+.dj-workstation[data-dj-waveform-orientation="vertical"] .dj-toolbar-loop { grid-column: 1 / -1; grid-row: 1; gap: 6px; }
+.dj-workstation[data-dj-waveform-orientation="vertical"] .dj-toolbar-loop .dj-btn { flex: 1; min-height: 48px; min-width: 44px; padding-inline: 8px; font-size: 13px; }
+.dj-workstation[data-dj-waveform-orientation="vertical"] .dj-toolbar-loop .dj-toolbar-gap { flex: 0 0 6px; }
+.dj-workstation[data-dj-waveform-orientation="vertical"] .dj-toolbar-loop .dj-loop-reloop { flex: 1.8; min-width: 112px; }
 .dj-toolbar-cluster .dj-select {
   min-height: 34px;
   padding: 0 18px 0 5px;
@@ -947,6 +954,10 @@
 .dj-fx-pad[data-fill] .dj-fx-pad-coordinates { position: absolute; bottom: 6px; left: 0; right: 0; padding-inline: 0; font-size: 10px; pointer-events: none; }
 .dj-fx-pad[data-fill] .dj-fx-pad-coordinates > span { width: 32px; display: flex; flex-direction: column; gap: 2px; }
 .dj-fx-pad[data-fill] .dj-fx-pad-coordinates > span:last-child { text-align: right; }
+.dj-workstation[data-dj-waveform-orientation="vertical"] .dj-mixer-fxpad { flex: 0 0 auto; }
+.dj-workstation[data-dj-waveform-orientation="vertical"] .dj-fx-pad[data-fill] .dj-fx-pad-surface { flex: 0 0 auto; aspect-ratio: 1; }
+.dj-workstation[data-dj-waveform-orientation="vertical"] .dj-mixer .dj-sampler-grid { flex: 0 0 auto; grid-template-rows: repeat(2, auto); }
+.dj-workstation[data-dj-waveform-orientation="vertical"] .dj-mixer .dj-sampler-cell { height: auto; aspect-ratio: 1; }
 .dj-mixer .dj-beat-fx-panel { width: 100%; }
 
 /* ── Library affordance and drawer ─────────────────── */

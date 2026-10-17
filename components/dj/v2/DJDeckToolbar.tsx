@@ -79,7 +79,7 @@ const DJLoopStrip = React.memo(function DJLoopStrip({ deck }: { deck: DeckId }) 
       : 'OFF';
 
   return (
-    <div className='dj-toolbar-cluster' role='group' aria-label={`Deck ${deck} loop`}>
+    <div className='dj-toolbar-cluster dj-toolbar-loop' role='group' aria-label={`Deck ${deck} loop`}>
       {LOOP_SIZES.map(beats => (
         <button key={beats} type='button' className='dj-btn' data-deck-accent={deck} disabled={!hasTrack}
           aria-pressed={loop.enabled && validLoop && Math.abs(loopBeats - beats) < 0.05}
@@ -89,7 +89,7 @@ const DJLoopStrip = React.memo(function DJLoopStrip({ deck }: { deck: DeckId }) 
       <span className='dj-toolbar-gap' aria-hidden='true' />
       <button type='button' className='dj-btn' disabled={!hasTrack} onClick={() => setLoopIn(deck)} title='Set loop in point'>IN</button>
       <button type='button' className='dj-btn' disabled={!hasTrack} onClick={() => setLoopOut(deck)} title='Set loop out point'>OUT</button>
-      <button type='button' className='dj-btn' data-deck-accent={deck} disabled={!hasTrack || !validLoop}
+      <button type='button' className='dj-btn dj-loop-reloop' data-deck-accent={deck} disabled={!hasTrack || !validLoop}
         aria-pressed={active} onClick={() => toggleLoop(deck)}
         title={validLoop ? (loop.enabled ? 'Exit loop' : 'Re-enter the last loop') : 'No loop set'}>
         <span>RELOOP</span>

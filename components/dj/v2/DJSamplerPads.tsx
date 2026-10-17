@@ -94,7 +94,7 @@ const SamplerPadButton = memo(({
   
   return (
     <div
-      className={fill ? 'relative w-full h-full min-h-0' : compact ? 'relative w-full h-12' : 'flex flex-col items-center gap-0.5'}
+      className={fill ? 'dj-sampler-cell relative w-full h-full min-h-0' : compact ? 'relative w-full h-12' : 'flex flex-col items-center gap-0.5'}
       onMouseLeave={compact && pad.mode === 'gate' && pad.isPlaying ? () => onStop(pad.id) : undefined}
     >
       {/* Pad button */}
@@ -341,7 +341,7 @@ export const DJSamplerPads: React.FC<DJSamplerPadsProps> = memo(({ fill = false 
           Session
         </span>
       </div>
-      <div className={`grid grid-cols-4 ${fill ? 'grid-rows-2 flex-1 min-h-0 gap-1.5' : compact ? 'gap-1' : 'gap-2'} w-full`}>
+      <div className={`dj-sampler-grid grid grid-cols-4 ${fill ? 'grid-rows-2 flex-1 min-h-0 gap-1.5' : compact ? 'gap-1' : 'gap-2'} w-full`}>
         {djSampler.map(pad => (
           <SamplerPadButton
             key={pad.id}
