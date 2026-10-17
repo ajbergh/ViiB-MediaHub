@@ -26,6 +26,8 @@ type Target = 'A' | 'B' | 'BOTH';
 
 interface DJFXPadProps {
   size?: number;
+  width?: number;
+  fill?: boolean;
 }
 
 type SetFilterFX = (deck: DeckId, enabled: boolean, type: 'lowpass' | 'highpass', frequency: number, resonance: number) => void;
@@ -60,7 +62,7 @@ function applyFilterFor(
   }
 }
 
-export const DJFXPad: React.FC<DJFXPadProps> = React.memo(({ size = 160 }) => {
+export const DJFXPad: React.FC<DJFXPadProps> = React.memo(({ size = 160, width = size, fill = false }) => {
   const padRef = useRef<HTMLDivElement>(null);
   const [target, setTarget] = useState<Target>('A');
   const [active, setActive] = useState(false);
@@ -152,9 +154,9 @@ export const DJFXPad: React.FC<DJFXPadProps> = React.memo(({ size = 160 }) => {
   const padPx = size;
 
   return (
-    <div className='flex flex-col items-center gap-1 select-none'>
+    <div className='dj-fx-pad flex flex-col items-center gap-1 select-none' data-fill={fill || undefined}>
       {/* Header — label + target selector */}
-      <div className='flex items-center justify-between w-full px-1' style={{ minWidth: Math.max(170, padPx) }}>
+      <div className='flex items-center justify-between w-full px-1' style={{ minWidth: Math.max(170, width) }}>
         <span className='text-[12px] font-bold text-[var(--dj-text-muted)] uppercase tracking-widest'>FX Pad</span>
         <div className='flex gap-0.5 bg-[var(--dj-bg)] rounded p-0.5 border border-[var(--dj-surface-3)]'>
           {(['A', 'B', 'BOTH'] as Target[]).map(t => (
@@ -183,12 +185,12 @@ export const DJFXPad: React.FC<DJFXPadProps> = React.memo(({ size = 160 }) => {
         ref={padRef}
         role='application'
         aria-label='FX X-Y performance pad — X axis filter cutoff, Y axis resonance'
-        className={`relative rounded-lg cursor-crosshair touch-none border transition-shadow
+        className={`dj-fx-pad-surface relative rounded-lg cursor-crosshair touch-none border transition-shadow
           ${active ? 'border-[color-mix(in_srgb,var(--dj-warning)_60%,transparent)] shadow-[0_0_20px_rgba(245,158,11,0.35)]' : 'border-[var(--dj-border)]'}
         `}
         style={{
-          width: padPx,
-          height: padPx,
+          width,
+          height: fill ? undefined : padPx,
           background: 'radial-gradient(circle at 50% 50%, var(--dj-surface-2) 0%, var(--dj-bg) 70%)',
         }}
         onPointerDown={handlePointerDown}
@@ -209,11 +211,11 @@ export const DJFXPad: React.FC<DJFXPadProps> = React.memo(({ size = 160 }) => {
 
         {/* Trail / glow lines from centre to puck */}
         <div className='absolute inset-0 pointer-events-none' aria-hidden>
-          <svg width={padPx} height={padPx}>
+          <svg width='100%' height='100%' viewBox={`0 0 ${width} ${padPx}`} preserveAspectRatio='none'>
             <line
-              x1={padPx / 2}
+              x1={width / 2}
               y1={padPx / 2}
-              x2={pos.x * padPx}
+              x2={pos.x * width}
               y2={pos.y * padPx}
               stroke={active ? 'var(--dj-warning)' : 'var(--dj-border-hover)'}
               strokeWidth={active ? 1.5 : 1}
@@ -224,12 +226,9 @@ export const DJFXPad: React.FC<DJFXPadProps> = React.memo(({ size = 160 }) => {
         </div>
 
         {/* Axis labels */}
-        <div className='absolute left-1 top-1 text-[8px] text-[var(--dj-border-hover)] uppercase tracking-wider pointer-events-none'>HP-Q</div>
-        <div className='absolute right-1 top-1 text-[8px] text-[var(--dj-border-hover)] uppercase tracking-wider pointer-events-none'>HP+Q</div>
-        <div className='absolute left-1 bottom-1 text-[8px] text-[var(--dj-border-hover)] uppercase tracking-wider pointer-events-none'>LP-Q</div>
-        <div className='absolute right-1 bottom-1 text-[8px] text-[var(--dj-border-hover)] uppercase tracking-wider pointer-events-none'>LP+Q</div>
-        <div className='absolute left-1/2 -translate-x-1/2 top-0.5 text-[8px] text-[var(--dj-text-muted)] uppercase pointer-events-none'>RES↑</div>
-        <div className='absolute left-1/2 -translate-x-1/2 bottom-0.5 text-[8px] text-[var(--dj-text-muted)] uppercase pointer-events-none'>FILT</div>
+        <div className='absolute left-2 bottom-1 text-[9px] text-[var(--dj-text-muted)] uppercase tracking-wider pointer-events-none'>Low pass</div>
+        <div className='absolute right-2 bottom-1 text-[9px] text-[var(--dj-text-muted)] uppercase tracking-wider pointer-events-none'>High pass</div>
+        <div className='absolute left-1/2 -translate-x-1/2 top-1 text-[9px] text-[var(--dj-text-muted)] uppercase tracking-wider pointer-events-none'>Resonance ↑</div>
 
         {/* Puck */}
         <div
@@ -250,9 +249,9 @@ export const DJFXPad: React.FC<DJFXPadProps> = React.memo(({ size = 160 }) => {
       </div>
 
       {/* Footer readout */}
-      <div className='flex justify-between w-full px-1 text-[12px] font-mono text-[var(--dj-text-muted)]' style={{ minWidth: Math.max(170, padPx) }}>
-        <span>X {((pos.x - 0.5) * 2).toFixed(2)}</span>
-        <span>Y {(1 - pos.y).toFixed(2)}</span>
+      <div className='dj-fx-pad-coordinates flex justify-between w-full px-1 text-[12px] font-mono text-[var(--dj-text-muted)]' style={{ minWidth: Math.max(170, width) }}>
+        <span>X <span>{((pos.x - 0.5) * 2).toFixed(2)}</span></span>
+        <span>Y <span>{(1 - pos.y).toFixed(2)}</span></span>
       </div>
     </div>
   );

@@ -105,9 +105,9 @@ export const DJHeadphoneMix: React.FC<DJHeadphoneMixProps> = ({
   };
 
   return (
-    <div className={'flex flex-col items-center gap-1 ' + className}>
+    <div className={'dj-headphone-mix flex flex-col items-center gap-1 ' + className}>
       {/* Label + master cue toggle */}
-      <div className="flex items-center gap-2">
+      <div className="dj-headphone-header flex items-center gap-2">
         <div className="text-[12px] uppercase text-[var(--dj-text-secondary)] font-bold tracking-wider">
           Headphones
         </div>

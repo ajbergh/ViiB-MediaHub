@@ -50,9 +50,9 @@ export const DJChannelStrip = React.memo<DJChannelStripProps>(({
   const isPlaying = useStore(s => isA ? s.djDeckA.isPlaying : s.djDeckB.isPlaying);
 
   return (
-    <div className='flex-1 flex flex-col items-center py-1 gap-2 min-w-[90px] min-h-0 border-[var(--dj-border)]'>
+    <div className='dj-mixer-channel' data-channel={deckId}>
       {/* Headphone Cue button */}
-      <div className='mb-2'>
+      <div className='dj-mixer-channel-cue'>
         <DJCueButton deck={deckId} />
       </div>
 
@@ -70,7 +70,7 @@ export const DJChannelStrip = React.memo<DJChannelStripProps>(({
           value={volume}
           onChange={(v) => onVolumeChange(deckId, v)}
           label=''
-          height={180}
+          height={160}
           isPlaying={isPlaying}
           accentColor={accentColor}
         />
