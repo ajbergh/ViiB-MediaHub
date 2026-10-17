@@ -217,20 +217,29 @@ export const DJTempoSlider: React.FC<DJTempoSliderProps> = ({
         onDoubleClick={handleDoubleClick}
         onKeyDown={handleKeyDown}
       >
-        {/* Center line marker */}
-        <div className="dj-fader-center" />
+        {/* Recessed center slot */}
+        <div className="dj-fader-slot" aria-hidden="true" />
+
+        {/* Center zero detent marker */}
+        <div className="dj-fader-center" aria-hidden="true" />
 
         {/* Range markers */}
-        <div className="dj-fader-scale" style={{ top: 0 }}>+{tempoRange}</div>
-        <div className="dj-fader-scale" style={{ bottom: 0 }}>-{tempoRange}</div>
+        <div className="dj-fader-scale" style={{ top: 2 }} aria-hidden="true">+{tempoRange}</div>
+        <div className="dj-fader-scale dj-fader-scale-zero" style={{ top: '50%', transform: 'translateY(-50%)' }} aria-hidden="true">0</div>
+        <div className="dj-fader-scale" style={{ bottom: 2 }} aria-hidden="true">-{tempoRange}</div>
 
-        {/* Tick marks */}
-        {[0.125, 0.25, 0.375, 0.625, 0.75, 0.875].map((pos, i) => (
-          <div key={i} className="dj-fader-tick" style={{ top: `${pos * 100}%` }} />
+        {/* Bilateral calibration tick marks */}
+        {[0.1, 0.2, 0.3, 0.4, 0.6, 0.7, 0.8, 0.9].map((pos, i) => (
+          <div
+            key={i}
+            className={`dj-fader-tick ${pos === 0.2 || pos === 0.8 ? 'dj-fader-tick-major' : ''}`}
+            style={{ top: `${pos * 100}%` }}
+            aria-hidden="true"
+          />
         ))}
 
         {/* Deviation from center in deck color */}
-        {value !== 1.0 && (
+        {Math.abs(value - 1.0) > 0.0005 && (
           <div
             className="dj-fader-fill"
             style={{
@@ -246,9 +255,12 @@ export const DJTempoSlider: React.FC<DJTempoSliderProps> = ({
         <div
           className="dj-fader-cap"
           data-dragging={isDragging}
-          style={{ top: `calc(${position * 100}% - 10px)`, ['--dj-fader-accent' as string]: accentColor }}
+          data-zero={Math.abs(value - 1.0) <= 0.0005}
+          style={{ top: `calc(${position * 100}% - 11px)`, ['--dj-fader-accent' as string]: accentColor }}
         >
-          <span /><span /><span />
+          <span className="dj-fader-cap-grip" />
+          <span className="dj-fader-cap-index" />
+          <span className="dj-fader-cap-grip" />
         </div>
       </div>
 

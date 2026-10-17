@@ -25,9 +25,9 @@ export const DeckFacts = React.memo(function DeckFacts({ deck }: { deck: DeckId 
   }
   return (
     <div className='dj-deck-facts'>
-      <span>{bpm !== null ? `${bpm.toFixed(1)} BPM` : analysisStatus === 'loading' ? 'Analysing…' : '--.- BPM'}</span>
-      {described?.camelot && <span>{described.camelot}</span>}
-      {described && <span>{described.label}</span>}
+      <span className='dj-fact-bpm'>{bpm !== null ? `${bpm.toFixed(1)} BPM` : analysisStatus === 'loading' ? 'Analysing…' : '--.- BPM'}</span>
+      {described?.camelot && <span className='dj-fact-camelot'>{described.camelot}</span>}
+      {described && <span className='dj-fact-key'>{described.label}</span>}
     </div>
   );
 });

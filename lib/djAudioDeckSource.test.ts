@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const state = {
   djDeckA: { tempo: 1, loop: { start: 2, end: 4, enabled: true, pendingIn: null }, beatGrid: [0, 0.5, 1], beatGridOffset: 0, beatGridSource: 'manual', beatGridLocked: true, effectiveBpm: 120, originalBpm: 120 },
   djDeckB: { tempo: 1, loop: { start: 0, end: 0, enabled: false, pendingIn: null }, beatGrid: [0, 0.5, 1], beatGridOffset: 0, beatGridSource: 'manual', beatGridLocked: true, effectiveBpm: 120, originalBpm: 120 },
-  djMixer: { quantize: false, slipModeA: false, slipModeB: false },
+  djMixer: { quantize: false, slipModeA: false, slipModeB: false, crossfaderCurve: 'constant-power' },
   setDeckPosition: vi.fn(), setDeckPlaying: vi.fn(), setDeckDuration: vi.fn(),
   setLoop: vi.fn(), setPendingLoopIn: vi.fn(), toggleLoop: vi.fn(), clearLoop: vi.fn(),
 };
@@ -32,6 +32,77 @@ function fakeSource(position = 3.9) {
 
 describe('DJAudioEngine DeckSource integration', () => {
   afterEach(() => { vi.restoreAllMocks(); });
+
+  it('applies the selected curve to the actual crossfader gain nodes at the current position', () => {
+    const engine = new DJAudioEngine();
+    const a = vi.fn(), b = vi.fn();
+    Object.assign(engine, { audioContext: { currentTime: 7 }, crossfaderGainA: { gain: { setValueAtTime: a } },
+      crossfaderGainB: { gain: { setValueAtTime: b } } });
+    try {
+      for (const [curve, expected] of [['linear', 0.5], ['constant-power', Math.SQRT1_2], ['sharp', 1]] as const) {
+        state.djMixer.crossfaderCurve = curve;
+        engine.setCrossfader(0);
+        expect(a.mock.lastCall![0]).toBeCloseTo(expected);
+        expect(b.mock.lastCall![0]).toBeCloseTo(expected);
+        expect(a.mock.lastCall![1]).toBe(7);
+      }
+    } finally { state.djMixer.crossfaderCurve = 'constant-power'; }
+  });
+
+  it('Q off leaves a reviewed-grid beat loop anchored at the playhead', () => {
+    const engine = new DJAudioEngine();
+    Object.assign(engine, { deckSourceA: fakeSource(0.3).source });
+    const previous = state.djMixer.quantize;
+    try {
+      state.djMixer.quantize = false;
+      engine.setLoopBeats('A', 1);
+      expect(state.setLoop).toHaveBeenLastCalledWith('A', 0.3, 0.8);
+    } finally { state.djMixer.quantize = previous; }
+  });
+
+  it('runs the fallback loop ticker only for playing, non-scratched non-native loops', async () => {
+    const created: Array<{ terminate: ReturnType<typeof vi.fn>; onerror?: () => void }> = [];
+    class FakeWorker { terminate = vi.fn(); onerror?: () => void; constructor() { created.push(this); } }
+    vi.stubGlobal('Worker', FakeWorker);
+    const engine = new DJAudioEngine();
+    const { source, state: transport } = fakeSource();
+    const ticker = engine as unknown as { loopTrackingActive: boolean; reconcileLoopTicker: () => void; loopCheckTimer: unknown; scratchStateA: unknown };
+    Object.assign(engine, { deckSourceA: source });
+    ticker.loopTrackingActive = true;
+    const originalEnabled = state.djDeckA.loop.enabled;
+    try {
+      state.djDeckA.loop.enabled = false;
+      ticker.reconcileLoopTicker(); expect(created).toHaveLength(0);
+      state.djDeckA.loop.enabled = true;
+      transport.playing = false;
+      ticker.reconcileLoopTicker(); expect(created).toHaveLength(0);
+      await engine.play('A'); expect(created).toHaveLength(1);
+      engine.pause('A'); expect(created[0].terminate).toHaveBeenCalledOnce();
+      await engine.play('A'); expect(created).toHaveLength(2);
+      ticker.scratchStateA = { active: true };
+      ticker.reconcileLoopTicker(); expect(created[1].terminate).toHaveBeenCalledOnce();
+      ticker.scratchStateA = null;
+      ticker.reconcileLoopTicker(); expect(created).toHaveLength(3);
+      created[2].onerror?.();
+      expect(created[2].terminate).toHaveBeenCalledOnce();
+      expect(ticker.loopCheckTimer).not.toBeNull();
+      state.djDeckA.loop.enabled = false;
+      ticker.reconcileLoopTicker(); expect(ticker.loopCheckTimer).toBeNull();
+    } finally {
+      state.djDeckA.loop.enabled = originalEnabled;
+      ticker.loopTrackingActive = false; ticker.reconcileLoopTicker();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('leaves sample-accurate worklet loops independent from fallback ticking', () => {
+    const engine = new DJAudioEngine();
+    const source = Object.assign(Object.create(StemDeckSource.prototype), {
+      isPlaying: () => true, getStemStatus: () => ({ supportsSampleAccurateLoop: true }),
+    });
+    Object.assign(engine, { deckSourceA: source });
+    expect((engine as unknown as { needsFallbackLoopTick: () => boolean }).needsFallbackLoopTick()).toBe(false);
+  });
 
   it.each(['spotify', 'inferred-from-meter', 'manual'])('only snaps loops to reviewed manual timing (%s)', provenance => {
     const engine = new DJAudioEngine();
@@ -84,7 +155,7 @@ describe('DJAudioEngine DeckSource integration', () => {
 
     sourceState.position = 0.2;
     engine.syncBeatPhase('B', [0, 0.5, 1], [0, 0.5, 1], 0.3);
-    expect(source.seek).toHaveBeenLastCalledWith(0.3);
+    expect(source.seek.mock.lastCall![0]).toBeCloseTo(0.3);
   });
 
   it('exposes playback and loaded state from the source', async () => {

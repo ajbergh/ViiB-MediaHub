@@ -200,6 +200,7 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
   // Subscribe only to the specific values needed for sync effects
   // These are the only values that should trigger re-renders
   const djCrossfader = useStore(state => state.djMixer.crossfader);
+  const djCrossfaderCurve = useStore(state => state.djMixer.crossfaderCurve);
   const djMasterVolume = useStore(state => state.djMixer.masterVolume);
   const djDeckAVolume = useStore(state => state.djDeckA.volume);
   const djDeckAEqLow = useStore(state => state.djDeckA.eq.low);
@@ -528,7 +529,7 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
 
     // Sync crossfader
     engine.setCrossfader(djCrossfader);
-  }, [djCrossfader]);
+  }, [djCrossfader, djCrossfaderCurve]);
 
   useEffect(() => {
     const engine = getDJAudioEngine();
@@ -886,6 +887,7 @@ export function useDJAudioEngineSync(): void {
   useEffect(() => {
     let prev = {
       crossfader: 0,
+      crossfaderCurve: undefined as ReturnType<typeof useStore.getState>['djMixer']['crossfaderCurve'] | undefined,
       masterVolume: 0,
       deckAVolume: 0,
       deckAEqLow: 0,
@@ -935,6 +937,7 @@ export function useDJAudioEngineSync(): void {
 
       const next = {
         crossfader: state.djMixer.crossfader,
+        crossfaderCurve: state.djMixer.crossfaderCurve,
         masterVolume: state.djMixer.masterVolume,
         deckAVolume: state.djDeckA.volume,
         deckAEqLow: state.djDeckA.eq.low,
@@ -961,7 +964,7 @@ export function useDJAudioEngineSync(): void {
       };
 
       // Crossfader & master
-      if (next.crossfader !== prev.crossfader) engine.setCrossfader(next.crossfader);
+      if (next.crossfader !== prev.crossfader || next.crossfaderCurve !== prev.crossfaderCurve) engine.setCrossfader(next.crossfader);
       if (next.masterVolume !== prev.masterVolume) engine.setMasterVolume(next.masterVolume);
 
       // Deck A

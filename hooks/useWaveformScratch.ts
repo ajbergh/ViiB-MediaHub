@@ -8,7 +8,12 @@ import { WaveformScratchGesture } from '../lib/waveformScratchGesture';
 import type { DeckId } from '../slices/djMixerSlice';
 
 /** Shared by the Canvas and WebGL timelines; scale is frozen for each grab. */
-export function useWaveformScratch(deck: DeckId, visibleSeconds: number, enabled = true) {
+export function useWaveformScratch(
+  deck: DeckId,
+  visibleSeconds: number,
+  enabled = true,
+  orientation: 'horizontal' | 'vertical' = 'horizontal'
+) {
   const trackId = useStore(state => (deck === 'A' ? state.djDeckA : state.djDeckB).track?.id);
   const availability = useScratchAvailability(deck);
   const [dragging, setDragging] = useState(false);
@@ -24,7 +29,7 @@ export function useWaveformScratch(deck: DeckId, visibleSeconds: number, enabled
       ownsScratch.current = false;
       if (active?.canvas.hasPointerCapture(active.pointer)) active.canvas.releasePointerCapture(active.pointer);
     };
-  }, [deck, trackId, enabled]);
+  }, [deck, trackId, enabled, orientation]);
 
   const finish = (event: PointerEvent<HTMLCanvasElement>) => {
     const active = gesture.current;
@@ -40,14 +45,16 @@ export function useWaveformScratch(deck: DeckId, visibleSeconds: number, enabled
     title: 'Drag to scratch · Flick to coast · Double-click to seek',
     'aria-label': `Deck ${deck} waveform: drag to scratch, double-click to seek`,
     onPointerDown(event: PointerEvent<HTMLCanvasElement>) {
-      const width = event.currentTarget.getBoundingClientRect().width;
+      const rect = event.currentTarget.getBoundingClientRect();
+      const span = orientation === 'vertical' ? rect.height : rect.width;
+      const coord = orientation === 'vertical' ? event.clientY : event.clientX;
       const engine = getDJAudioEngine();
-      if (!enabled || !trackId || !engine.initialized || gesture.current || event.button !== 0 || width <= 0) return;
+      if (!enabled || !trackId || !engine.initialized || gesture.current || event.button !== 0 || span <= 0) return;
       if (!engine.startScratch(deck)) return;
       event.preventDefault();
       event.currentTarget.setPointerCapture(event.pointerId);
       gesture.current = { pointer: event.pointerId, canvas: event.currentTarget,
-        motion: new WaveformScratchGesture(event.clientX, event.timeStamp, visibleSeconds / width) };
+        motion: new WaveformScratchGesture(coord, event.timeStamp, visibleSeconds / span) };
       ownsScratch.current = true;
       setDragging(true);
     },
@@ -55,7 +62,8 @@ export function useWaveformScratch(deck: DeckId, visibleSeconds: number, enabled
       const active = gesture.current;
       if (!active || active.pointer !== event.pointerId) return;
       event.preventDefault();
-      const movement = active.motion.move(event.clientX, event.timeStamp);
+      const coord = orientation === 'vertical' ? event.clientY : event.clientX;
+      const movement = active.motion.move(coord, event.timeStamp);
       getDJAudioEngine().updateScratch(deck, movement.delta, movement.rate);
     },
     onPointerUp: finish,

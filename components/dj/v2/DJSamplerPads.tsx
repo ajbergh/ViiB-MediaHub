@@ -94,30 +94,30 @@ const SamplerPadButton = memo(({
   
   return (
     <div
-      className={fill ? 'relative w-full h-full min-h-0' : compact ? 'relative w-full h-12' : 'flex flex-col items-center gap-0.5'}
+      className={fill ? 'dj-sampler-cell relative w-full h-full min-h-0' : compact ? 'relative w-full h-12' : 'flex flex-col items-center gap-0.5'}
       onMouseLeave={compact && pad.mode === 'gate' && pad.isPlaying ? () => onStop(pad.id) : undefined}
     >
       {/* Pad button */}
       <button
-        className={`relative overflow-hidden w-full ${fill ? 'h-full' : compact ? 'h-12' : 'h-20'} ${compact && hasAssignment ? 'pb-3' : ''} rounded-md border-2 transition-all duration-75 flex flex-col items-center justify-center text-[12px] font-bold select-none ${
+        className={`relative overflow-hidden w-full ${fill ? 'h-full' : compact ? 'h-12' : 'h-20'} ${compact && hasAssignment ? 'pb-3' : ''} rounded-[5px] border transition-all duration-75 flex flex-col items-center justify-center text-[11px] font-bold select-none ${
           pad.isPlaying
             ? 'scale-[0.98] translate-y-px'
             : hasAssignment
               ? 'hover:brightness-125 active:scale-[0.98] active:translate-y-px'
-              : 'border-dashed opacity-50 hover:opacity-75 active:scale-[0.98]'
+              : 'hover:border-[var(--dj-border-hover)] active:scale-[0.98]'
         }`}
         style={{
-          borderColor: hasAssignment ? pad.color : 'var(--dj-text-muted)',
+          borderColor: hasAssignment ? pad.color : 'var(--dj-border)',
           background: pad.isPlaying
-            ? `linear-gradient(180deg, color-mix(in srgb, ${pad.color} 44%, transparent) 0%, color-mix(in srgb, ${pad.color} 21%, transparent) 48%, color-mix(in srgb, ${pad.color} 9%, transparent) 100%)`
+            ? `linear-gradient(180deg, color-mix(in srgb, ${pad.color} 44%, var(--dj-border-subtle)) 0%, color-mix(in srgb, ${pad.color} 22%, var(--dj-surface-1)) 100%)`
             : hasAssignment
-              ? `linear-gradient(180deg, color-mix(in srgb, ${pad.color} 16%, transparent) 0%, color-mix(in srgb, ${pad.color} 6%, transparent) 100%)`
-              : 'linear-gradient(180deg, rgba(255,255,255,0.025), rgba(0,0,0,0.12))',
+              ? `linear-gradient(180deg, color-mix(in srgb, ${pad.color} 22%, var(--dj-border-subtle)) 0%, color-mix(in srgb, ${pad.color} 10%, var(--dj-surface-1)) 100%)`
+              : 'linear-gradient(180deg, var(--dj-border-subtle) 0%, var(--dj-surface-1) 100%)',
           boxShadow: pad.isPlaying
-            ? `inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -4px 8px rgba(0,0,0,0.42), 0 0 18px color-mix(in srgb, ${pad.color} 63%, transparent), 0 3px 7px rgba(0,0,0,0.7)`
+            ? `inset 0 1px 0 rgba(255,255,255,0.35), 0 0 14px color-mix(in srgb, ${pad.color} 55%, transparent)`
             : hasAssignment
-              ? `inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -4px 8px rgba(0,0,0,0.45), 0 2px 4px rgba(0,0,0,0.55)`
-              : 'inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -3px 6px rgba(0,0,0,0.35)',
+              ? `inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -2px 4px rgba(0,0,0,0.5)`
+              : 'inset 0 1px 0 rgba(255,255,255,0.05), inset 0 -2px 3px rgba(0,0,0,0.55)',
         }}
         aria-pressed={hasAudio ? pad.isPlaying : undefined}
         onClick={pad.mode === 'gate' ? undefined : handleClick}
@@ -125,8 +125,18 @@ const SamplerPadButton = memo(({
         onMouseUp={pad.mode === 'gate' ? handleMouseUp : undefined}
         onMouseLeave={!compact && pad.mode === 'gate' && pad.isPlaying ? () => onStop(pad.id) : undefined}
         onContextMenu={handleContextMenu}
-        title={needsRelink ? `${pad.name} needs relink (right-click to clear)` : hasAudio ? `${pad.name} (right-click to clear)` : 'Click to load sample'}
+        title={needsRelink ? `${pad.name} needs relink (right-click to clear)` : hasAudio ? `${pad.name} (right-click to clear)` : `Pad ${pad.id + 1}: Click to load sample`}
       >
+        {/* Top hardware LED indicator bar */}
+        <span
+          aria-hidden="true"
+          className="absolute top-1 left-2 right-2 h-[2.5px] rounded-full pointer-events-none"
+          style={{
+            backgroundColor: pad.color || 'var(--dj-primary)',
+            opacity: pad.isPlaying ? 1 : hasAssignment ? 0.8 : 0.28,
+            boxShadow: pad.isPlaying ? `0 0 6px ${pad.color}` : 'none',
+          }}
+        />
         {hasAudio && (
           <div
             className='absolute left-0 bottom-0 h-1 pointer-events-none transition-[width] duration-75'
@@ -138,15 +148,17 @@ const SamplerPadButton = memo(({
           />
         )}
         <span 
-          className="relative z-10 truncate w-full text-center px-1"
+          className="relative z-10 truncate w-full text-center px-1 font-mono"
           style={{ color: hasAssignment ? pad.color : 'var(--dj-text-muted)' }}
         >
-          {loading ? '...' : hasAssignment ? pad.name : '+'}
+          {loading ? '...' : hasAssignment ? pad.name : `S${pad.id + 1}`}
         </span>
-        {hasAssignment && (
-          <span className={`relative z-10 text-[12px] mt-0.5 ${needsRelink ? 'text-[var(--dj-warning)]' : pad.isPlaying ? 'text-white' : 'text-[var(--dj-text-secondary)]'}`}>
+        {hasAssignment ? (
+          <span className={`relative z-10 text-[10px] font-mono mt-0.5 ${needsRelink ? 'text-[var(--dj-warning)]' : pad.isPlaying ? 'text-white' : 'text-[var(--dj-text-secondary)]'}`}>
             {needsRelink ? 'RELINK' : pad.isPlaying ? pad.mode.toUpperCase() : pad.id + 1}
           </span>
+        ) : (
+          <span className="relative z-10 text-[9px] font-mono text-[var(--dj-text-muted)] leading-none mt-0.5">LOAD</span>
         )}
       </button>
       
@@ -329,7 +341,7 @@ export const DJSamplerPads: React.FC<DJSamplerPadsProps> = memo(({ fill = false 
           Session
         </span>
       </div>
-      <div className={`grid grid-cols-4 ${fill ? 'grid-rows-2 flex-1 min-h-0 gap-1.5' : compact ? 'gap-1' : 'gap-2'} w-full`}>
+      <div className={`dj-sampler-grid grid grid-cols-4 ${fill ? 'grid-rows-2 flex-1 min-h-0 gap-1.5' : compact ? 'gap-1' : 'gap-2'} w-full`}>
         {djSampler.map(pad => (
           <SamplerPadButton
             key={pad.id}

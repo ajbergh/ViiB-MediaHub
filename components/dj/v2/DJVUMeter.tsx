@@ -11,7 +11,9 @@
  * @module components/dj/v2/DJVUMeter
  */
 
-import React, { useRef, useEffect, useCallback, memo } from 'react';
+import React, { useRef, useEffect, memo } from 'react';
+import { djVisualScheduler } from '../../../lib/djVisualScheduler';
+import { canvasRoundedRect } from '../../../lib/canvasRoundedRect';
 
 interface DJVUMeterProps {
   /** Function that returns current level (0-1) when called */
@@ -52,206 +54,111 @@ function getSegmentDimColor(segmentIndex: number, totalSegments: number): string
   return '#450a0a'; // very dark red
 }
 
-const DJVUMeter = memo(function DJVUMeter({
-  getLevel,
-  height = 120,
-  width = 8,
-  segments = 16,
-  showPeak = true,
-  peakHoldTime = 1000,
-  peakFallSpeed = 0.15,
-}: DJVUMeterProps) {
+
+interface MeterCanvasProps {
+  readLevels: () => number[];
+  channels: number;
+  height: number;
+  width: number;
+  gap: number;
+  segments: number;
+  showPeak: boolean;
+  peakHoldTime?: number;
+  peakFallSpeed?: number;
+}
+
+const MeterCanvas = memo(function MeterCanvas({ readLevels, channels, height, width, gap, segments, showPeak,
+  peakHoldTime = 1000, peakFallSpeed = 0.15 }: MeterCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rafRef = useRef<number>(0);
-  const idleTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const peakRef = useRef(0);
-  const peakHoldRef = useRef(0);
-  const peakTimerRef = useRef(0);
-  const smoothLevelRef = useRef(0);
-  const idleFrameCount = useRef(0);
-  const overloadUntil = useRef(0);
-  const overloadColorRef = useRef('');
-
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const rawLevel = getLevel();
-    if (rawLevel >= 1) overloadUntil.current = performance.now() + 1200;
-    // Smooth the level (fast attack, slow release) for natural meter response
-    const target = rawLevel;
-    const current = smoothLevelRef.current;
-    smoothLevelRef.current = target > current
-      ? current + (target - current) * 0.4  // fast attack
-      : current + (target - current) * 0.08; // slow release (ballistic)
-    
-    const level = smoothLevelRef.current;
-    
-    // Skip redraw when idle: level near-zero, peak decayed, nothing to show
-    if (level < 0.001 && peakHoldRef.current < 1) {
-      smoothLevelRef.current = 0;
-      idleFrameCount.current++;
-      // Draw once at idle to show dim segments, then throttle to ~4fps via setTimeout
-      if (idleFrameCount.current > 2 && performance.now() > overloadUntil.current + 300) {
-        idleTimerRef.current = setTimeout(() => { rafRef.current = requestAnimationFrame(draw); }, 250);
-        return;
-      }
-    } else {
-      idleFrameCount.current = 0;
-    }
-
-    const segHeight = Math.floor((height - (segments - 1)) / segments);
-    const gap = 1;
-    const activeSegments = Math.round(level * segments);
-
-    // Peak tracking
-    const now = performance.now();
-    if (activeSegments > peakRef.current) {
-      peakRef.current = activeSegments;
-      peakTimerRef.current = now;
-      peakHoldRef.current = activeSegments;
-    } else if (now - peakTimerRef.current > peakHoldTime) {
-      // Peak falling
-      peakHoldRef.current -= peakFallSpeed;
-      if (peakHoldRef.current < activeSegments) {
-        peakHoldRef.current = activeSegments;
-      }
-      peakRef.current = Math.max(peakHoldRef.current, 0);
-    }
-
-    // Clear
-    ctx.clearRect(0, 0, width, height);
-
-    // Draw segments (bottom to top)
-    for (let i = 0; i < segments; i++) {
-      const y = height - (i + 1) * (segHeight + gap);
-      const isActive = i < activeSegments;
-      const isPeak = showPeak && Math.floor(peakHoldRef.current) === i && i >= activeSegments;
-
-      if (isActive) {
-        ctx.fillStyle = getSegmentColor(i, segments);
-        ctx.globalAlpha = 0.95;
-      } else if (isPeak) {
-        ctx.fillStyle = getSegmentColor(i, segments);
-        ctx.globalAlpha = 0.8;
-      } else {
-        ctx.fillStyle = getSegmentDimColor(i, segments);
-        ctx.globalAlpha = 0.4;
-      }
-
-      // Rounded rectangle for each segment
-      const radius = Math.min(1.5, segHeight / 2, width / 2);
-      ctx.beginPath();
-      ctx.roundRect(0, y, width, segHeight, radius);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-    }
-
-    if (performance.now() < overloadUntil.current) {
-      ctx.fillStyle = overloadColorRef.current;
-      ctx.fillRect(0, 0, width, 5);
-    }
-    rafRef.current = requestAnimationFrame(draw);
-  }, [getLevel, height, width, segments, showPeak, peakHoldTime, peakFallSpeed]);
-
+  const readRef = useRef(readLevels);
+  readRef.current = readLevels;
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (canvas) {
-      overloadColorRef.current = getComputedStyle(canvas).getPropertyValue('--dj-danger').trim();
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    const totalWidth = channels * width + (channels - 1) * gap;
+    const segmentHeight = Math.max(1, Math.floor((height - (segments - 1)) / segments));
+    const background = document.createElement('canvas');
+    background.width = totalWidth; background.height = height;
+    const bg = background.getContext('2d');
+    if (!bg) return;
+    const geometry = Array.from({ length: segments }, (_, i) => ({
+      y: height - (i + 1) * (segmentHeight + 1), color: getSegmentColor(i, segments), dim: getSegmentDimColor(i, segments),
+    }));
+    for (let channel = 0; channel < channels; channel++) for (const segment of geometry) {
+      bg.fillStyle = segment.dim; bg.globalAlpha = 0.4;
+      bg.beginPath(); canvasRoundedRect(bg, channel * (width + gap), segment.y, width, segmentHeight, 1.5); bg.fill();
     }
-    rafRef.current = requestAnimationFrame(draw);
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-    };
-  }, [draw]);
-
-  return (
-    <canvas
-      ref={canvasRef}
-      width={width}
-      height={height}
-      className="block"
-      style={{ width, height }}
-    />
-  );
+    const states = Array.from({ length: channels }, () => ({ level: 0, peak: 0, holdUntil: 0, overloadUntil: 0 }));
+    let lastKey = '';
+    const danger = getComputedStyle(canvas).getPropertyValue('--dj-danger').trim();
+    return djVisualScheduler.subscribe((now, elapsed) => {
+      const raw = readRef.current(); // Once per stereo pair per shared visual frame.
+      const steps = elapsed / (1000 / 60);
+      let active = false;
+      const frames = states.map((state, index) => {
+        const value = Math.max(0, Math.min(1, Number.isFinite(raw[index]) ? raw[index] : 0));
+        if (value >= 1) state.overloadUntil = now + 1200;
+        const factor = 1 - Math.pow(value > state.level ? 0.6 : 0.92, steps);
+        state.level += (value - state.level) * factor;
+        if (state.level < 0.001) state.level = 0;
+        const lit = Math.round(state.level * segments);
+        if (lit > state.peak) { state.peak = lit; state.holdUntil = now + peakHoldTime; }
+        else if (now > state.holdUntil) state.peak = Math.max(lit, state.peak - peakFallSpeed * steps);
+        const peak = showPeak && state.peak >= 1 ? Math.min(segments - 1, Math.floor(state.peak)) : -1;
+        const overload = now < state.overloadUntil;
+        active ||= state.level > 0 || state.peak >= 1 || overload;
+        return { lit, peak, overload };
+      });
+      const key = frames.map(frame => frame.lit + ':' + frame.peak + ':' + frame.overload).join('|');
+      if (key === lastKey) return active;
+      lastKey = key;
+      ctx.clearRect(0, 0, totalWidth, height); ctx.drawImage(background, 0, 0);
+      frames.forEach((frame, channel) => {
+        const x = channel * (width + gap);
+        geometry.forEach((segment, i) => {
+          if (i >= frame.lit && (i !== frame.peak || i < frame.lit)) return;
+          ctx.fillStyle = segment.color; ctx.globalAlpha = i < frame.lit ? 0.95 : 0.8;
+          ctx.beginPath(); canvasRoundedRect(ctx, x, segment.y, width, segmentHeight, 1.5); ctx.fill();
+        });
+        ctx.globalAlpha = 1;
+        if (frame.overload) { ctx.fillStyle = danger; ctx.fillRect(x, 0, width, 5); }
+      });
+      return active;
+    });
+  }, [channels, height, width, gap, segments, showPeak, peakHoldTime, peakFallSpeed]);
+  return <canvas ref={canvasRef} width={channels * width + (channels - 1) * gap} height={height}
+    className='block' data-dj-meter-channels={channels} style={{ width: channels * width + (channels - 1) * gap, height }} />;
 });
 
-// ============================================================================
-// Stereo VU Meter (L+R pair with optional label)
-// ============================================================================
+const DJVUMeter = memo(function DJVUMeter({ getLevel, height = 120, width = 8, segments = 16,
+  showPeak = true, peakHoldTime = 1000, peakFallSpeed = 0.15 }: DJVUMeterProps) {
+  return <MeterCanvas readLevels={() => [getLevel()]} channels={1} height={height} width={width} gap={0}
+    segments={segments} showPeak={showPeak} peakHoldTime={peakHoldTime} peakFallSpeed={peakFallSpeed} />;
+});
 
 interface DJStereoVUMeterProps {
-  /** Function that returns { left, right } levels (0-1) */
   getLevels: () => { left: number; right: number };
-  /** Height in pixels */
   height?: number;
-  /** Width per channel in pixels */
   channelWidth?: number;
-  /** Gap between L/R channels */
   gap?: number;
-  /** Number of LED segments */
   segments?: number;
-  /** Label (e.g., "A", "B", "M") */
   label?: string;
-  /** Show peak hold */
   showPeak?: boolean;
 }
 
-export const DJStereoVUMeter = memo(function DJStereoVUMeter({
-  getLevels,
-  height = 120,
-  channelWidth = 6,
-  gap = 2,
-  segments = 16,
-  label,
-  showPeak = true,
-}: DJStereoVUMeterProps) {
-  const cachedLevelsRef = useRef<{ ts: number; levels: { left: number; right: number } }>({
-    ts: 0,
-    levels: { left: 0, right: 0 },
-  });
-
-  const readLevels = useCallback(() => {
-    const now = performance.now();
-    if (now - cachedLevelsRef.current.ts >= 16) {
-      cachedLevelsRef.current.levels = getLevels();
-      cachedLevelsRef.current.ts = now;
-    }
-    return cachedLevelsRef.current.levels;
-  }, [getLevels]);
-
-  const getLevelLeft = useCallback(() => readLevels().left, [readLevels]);
-  const getLevelRight = useCallback(() => readLevels().right, [readLevels]);
-
-  return (
-    <div className="flex flex-col items-center">
-      {label && (
-        <span className="dj-label mb-0.5">{label}</span>
-      )}
-      <div className="relative flex items-end" style={{ gap }}>
-        <div aria-hidden='true' className='absolute -left-4 top-0 h-full flex flex-col justify-between dj-meter-scale pointer-events-none'>
-          <span>1</span><span>½</span><span>0</span>
-        </div>
-        <DJVUMeter
-          getLevel={getLevelLeft}
-          height={height}
-          width={channelWidth}
-          segments={segments}
-          showPeak={showPeak}
-        />
-        <DJVUMeter
-          getLevel={getLevelRight}
-          height={height}
-          width={channelWidth}
-          segments={segments}
-          showPeak={showPeak}
-        />
+export const DJStereoVUMeter = memo(function DJStereoVUMeter({ getLevels, height = 120, channelWidth = 6,
+  gap = 2, segments = 16, label, showPeak = true }: DJStereoVUMeterProps) {
+  return <div className='flex flex-col items-center'>
+    {label && <span className='dj-label mb-0.5'>{label}</span>}
+    <div className='relative flex items-end'>
+      <div aria-hidden='true' className='absolute -left-4 top-0 h-full flex flex-col justify-between dj-meter-scale pointer-events-none'>
+        <span>1</span><span>½</span><span>0</span>
       </div>
+      <MeterCanvas readLevels={() => { const levels = getLevels(); return [levels.left, levels.right]; }}
+        channels={2} height={height} width={channelWidth} gap={gap} segments={segments} showPeak={showPeak} />
     </div>
-  );
+  </div>;
 });
 
 export default DJVUMeter;

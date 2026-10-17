@@ -7,7 +7,7 @@
  *
  * Layout (docs/archive/completed/DJV2_UI_REFACTOR_ENGINEERING_PLAN.md §3):
  * ┌──────────────────────────────────────────────────────────────────────┐
- * │ Top bar: DJ · LIBRARY · BROWSE · FX · SCOPE      REC MIDI AUDIO ⚙ FS │
+ * │ Top bar: PERFORMANCE · LIBRARY · FX · SCOPE     REC MIDI AUDIO ⚙ FS │
  * ├──────────────────────────────────┬───────────────────────────────────┤
  * │ Deck A waveform lane (50%)       │ Deck B waveform lane (50%)        │
  * ├──────────────────────┬───────────┴──────────┬────────────────────────┤
@@ -21,9 +21,11 @@
 
 import React, { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react';
 import { useStore } from '../store';
+import { syncUnavailableReason } from '../lib/djMixerControls';
 import { useDJAudioEngineActions, useDJAudioEngineSync } from '../hooks/useDJAudioEngine';
 import { DJTopBar, type DJUpperView } from '../components/dj/v2/DJTopBar';
-import { DJSplitWaveform } from '../components/dj/v2/DJSplitWaveform';
+import { DJSplitWaveform, DJWaveformLane } from '../components/dj/v2/DJSplitWaveform';
+import type { WaveformOrientation } from '../components/dj/v2/waveform/canvasWaveformRenderer';
 import { DJPerformanceWorkspace } from '../components/dj/v2/DJPerformanceWorkspace';
 import { DJDeckPanel } from '../components/dj/v2/DJDeckPanel';
 import { DJMixerPanel } from '../components/dj/v2/DJMixerPanel';
@@ -90,6 +92,7 @@ const SHORTCUTS: ReadonlyArray<[string, string | null]> = [
 
 const DJModeV2Inner: React.FC = () => {
   const [upperView, setUpperView] = useState<DJUpperView>('waveform');
+  const [waveformOrientation, setWaveformOrientation] = useState<WaveformOrientation>('horizontal');
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -252,7 +255,7 @@ const DJModeV2Inner: React.FC = () => {
     const state = useStore.getState();
     const thisDeck = deck === 'A' ? state.djDeckA : state.djDeckB;
     const otherDeck = deck === 'A' ? state.djDeckB : state.djDeckA;
-    if (!thisDeck.originalBpm || !otherDeck.effectiveBpm) return;
+    if (syncUnavailableReason(state, deck) || !thisDeck.originalBpm || !otherDeck.effectiveBpm) return;
     const clampedTempo = Math.max(0.5, Math.min(1.5, otherDeck.effectiveBpm / thisDeck.originalBpm));
     setTempo(deck, clampedTempo);
     if (state.djMixer.syncMode === 'beat-phase') syncBeatPhase(deck);
@@ -261,9 +264,10 @@ const DJModeV2Inner: React.FC = () => {
   const handleLayoutModeChange = useCallback((mode: DJLayoutMode) => {
     setDJLayoutMode(mode);
     if (mode === 'browse') libraryRef.current?.open();
+    if (mode === 'perf') libraryRef.current?.close();
   }, [setDJLayoutMode]);
 
-  // BROWSE means "library open"; closing the library returns to the DJ layout.
+  // Normalize the legacy persisted browse layout when its drawer closes.
   const handleLibraryOpenChange = useCallback((open: boolean) => {
     setLibraryOpen(open);
     if (!open && useStore.getState().djMixer?.djLayoutMode === 'browse') setDJLayoutMode('perf');
@@ -296,8 +300,8 @@ const DJModeV2Inner: React.FC = () => {
   // skipping repeats avoids two no-op store/engine writes per tick.
   const lastFilterRef = useRef<{ A: number | null; B: number | null }>({ A: null, B: null });
   const handleFilterChange = useCallback((deck: DeckId, knobValue: number) => {
-    const normalized = (knobValue + 24) / 36;          // 0..1
-    const clamped = Math.max(-1, Math.min(1, normalized * 2 - 1));
+    const raw = knobValue <= 0 ? knobValue / 24 : knobValue / 12;
+    const clamped = Math.max(-1, Math.min(1, raw));
 
     if (lastFilterRef.current[deck] === clamped) return;
     lastFilterRef.current[deck] = clamped;
@@ -376,11 +380,14 @@ const DJModeV2Inner: React.FC = () => {
     onDrop: handleDeckDrop,
   };
 
+  const isVerticalWaveforms = waveformOrientation === 'vertical' && upperView !== 'scope';
+
   return (
     <div ref={workstationViewportRef} className='dj-viewport relative h-full overflow-hidden'>
       <div
         className='dj-workstation absolute top-0'
         data-dj-mode={djLayoutMode}
+        data-dj-waveform-orientation={isVerticalWaveforms ? 'vertical' : 'horizontal'}
         data-dj-canvas
         style={{
           width: DJ_CANVAS_WIDTH,
@@ -421,6 +428,8 @@ const DJModeV2Inner: React.FC = () => {
           onLayoutModeChange={handleLayoutModeChange}
           upperView={upperView}
           onUpperViewChange={setUpperView}
+          waveformOrientation={waveformOrientation}
+          onWaveformOrientationChange={setWaveformOrientation}
           libraryOpen={libraryOpen}
           onToggleLibrary={toggleLibrary}
           isRecording={isRecording}
@@ -438,10 +447,15 @@ const DJModeV2Inner: React.FC = () => {
         <DJPerformanceWorkspace
           upper={upperView === 'scope' ? (
             <div className='dj-upper-scope'><DJScopeView getVULevels={getVULevels} /></div>
-          ) : (
-            <DJErrorBoundary componentName='DJSplitWaveform'><DJSplitWaveform /></DJErrorBoundary>
+          ) : isVerticalWaveforms ? undefined : (
+            <DJErrorBoundary componentName='DJSplitWaveform'><DJSplitWaveform orientation='horizontal' /></DJErrorBoundary>
           )}
           deckA={<DJDeckPanel deck='A' isActive={djActiveDeck === 'A'} isDragOver={dragOverDeck === 'A'} {...deckProps} />}
+          waveA={isVerticalWaveforms ? (
+            <DJErrorBoundary componentName='Deck A vertical waveform'>
+              <DJWaveformLane deck='A' orientation='vertical' />
+            </DJErrorBoundary>
+          ) : undefined}
           mixer={(
             <DJMixerPanel
               getDeckALevels={getDeckALevels}
@@ -452,6 +466,11 @@ const DJModeV2Inner: React.FC = () => {
               onCrossfaderChange={handleCrossfaderChange}
             />
           )}
+          waveB={isVerticalWaveforms ? (
+            <DJErrorBoundary componentName='Deck B vertical waveform'>
+              <DJWaveformLane deck='B' orientation='vertical' />
+            </DJErrorBoundary>
+          ) : undefined}
           deckB={<DJDeckPanel deck='B' isActive={djActiveDeck === 'B'} isDragOver={dragOverDeck === 'B'} {...deckProps} />}
         />
 

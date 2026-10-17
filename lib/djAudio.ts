@@ -2,6 +2,7 @@
 
 import { createReverbImpulse, getBeatFXDelayTime } from './djAudioEffects';
 import { canSyncBeatGrid } from './beatGridConfidence';
+import { crossfaderGains, beatPhaseCorrection } from './djMixerControls';
 import type { DeckSource } from './deckSource';
 import { StemDeckSource, type StemBus, type StemDeckState, type StemDeckStatus } from './stemDeckSource';
 import { SingleTrackDeckSource } from './singleTrackDeckSource';
@@ -251,6 +252,9 @@ export class DJAudioEngine {
   private positionIdleTimer: ReturnType<typeof setTimeout> | null = null;
   private loopWorker: Worker | null = null;
   private loopCheckTimer: ReturnType<typeof setInterval> | null = null;
+  private loopTrackingActive = false;
+  private loopWorkerFailed = false;
+  private loopStoreUnsubscribe: (() => void) | null = null;
   private sourceListeners: Partial<Record<DeckId, {
     source: DeckSource;
     ended: () => void;
@@ -885,6 +889,7 @@ export class DJAudioEngine {
     if (!source) return;
     const deckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
     source.setLoop(deckState.loop.start, deckState.loop.end, deckState.loop.enabled);
+    this.reconcileLoopTicker();
   }
 
   // ============================================================================
@@ -1027,6 +1032,7 @@ export class DJAudioEngine {
     this.clearScratchAudio(deck);
     delete this.deckAudioUrls[deck];
     this.getDeckSource(deck)?.unload();
+    this.reconcileLoopTicker();
   }
 
   /** Monotonic operation epoch used by reversible off-air preview sessions. */
@@ -1215,7 +1221,7 @@ export class DJAudioEngine {
       try { source.outputNode.disconnect(gain); } catch { /* no connection */ }
       try { current.outputNode.connect(gain); } catch { /* engine is no longer safely swappable */ }
       this.bindDeckSourceListeners(deck, current);
-      if (retained.wasPlaying) void current.play();
+      if (retained.wasPlaying) void current.play().then(() => this.reconcileLoopTicker());
       this.discardPreparedTrack(prepared);
       console.error(`Unable to connect prepared source for Deck ${deck}`, error);
       return null;
@@ -1268,7 +1274,7 @@ export class DJAudioEngine {
     retained.state = 'restored';
     beforeResume?.();
     current.dispose();
-    if (retained.wasPlaying) void source.play();
+    if (retained.wasPlaying) void source.play().then(() => this.reconcileLoopTicker());
     return true;
   }
 
@@ -1304,6 +1310,7 @@ export class DJAudioEngine {
   private setActiveDeckSource(deck: DeckId, source: DeckSource): void {
     if (deck === 'A') this.deckSourceA = source;
     else this.deckSourceB = source;
+    this.reconcileLoopTicker();
   }
 
   /** User-visible transport actions, separate from natural playback position updates. */
@@ -1329,6 +1336,7 @@ export class DJAudioEngine {
         await this.audioContext.resume();
       }
       await source.play();
+      this.reconcileLoopTicker();
     }
   }
 
@@ -1341,6 +1349,7 @@ export class DJAudioEngine {
     if (scratch) scratch.wasPlaying = false;
     if (scratch?.coasting) this.endScratch(deck, 0, false);
     this.getDeckSource(deck)?.pause();
+    this.reconcileLoopTicker();
   }
 
   /**
@@ -1504,6 +1513,7 @@ export class DJAudioEngine {
     }
     source.pause();
     void this.audioContext?.resume().catch(() => {});
+    this.reconcileLoopTicker();
     this.scratchPort(deck)?.postMessage({ type: 'start', position: scratch.position, token: scratch.token });
     return true;
   }
@@ -1545,10 +1555,11 @@ export class DJAudioEngine {
     source.setTempo(deck === 'A' ? state.djDeckA.tempo : state.djDeckB.tempo);
     state.setDeckPosition(deck, source.getPosition());
     if (resumePlayback && scratch.wasPlaying) {
-      source.play().catch(() => state.setDeckPlaying(deck, false));
+      source.play().then(() => this.reconcileLoopTicker()).catch(() => state.setDeckPlaying(deck, false));
     } else {
       source.pause();
     }
+    this.reconcileLoopTicker();
   }
 
   /**
@@ -1604,7 +1615,7 @@ export class DJAudioEngine {
 
   /**
    * Set crossfader position (-1 = full A, 0 = center, 1 = full B)
-   * Uses constant-power crossfade curve
+   * Applies the selected linear, constant-power or sharp/cut curve.
    */
   setCrossfader(position: number): void {
     if (!this.crossfaderGainA || !this.crossfaderGainB || !this.audioContext) return;
@@ -1614,12 +1625,9 @@ export class DJAudioEngine {
       ? Math.max(-1, Math.min(1, position))
       : 0;
 
-    // Constant-power crossfade
-    // At position -1: A=1, B=0
-    // At position 0: A=0.707, B=0.707
-    // At position 1: A=0, B=1
-    const gainA = Math.cos((pos + 1) * Math.PI / 4);
-    const gainB = Math.cos((1 - pos) * Math.PI / 4);
+    // Curve selection is read here as well as forwarded by the sync hook,
+    // so direct pointer/MIDI actions and restored settings use the same law.
+    const { a: gainA, b: gainB } = crossfaderGains(pos, useStore.getState().djMixer.crossfaderCurve);
 
     const now = this.audioContext.currentTime;
     this.crossfaderGainA.gain.setValueAtTime(gainA, now);
@@ -2093,48 +2101,16 @@ export class DJAudioEngine {
       return;
     }
     
-    const targetPosition = targetSource.getPosition();
-    
-    // Find current beat in source
-    let sourceBeatIndex = 0;
-    for (let i = 0; i < sourceBeatGrid.length - 1; i++) {
-      if (sourcePosition >= sourceBeatGrid[i] && sourcePosition < sourceBeatGrid[i + 1]) {
-        sourceBeatIndex = i;
-        break;
-      }
-    }
-    
-    // Calculate source's phase within current beat (0-1)
-    const sourceBeatStart = sourceBeatGrid[sourceBeatIndex];
-    const sourceBeatEnd = sourceBeatGrid[sourceBeatIndex + 1] || sourceBeatStart + 0.5;
-    const sourceBeatDuration = sourceBeatEnd - sourceBeatStart;
-    const sourcePhase = (sourcePosition - sourceBeatStart) / sourceBeatDuration;
-    
-    // Find current beat in target
-    let targetBeatIndex = 0;
-    for (let i = 0; i < targetBeatGrid.length - 1; i++) {
-      if (targetPosition >= targetBeatGrid[i] && targetPosition < targetBeatGrid[i + 1]) {
-        targetBeatIndex = i;
-        break;
-      }
-    }
-    
-    // Calculate where target should be to match source phase
-    const targetBeatStart = targetBeatGrid[targetBeatIndex];
-    const targetBeatEnd = targetBeatGrid[targetBeatIndex + 1] || targetBeatStart + 0.5;
-    const targetBeatDuration = targetBeatEnd - targetBeatStart;
-    const targetIdealPosition = targetBeatStart + (sourcePhase * targetBeatDuration);
-    
-    // Calculate offset needed
-    const phaseOffset = targetIdealPosition - targetPosition;
-    
-    // Only nudge if offset is significant but not too large (avoid jumping beats)
-    const maxOffset = targetBeatDuration / 2;  // Max half a beat
-    if (Math.abs(phaseOffset) > 0.005 && Math.abs(phaseOffset) < maxOffset) {
+    const target = targetDeck === 'A' ? state.djDeckA : state.djDeckB;
+    const source = targetDeck === 'A' ? state.djDeckB : state.djDeckA;
+    const liveSourcePosition = this.getDeckSource(targetDeck === 'A' ? 'B' : 'A')?.getPosition() ?? sourcePosition;
+    const phaseOffset = beatPhaseCorrection(
+      { beatGrid: targetBeatGrid, beatGridOffset: target.beatGridOffset },
+      { beatGrid: sourceBeatGrid, beatGridOffset: source.beatGridOffset },
+      targetSource.getPosition(), liveSourcePosition,
+    );
+    if (Number.isFinite(phaseOffset) && Math.abs(phaseOffset) > 0.005) {
       this.nudgePosition(targetDeck, phaseOffset * 1000);
-      console.log(`🎯 Beat-phase sync: Deck ${targetDeck} nudged by ${(phaseOffset * 1000).toFixed(1)}ms`);
-    } else if (Math.abs(phaseOffset) >= maxOffset) {
-      console.log(`🎯 Beat-phase sync: Offset too large (${(phaseOffset * 1000).toFixed(1)}ms), skipping nudge`);
     }
   }
 
@@ -2650,67 +2626,77 @@ export class DJAudioEngine {
   // ============================================================================
 
   private startPositionTracking(): void {
-    if (typeof Worker !== 'undefined' && !this.loopWorker) {
-      try {
-        this.loopWorker = new Worker(new URL('./djLoopTicker.worker.ts', import.meta.url), { type: 'module' });
-        this.loopWorker.onmessage = () => this.wrapActiveLoops();
-        this.loopWorker.onerror = () => {
-          this.loopWorker?.terminate();
-          this.loopWorker = null;
-          if (!this.loopCheckTimer) this.loopCheckTimer = setInterval(() => this.wrapActiveLoops(), 5);
-        };
-      } catch (error) {
-        console.warn('[DJAudio] Loop worker unavailable; using timer fallback', error);
-      }
-    }
-    if (!this.loopWorker && !this.loopCheckTimer) this.loopCheckTimer = setInterval(() => this.wrapActiveLoops(), 5);
+    this.loopTrackingActive = true;
+    this.loopWorkerFailed = false;
+    this.loopStoreUnsubscribe?.();
+    this.loopStoreUnsubscribe = useStore.subscribe((state, previous) => {
+      if (state.djDeckA.loop !== previous.djDeckA.loop) this.setDeckLoopOnSource('A');
+      if (state.djDeckB.loop !== previous.djDeckB.loop) this.setDeckLoopOnSource('B');
+      this.reconcileLoopTicker();
+    });
+    this.reconcileLoopTicker();
     const updatePositions = () => {
+      this.reconcileLoopTicker();
       const storeState = useStore.getState();
       const now = performance.now();
       const aPaused = !this.deckSourceA || !this.deckSourceA.isPlaying();
       const bPaused = !this.deckSourceB || !this.deckSourceB.isPlaying();
       const aScratch = this.scratchStateA?.active ?? false;
       const bScratch = this.scratchStateB?.active ?? false;
-      
-      // Deck A position and loop handling — also update during scratch even when paused
-      if (this.deckSourceA && (!aPaused || aScratch)) {
-        const currentTime = this.getPosition('A');
-        
-        // Throttle state updates to reduce React re-renders (~15 fps)
-        if (now - this.lastPositionUpdateA >= this.POSITION_UPDATE_INTERVAL) {
-          this.lastPositionUpdateA = now;
-          this.onPositionUpdate?.('A', currentTime);
-          storeState.setDeckPosition('A', currentTime);
-        }
+
+      if (this.deckSourceA && (!aPaused || aScratch) && now - this.lastPositionUpdateA >= this.POSITION_UPDATE_INTERVAL) {
+        this.lastPositionUpdateA = now;
+        const position = this.getPosition('A');
+        this.onPositionUpdate?.('A', position);
+        storeState.setDeckPosition('A', position);
       }
-      
-      // Deck B position and loop handling — also update during scratch even when paused
-      if (this.deckSourceB && (!bPaused || bScratch)) {
-        const currentTime = this.getPosition('B');
-        
-        // Throttle state updates to reduce React re-renders (~15 fps)
-        if (now - this.lastPositionUpdateB >= this.POSITION_UPDATE_INTERVAL) {
-          this.lastPositionUpdateB = now;
-          this.onPositionUpdate?.('B', currentTime);
-          storeState.setDeckPosition('B', currentTime);
-        }
+      if (this.deckSourceB && (!bPaused || bScratch) && now - this.lastPositionUpdateB >= this.POSITION_UPDATE_INTERVAL) {
+        this.lastPositionUpdateB = now;
+        const position = this.getPosition('B');
+        this.onPositionUpdate?.('B', position);
+        storeState.setDeckPosition('B', position);
       }
-      
-      // Throttle to ~4fps when both decks paused AND not scratching
-      if ((aPaused && !aScratch) && (bPaused && !bScratch)) {
-        if (this.positionIdleTimer) clearTimeout(this.positionIdleTimer);
-        this.positionIdleTimer = setTimeout(() => {
-          this.animationFrameId = requestAnimationFrame(updatePositions);
-        }, 250);
-      } else {
-        if (this.positionIdleTimer) {
-          clearTimeout(this.positionIdleTimer);
-          this.positionIdleTimer = null;
-        }
-        this.animationFrameId = requestAnimationFrame(updatePositions);
-      }
+      if (aPaused && !aScratch && bPaused && !bScratch) {
+        this.positionIdleTimer = setTimeout(() => { this.animationFrameId = requestAnimationFrame(updatePositions); }, 250);
+      } else this.animationFrameId = requestAnimationFrame(updatePositions);
     };
     this.animationFrameId = requestAnimationFrame(updatePositions);
+  }
+
+  private needsFallbackLoopTick(): boolean {
+    const state = useStore.getState();
+    return (['A', 'B'] as const).some(deck => {
+      const source = this.getDeckSource(deck);
+      const loop = (deck === 'A' ? state.djDeckA : state.djDeckB).loop;
+      return source?.isPlaying() && !this.isScratching(deck) && loop.enabled && loop.end > loop.start
+        && !(source instanceof StemDeckSource && source.getStemStatus().supportsSampleAccurateLoop);
+    });
+  }
+
+  private stopLoopTicker(): void {
+    this.loopWorker?.terminate(); this.loopWorker = null;
+    if (this.loopCheckTimer) clearInterval(this.loopCheckTimer);
+    this.loopCheckTimer = null;
+  }
+
+  private reconcileLoopTicker(): void {
+    if (!this.loopTrackingActive || !this.needsFallbackLoopTick()) { this.stopLoopTicker(); return; }
+    if (this.loopWorker || this.loopCheckTimer) return;
+    if (typeof Worker !== 'undefined' && !this.loopWorkerFailed) {
+      try {
+        this.loopWorker = new Worker(new URL('./djLoopTicker.worker.ts', import.meta.url), { type: 'module' });
+        this.loopWorker.onmessage = () => this.wrapActiveLoops();
+        this.loopWorker.onerror = () => {
+          this.loopWorkerFailed = true;
+          this.stopLoopTicker();
+          this.reconcileLoopTicker();
+        };
+      } catch (error) {
+        this.loopWorkerFailed = true;
+        console.warn('[DJAudio] Loop worker unavailable; using timer fallback', error);
+      }
+    }
+    if (!this.loopWorker && !this.loopCheckTimer) this.loopCheckTimer = setInterval(() => this.wrapActiveLoops(), 5);
   }
 
   private wrapActiveLoops(): void {
@@ -2719,7 +2705,6 @@ export class DJAudioEngine {
       const source = this.getDeckSource(deck);
       const loop = (deck === 'A' ? state.djDeckA : state.djDeckB).loop;
       if (source instanceof StemDeckSource && source.getStemStatus().supportsSampleAccurateLoop) {
-        source.setLoop(loop.start, loop.end, loop.enabled);
         continue;
       }
       if (!source || !source.isPlaying() || (this.scratchStateA?.active && deck === 'A') || (this.scratchStateB?.active && deck === 'B')) continue;
@@ -2831,6 +2816,9 @@ export class DJAudioEngine {
    * Clean up and release resources
    */
   dispose(): void {
+    this.loopTrackingActive = false;
+    this.loopStoreUnsubscribe?.(); this.loopStoreUnsubscribe = null;
+    this.stopLoopTicker();
     ++this.trackLoadGenerationA;
     ++this.trackLoadGenerationB;
     this.clearScratchAudio('A');

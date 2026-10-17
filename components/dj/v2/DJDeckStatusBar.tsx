@@ -9,6 +9,7 @@
  */
 
 import React from 'react';
+import { Lock } from 'lucide-react';
 import { useStore } from '../../../store';
 import type { DeckId } from '../../../slices/djMixerSlice';
 
@@ -19,6 +20,7 @@ interface DJDeckStatusBarProps {
 interface ToggleItem {
   key: string;
   label: string;
+  icon?: React.ReactNode;
   activeLabel?: string;
   active: boolean;
   onClick: () => void;
@@ -43,7 +45,8 @@ export const DJDeckStatusBar: React.FC<DJDeckStatusBarProps> = ({ deck }) => {
   const toggles: ToggleItem[] = [
     {
       key: 'keylock',
-      label: '🔒 KEY',
+      label: 'KEY',
+      icon: <Lock size={10} strokeWidth={2.5} aria-hidden="true" />,
       active: keyLock,
       onClick: handleKeyLock,
       activeColor: 'emerald',
@@ -68,9 +71,9 @@ export const DJDeckStatusBar: React.FC<DJDeckStatusBarProps> = ({ deck }) => {
   ];
 
   const colorMap: Record<string, { activeBg: string; activeText: string; activeBorder: string }> = {
-    emerald: { activeBg: 'bg-[color-mix(in_srgb,var(--dj-key-active)_30%,transparent)]', activeText: 'text-[var(--dj-key-active)]', activeBorder: 'border-[color-mix(in_srgb,var(--dj-key-active)_50%,transparent)]' },
-    orange: { activeBg: 'bg-[color-mix(in_srgb,var(--dj-hotcue)_30%,transparent)]', activeText: 'text-orange-300', activeBorder: 'border-[color-mix(in_srgb,var(--dj-hotcue)_50%,transparent)]' },
-    cyan: { activeBg: 'bg-[color-mix(in_srgb,var(--dj-info)_30%,transparent)]', activeText: 'text-[var(--dj-info)]', activeBorder: 'border-[color-mix(in_srgb,var(--dj-info)_50%,transparent)]' },
+    emerald: { activeBg: 'bg-[color-mix(in_srgb,var(--dj-key-active)_22%,var(--dj-surface-2))]', activeText: 'text-[var(--dj-key-active)]', activeBorder: 'border-[color-mix(in_srgb,var(--dj-key-active)_55%,transparent)]' },
+    orange: { activeBg: 'bg-[color-mix(in_srgb,var(--dj-hotcue)_22%,var(--dj-surface-2))]', activeText: 'text-orange-300', activeBorder: 'border-[color-mix(in_srgb,var(--dj-hotcue)_55%,transparent)]' },
+    cyan: { activeBg: 'bg-[color-mix(in_srgb,var(--dj-info)_22%,var(--dj-surface-2))]', activeText: 'text-[var(--dj-info)]', activeBorder: 'border-[color-mix(in_srgb,var(--dj-info)_55%,transparent)]' },
   };
 
   return (
@@ -84,17 +87,23 @@ export const DJDeckStatusBar: React.FC<DJDeckStatusBarProps> = ({ deck }) => {
             type='button'
             aria-pressed={toggle.active}
             className={`
-              px-1.5 py-0.5 rounded border text-[12px] font-bold uppercase tracking-wider
-              transition-all duration-100 flex items-center gap-0.5
-              min-w-[32px] min-h-[32px] justify-center
+              dj-status-toggle px-1.5 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider
+              transition-all duration-100 flex items-center gap-1
+              min-w-[32px] min-h-[24px] justify-center
               ${toggle.active
-                ? `${colors.activeBg} ${colors.activeText} ${colors.activeBorder} font-extrabold`
-                : 'bg-[var(--dj-surface-3)] text-[var(--dj-text-secondary)] border-[var(--dj-border-light)] hover:text-[var(--dj-text-secondary)] hover:bg-[var(--dj-border)]'}
+                ? `${colors.activeBg} ${colors.activeText} ${colors.activeBorder} font-extrabold shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]`
+                : 'bg-[var(--dj-surface-2)] text-[var(--dj-text-muted)] border-[var(--dj-border-light)] hover:text-[var(--dj-text-secondary)] hover:bg-[var(--dj-surface-3)]'}
             `}
             title={toggle.tooltip}
           >
-            {toggle.label}
-            {toggle.active && <span className='w-1 h-1 rounded-full bg-current' />}
+            {toggle.icon}
+            <span>{toggle.label}</span>
+            <span
+              className={`w-1.5 h-1.5 rounded-full transition-all ${
+                toggle.active ? 'bg-current shadow-[0_0_5px_currentColor]' : 'bg-white/15'
+              }`}
+              aria-hidden='true'
+            />
           </button>
         );
       })}

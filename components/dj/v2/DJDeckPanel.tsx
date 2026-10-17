@@ -12,14 +12,15 @@
  * @module components/dj/v2/DJDeckPanel
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
 import { useStore } from '../../../store';
-import type { DeckId, DeckEQ } from '../../../slices/djMixerSlice';
+import type { DeckId, DeckEQ, DJLayoutMode } from '../../../slices/djMixerSlice';
 import { DeckTimeDisplay, DeckHasTrack } from './DJDeckComponents';
 import { DeckFacts } from './DJDeckFacts';
 import { DJDeckStatusBar } from './DJDeckStatusBar';
 import { DJDeckInspector, type DJDeckInspectorTab } from './DJDeckInspector';
+import { DJDeckOverview } from './DJDeckOverview';
 import { DJDeckToolbar } from './DJDeckToolbar';
 import { DJDeckFXRack } from './DJDeckFXRack';
 import { DJNudgeButtons } from './DJNudgeButtons';
@@ -43,26 +44,22 @@ export interface DJDeckPanelProps {
   onDrop: (event: React.DragEvent, deck: DeckId) => void;
 }
 
-const formatClock = (seconds: number) => `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
-
-/** Thin deck-colored position bar driven by its own timer, never React state. */
-const DeckProgress = React.memo(function DeckProgress({ deck }: { deck: DeckId }) {
-  const fillRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const update = () => {
-      const d = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-      if (fillRef.current) fillRef.current.style.width = d.duration > 0 ? `${Math.min(100, d.position / d.duration * 100)}%` : '0';
-    };
-    update();
-    const timer = window.setInterval(update, 100);
-    return () => window.clearInterval(timer);
-  }, [deck]);
-  return (
-    <div className='dj-deck-progress' aria-hidden='true'>
-      <div ref={fillRef} className='dj-deck-progress-fill' />
-    </div>
-  );
-});
+const DeckVinylFallback = ({ deck }: { deck: DeckId }) => (
+  <svg width='36' height='36' viewBox='0 0 36 36' fill='none' aria-hidden='true' className='dj-deck-art-disc'>
+    <circle cx='18' cy='18' r='16' fill='var(--dj-bg-elevated)' stroke='rgba(255,255,255,0.12)' strokeWidth='1' />
+    <circle cx='18' cy='18' r='12.5' stroke='rgba(255,255,255,0.06)' strokeWidth='0.75' />
+    <circle cx='18' cy='18' r='9.5' stroke='rgba(255,255,255,0.06)' strokeWidth='0.75' />
+    <circle
+      cx='18'
+      cy='18'
+      r='5.5'
+      fill={deck === 'A' ? 'rgba(0, 179, 255, 0.16)' : 'rgba(255, 42, 109, 0.16)'}
+      stroke={deck === 'A' ? 'var(--dj-deck-a-bright)' : 'var(--dj-deck-b-bright)'}
+      strokeWidth='1.2'
+    />
+    <circle cx='18' cy='18' r='1.8' fill='var(--dj-bg)' />
+  </svg>
+);
 
 const DeckHeader = React.memo(function DeckHeader({ deck }: { deck: DeckId }) {
   const track = useStore(s => (deck === 'A' ? s.djDeckA : s.djDeckB).track);
@@ -78,7 +75,7 @@ const DeckHeader = React.memo(function DeckHeader({ deck }: { deck: DeckId }) {
       <div className='dj-deck-info'>
         <span className='dj-deck-badge' data-deck={deck} aria-hidden='true'>{deck}</span>
         <div className='dj-deck-art' aria-hidden='true'>
-          {track?.coverUrl ? <img src={track.coverUrl} alt='' /> : '♫'}
+          {track?.coverUrl ? <img src={track.coverUrl} alt='' /> : <DeckVinylFallback deck={deck} />}
         </div>
         {track ? (
           <div className='dj-deck-meta'>
@@ -89,6 +86,7 @@ const DeckHeader = React.memo(function DeckHeader({ deck }: { deck: DeckId }) {
         ) : (
           <div className='dj-deck-meta'>
             <div className='dj-deck-empty'>{`Deck ${deck} · No track loaded`}</div>
+            <div className='dj-deck-empty-sub'>Drag a track here or load from library below</div>
           </div>
         )}
         <div className='dj-deck-side'>
@@ -112,37 +110,12 @@ const DeckHeader = React.memo(function DeckHeader({ deck }: { deck: DeckId }) {
           </div>
         </div>
       </div>
-      <DeckProgress deck={deck} />
+      <div className='dj-deck-header-overview'>
+        <DJDeckOverview deck={deck} />
+      </div>
       <DJDeckInspector deck={deck} open={inspectorOpen} tab={inspectorTab} onTabChange={setInspectorTab}
         onClose={closeInspector} triggerRef={triggerRef} />
     </header>
-  );
-});
-
-const DeckCueReadout = React.memo(function DeckCueReadout({ deck }: { deck: DeckId }) {
-  const cuePoint = useStore(s => (deck === 'A' ? s.djDeckA : s.djDeckB).cuePoint);
-  return (
-    <div className='dj-deck-readout'>
-      <span className='dj-label'>Cue</span>
-      <span className='dj-deck-readout-value' data-cue={cuePoint > 0}>{cuePoint > 0 ? formatClock(cuePoint) : '--:--'}</span>
-    </div>
-  );
-});
-
-const DeckLoopReadout = React.memo(function DeckLoopReadout({ deck }: { deck: DeckId }) {
-  const loop = useStore(s => (deck === 'A' ? s.djDeckA : s.djDeckB).loop);
-  const bpm = useStore(s => {
-    const d = deck === 'A' ? s.djDeckA : s.djDeckB;
-    return d.effectiveBpm || d.originalBpm || 120;
-  });
-  const active = loop.enabled && loop.end > loop.start;
-  return (
-    <div className='dj-deck-readout'>
-      <span className='dj-label'>Loop</span>
-      <span className='dj-deck-readout-value' data-active={active}>
-        {active ? `${((loop.end - loop.start) * bpm / 60).toFixed(2)} beats` : 'OFF'}
-      </span>
-    </div>
   );
 });
 
@@ -150,6 +123,12 @@ export const DJDeckPanel = React.memo(function DJDeckPanel({
   deck, isActive, isDragOver, onTempoChange, onEQChange, onVolumeChange, onFilterChange, onNudge, onDragOver, onDragLeave, onDrop,
 }: DJDeckPanelProps) {
   const hasTrack = useStore(s => Boolean((deck === 'A' ? s.djDeckA : s.djDeckB).track));
+  const layoutMode = useStore(s => s.djMixer?.djLayoutMode || 'perf');
+  const [fxDrawerOpen, setFxDrawerOpen] = useState<Partial<Record<DJLayoutMode, boolean>>>({});
+  const fxOpen = fxDrawerOpen[layoutMode] ?? layoutMode === 'fx';
+  const handleToggleFX = useCallback(() => {
+    setFxDrawerOpen(previous => ({ ...previous, [layoutMode]: !(previous[layoutMode] ?? layoutMode === 'fx') }));
+  }, [layoutMode]);
   const handleTempo = useCallback((value: number) => onTempoChange(deck, value), [deck, onTempoChange]);
 
   const tempo = (
@@ -187,16 +166,14 @@ export const DJDeckPanel = React.memo(function DJDeckPanel({
       onDrop={event => onDrop(event, deck)}
     >
       <DeckHeader deck={deck} />
-      <DJDeckToolbar deck={deck} />
-      <DJDeckFXRack deck={deck} />
+      <DJDeckToolbar deck={deck} fxOpen={fxOpen} onToggleFX={handleToggleFX} />
+      <DJDeckFXRack deck={deck} open={fxOpen} />
       <div className='dj-deck-performance' data-deck={deck}>
-        {deck === 'A' ? <>{tempo}{eq}{jog}</> : <>{jog}{eq}{tempo}</>}
+        {deck === 'A' ? <>{tempo}{jog}{eq}</> : <>{eq}{jog}{tempo}</>}
       </div>
       <footer className='dj-deck-footer'>
         <div className='dj-deck-cues'>
-          <DeckCueReadout deck={deck} />
           <DJHotCuePad deck={deck} console />
-          <DeckLoopReadout deck={deck} />
         </div>
         <div className='dj-deck-transport'>
           <DJTransportButtons deck={deck} console />

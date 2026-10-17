@@ -1,10 +1,9 @@
 /**
  * ViiB MediaHub - DJ Deck Toolbar (v2)
  *
- * The one continuously needed controls row beneath the track header
- * (Plan §6.2): beat jump with a jump-size select, beat loops with
- * IN / OUT / RELOOP, and the compact stem switch. Everything fits the
- * authored deck width without horizontal scrolling.
+ * Two rows beneath the track header: full-width beat loops with
+ * IN / OUT / RELOOP, then beat jump, FX and compact stem controls.
+ * Everything fits the authored deck width without horizontal scrolling.
  *
  * @module components/dj/v2/DJDeckToolbar
  */
@@ -71,8 +70,15 @@ const DJLoopStrip = React.memo(function DJLoopStrip({ deck }: { deck: DeckId }) 
   const validLoop = loop.end > loop.start;
   const loopBeats = validLoop ? (loop.end - loop.start) / (60 / bpm) : 0;
 
+  const active = loop.enabled && validLoop;
+  const loopReadoutText = active
+    ? `${loopBeats >= 1 ? loopBeats.toFixed(loopBeats % 1 === 0 ? 0 : 1) : formatBeats(loopBeats)}B`
+    : validLoop
+      ? 'MEM'
+      : 'OFF';
+
   return (
-    <div className='dj-toolbar-cluster' role='group' aria-label={`Deck ${deck} loop`}>
+    <div className='dj-toolbar-cluster dj-toolbar-loop' role='group' aria-label={`Deck ${deck} loop`}>
       {LOOP_SIZES.map(beats => (
         <button key={beats} type='button' className='dj-btn' data-deck-accent={deck} disabled={!hasTrack}
           aria-pressed={loop.enabled && validLoop && Math.abs(loopBeats - beats) < 0.05}
@@ -82,19 +88,65 @@ const DJLoopStrip = React.memo(function DJLoopStrip({ deck }: { deck: DeckId }) 
       <span className='dj-toolbar-gap' aria-hidden='true' />
       <button type='button' className='dj-btn' disabled={!hasTrack} onClick={() => setLoopIn(deck)} title='Set loop in point'>IN</button>
       <button type='button' className='dj-btn' disabled={!hasTrack} onClick={() => setLoopOut(deck)} title='Set loop out point'>OUT</button>
-      <button type='button' className='dj-btn' data-deck-accent={deck} disabled={!hasTrack || !validLoop}
-        aria-pressed={loop.enabled && validLoop} onClick={() => toggleLoop(deck)}
-        title={validLoop ? (loop.enabled ? 'Exit loop' : 'Re-enter the last loop') : 'No loop set'}>RELOOP</button>
+      <button type='button' className='dj-btn dj-loop-reloop' data-deck-accent={deck} disabled={!hasTrack || !validLoop}
+        aria-pressed={active} onClick={() => toggleLoop(deck)}
+        title={validLoop ? (loop.enabled ? 'Exit loop' : 'Re-enter the last loop') : 'No loop set'}>
+        <span>RELOOP</span>
+        <span className='dj-toolbar-loop-badge' data-active={active} aria-hidden='true'>{loopReadoutText}</span>
+      </button>
     </div>
   );
 });
 
-export const DJDeckToolbar = React.memo(function DJDeckToolbar({ deck }: { deck: DeckId }) {
+const DJFXToggleButton = React.memo(function DJFXToggleButton({
+  deck,
+  open,
+  onToggle,
+}: {
+  deck: DeckId;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const activeCount = useStore(s => {
+    const fx = (deck === 'A' ? s.djDeckA : s.djDeckB).fx;
+    return (fx.filter.enabled ? 1 : 0) + (fx.delay.enabled ? 1 : 0) + (fx.reverb.enabled ? 1 : 0) + (fx.flanger.enabled ? 1 : 0);
+  });
+
+  return (
+    <button
+      type='button'
+      className='dj-btn dj-fx-rack-trigger'
+      data-deck-accent={deck}
+      aria-pressed={open}
+      aria-expanded={open}
+      aria-label={`Deck ${deck} FX rack${activeCount > 0 ? ` (${activeCount} active)` : ''}`}
+      title={open ? 'Hide deck FX rack' : 'Show deck FX rack (Filter, Delay, Reverb, Flanger)'}
+      onClick={onToggle}
+    >
+      <span className='dj-status-dot' data-state={activeCount > 0 ? 'ok' : undefined} aria-hidden='true' />
+      <span>FX</span>
+      {activeCount > 0 && <span className='dj-fx-active-count' aria-hidden='true'>{activeCount}</span>}
+    </button>
+  );
+});
+
+export const DJDeckToolbar = React.memo(function DJDeckToolbar({
+  deck,
+  fxOpen = false,
+  onToggleFX,
+}: {
+  deck: DeckId;
+  fxOpen?: boolean;
+  onToggleFX?: () => void;
+}) {
   return (
     <div className='dj-deck-toolbar' data-dj-deck-toolbar={deck}>
       <DJBeatJumpStrip deck={deck} />
       <DJLoopStrip deck={deck} />
-      <DJStemControls deck={deck} compact />
+      <div className='dj-toolbar-cluster'>
+        {onToggleFX && <DJFXToggleButton deck={deck} open={fxOpen} onToggle={onToggleFX} />}
+        <DJStemControls deck={deck} compact />
+      </div>
     </div>
   );
 });

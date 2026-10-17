@@ -20,7 +20,8 @@ import { shouldUseAdvancedWebGL } from '../../../../lib/webglSafety';
 import type { DeckId } from '../../../../slices/djMixerSlice';
 import { useDJWebGL, useDJWebGLAnimation } from './useDJWebGL';
 import type { DJWaveformRenderState } from './DJWebGLRenderer';
-import { timeAtLaneX } from '../waveform/canvasWaveformRenderer';
+import { getWaveformBandIndices, timeAtLaneX, type WaveformBandSelection } from '../waveform/canvasWaveformRenderer';
+import { currentDJThreeBands, useDJThreeBands } from '../../../../hooks/useDJThreeBands';
 import { WEBGL_COLOR_MODE, type WaveformColorMode } from '../waveform/waveformPalette';
 
 interface DJWebGLWaveformDeckProps {
@@ -28,9 +29,14 @@ interface DJWebGLWaveformDeckProps {
   visibleSeconds: number;
   colorMode: WaveformColorMode;
   onUnavailable: () => void;
+  localBands?: boolean;
+  retryGeneration?: number;
+  bandSelection?: WaveformBandSelection;
 }
 
-export const DJWebGLWaveformDeck = React.memo(function DJWebGLWaveformDeck({ deck, visibleSeconds, colorMode, onUnavailable }: DJWebGLWaveformDeckProps) {
+export const DJWebGLWaveformDeck = React.memo(function DJWebGLWaveformDeck({ deck, visibleSeconds, colorMode, onUnavailable, localBands = false, retryGeneration = 0, bandSelection = 'all' }: DJWebGLWaveformDeckProps) {
+  const bandSnapshot = useDJThreeBands(deck, localBands, retryGeneration);
+  const bands = bandSnapshot?.bands;
   const advancedWebGLEnabled = shouldUseAdvancedWebGL();
   const webgl = useDJWebGL({ enabled: advancedWebGLEnabled });
   const [isReady, setIsReady] = useState(false);
@@ -56,13 +62,15 @@ export const DJWebGLWaveformDeck = React.memo(function DJWebGLWaveformDeck({ dec
   }, [deck, isReady, peaks, webgl.updatePeaks]);
 
   const renderFrame = useCallback(() => {
-    const d = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
+    const store = useStore.getState();
+    const d = deck === 'A' ? store.djDeckA : store.djDeckB;
+    const usableBands = currentDJThreeBands(bandSnapshot, d.track, d.duration, store.spotifySessionGeneration);
     const engine = getDJAudioEngine();
     const moving = d.isPlaying || engine.isScratching(deck);
     const position = moving && engine?.initialized ? engine.getPosition(deck) : d.position;
     const visual = {
       position, track: d.track?.id, cue: d.cuePoint, hot: d.hotCues, grid: d.beatGrid, peaks: d.waveformPeaks,
-      duration: d.duration, offset: d.beatGridOffset, loop: d.loop, visibleSeconds, colorMode,
+      duration: d.duration, offset: d.beatGridOffset, loop: d.loop, visibleSeconds, colorMode, bands: usableBands, bandSelection,
       // Resizes clear the drawing buffer, so they must force a redraw.
       w: webgl.canvasRef.current?.width, h: webgl.canvasRef.current?.height,
     };
@@ -82,9 +90,11 @@ export const DJWebGLWaveformDeck = React.memo(function DJWebGLWaveformDeck({ dec
       visibleSeconds,
       colorMode: WEBGL_COLOR_MODE[colorMode],
       deck,
+      threeBands: usableBands,
+      bandSelection,
     };
-    webgl.renderWaveform(state);
-  }, [deck, visibleSeconds, colorMode, webgl.renderWaveform, webgl.canvasRef]);
+    try { webgl.renderWaveform(state); } catch { onUnavailable(); }
+  }, [deck, visibleSeconds, colorMode, webgl.renderWaveform, webgl.canvasRef, bandSnapshot, bandSelection, onUnavailable]);
 
   const isIdle = useCallback(() => {
     const d = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
@@ -100,7 +110,7 @@ export const DJWebGLWaveformDeck = React.memo(function DJWebGLWaveformDeck({ dec
     seek(deck, timeAtLaneX(x, event.currentTarget.clientWidth, getDJAudioEngine().getPosition(deck), visibleSeconds, d.duration));
   }, [deck, seek, visibleSeconds]);
 
-  return (
+  return (<>
     <canvas
       ref={webgl.canvasRef}
       {...scratch}
@@ -108,6 +118,13 @@ export const DJWebGLWaveformDeck = React.memo(function DJWebGLWaveformDeck({ dec
       style={{ touchAction: 'none' }}
       onDoubleClick={handleDoubleClick}
       data-dj-renderer='webgl'
+      data-dj-bands={bands ? 'three' : 'amplitude'}
     />
-  );
+    {bands && <div className='dj-waveform-band-labels' aria-hidden='true'
+      style={{ gridTemplateRows: `repeat(${getWaveformBandIndices(bandSelection).length}, minmax(0, 1fr))` }}>
+      {getWaveformBandIndices(bandSelection).map(band => (
+        <span key={band}>{`${bands.data.source === 'spotify' ? 'Spotify' : 'Local'} ${['Low', 'Mid', 'High'][band]}`}</span>
+      ))}
+    </div>}
+  </>);
 });

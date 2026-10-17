@@ -32,15 +32,15 @@ interface DJMixerPanelProps {
 }
 
 const SYNC_MODES = [
-  { mode: 'off', label: 'OFF', title: 'Sync off' },
-  { mode: 'bpm', label: 'BPM', title: 'Sync matches BPM only' },
-  { mode: 'beat-phase', label: 'PHASE', title: 'Sync matches BPM and beat phase (needs verified grids)' },
+  { mode: 'off', label: 'OFF', title: 'Disable deck SYNC actions; existing tempo is retained' },
+  { mode: 'bpm', label: 'BPM', title: 'Deck SYNC matches the other deck’s BPM; press SYNC on the deck to apply' },
+  { mode: 'beat-phase', label: 'PHASE', title: 'Deck SYNC matches BPM and beat phase; review and lock both manual grids, then press deck SYNC' },
 ] as const;
 
 const CURVES = [
-  { curve: 'linear', label: 'LIN', title: 'Crossfader curve: Linear' },
-  { curve: 'constant-power', label: 'CP', title: 'Crossfader curve: Constant Power' },
-  { curve: 'sharp', label: 'CUT', title: 'Crossfader curve: Sharp / Cut' },
+  { curve: 'linear', label: 'LIN', title: 'Linear fade: both decks at 50% gain in the center' },
+  { curve: 'constant-power', label: 'CP', title: 'Constant-power fade: both decks at about 71% gain in the center' },
+  { curve: 'sharp', label: 'CUT', title: 'Cut: both decks at full gain across the middle; 5% fade at each end' },
 ] as const;
 
 const MixerHeader = React.memo(function MixerHeader() {
@@ -50,10 +50,10 @@ const MixerHeader = React.memo(function MixerHeader() {
   return (
     <div className='dj-mixer-head' role='group' aria-label='Active deck for keyboard shortcuts'>
       <button type='button' className='dj-btn' data-deck-accent='A' aria-pressed={activeDeck === 'A'}
-        aria-label='Make Deck A the active deck' title='Active deck receives Space, nudge and hot-cue shortcuts' onClick={() => select('A')}>A</button>
+        aria-label='Make Deck A the active deck' title='Active deck receives Space, nudge and hot-cue shortcuts' onClick={() => select('A')}>Deck A</button>
       <span className='dj-mixer-title'>MIXER</span>
       <button type='button' className='dj-btn' data-deck-accent='B' aria-pressed={activeDeck === 'B'}
-        aria-label='Make Deck B the active deck' title='Active deck receives Space, nudge and hot-cue shortcuts' onClick={() => select('B')}>B</button>
+        aria-label='Make Deck B the active deck' title='Active deck receives Space, nudge and hot-cue shortcuts' onClick={() => select('B')}>Deck B</button>
     </div>
   );
 });
@@ -64,14 +64,14 @@ const SyncRow = React.memo(function SyncRow() {
   const setSyncMode = useStore(s => s.setSyncMode);
   const toggleQuantize = useStore(s => s.toggleQuantize);
   return (
-    <div className='dj-mixer-row' role='group' aria-label='Sync mode'>
+    <div className='dj-mixer-row dj-mixer-sync' role='group' aria-label='Sync mode'>
+      <span className='dj-label'>Sync</span>
       {SYNC_MODES.map(({ mode, label, title }) => (
         <button key={mode} type='button' className={`dj-btn ${mode === 'bpm' ? 'dj-btn-key' : mode === 'beat-phase' ? 'dj-btn-warn' : ''}`}
           aria-pressed={syncMode === mode} title={title} onClick={() => setSyncMode(mode)}>{label}</button>
       ))}
-      <span className='dj-toolbar-gap' aria-hidden='true' />
       <button type='button' className='dj-btn dj-btn-icon' aria-pressed={!!quantize} onClick={toggleQuantize}
-        title={`Quantize ${quantize ? 'ON' : 'OFF'} - Snap actions to beat grid`} aria-label='Quantize'>Q</button>
+        title={`Loop quantize ${quantize ? 'ON' : 'OFF'} — snap beat-loop buttons to a reviewed, locked manual grid; otherwise start at the playhead`} aria-label='Quantize'>Q</button>
     </div>
   );
 });
@@ -80,7 +80,7 @@ const CurveRow = React.memo(function CurveRow() {
   const crossfaderCurve = useStore(s => s.djMixer?.crossfaderCurve);
   const setCrossfaderCurve = useStore(s => s.setCrossfaderCurve);
   return (
-    <div className='dj-mixer-row' role='group' aria-label='Crossfader curve'>
+    <div className='dj-mixer-row dj-mixer-curve' role='group' aria-label='Crossfader curve'>
       <span className='dj-label'>Curve</span>
       {CURVES.map(({ curve, label, title }) => (
         <button key={curve} type='button' className='dj-btn' aria-pressed={crossfaderCurve === curve} title={title}
@@ -104,7 +104,7 @@ const MixerBottom = React.memo(function MixerBottom() {
   useEffect(() => { setTool(layoutMode === 'fx' ? 'fxpad' : 'sampler'); }, [layoutMode]);
   const active = MIXER_TOOLS.find(entry => entry.id === tool)!;
   return (
-    <div className='dj-mixer-bottom'>
+    <div className='dj-mixer-bottom' data-tool={tool}>
       <div className='dj-mixer-bottom-tabs' role='tablist' aria-label='Mixer tools'>
         {MIXER_TOOLS.map(({ id, label }) => (
           <button key={id} type='button' role='tab' className='dj-btn dj-btn-xs' aria-selected={tool === id} aria-pressed={tool === id}
@@ -113,7 +113,7 @@ const MixerBottom = React.memo(function MixerBottom() {
       </div>
       <div className='dj-mixer-bottom-body' role='tabpanel' aria-label={active.label} data-dj-mixer-tool={tool}>
         {tool === 'sampler' && <DJSamplerPads fill />}
-        {tool === 'fxpad' && <div className='dj-mixer-fxpad'><DJFXPad size={130} /></div>}
+        {tool === 'fxpad' && <div className='dj-mixer-fxpad'><DJFXPad size={140} width={244} fill /></div>}
         {tool === 'beatfx' && <DJBeatFXPanel />}
       </div>
     </div>
@@ -136,10 +136,10 @@ export const DJMixerPanel = React.memo(function DJMixerPanel({
         <DJChannelStrip deckId='B' getDeckLevels={getDeckBLevels} onVolumeChange={onVolumeChange} />
       </div>
       <div className='dj-mixer-section' aria-label='Headphone cue mix' role='group'>
-        <DJHeadphoneMix width={200} />
+        <DJHeadphoneMix width={264} />
       </div>
       <div className='dj-mixer-section'>
-        <div className='w-full px-2'>
+        <div className='dj-mixer-crossfader'>
           <DJCrossfaderSelfSub onChange={onCrossfaderChange} width={-1} responsive />
         </div>
       </div>

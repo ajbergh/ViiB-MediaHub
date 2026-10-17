@@ -1,6 +1,6 @@
 /** Renders deck playback, synchronization, and transport controls. */
 
-import { canSyncBeatGrid } from '../../../lib/beatGridConfidence';
+import { syncUnavailableReason } from '../../../lib/djMixerControls';
 /**
  * ViiB MediaHub - DJ Transport Buttons Component (v2)
  * 
@@ -34,8 +34,10 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
   const originalBpm = useStore(state => deck === 'A' ? state.djDeckA.originalBpm : state.djDeckB.originalBpm);
   const effectiveBpm = useStore(state => deck === 'A' ? state.djDeckA.effectiveBpm : state.djDeckB.effectiveBpm);
   const otherEffectiveBpm = useStore(state => deck === 'A' ? state.djDeckB.effectiveBpm : state.djDeckA.effectiveBpm);
-  const gridsVerified = useStore(state => canSyncBeatGrid(state.djDeckA) && canSyncBeatGrid(state.djDeckB));
+  const syncReason = useStore(state => syncUnavailableReason(state, deck));
   const syncMode = useStore(state => state.djMixer.syncMode);
+  const cuePoint = useStore(state => deck === 'A' ? state.djDeckA.cuePoint : state.djDeckB.cuePoint);
+  const formatCueClock = (seconds: number) => `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`;
 
   const { togglePlay, returnToCue, setCue, setTempo, syncBeatPhase } = useDJAudioEngineActions();
 
@@ -84,7 +86,7 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
   }, [deck, track, setCue]);
 
   const handleSync = useCallback(() => {
-    if ((syncMode === 'beat-phase' && !gridsVerified) || syncMode === 'off' || !originalBpm || !otherEffectiveBpm) return;
+    if (syncUnavailableReason(useStore.getState(), deck) || !originalBpm || !otherEffectiveBpm) return;
 
     const targetBpm = otherEffectiveBpm;
     const newTempo = targetBpm / originalBpm;
@@ -94,7 +96,7 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
     if (syncMode === 'beat-phase') {
       syncBeatPhase(deck);
     }
-  }, [deck, originalBpm, otherEffectiveBpm, setTempo, syncMode, syncBeatPhase, gridsVerified]);
+  }, [deck, originalBpm, otherEffectiveBpm, setTempo, syncMode, syncBeatPhase]);
 
   const accentColor = deck === 'A' ? 'var(--dj-deck-a)' : 'var(--dj-deck-b)';
   // Bigger primary transport — Play is the hero, CUE/SYNC scale with it.
@@ -102,8 +104,8 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
   const playSize = compact ? 'w-12 h-12' : 'w-20 h-20';
   const iconSize = compact ? 18 : 28;
 
-  const syncDisabled = !track || syncMode === 'off' || (syncMode === 'beat-phase' && !gridsVerified);
-  const syncTitle = syncMode === 'beat-phase' && !gridsVerified ? 'Verify and lock both grids in Edit Grid before beat-phase sync. BPM-only sync is still available.' : syncMode === 'off' ? 'Sync disabled — set sync mode in mixer' : `Sync to other deck (${syncMode})`;
+  const syncDisabled = syncReason !== null;
+  const syncTitle = syncReason ?? `Sync to other deck (${syncMode})`;
 
   if (consoleLayout) {
     // Play is semantic green on both decks; deck color never replaces it.
@@ -111,16 +113,33 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
       <div className='dj-transport'>
         <button type='button' className='dj-btn dj-btn-lg dj-transport-cue' onClick={handleCue} onContextMenu={handleSetCue} disabled={!track}
           aria-label={`Cue deck ${deck}`} title='Cue: return to cue point (right-click to set)'>
-          <SkipBack size={16} aria-hidden='true' /> CUE
+          <span className='dj-transport-led' aria-hidden='true' />
+          <SkipBack size={15} fill='currentColor' aria-hidden='true' />
+          <span>CUE</span>
+          {track && cuePoint > 0 && (
+            <span className='dj-transport-cue-time' aria-hidden='true'>{formatCueClock(cuePoint)}</span>
+          )}
         </button>
         <button ref={playButtonRef} type='button' className='dj-btn dj-btn-lg dj-btn-play dj-transport-play' onClick={handlePlayPause} disabled={!track}
           aria-label={isPlaying ? `Pause deck ${deck}` : `Play deck ${deck}`} data-playing={isPlaying} style={{ ['--glow' as string]: '0' }}>
-          {isPlaying ? <Pause size={22} aria-hidden='true' /> : <Play size={22} aria-hidden='true' />}
+          <span className='dj-transport-led' aria-hidden='true' />
+          {isPlaying ? (
+            <>
+              <Pause size={18} fill='currentColor' aria-hidden='true' />
+              <span className='dj-transport-play-label'>PAUSE</span>
+            </>
+          ) : (
+            <>
+              <Play size={18} fill='currentColor' aria-hidden='true' />
+              <span className='dj-transport-play-label'>PLAY</span>
+            </>
+          )}
         </button>
-        <button type='button' className='dj-btn dj-btn-lg dj-transport-sync' data-deck-accent={deck} onClick={handleSync} disabled={syncDisabled}
+        <button type='button' className='dj-btn dj-btn-lg dj-transport-sync' data-deck-accent={deck} data-sync-active={!syncDisabled} onClick={handleSync} disabled={syncDisabled}
           aria-label={`Sync deck ${deck} to other deck`} title={syncTitle}>
-          SYNC
-          {syncMode !== 'off' && track && <span className='dj-status-dot' data-state={syncMode === 'beat-phase' ? 'warn' : 'ok'} aria-hidden='true' />}
+          <span className='dj-transport-led' aria-hidden='true' />
+          <span>SYNC</span>
+          {!syncDisabled && <span className='dj-status-dot' data-state={syncMode === 'beat-phase' ? 'warn' : 'ok'} aria-hidden='true' />}
         </button>
       </div>
     );
@@ -176,13 +195,13 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
       {/* Sync Button */}
       <button
         onClick={handleSync}
-        disabled={!track || syncMode === 'off' || (syncMode === 'beat-phase' && !gridsVerified)}
+        disabled={syncDisabled}
         aria-label={`Sync deck ${deck} to other deck`}
-        title={syncMode === 'beat-phase' && !gridsVerified ? 'Verify and lock both grids in Edit Grid before beat-phase sync. BPM-only sync is still available.' : syncMode === 'off' ? 'Sync disabled — set sync mode in mixer' : `Sync to other deck (${syncMode})`}
+        title={syncTitle}
         className={`
           ${compact ? 'h-12 px-4 text-[12px]' : 'h-16 px-7 text-[14px]'} rounded-lg font-bold uppercase tracking-wider
           transition-all duration-100 border flex items-center gap-1.5
-          ${!track || syncMode === 'off'
+          ${syncDisabled
             ? 'bg-[var(--dj-border)] text-[var(--dj-text-secondary)] border-[var(--dj-border-light)] cursor-not-allowed'
             : syncMode === 'beat-phase'
               ? 'bg-[var(--dj-warning)] hover:bg-[var(--dj-warning)] text-white border-[var(--dj-warning)]'
@@ -190,7 +209,7 @@ export const DJTransportButtons: React.FC<DJTransportButtonsProps> = ({
         `}
       >
         SYNC
-        {syncMode !== 'off' && track && <span className='w-2 h-2 rounded-full bg-current opacity-80' />}
+        {!syncDisabled && <span className='w-2 h-2 rounded-full bg-current opacity-80' />}
       </button>
     </div>
   );

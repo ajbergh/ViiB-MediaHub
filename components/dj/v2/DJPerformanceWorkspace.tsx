@@ -12,18 +12,29 @@
 import React from 'react';
 
 interface DJPerformanceWorkspaceProps {
-  upper: React.ReactNode;
+  upper?: React.ReactNode;
   deckA: React.ReactNode;
+  waveA?: React.ReactNode;
   mixer: React.ReactNode;
+  waveB?: React.ReactNode;
   deckB: React.ReactNode;
 }
 
-export const DJPerformanceWorkspace: React.FC<DJPerformanceWorkspaceProps> = ({ upper, deckA, mixer, deckB }) => (
+export const DJPerformanceWorkspace: React.FC<DJPerformanceWorkspaceProps> = ({
+  upper,
+  deckA,
+  waveA,
+  mixer,
+  waveB,
+  deckB,
+}) => (
   <>
-    <div className='dj-upper'>{upper}</div>
+    {upper ? <div className='dj-upper'>{upper}</div> : null}
     <div className='dj-main-grid' data-dj-workspace>
       {deckA}
+      {waveA}
       {mixer}
+      {waveB}
       {deckB}
     </div>
   </>

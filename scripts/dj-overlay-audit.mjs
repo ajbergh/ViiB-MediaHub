@@ -65,7 +65,7 @@ const layoutMetrics = () => page.evaluate(() => {
     },
   };
 });
-// Plan §15: 50/50 waveform split, mixer centerline, A/B symmetry, toolbar
+// Stacked waveform rows, aligned playheads, mixer centerline, A/B symmetry, toolbar
 // fit and overlap detection, all in normalized authored-canvas pixels.
 const structure = () => page.evaluate(() => {
   const canvas = document.querySelector('[data-dj-canvas]');
@@ -124,6 +124,8 @@ const structure = () => page.evaluate(() => {
     split: n(q('[data-dj-waveform-split]')),
     laneA: n(q('[data-dj-waveform-deck="A"]')),
     laneB: n(q('[data-dj-waveform-deck="B"]')),
+    waveformA: n(q('[data-dj-waveform-deck="A"] .dj-waveform-main')),
+    waveformB: n(q('[data-dj-waveform-deck="B"] .dj-waveform-main')),
     deckA: n(q('[data-dj-deck="A"]')),
     deckB: n(q('[data-dj-deck="B"]')),
     mixer: n(mixer),
@@ -138,15 +140,16 @@ const structure = () => page.evaluate(() => {
 const near = (a, b, tolerance = 1) => Math.abs(a - b) <= tolerance;
 const assertStructure = (s, label) => {
   if (s.split) {
-    // Lanes are framed panels; the split is exact when both frames are equal,
-    // mirror their outer insets, and the gutter between them is centred on 50%.
+    // Horizontal waveforms are stacked rows. Both rendering surfaces share
+    // the same horizontal coordinates despite controls clipping opposite ends.
     const center = s.split.x + s.split.width / 2;
     assert.ok(near(s.laneA.width, s.laneB.width), `${label}: waveform lanes differ in width (${s.laneA.width} vs ${s.laneB.width})`);
-    assert.ok(near(s.laneA.x - s.split.x, s.split.x + s.split.width - (s.laneB.x + s.laneB.width)), `${label}: waveform lane outer insets differ`);
-    assert.ok(s.laneA.x + s.laneA.width <= center + 0.5 && s.laneB.x >= center - 0.5, `${label}: a waveform lane crosses the 50% line`);
-    assert.ok(near((s.laneA.x + s.laneA.width + s.laneB.x) / 2, center), `${label}: waveform gutter is not centred on 50%`);
+    assert.ok(near(s.laneA.x, s.laneB.x), `${label}: waveform rows are not horizontally aligned`);
+    assert.ok(s.laneA.y + s.laneA.height <= s.laneB.y, `${label}: waveform rows overlap`);
+    assert.ok(s.waveformA && s.waveformB, `${label}: waveform surface is missing`);
+    assert.ok(near(s.waveformA.x + s.waveformA.width / 2, s.waveformB.x + s.waveformB.width / 2), `${label}: waveform playheads are not aligned`);
     assert.ok(near(s.laneA.height, s.laneB.height), `${label}: waveform lanes differ in height`);
-    assert.ok(near(s.mixer.x + s.mixer.width / 2, s.split.x + s.split.width / 2), `${label}: mixer centerline misses the waveform divider`);
+    assert.ok(near(s.mixer.x + s.mixer.width / 2, center), `${label}: mixer misses the waveform centerline`);
     assert.ok(s.webglCanvases <= 2, `${label}: ${s.webglCanvases} WebGL waveform canvases (max 2)`);
   }
   assert.ok(near(s.deckA.width, s.deckB.width) && near(s.deckA.height, s.deckB.height), `${label}: decks are not symmetric`);
@@ -254,6 +257,8 @@ try {
     assert.equal(await inspector.isVisible(), false, 'Escape does not close the inspector');
     assert.equal(await inspectorTrigger.evaluate(el => el === document.activeElement), true, 'inspector does not return focus');
     assertStructure(await structure(), `${width}×${height} loaded`);
+    const horizontalLoops = await page.locator('.dj-toolbar-loop button').evaluateAll(buttons => buttons.map(b => b.offsetHeight));
+    assert.ok(horizontalLoops.length === 18 && horizontalLoops.every(h => h >= 48), `${width}: horizontal loop buttons are too small`);
     // Every mixer tool must fit its panel without clipping (the panel is
     // budgeted for the tallest tool, Beat FX).
     for (const tool of ['FX Pad', 'Beat FX', 'Sampler']) {
@@ -275,15 +280,44 @@ try {
     assert.ok(overflow.every(el => el.scroll <= el.width + 1), 'Loaded deck metadata overflows');
     // Mode changes never move deck/mixer geometry; SCOPE swaps only the waveform band.
     const referenceGeometry = await geometry();
-    for (const mode of ['SCOPE', 'SCOPE', 'FX', 'DJ']) {
+    for (const mode of ['SCOPE', 'SCOPE', 'FX', 'PERFORMANCE']) {
       await page.getByRole('button', { name: mode, exact: true }).click();
       const bounds = await layoutMetrics();
       assert.ok(bounds.workspace.scrollHeight <= bounds.workspace.clientHeight + 1, `${mode} workspace overflows at ${width}: ${JSON.stringify(bounds.workspace)}`);
       assert.deepEqual(await geometry(), referenceGeometry, `${mode} changes deck/mixer geometry at ${width}`);
+      if (mode === 'FX') assertStructure(await structure(), `${width}×${height} horizontal with FX racks`);
     }
     assert.ok(await page.locator('[data-dj-waveform-split]').isVisible(), 'waveform hidden in the DJ layout');
 
   }
+  // Vertical mode has its own toolbar budget and square mixer tools.
+  await page.getByRole('button', { name: 'Vertical waveforms', exact: true }).click();
+  for (const [width, height] of [[1470,825], [1920,1080], [2560,1440], [3840,2160]]) {
+    await page.setViewportSize({ width, height });
+    await waitForCanvasScale();
+    const openedRacks = [];
+    for (const deck of ['A', 'B']) {
+      const toggle = page.getByRole('button', { name: new RegExp(`^Deck ${deck} FX rack`) });
+      if (await toggle.getAttribute('aria-pressed') !== 'true') { await toggle.click(); openedRacks.push(toggle); }
+    }
+    assertStructure(await structure(), `${width}×${height} vertical with FX racks`);
+    const loops = await page.locator('.dj-toolbar-loop button').evaluateAll(buttons => buttons.map(b => b.offsetHeight));
+    assert.ok(loops.length === 18 && loops.every(h => h >= 48), `${width}: vertical loop buttons are too small`);
+    for (const toggle of openedRacks) await toggle.click();
+    for (const tool of ['FX Pad', 'Sampler']) {
+      await page.getByRole('tab', { name: tool, exact: true }).click();
+      const selector = tool === 'FX Pad' ? '.dj-fx-pad-surface' : '.dj-sampler-cell > button';
+      const squares = await page.locator(selector).evaluateAll(elements => elements.map(el => {
+        const box = el.getBoundingClientRect(); return { width: box.width, height: box.height };
+      }));
+      assert.equal(squares.length, tool === 'FX Pad' ? 1 : 8, `${width}: missing ${tool} controls`);
+      assert.ok(squares.every(box => box.width > 0 && near(box.width, box.height)), `${width}: vertical ${tool} controls are not square`);
+      const overflow = await page.locator('.dj-mixer-bottom-body').evaluate(body => body.scrollHeight > body.clientHeight + 1 || body.scrollWidth > body.clientWidth + 1);
+      assert.equal(overflow, false, `${width}: vertical ${tool} overflows`);
+    }
+    await page.screenshot({ path: `${output}/${width}x${height}-vertical.png` });
+  }
+  await page.getByRole('button', { name: 'Horizontal waveforms', exact: true }).click();
   // Renderer: WebGL lanes use one context per deck (two total); without WebGL
   // each lane falls back to Canvas 2D with identical geometry.
   await page.evaluate(() => { const s = window.__djAuditStore.getState(); if (!s.djMixer.useWebGLWaveform) s.toggleWebGLWaveform(); });
@@ -336,7 +370,7 @@ try {
   assert.deepEqual(await deckState(), playing, 'browsing changes playing decks');
   await page.waitForFunction((prev) => { const s = window.__djAuditStore.getState(); return s.djDeckA.position > prev[0] && s.djDeckB.position > prev[1]; }, positions);
   await page.keyboard.press('w'); await page.keyboard.press('p');
-  await page.getByRole('button', { name: 'BROWSE', exact: true }).click();
+  await page.locator('.dj-topbar').getByRole('button', { name: 'LIBRARY', exact: true }).click();
   assert.equal(await drawer.isVisible(), true);
   await search.press('Escape');
   await page.getByRole('button', { name: 'Enter fullscreen (F11)', exact: true }).click();
@@ -349,7 +383,7 @@ try {
   await page.waitForFunction(() => !document.fullscreenElement);
   await page.setViewportSize({ width: 1439, height: 900 });
   await page.getByRole('heading', { name: /needs a wider screen/ }).waitFor();
-  console.log(`PASS${disableWebGL ? ' (Canvas fallback)' : ''}: 4 proportional desktop geometries, 12,000-track virtualization, focus/Escape/modal priority, typing, sort/playlist/columns, A/B loading + drag, playback continuity, fullscreen, width gate`);
+  console.log(`PASS${disableWebGL ? ' (Canvas fallback)' : ''}: 4 proportional desktop geometries, vertical square tools and enlarged loops, 12,000-track virtualization, focus/Escape/modal priority, typing, sort/playlist/columns, A/B loading + drag, playback continuity, fullscreen, width gate`);
   await writeFile(`${output}/results.json`, JSON.stringify(results, null, 2));
 } catch (error) {
   await page.screenshot({ path: `${output}/failure.png` });

@@ -8,6 +8,7 @@
 
 export interface WebGLRuntime {
   hostname: string;
+  protocol?: string;
   userAgent: string;
 }
 
@@ -20,6 +21,7 @@ function getRuntime(): WebGLRuntime | null {
 
   return {
     hostname: window.location.hostname,
+    protocol: window.location.protocol,
     userAgent: navigator.userAgent,
   };
 }
@@ -27,7 +29,8 @@ function getRuntime(): WebGLRuntime | null {
 export function isMacOSWails(runtime: WebGLRuntime | null = getRuntime()): boolean {
   return Boolean(
     runtime
-    && runtime.hostname === 'wails.localhost'
+    && ((runtime.protocol === 'wails:' && runtime.hostname === 'wails')
+      || runtime.hostname === 'wails.localhost')
     && /Macintosh|Mac OS X/i.test(runtime.userAgent),
   );
 }
@@ -43,7 +46,28 @@ export function getPreferredWebGLVersion(runtime: WebGLRuntime | null = getRunti
   return 'webgl2';
 }
 
-/** True when the runtime can use the WebGL renderer rather than Canvas 2D. */
+/** Browser eligibility only; actual support is detected on the renderer's own
+ * canvas, avoiding an extra GPU context just for capability probing. */
 export function shouldUseAdvancedWebGL(runtime: WebGLRuntime | null = getRuntime()): boolean {
   return runtime !== null;
+}
+
+/** Detect support on the canvas that will render. Drivers may return null or
+ * throw, and a context can fail even when WebGL constructors are available. */
+export function createPreferredWebGLContext(canvas: HTMLCanvasElement): {
+  gl: WebGLRenderingContext | WebGL2RenderingContext;
+  webgl2: boolean;
+} | null {
+  for (const version of ['webgl2', 'webgl'] as const) {
+    try {
+      const gl = canvas.getContext(version, {
+        alpha: true, antialias: false, depth: false, stencil: false,
+        premultipliedAlpha: true, preserveDrawingBuffer: false,
+      }) as WebGLRenderingContext | WebGL2RenderingContext | null;
+      if (gl) return { gl, webgl2: version === 'webgl2' };
+    } catch {
+      // Try the older profile, then allow the caller to fall back to Canvas.
+    }
+  }
+  return null;
 }

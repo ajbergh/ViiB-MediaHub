@@ -34,7 +34,7 @@ The AI Smart Mix page shows index readiness and optional count-only retrieval di
 
 The interface provides two decks, waveform/analysis surfaces, a central mixer, and a library browser. Depending on the current build and platform, controls include transport, tempo, cue/loop behavior, EQ, crossfader, VU meters, sampler, MIDI mapping, and output routing.
 
-The Deck A → Mixer → Deck B workspace keeps the same geometry when the library opens or closes. The centered **Library** button stays at the bottom of DJ Mode. **Browse** opens the same overlay; it shares Performance's waveform sizing so browsing does not shrink the decks. FX remains a separate layout choice.
+The Deck A → Mixer → Deck B workspace keeps the same geometry when the library opens or closes. **Library** in the top bar or at the bottom opens the same overlay without changing the selected layout. **Performance** restores the decks and waveforms and closes the library. FX remains a separate layout choice.
 
 DJv2 uses one proportionally scaled design canvas. The active width gate requires at least 1440px; 1470×825 is the smallest audit geometry used by the current regression checks. This preserves every control's dimensions and spacing relationship at 1080p, 1440p, and 4K without clipping or an internally scrolling workstation. Track headers reserve separate rows for titles and performance metadata.
 
@@ -82,7 +82,7 @@ See [Settings → Playback & Audio](settings.md#playback--audio).
 
 The DJ library browser filters the ViiB catalog and exposes available metadata such as title, artist, duration, BPM, or key where populated.
 
-- Click **Library** or press **/** to open the bottom overlay and focus search. **Browse** also opens it.
+- Click **Library** or press **/** to open the bottom overlay and focus search.
 - Close with **×**, **Library**, or **Escape**. Closing is immediate and restores focus to the opener. A column menu or modal gets Escape before the library. Typing and focus traversal inside the library do not trigger deck shortcuts.
 - The full-width drawer uses 50% of the DJ viewport height, bounded by a 280px minimum, 640px maximum, and available height. It is no longer manually resizable. There is no page-level library-height state or library resize observer.
 - Search, categories/playlists, sorting, configurable columns, track colors, BPM/key and harmonic compatibility, load A/B, and drag-to-deck use the existing browser. Drag onto the exposed upper portion of either deck.
@@ -118,7 +118,7 @@ Drawer state belongs to `DJLibraryDrawer`, so opening and closing do not rerende
 
 The library's Virtuoso table/row and sort-header component identities are stable across updates, avoiding remounts and lost focus. Playlist filtering uses a membership set instead of scanning every playlist ID for every catalog song. FX header subscriptions select active counts, avoiding parent renders during parameter drags. WebGL fills the CSS waveform surface, retains stable renderer callbacks, and uses capability-checked float-texture filtering with a nearest-filter fallback. Knob readouts round display values to one decimal without changing audio values.
 
-Run `node scripts/dj-overlay-audit.mjs` against a running Vite/backend instance (default `http://localhost:3000/dj`, override with `DJ_AUDIT_URL`). It uses an isolated browser context, a 12,000-track API fixture, and generated WAV audio to check desktop geometry, virtualization, focus/Escape, modal priority, loading, typing, and playback continuity. Artifacts go to `output/playwright/dj-overlay/`.
+Run `node scripts/dj-overlay-audit.mjs` against a running Vite/backend instance (default `http://localhost:3000/dj`, override with `DJ_AUDIT_URL`). It uses an isolated browser context, a 12,000-track API fixture, and generated WAV audio to check stacked waveform/playhead alignment, horizontal and vertical desktop geometry, square mixer tools, enlarged vertical loop controls, virtualization, focus/Escape, modal priority, loading, typing, and playback continuity. Repeat with `DJ_AUDIT_DISABLE_WEBGL=1` to exercise the Canvas fallback. This browser audit is separate from `npm run check`; run both before a DJ UI PR. Artifacts go to `output/playwright/dj-overlay/`.
 
 See [the remediation validation report](archive/completed/dj-overlay-validation.md) for resolution findings, screenshots, commands, and native-platform limitations.
 

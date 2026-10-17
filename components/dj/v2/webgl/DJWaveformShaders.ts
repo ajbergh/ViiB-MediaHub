@@ -85,6 +85,8 @@ uniform float u_loopStart;
 uniform float u_loopEnd;
 uniform int u_loopEnabled;
 uniform int u_colorMode;
+uniform int u_threeBands;
+uniform int u_bandSelection;      // -1 = all; 0/1/2 = low/mid/high
 
 // Deck-tinted gradient palette (center -> edge) and background, supplied by
 // the shared waveform palette module. This waveform stores amplitude only.
@@ -130,12 +132,15 @@ void main() {
     float centerIndex = sampleU * u_peakCount;
     float firstIndex = centerIndex - samplesPerPixel * 0.5;
     float peak = 0.0;
+    vec3 bandPeaks = vec3(0.0);
     for (int i = 0; i < 64; i++) {
         if (float(i) >= sampleCount) break;
         float sampleIndex = clamp(firstIndex + (float(i) + 0.5) * samplesPerPixel / sampleCount, 0.0, u_peakCount - 1.0);
         float texX = (mod(floor(sampleIndex), u_peakWidth) + 0.5) / u_peakWidth;
         float texY = (floor(sampleIndex / u_peakWidth) + 0.5) / u_peakHeight;
-        peak = max(peak, texture(u_waveformTex, vec2(texX, texY)).r);
+        vec3 samplePeaks = texture(u_waveformTex, vec2(texX, texY)).rgb;
+        peak = max(peak, samplePeaks.r);
+        bandPeaks = max(bandPeaks, samplePeaks);
     }
     bool hasLoop = u_loopStart >= 0.0 && u_loopEnd > u_loopStart;
     float loopStartPixels = abs((sampleU - u_loopStart) / max(u_visibleRange, 0.000001) * u_resolution.x);
@@ -147,9 +152,19 @@ void main() {
     
     // Distance from center line
     float distFromCenter = abs(v_uv.y - u_centerY) * 2.0;
+    int selectedBand = u_bandSelection;
+    if (u_threeBands == 1) {
+        // Canvas orders Low/Mid/High from the top; GL UVs start at the bottom.
+        if (selectedBand < 0) selectedBand = int(min(2.0, floor((1.0 - v_uv.y) * 3.0)));
+        float laneCount = u_bandSelection < 0 ? 3.0 : 1.0;
+        float laneCenter = u_bandSelection < 0 ? 1.0 - (float(selectedBand) + 0.5) / 3.0 : 0.5;
+        distFromCenter = abs(v_uv.y - laneCenter) * 2.0 * laneCount;
+        peak = selectedBand == 0 ? bandPeaks.r : (selectedBand == 1 ? bandPeaks.g : bandPeaks.b);
+        peak *= max(0.0, 1.0 - 4.0 * laneCount / u_resolution.y);
+    }
     
     // Anti-aliasing: smooth edge transition
-    float edgeWidth = 1.5 / u_resolution.y;
+    float edgeWidth = 1.5 * (u_threeBands == 1 && u_bandSelection < 0 ? 3.0 : 1.0) / u_resolution.y;
     float alpha = 1.0 - smoothstep(peak - edgeWidth, peak + edgeWidth, distFromCenter);
     
     // Within waveform amplitude?
@@ -157,14 +172,16 @@ void main() {
         // Gradient mode varies color with distance from the center line.
         float freqPosition = distFromCenter / max(peak, 0.001);
         vec3 color = getGradientColor(freqPosition);
-        if (u_colorMode == 1) {
+        if (u_threeBands == 1) {
+            color = selectedBand == 0 ? u_gradCenter : (selectedBand == 1 ? u_gradMid : u_gradEdge);
+        } else if (u_colorMode == 1) {
             color = peak > 0.66 ? vec3(1.0, 0.27, 0.27) : (peak > 0.33 ? vec3(1.0, 0.67, 0.2) : vec3(0.27, 0.55, 1.0));
         } else if (u_colorMode == 2) {
             color = u_deckColor;
         }
         
         // Slight brightness variation for depth
-        color *= 0.85 + 0.15 * (1.0 - freqPosition);
+        if (u_threeBands == 0) color *= 0.85 + 0.15 * (1.0 - freqPosition);
         
         bool inLoop = hasLoop && sampleU >= u_loopStart && sampleU <= u_loopEnd;
         if (inLoop) color = mix(color, u_loopEnabled == 1 ? vec3(0.12, 0.82, 0.42) : vec3(0.55, 0.65, 0.72), u_loopEnabled == 1 ? 0.42 : 0.18);

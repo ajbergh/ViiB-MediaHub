@@ -4,9 +4,8 @@
  * Compact global navigation strip (Plan §10A.4). One mode group replaces the
  * former SCOPE/TIMELINE/RACKS + PERF/BROWSE/FX pair:
  *
- *   DJ      performance workspace (split waveforms, full decks)
+ *   PERFORMANCE restores the decks and waveforms and closes the library
  *   LIBRARY toggles the library drawer
- *   BROWSE  performance geometry with the library open
  *   FX      brings the mixer's FX pad (X-Y pad + Beat FX) forward
  *   SCOPE   swaps the waveform band for the diagnostic scope
  *
@@ -20,6 +19,7 @@ import { Maximize2, Minimize2, Settings, Volume2, Cable } from 'lucide-react';
 import { useStore } from '../../../store';
 import { shouldUseAdvancedWebGL } from '../../../lib/webglSafety';
 import type { DJLayoutMode } from '../../../slices/djMixerSlice';
+import type { WaveformOrientation } from './waveform/canvasWaveformRenderer';
 
 export type DJUpperView = 'waveform' | 'scope';
 
@@ -28,6 +28,8 @@ interface DJTopBarProps {
   onLayoutModeChange: (mode: DJLayoutMode) => void;
   upperView: DJUpperView;
   onUpperViewChange: (view: DJUpperView) => void;
+  waveformOrientation?: WaveformOrientation;
+  onWaveformOrientationChange?: (orientation: WaveformOrientation) => void;
   libraryOpen: boolean;
   onToggleLibrary: () => void;
   isRecording: boolean;
@@ -92,7 +94,7 @@ const SettingsMenu: React.FC<{ onShowShortcuts: () => void }> = ({ onShowShortcu
           <div className='dj-segmented' style={{ marginBottom: 10 }}>
             <button type='button' className='dj-btn dj-btn-xs' aria-pressed={advancedWebGLEnabled && !!useWebGLWaveform}
               disabled={!advancedWebGLEnabled} onClick={() => { if (!useWebGLWaveform) toggleWebGLWaveform(); }}
-              title={advancedWebGLEnabled ? 'GPU-accelerated waveform' : 'Canvas waveform is used in the macOS desktop app for stability'}>WebGL</button>
+              title={advancedWebGLEnabled ? 'Prefer GPU-accelerated waveform; falls back to Canvas if unavailable' : 'WebGL is unavailable in this runtime'}>WebGL</button>
             <button type='button' className='dj-btn dj-btn-xs' aria-pressed={!advancedWebGLEnabled || !useWebGLWaveform}
               onClick={() => { if (useWebGLWaveform) toggleWebGLWaveform(); }} title='Canvas 2D waveform'>Canvas 2D</button>
           </div>
@@ -106,15 +108,16 @@ const SettingsMenu: React.FC<{ onShowShortcuts: () => void }> = ({ onShowShortcu
 };
 
 export const DJTopBar: React.FC<DJTopBarProps> = ({
-  layoutMode, onLayoutModeChange, upperView, onUpperViewChange, libraryOpen, onToggleLibrary,
+  layoutMode, onLayoutModeChange, upperView, onUpperViewChange,
+  waveformOrientation = 'horizontal', onWaveformOrientationChange,
+  libraryOpen, onToggleLibrary,
   isRecording, recordingDuration, onRecordToggle, midiEnabled, onOpenMidi, onOpenAudio, onShowShortcuts,
 }) => {
   const modes: ReadonlyArray<{ mode: DJLayoutMode; label: string; title: string }> = [
-    { mode: 'perf', label: 'DJ', title: 'Performance workspace — split waveforms and full decks' },
-    { mode: 'browse', label: 'BROWSE', title: 'Browse — performance geometry with the library open' },
+    { mode: 'perf', label: 'PERFORMANCE', title: 'Return to the decks and waveforms; close the library' },
     { mode: 'fx', label: 'FX', title: 'FX — X-Y pad and Beat FX in the mixer' },
   ];
-  const [dj, browse, fx] = modes;
+  const [performance, fx] = modes;
   const modeButton = ({ mode, label, title }: typeof modes[number]) => (
     <button key={mode} type='button' className='dj-btn dj-topbar-mode' aria-pressed={layoutMode === mode} title={title}
       onClick={() => { onLayoutModeChange(mode); if (mode === 'perf') onUpperViewChange('waveform'); }}>{label}</button>
@@ -123,13 +126,34 @@ export const DJTopBar: React.FC<DJTopBarProps> = ({
   return (
     <header className='dj-topbar'>
       <nav className='dj-topbar-group' aria-label='DJ workspace modes'>
-        {modeButton(dj)}
+        {modeButton(performance)}
         <button type='button' className='dj-btn dj-topbar-mode' aria-expanded={libraryOpen} aria-controls='dj-library-drawer'
           title='Toggle the library (/)' onClick={onToggleLibrary}>LIBRARY</button>
-        {modeButton(browse)}
         {modeButton(fx)}
         <button type='button' className='dj-btn dj-topbar-mode' aria-pressed={upperView === 'scope'}
           title='Swap the waveform band for the signal scope' onClick={() => onUpperViewChange(upperView === 'scope' ? 'waveform' : 'scope')}>SCOPE</button>
+        <div className='dj-segmented dj-topbar-wave-toggle' role='group' aria-label='Waveform orientation'>
+          <button
+            type='button'
+            className='dj-btn dj-btn-xs'
+            aria-pressed={waveformOrientation === 'horizontal'}
+            aria-label='Horizontal waveforms'
+            title='Horizontal stacked waveforms (top band)'
+            onClick={() => { onWaveformOrientationChange?.('horizontal'); if (upperView === 'scope') onUpperViewChange('waveform'); }}
+          >
+            HORIZ
+          </button>
+          <button
+            type='button'
+            className='dj-btn dj-btn-xs'
+            aria-pressed={waveformOrientation === 'vertical'}
+            aria-label='Vertical waveforms'
+            title='Vertical scrolling waveforms flanking the mixer'
+            onClick={() => { onWaveformOrientationChange?.('vertical'); if (upperView === 'scope') onUpperViewChange('waveform'); }}
+          >
+            VERT
+          </button>
+        </div>
       </nav>
       <div className='dj-topbar-group'>
         <button type='button' className='dj-btn dj-btn-danger' onClick={onRecordToggle} aria-pressed={isRecording}

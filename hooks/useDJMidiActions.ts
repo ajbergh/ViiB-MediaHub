@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useDJAudioEngineActions } from './useDJAudioEngine';
 import { getDJMidiService, type MidiAction, type MidiMapping } from '../lib/djMidi';
 import { getDJSamplerEngine } from '../lib/djSampler';
-import { canSyncBeatGrid } from '../lib/beatGridConfidence';
+import { syncUnavailableReason } from '../lib/djMixerControls';
 import { useStore } from '../store';
 import type { DeckId } from '../slices/djMixerSlice';
 
@@ -57,8 +57,7 @@ export function useDJMidiActions(): boolean {
         const source = deck === 'A' ? state.djDeckB : state.djDeckA;
         const syncMode = state.djMixer.syncMode;
         const sourceBpm = source.effectiveBpm || source.originalBpm;
-        if (syncMode !== 'off' && target.originalBpm && sourceBpm &&
-            (syncMode !== 'beat-phase' || (canSyncBeatGrid(target) && canSyncBeatGrid(source)))) {
+        if (!syncUnavailableReason(state, deck) && target.originalBpm && sourceBpm) {
           currentActions.setTempo(deck, Math.max(0.5, Math.min(1.5, sourceBpm / target.originalBpm)));
           if (syncMode === 'beat-phase') currentActions.syncBeatPhase(deck);
         }

@@ -17,6 +17,12 @@ function createTestMixerState(): DJMixerSlice {
 }
 
 describe('deck analysis patches', () => {
+  it('prefers WebGL by default and retains the user Canvas toggle', () => {
+    const state = createTestMixerState();
+    expect(state.djMixer.useWebGLWaveform).toBe(true);
+    state.toggleWebGLWaveform();
+    expect(state.djMixer.useWebGLWaveform).toBe(false);
+  });
   it('keeps independently resolved tempo, key, and grid fields intact', () => {
     const state = createTestMixerState();
     state.setDeckAnalysis('A', { bpm: 128, beatGrid: [0, 0.46875] });
