@@ -14,6 +14,11 @@ import { getHotCueMarkerStyle } from '../../../../lib/hotCueMarkerStyle';
 import { DECK_WAVEFORM_PALETTE, LEVEL_COLORS, WAVEFORM_CHROME, canvasGradientStops, type WaveformColorMode } from './waveformPalette';
 
 export type WaveformOrientation = 'horizontal' | 'vertical';
+export type WaveformBandSelection = 'all' | 'low' | 'mid' | 'high';
+
+export function getWaveformBandIndices(selection: WaveformBandSelection = 'all'): number[] {
+  return selection === 'all' ? [0, 1, 2] : [{ low: 0, mid: 1, high: 2 }[selection]];
+}
 
 export interface MainWaveformFrame {
   threeBands?: { data: TrackThreeBand; peak: number };
@@ -30,6 +35,7 @@ export interface MainWaveformFrame {
   colorMode: WaveformColorMode;
   hasTrack: boolean;
   orientation?: WaveformOrientation;
+  bandSelection?: WaveformBandSelection;
 }
 
 /** Max absolute peak between two sample indices. */
@@ -88,9 +94,10 @@ export function drawMainWaveform(ctx: CanvasRenderingContext2D, width: number, h
     const arrays = [data.low, data.mid, data.high];
     const colors = [palette.gradient.center, palette.gradient.mid, palette.gradient.edge];
     const samplesPerSecond = arrays[0].length / data.durationSeconds;
-    for (let band = 0; band < 3; band++) {
-      const center = (band + 0.5) * h / 3;
-      const height = Math.max(0, h / 6 - 2);
+    const indices = getWaveformBandIndices(frame.bandSelection);
+    for (const [lane, band] of indices.entries()) {
+      const center = (lane + 0.5) * h / indices.length;
+      const height = indices.length === 1 ? Math.max(0, maxAmplitude) : Math.max(0, h / 6 - 2);
       ctx.fillStyle = colors[band];
       ctx.beginPath();
       for (let x = 0; x < width; x++) {
@@ -104,7 +111,7 @@ export function drawMainWaveform(ctx: CanvasRenderingContext2D, width: number, h
       ctx.fill();
       ctx.font = '9px system-ui';
       ctx.textAlign = 'left';
-      ctx.fillText(`${data.source === 'spotify' ? 'Spotify' : 'Local'} ${['Low', 'Mid', 'High'][band]}`, 4, band * h / 3 + 10);
+      ctx.fillText(`${data.source === 'spotify' ? 'Spotify' : 'Local'} ${['Low', 'Mid', 'High'][band]}`, 4, lane * h / indices.length + 10);
     }
   } else if (colorMode === '3band') {
     // Level mode uses amplitude thresholds and therefore separate fills.
@@ -266,9 +273,10 @@ function drawVerticalMainWaveform(ctx: CanvasRenderingContext2D, width: number, 
     const arrays = [data.low, data.mid, data.high];
     const colors = [palette.gradient.center, palette.gradient.mid, palette.gradient.edge];
     const samplesPerSecond = arrays[0].length / data.durationSeconds;
-    for (let band = 0; band < 3; band++) {
-      const bandCenter = (band + 0.5) * width / 3;
-      const halfWidth = Math.max(0, width / 6 - 2);
+    const indices = getWaveformBandIndices(frame.bandSelection);
+    for (const [lane, band] of indices.entries()) {
+      const bandCenter = (lane + 0.5) * width / indices.length;
+      const halfWidth = indices.length === 1 ? maxAmplitude : Math.max(0, width / 6 - 2);
       ctx.fillStyle = colors[band];
       ctx.beginPath();
       for (let y = 0; y < h; y++) {

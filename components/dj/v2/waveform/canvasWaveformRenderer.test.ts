@@ -1,5 +1,31 @@
 import {expect,it,vi} from 'vitest';
 import {drawMainWaveform,timeAtLaneX} from './canvasWaveformRenderer';
+import type { MainWaveformFrame } from './canvasWaveformRenderer';
+
+it.each(['low', 'mid', 'high'] as const)('isolates %s across the full horizontal height and vertical width', bandSelection => {
+ const amplitude = { low: 1, mid: 0.5, high: 0.25 }[bandSelection];
+ for (const orientation of ['horizontal', 'vertical'] as const) {
+  const methods = new Map<string, ReturnType<typeof vi.fn>>();
+  const ctx = new Proxy({}, { get: (_, key) => { const name = String(key); if (!methods.has(name)) methods.set(name, vi.fn()); return methods.get(name); }, set: () => true }) as CanvasRenderingContext2D;
+  const frame: MainWaveformFrame = {
+   deck: 'A', peaks: null, position: 1, duration: 2, beatGrid: [1], beatGridOffset: 0,
+   cuePoint: 0, hotCues: [], loop: { start: 0, end: 0, enabled: false },
+   visibleSeconds: 2, colorMode: 'rgb', hasTrack: true, orientation, bandSelection,
+   threeBands: { peak: 1, data: { source: 'local', sourceFingerprint: 'fp', durationSeconds: 2, low: [1, 1], mid: [0.5, 0.5], high: [0.25, 0.25] } },
+  };
+  drawMainWaveform(ctx, 30, 30, frame);
+  const rectangles = methods.get('rect')!.mock.calls;
+  expect(rectangles).toHaveLength(30);
+  if (orientation === 'horizontal') {
+   expect(rectangles.every(args => args[1] === 15 - 11 * amplitude && args[3] === 22 * amplitude)).toBe(true);
+   expect(methods.get('fillText')!.mock.calls.map(args => args[0])).toEqual([`Local ${bandSelection[0].toUpperCase()}${bandSelection.slice(1)}`]);
+   expect(methods.get('moveTo')!.mock.calls).toContainEqual([15, 0]);
+  } else {
+   expect(rectangles.every(args => args[0] === 15 - 9 * amplitude && args[2] === 18 * amplitude)).toBe(true);
+   expect(methods.get('moveTo')!.mock.calls).toContainEqual([0, 15]);
+  }
+ }
+});
 it('draws three common-scale lanes while preserving local timeline markers',()=>{
  const methods=new Map<string,ReturnType<typeof vi.fn>>();
  const ctx=new Proxy({},{get:(_,key)=>{const name=String(key);if(!methods.has(name))methods.set(name,vi.fn());return methods.get(name);},set:()=>true}) as CanvasRenderingContext2D;

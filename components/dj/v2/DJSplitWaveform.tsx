@@ -39,7 +39,7 @@ export const DJWaveformLane = React.memo(function DJWaveformLane({
   useWebGL?: boolean;
   orientation?: WaveformOrientation;
 }) {
-  const { visibleSeconds, localBands, retryGeneration } = useDeckWaveformView(deck);
+  const { visibleSeconds, localBands, retryGeneration, bandSelection } = useDeckWaveformView(deck);
   const [colorMode, setColorMode] = useState<WaveformColorMode>('rgb');
   const [webglUnavailable, setWebglUnavailable] = useState(false);
   const markUnavailable = useCallback(() => setWebglUnavailable(true), []);
@@ -62,12 +62,23 @@ export const DJWaveformLane = React.memo(function DJWaveformLane({
 
   const toolbar = (
     <div className='dj-waveform-toolbar'>
-      <div className='dj-segmented' role='group' aria-label={`Deck ${deck} waveform color`}>
+      {localBands ? (
+        <div className='dj-segmented dj-waveform-band-selector' role='group' aria-label={`Deck ${deck} waveform band`}>
+          {(['all', 'low', 'mid', 'high'] as const).map(band => (
+            <button key={band} type='button' className='dj-btn dj-btn-xs' data-deck-accent={deck}
+              aria-pressed={bandSelection === band}
+              title={band === 'all' ? 'Show all three bands' : `Isolate ${band} band at full size`}
+              onClick={() => setDeckWaveformView(deck, { bandSelection: band })}>
+              {band.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      ) : <div className='dj-segmented' role='group' aria-label={`Deck ${deck} waveform color`}>
         {WAVEFORM_COLOR_MODES.map(({ mode, label, title }) => (
           <button key={mode} type='button' className='dj-btn dj-btn-xs' data-deck-accent={deck}
             aria-pressed={colorMode === mode} title={title} onClick={() => setColorMode(mode)}>{label}</button>
         ))}
-      </div>
+      </div>}
       <button type='button' className='dj-btn dj-btn-xs' aria-pressed={localBands} title='Scrolling lane and overview: Spotify low/mid/high first, local estimate only when provider data is unavailable; amplitude fallback when timelines differ' onClick={toggleLocalBands}>Three-band</button>
       <div className='dj-segmented' role='group' aria-label={`Deck ${deck} waveform zoom`}>
         <button type='button' className='dj-btn dj-btn-xs dj-btn-icon' aria-label={`Zoom in Deck ${deck} waveform`}
@@ -104,7 +115,7 @@ export const DJWaveformLane = React.memo(function DJWaveformLane({
         <DJErrorBoundary componentName={`Deck ${deck} waveform`}>
           {renderWebGL
             ? <DJWebGLWaveformDeck deck={deck} visibleSeconds={visibleSeconds} colorMode={colorMode} onUnavailable={markUnavailable} />
-            : <DJCanvasWaveformDeck deck={deck} visibleSeconds={visibleSeconds} colorMode={colorMode} localBands={localBands} retryGeneration={retryGeneration} orientation={orientation} />}
+            : <DJCanvasWaveformDeck deck={deck} visibleSeconds={visibleSeconds} colorMode={colorMode} localBands={localBands} retryGeneration={retryGeneration} orientation={orientation} bandSelection={bandSelection} />}
         </DJErrorBoundary>
       </div>
     </section>

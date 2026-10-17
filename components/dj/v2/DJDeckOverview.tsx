@@ -10,16 +10,18 @@ import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import { getHotCueMarkerStyle } from '../../../lib/hotCueMarkerStyle';
 import type { DeckId } from '../../../slices/djMixerSlice';
 import { DECK_WAVEFORM_PALETTE, WAVEFORM_CHROME } from './waveform/waveformPalette';
+import { getWaveformBandIndices, type WaveformBandSelection } from './waveform/canvasWaveformRenderer';
 
 export interface DeckWaveformViewState {
+  bandSelection: WaveformBandSelection;
   visibleSeconds: number;
   localBands: boolean;
   retryGeneration: number;
 }
 
 const DEFAULT_WAVEFORM_VIEW: Record<DeckId, DeckWaveformViewState> = {
-  A: { visibleSeconds: 10, localBands: false, retryGeneration: 0 },
-  B: { visibleSeconds: 10, localBands: false, retryGeneration: 0 },
+  A: { visibleSeconds: 10, localBands: false, retryGeneration: 0, bandSelection: 'all' },
+  B: { visibleSeconds: 10, localBands: false, retryGeneration: 0, bandSelection: 'all' },
 };
 
 const waveformViewState: Record<DeckId, DeckWaveformViewState> = {
@@ -32,6 +34,7 @@ export function setDeckWaveformView(deck: DeckId, patch: Partial<DeckWaveformVie
   const prev = waveformViewState[deck];
   const next = { ...prev, ...patch };
   if (
+    prev.bandSelection === next.bandSelection &&
     prev.visibleSeconds === next.visibleSeconds &&
     prev.localBands === next.localBands &&
     prev.retryGeneration === next.retryGeneration
@@ -68,6 +71,7 @@ interface DJDeckOverviewProps {
  * keeps WebGL contexts to the two main lanes. */
 export const DJDeckOverview = React.memo(({ deck, visibleSeconds: visibleSecondsProp, localBands: localBandsProp, retryGeneration: retryGenerationProp, onRetryLocalBands }: DJDeckOverviewProps) => {
   const syncedView = useDeckWaveformView(deck);
+  const { bandSelection } = syncedView;
   const visibleSeconds = visibleSecondsProp ?? syncedView.visibleSeconds;
   const localBands = localBandsProp ?? syncedView.localBands;
   const retryGeneration = retryGenerationProp ?? syncedView.retryGeneration;
@@ -143,17 +147,19 @@ export const DJDeckOverview = React.memo(({ deck, visibleSeconds: visibleSeconds
             const all = [usableBands.low, usableBands.mid, usableBands.high];
             let scale = 0;
             for (const band of all) for (const value of band) scale = Math.max(scale, value);
-            all.forEach((band, index) => {
+            const indices = getWaveformBandIndices(bandSelection);
+            indices.forEach((index, laneIndex) => {
+              const band = all[index];
               cctx.fillStyle = [palette.gradient.center, palette.gradient.mid, palette.gradient.edge][index];
               cctx.beginPath();
-              const lane = height / 3;
+              const lane = height / indices.length;
               for (let x = 0; x < width; x++) {
                 const first = Math.floor(x / width * band.length);
                 const end = Math.min(band.length, Math.max(first + 1, Math.floor((x + 1) / width * band.length)));
                 let peak = 0;
                 for (let i = first; i < end; i++) peak = Math.max(peak, band[i]);
                 const h = Math.max(1, scale > 0 ? peak / scale * (lane - 1) : 0);
-                cctx.rect(x, index * lane + (lane - h) / 2, 1, h);
+                cctx.rect(x, laneIndex * lane + (lane - h) / 2, 1, h);
               }
               cctx.fill();
             });
@@ -207,7 +213,7 @@ export const DJDeckOverview = React.memo(({ deck, visibleSeconds: visibleSeconds
     draw();
     const timer = window.setInterval(draw, 80);
     return () => window.clearInterval(timer);
-  }, [deck, visibleSeconds, localBands, bands]);
+  }, [deck, visibleSeconds, localBands, bands, bandSelection]);
 
   const handleClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     const d = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
@@ -218,14 +224,15 @@ export const DJDeckOverview = React.memo(({ deck, visibleSeconds: visibleSeconds
   }, [deck, seek]);
 
   const eligible = bands && bands.track === track && duration > 0 && Math.abs(bands.data.durationSeconds - duration) <= 0.1;
+  const bandLabel = bandSelection === 'all' ? 'Low / Mid / High' : `${bandSelection[0].toUpperCase()}${bandSelection.slice(1)} only`;
   return (<>
-    {localBands && <span className='dj-label' role='status'>{eligible ? `${bands.data.source === 'spotify' ? 'Spotify' : 'Local'} bands - Low / Mid / High - Common peak scale${bands.data.stale ? ' · Stale' : ''}` : bands?.data.source === 'spotify' ? 'Spotify bands use a different timeline; amplitude overview shown' : 'Amplitude overview - bands unavailable or duration differs'}</span>}
+    {localBands && <span className='dj-label' role='status'>{eligible ? `${bands.data.source === 'spotify' ? 'Spotify' : 'Local'} bands - ${bandLabel} - Common peak scale${bands.data.stale ? ' · Stale' : ''}` : bands?.data.source === 'spotify' ? 'Spotify bands use a different timeline; amplitude overview shown' : 'Amplitude overview - bands unavailable or duration differs'}</span>}
     {localBands && bandsReadFailed && track && <span className='dj-label' role='status'>Three-band waveform could not be loaded. Amplitude overview remains available. <button type='button' onClick={onRetryLocalBands ?? (() => { setLocalRetryGeneration(value => value + 1); setDeckWaveformView(deck, { retryGeneration: retryGeneration + 1 }); })}>Retry three-band</button></span>}
     <canvas
       ref={ref}
       className='dj-deck-overview'
       role='img'
-      aria-label={`Deck ${deck} ${localBands ? 'Spotify-first three-band overview; amplitude fallback when unavailable or timeline differs' : 'amplitude overview'} with cue markers and playhead; click to seek`}
+      aria-label={`Deck ${deck} ${localBands ? `Spotify-first three-band overview (${bandLabel}); amplitude fallback when unavailable or timeline differs` : 'amplitude overview'} with cue markers and playhead; click to seek`}
       data-dj-overview-deck={deck}
       onClick={handleClick}
     />
