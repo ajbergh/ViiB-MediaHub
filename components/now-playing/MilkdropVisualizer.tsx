@@ -32,6 +32,7 @@ import { audioEngine } from '../../lib/audio';
 import { MilkdropSettings } from '../../types';
 import { isMilkdropSupported, MILKDROP_QUALITY_MAP } from '../../lib/milkdropSupport';
 import type { ButterchurnVisualizer } from 'butterchurn';
+import { loadMilkdropPresets, loadAdditionalMilkdropPresets, scheduleMilkdropExpansion } from '../../lib/milkdropPresets';
 
 interface MilkdropVisualizerProps {
   /** Current Milkdrop settings */
@@ -68,6 +69,8 @@ export const MilkdropVisualizer: React.FC<MilkdropVisualizerProps> = ({
   const animationRef = useRef<number>(0);
   const presetsRef = useRef<Record<string, object>>({});
   const presetKeysRef = useRef<string[]>([]);
+  const latestRef = useRef({ settings, onPresetChange, onPresetsLoaded });
+  latestRef.current = { settings, onPresetChange, onPresetsLoaded };
   
   const [isLoaded, setIsLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -185,9 +188,9 @@ export const MilkdropVisualizer: React.FC<MilkdropVisualizerProps> = ({
         
         // Lazy load Butterchurn
         console.log('[Milkdrop] Loading Butterchurn library...');
-        const [butterchurn, butterchurnPresets] = await Promise.all([
+        const [butterchurn, presets] = await Promise.all([
           import('butterchurn'),
-          import('butterchurn-presets')
+          loadMilkdropPresets()
         ]);
         if (disposed) return;
         
@@ -229,7 +232,7 @@ export const MilkdropVisualizer: React.FC<MilkdropVisualizerProps> = ({
         }
         
         // Load presets
-        presetsRef.current = butterchurnPresets.default.getPresets();
+        presetsRef.current = presets;
         presetKeysRef.current = Object.keys(presetsRef.current);
         console.log(`[Milkdrop] Loaded ${presetKeysRef.current.length} presets`);
         
@@ -248,7 +251,8 @@ export const MilkdropVisualizer: React.FC<MilkdropVisualizerProps> = ({
             Math.floor(Math.random() * presetKeysRef.current.length)
           ];
           visualizerRef.current.loadPreset(presetsRef.current[randomKey], 0);
-          onPresetChange?.(randomKey);
+          // A saved extra preset will be restored once the worker finishes.
+          if (!settings.currentPreset) onPresetChange?.(randomKey);
         }
         
         setIsLoaded(true);
@@ -304,6 +308,30 @@ export const MilkdropVisualizer: React.FC<MilkdropVisualizerProps> = ({
         animationRef.current = 0;
       }
     };
+  }, [isLoaded, isActive]);
+
+  // Start only after the base visualizer is rendering. Both visualizer layers
+  // share one worker/cache; expanding the list does not replace an active preset.
+  useEffect(() => {
+    if (!isLoaded || !isActive) return;
+    let disposed = false;
+    const cancel = scheduleMilkdropExpansion(() => {
+      void loadAdditionalMilkdropPresets().then(presets => {
+        if (disposed) return;
+        const { settings: current, onPresetsLoaded: publish } = latestRef.current;
+        const pendingPreset = current.currentPreset;
+        const wasMissing = pendingPreset && !presetsRef.current[pendingPreset];
+        presetsRef.current = presets;
+        presetKeysRef.current = Object.keys(presets);
+        publish?.(presetKeysRef.current);
+        if (wasMissing && presets[pendingPreset]) {
+          visualizerRef.current?.loadPreset(presets[pendingPreset], current.blendDuration);
+        }
+      }).catch(err => {
+        if (!disposed) console.warn('[Milkdrop] Keeping base presets:', err);
+      });
+    });
+    return () => { disposed = true; cancel(); };
   }, [isLoaded, isActive]);
   
   // Handle preset changes

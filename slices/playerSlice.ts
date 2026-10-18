@@ -102,9 +102,9 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
         visualizerMode: 'SPECTRUM',
         visualizerEnabled: true,
         visualizerArtworkOpacity: 30,         // Show artwork at 30% when visualizer active
-        visualizerFullscreenEnabled: false,   // Fullscreen background visualizer off by default
+        visualizerFullscreenEnabled: true,    // Fullscreen background visualizer on by default
         visualizerFullscreenOpacity: 20,      // Fullscreen background at 20% opacity
-        visualizerBackgroundMode: 'AURORA_RIBBON', // Background visualizer mode (can differ from album art)
+        visualizerBackgroundMode: 'MILKDROP', // Background visualizer mode (can differ from album art)
         eqEnabled: false,
         eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         activePresetId: 'flat',

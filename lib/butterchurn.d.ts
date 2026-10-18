@@ -110,3 +110,13 @@ declare module 'butterchurn-presets/lib/butterchurnPresetsExtra.min' {
   const butterchurnPresetsExtra: ButterchurnPresetsExtra;
   export default butterchurnPresetsExtra;
 }
+
+declare module 'butterchurn-presets/lib/butterchurnPresetsExtra2.min' {
+  const presets: import('butterchurn-presets').ButterchurnPresets;
+  export default presets;
+}
+
+declare module 'butterchurn-presets/lib/butterchurnPresetsMD1.min' {
+  const presets: import('butterchurn-presets').ButterchurnPresets;
+  export default presets;
+}
