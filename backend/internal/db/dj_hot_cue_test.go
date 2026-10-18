@@ -5,7 +5,50 @@ package db
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/ajbergh/viib-mediahub/internal/analysis/localcontract"
 )
+
+func TestEventCueVersionCannotResurrectDeletedRole(t *testing.T) {
+	for _, mode := range []GeneratedCueMode{GeneratedCueFillEmpty, GeneratedCueReplaceGenerated, GeneratedCueSelectedOnly} {
+		t.Run(string(mode), func(t *testing.T) {
+			database, err := New(filepath.Join(t.TempDir(), "library.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer database.Close()
+			if err := database.SaveSong(&Song{ID: "song", Title: "Song", FilePath: "song.wav", AddedAt: 1}); err != nil {
+				t.Fatal(err)
+			}
+			confidence := .7
+			old := DJHotCue{Slot: 2, Position: 10, Origin: "analysis", GeneratorVersion: "auto-cues-v1", Kind: "mix-in", Confidence: &confidence}
+			if err := database.SaveDJHotCues("song", []DJHotCue{old}); err != nil {
+				t.Fatal(err)
+			}
+			if err := database.SaveDJHotCues("song", nil); err != nil {
+				t.Fatal(err)
+			}
+			candidate := DJHotCue{Slot: 2, Position: 17, Origin: "analysis", GeneratorVersion: localcontract.CueGeneratorVersion, Kind: "section", Confidence: &confidence}
+			if err := database.ApplyGeneratedDJHotCues("song", []DJHotCue{candidate}, mode); err != nil {
+				t.Fatal(err)
+			}
+			got, err := database.GetDJHotCues("song")
+			if err != nil || len(got) != 0 {
+				t.Fatalf("role change bypassed suppression: %#v, %v", got, err)
+			}
+			if err := database.ClearDJHotCueSuppression("song", 2); err != nil {
+				t.Fatal(err)
+			}
+			if err := database.ApplyGeneratedDJHotCues("song", []DJHotCue{candidate}, mode); err != nil {
+				t.Fatal(err)
+			}
+			got, err = database.GetDJHotCues("song")
+			if err != nil || len(got) != 1 || got[0].Position != 17 {
+				t.Fatalf("explicit clear did not restore slot: %#v, %v", got, err)
+			}
+		})
+	}
+}
 
 func TestDJHotCueProvenanceRoundTripsAndLegacyPayloadDefaultsToUser(t *testing.T) {
 	database, err := New(filepath.Join(t.TempDir(), "library.db"))

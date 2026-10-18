@@ -98,6 +98,13 @@ Local and Plex tracks are not duplicated into separate source tabs merely becaus
 
 DJ Mode also exposes the build's supported performance tools, which can include sampler pads, cue/beat-grid state, MIDI mappings, and recording of the ViiB master mix.
 
+Automatic cue points mark sustained energy and texture changes, with up to eight
+cues per track. Tracks with fewer distinct changes leave pads empty. Nearby beats
+can refine timing; generated cues are preparation suggestions to audition before
+a set. After running Track Analysis on older tracks, use **Refresh generated** in
+the cue editor to update unlocked automatic cues. User cues, locked cues and
+deleted-cue suppressions remain protected. See [automatic cue behavior](DJ_AUTO_CUE_IMPLEMENTATION.md).
+
 These are ViiB-side performance features. They do not modify Plex Media Server media or library configuration.
 
 ---

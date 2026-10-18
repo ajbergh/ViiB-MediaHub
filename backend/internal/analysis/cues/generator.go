@@ -32,22 +32,25 @@ type Cue struct {
 }
 
 type cueCandidate struct {
-	position        float64
-	confidence      float64
-	salience        float64
-	downbeatAligned bool
-	rationale       string
+	position, confidence, salience float64
+	kind, label, rationale         string
+	downbeatAligned                bool
 }
 
-var slotTargets = [...]float64{0.015, 0.10, 0.25, 0.40, 0.55, 0.70, 0.84, 0.96}
-var slotKinds = [...]string{"intro", "mix-in", "section", "section", "section", "section", "mix-out", "outro"}
-var slotLabels = [...]string{"Intro", "Mix In", "Section 1", "Section 2", "Section 3", "Section 4", "Mix Out", "Outro"}
-
-// Generate proposes up to eight ordered cue points from measured sections and
-// an optional beatgrid. It never treats inferred meter placeholders as
-// musical downbeats: those grids may provide a lower-confidence nearest-beat
-// snap, while downbeatAligned is true only for measured/manual provenance.
+// Generate selects observed events before assigning chronological pad slots.
+// A beat is an alignment anchor, never by itself evidence of a useful cue.
+// Confidence remains an evidence heuristic, not calibrated DJ acceptance.
 func Generate(duration float64, grid *beatgrid.Grid, structure features.Result, sourceFingerprint string) ([]Cue, error) {
+	if structure.EventVersion != "" {
+		if err := structure.ValidateNativeEvents(); err != nil {
+			return nil, err
+		}
+	}
+	// Persisted and regenerated cues must use the identical decoded timeline,
+	// even when catalog duration was rounded or supplied by a metadata provider.
+	if finitePositive(structure.DurationSeconds) {
+		duration = structure.DurationSeconds
+	}
 	if !finitePositive(duration) || sourceFingerprint == "" {
 		return nil, errors.New("cue generation requires a finite positive duration and source fingerprint")
 	}
@@ -56,84 +59,135 @@ func Generate(duration float64, grid *beatgrid.Grid, structure features.Result, 
 			return nil, fmt.Errorf("cue generation received invalid beatgrid: %w", err)
 		}
 	}
-
-	sections := validSections(structure.Sections, duration)
-	candidates := make([]cueCandidate, 0, len(sections)*2+32)
-	for _, section := range sections {
-		salience := clamp01(section.Energy)
-		candidates = append(candidates,
-			cueCandidate{position: section.Start, confidence: .48 + salience*.20, salience: salience, rationale: "measured-section-boundary"},
-			cueCandidate{position: section.End, confidence: .44 + salience*.18, salience: salience, rationale: "measured-section-boundary"},
-		)
-	}
-
-	if grid != nil {
-		provenance := grid.EffectiveProvenance()
-		downbeatSet := make(map[int]struct{}, len(grid.DownbeatIndices))
-		for _, index := range grid.DownbeatIndices {
-			downbeatSet[index] = struct{}{}
-		}
-		qualifiedDownbeats := provenance == beatgrid.ProvenanceMeasured || provenance == beatgrid.ProvenanceManual
-		for index, position := range grid.Beats {
-			if position >= duration {
-				break
+	candidates := []cueCandidate{}
+	if structure.EventVersion != "" {
+		for _, event := range structure.Events {
+			if !finiteNonNegative(event.Position) || event.Position >= duration || !finiteNonNegative(event.Strength) || event.Strength > 1 || event.Strength < .30 {
+				continue
 			}
-			if _, isDownbeat := downbeatSet[index]; isDownbeat && qualifiedDownbeats {
-				candidates = append(candidates, cueCandidate{position: position, confidence: .88, salience: .55, downbeatAligned: true, rationale: fmt.Sprintf("qualified-%s-downbeat", provenance)})
-			} else if _, isDownbeat := downbeatSet[index]; isDownbeat {
-				// Meter-derived bar starts are only beat candidates. Reduce their
-				// score/confidence and never describe them as downbeat-aligned.
-				candidates = append(candidates, cueCandidate{position: position, confidence: .43, salience: .45, rationale: "nearest-beat-inferred-from-meter"})
-			} else {
-				candidates = append(candidates, cueCandidate{position: position, confidence: .54, salience: .48, rationale: "nearest-beat"})
+			candidate := cueCandidate{position: event.Position, confidence: .45 + .30*event.Strength, salience: event.Strength, kind: "section", label: "Section change", rationale: "native-sustained-" + event.Kind}
+			switch event.Kind {
+			case "start":
+				candidate.kind, candidate.label = "intro", "First sound"
+			case "energy-rise":
+				candidate.label = "Energy rise"
+			case "energy-fall":
+				candidate.label = "Energy fall"
+			case "section":
+				candidate.label = "Texture change"
+			default:
+				continue
 			}
+			candidates = append(candidates, candidate)
+		}
+	} else {
+		// Legacy/manual feature fixtures have only sections. Use starts rather
+		// than track-end points; never invent eight arbitrary beat candidates.
+		for i, section := range validSections(structure.Sections, duration) {
+			if section.Energy <= 0 {
+				continue
+			}
+			c := cueCandidate{position: section.Start, confidence: .48, salience: .4, kind: "section", label: "Section change", rationale: "measured-section-boundary"}
+			if i == 0 {
+				c.kind, c.label = "intro", "First section"
+			}
+			candidates = append(candidates, c)
 		}
 	}
-	if len(candidates) == 0 {
-		return []Cue{}, nil
+	for i := range candidates {
+		alignCandidate(&candidates[i], grid, duration)
 	}
 	candidates = deduplicate(candidates)
-	if len(candidates) == 0 {
-		return []Cue{}, nil
-	}
-
-	minimumSpacing := math.Max(4, duration*.025)
-	used := make([]bool, len(candidates))
-	chosenPositions := make([]float64, 0, 8)
-	result := make([]Cue, 0, 8)
-	for slotIndex, fraction := range slotTargets {
-		target := fraction * duration
-		bestIndex, bestScore := -1, math.Inf(-1)
-		for candidateIndex, candidate := range candidates {
-			if used[candidateIndex] || tooClose(candidate.position, chosenPositions, minimumSpacing) {
-				continue
-			}
-			if len(chosenPositions) > 0 && candidate.position <= chosenPositions[len(chosenPositions)-1] {
-				continue
-			}
-			distance := math.Abs(candidate.position - target)
-			proximity := 1 - math.Min(1, distance/math.Max(duration*.20, minimumSpacing))
-			score := .62*proximity + .23*candidate.confidence + .15*candidate.salience
-			if score > bestScore {
-				bestIndex, bestScore = candidateIndex, score
+	// Keep the opening event, then prefer strong distinct events. No duration
+	// fractions or forced semantic roles: flat material can yield just one cue.
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if (candidates[i].kind == "intro") != (candidates[j].kind == "intro") {
+			return candidates[i].kind == "intro"
+		}
+		return .7*candidates[i].salience+.3*candidates[i].confidence > .7*candidates[j].salience+.3*candidates[j].confidence
+	})
+	chosen := []cueCandidate{}
+	for _, c := range candidates {
+		close := false
+		for _, existing := range chosen {
+			spacing := math.Max(cueSpacing(grid, c.position), cueSpacing(grid, existing.position))
+			if math.Abs(c.position-existing.position) < spacing {
+				close = true
+				break
 			}
 		}
-		if bestIndex < 0 {
-			continue
+		if !close {
+			chosen = append(chosen, c)
 		}
-		candidate := candidates[bestIndex]
-		used[bestIndex] = true
-		chosenPositions = append(chosenPositions, candidate.position)
-		confidence := clamp01(candidate.confidence * (.72 + .28*bestScore))
-		result = append(result, Cue{
-			Slot: slotIndex + 1, Position: candidate.position, Label: slotLabels[slotIndex],
-			Color: "#FF5500", Origin: "analysis", GeneratorVersion: GeneratorVersion,
-			Confidence: confidence, Kind: slotKinds[slotIndex], Locked: false,
-			Rationale: candidate.rationale, SourceFingerprint: sourceFingerprint, DownbeatAligned: candidate.downbeatAligned,
-		})
+		if len(chosen) == 8 {
+			break
+		}
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].Slot < result[j].Slot })
+	sort.Slice(chosen, func(i, j int) bool { return chosen[i].position < chosen[j].position })
+	result := make([]Cue, 0, len(chosen))
+	for i, c := range chosen {
+		result = append(result, Cue{Slot: i + 1, Position: c.position, Label: c.label, Kind: c.kind, Color: "#FF5500", Origin: "analysis", GeneratorVersion: GeneratorVersion, Confidence: clamp01(c.confidence), Rationale: c.rationale, SourceFingerprint: sourceFingerprint, DownbeatAligned: c.downbeatAligned})
+	}
 	return result, nil
+}
+
+func nearestBeat(grid *beatgrid.Grid, position float64) int {
+	i := sort.SearchFloat64s(grid.Beats, position)
+	if i == len(grid.Beats) || i > 0 && position-grid.Beats[i-1] <= grid.Beats[i]-position {
+		i--
+	}
+	return i
+}
+
+func localBeatInterval(grid *beatgrid.Grid, position float64) float64 {
+	if grid == nil || len(grid.Beats) < 2 {
+		return .5
+	}
+	i := nearestBeat(grid, position)
+	if i == len(grid.Beats)-1 {
+		i--
+	}
+	return grid.Beats[i+1] - grid.Beats[i]
+}
+
+func cueSpacing(grid *beatgrid.Grid, position float64) float64 {
+	return math.Max(1, math.Min(8, 4*localBeatInterval(grid, position)))
+}
+
+func alignCandidate(c *cueCandidate, grid *beatgrid.Grid, duration float64) {
+	if grid == nil {
+		return
+	}
+	// Refuse large snaps even when the nearest downbeat has high provenance.
+	// A missing bar-one detector cannot be repaired by moving an event a bar.
+	tolerance := math.Min(.2, .35*localBeatInterval(grid, c.position))
+	p := grid.EffectiveProvenance()
+	if p == beatgrid.ProvenanceMeasured || p == beatgrid.ProvenanceManual {
+		i := sort.Search(len(grid.DownbeatIndices), func(i int) bool { return grid.Beats[grid.DownbeatIndices[i]] >= c.position })
+		best, distance := -1, math.Inf(1)
+		for _, j := range []int{i - 1, i} {
+			if j < 0 || j >= len(grid.DownbeatIndices) {
+				continue
+			}
+			b := grid.DownbeatIndices[j]
+			if d := math.Abs(grid.Beats[b] - c.position); d < distance && grid.Beats[b] < duration {
+				best, distance = b, d
+			}
+		}
+		if best >= 0 && distance <= tolerance {
+			c.position, c.downbeatAligned = grid.Beats[best], true
+			// These exact provenance strings are validated by cue storage.
+			c.rationale = fmt.Sprintf("qualified-%s-downbeat", p)
+			return
+		}
+	}
+	i := nearestBeat(grid, c.position)
+	if math.Abs(grid.Beats[i]-c.position) <= tolerance && grid.Beats[i] < duration {
+		c.position = grid.Beats[i]
+		c.rationale += ";nearest-beat"
+	} else {
+		c.rationale += ";unaligned-event"
+	}
 }
 
 func validSections(sections []features.Section, duration float64) []features.Section {
@@ -167,15 +221,6 @@ func deduplicate(candidates []cueCandidate) []cueCandidate {
 		result = append(result, candidate)
 	}
 	return result
-}
-
-func tooClose(position float64, chosen []float64, minimum float64) bool {
-	for _, existing := range chosen {
-		if math.Abs(position-existing) < minimum {
-			return true
-		}
-	}
-	return false
 }
 
 func finitePositive(value float64) bool {

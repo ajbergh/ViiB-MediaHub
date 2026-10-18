@@ -1,0 +1,4216 @@
+{
+  "schema": "viib.cue-real-audio.v1",
+  "manifestSha256": "8f309a6c929804cd4062276c811b3b5fcd1cb0cdb476b4beec29bfb63a4ab9a9",
+  "generatorVersion": "auto-cues-v2-events",
+  "featureVersion": "energy-structure-v2-native-novelty",
+  "runtime": "windows/amd64 go1.26.9",
+  "evidence": "Tuning-only engineering validation; no independent DJ cue annotations or acceptance score.",
+  "results": [
+    {
+      "id": "100 Most Iconic EDM Songs/001-Avicii-Levels - Radio Edit",
+      "genre": "100 Most Iconic EDM Songs",
+      "split": "tuning",
+      "sourceSha256": "eaa3e21df7ee5ece7b5105328c4beff9374796cd4af95d3947f08e2d619dfc8f",
+      "decodedDurationSeconds": 199.906666666667,
+      "wallSeconds": 3.9428793,
+      "events": [
+        {
+          "position": 0,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.6380250267791313,
+          "timbreChange": 0
+        },
+        {
+          "position": 7,
+          "kind": "energy-rise",
+          "strength": 0.45058690115533534,
+          "energyBefore": 0.1958403503264437,
+          "energyAfter": 0.3743600078355162,
+          "timbreChange": 0.0664370167178659
+        },
+        {
+          "position": 22.85,
+          "kind": "energy-rise",
+          "strength": 0.5619981664237188,
+          "energyBefore": 0.31010190559326883,
+          "energyAfter": 0.6786805338741353,
+          "timbreChange": 0.5770165733261928
+        },
+        {
+          "position": 39.650000000000006,
+          "kind": "energy-fall",
+          "strength": 0.43280921356046753,
+          "energyBefore": 0.6065502329062537,
+          "energyAfter": 0.3431636085325817,
+          "timbreChange": 0.48524274861932093
+        },
+        {
+          "position": 53.300000000000004,
+          "kind": "energy-rise",
+          "strength": 0.5515647607817704,
+          "energyBefore": 0.3359797840050394,
+          "energyAfter": 0.6477571732406553,
+          "timbreChange": 0.5728388652291635
+        },
+        {
+          "position": 70.10000000000001,
+          "kind": "energy-fall",
+          "strength": 0.4229772267601778,
+          "energyBefore": 0.5963146916077154,
+          "energyAfter": 0.4034447591865153,
+          "timbreChange": 0.506320502475986
+        },
+        {
+          "position": 78.85000000000001,
+          "kind": "energy-fall",
+          "strength": 0.8297951722949777,
+          "energyBefore": 0.38975577661744326,
+          "energyAfter": 0.10989426319660119,
+          "timbreChange": 0.2702439626117955
+        },
+        {
+          "position": 83.65,
+          "kind": "energy-rise",
+          "strength": 0.8637765919503282,
+          "energyBefore": 0.11178934704874766,
+          "energyAfter": 0.3967138665552716,
+          "timbreChange": 0.11780400489557283
+        },
+        {
+          "position": 87.80000000000001,
+          "kind": "energy-fall",
+          "strength": 0.43262816900407114,
+          "energyBefore": 0.35459378782941264,
+          "energyAfter": 0.16393935747842617,
+          "timbreChange": 0.1991865950495896
+        },
+        {
+          "position": 91.9,
+          "kind": "energy-rise",
+          "strength": 0.736145219545022,
+          "energyBefore": 0.13143387876202264,
+          "energyAfter": 0.4215697800329182,
+          "timbreChange": 0.2805706508161937
+        },
+        {
+          "position": 98.80000000000001,
+          "kind": "energy-rise",
+          "strength": 0.3906267794032091,
+          "energyBefore": 0.23268593372646565,
+          "energyAfter": 0.4159782316835105,
+          "timbreChange": 0.23683902391001038
+        },
+        {
+          "position": 103,
+          "kind": "energy-fall",
+          "strength": 0.3142452352431275,
+          "energyBefore": 0.3777220363002234,
+          "energyAfter": 0.21280056200650257,
+          "timbreChange": 0.18194021538328714
+        },
+        {
+          "position": 107.15,
+          "kind": "energy-rise",
+          "strength": 0.5268419371971353,
+          "energyBefore": 0.18332969251844117,
+          "energyAfter": 0.4307920824027122,
+          "timbreChange": 0.26690468560215774
+        },
+        {
+          "position": 143.3,
+          "kind": "energy-rise",
+          "strength": 0.4175971697697596,
+          "energyBefore": 0.20753331065368158,
+          "energyAfter": 0.38113494920224933,
+          "timbreChange": 0.3077727827621061
+        },
+        {
+          "position": 160,
+          "kind": "energy-rise",
+          "strength": 0.5362813431014136,
+          "energyBefore": 0.38957521845279136,
+          "energyAfter": 0.6459185635111425,
+          "timbreChange": 0.5813686157913528
+        },
+        {
+          "position": 182.95000000000002,
+          "kind": "energy-fall",
+          "strength": 0.3368205973396199,
+          "energyBefore": 0.6680122139959421,
+          "energyAfter": 0.4400005274415753,
+          "timbreChange": 0.351652914055975
+        },
+        {
+          "position": 191.45000000000002,
+          "kind": "energy-fall",
+          "strength": 0.9771048996957521,
+          "energyBefore": 0.5110330434105682,
+          "energyAfter": 0.094448991485515,
+          "timbreChange": 0.03870268849262698
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 0.08716482445367225,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;nearest-beat",
+          "sourceFingerprint": "eaa3e21df7ee5ece7b5105328c4beff9374796cd4af95d3947f08e2d619dfc8f",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 22.944307681596506,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6185994499271157,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "eaa3e21df7ee5ece7b5105328c4beff9374796cd4af95d3947f08e2d619dfc8f",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 53.420498157786874,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6154694282345311,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "eaa3e21df7ee5ece7b5105328c4beff9374796cd4af95d3947f08e2d619dfc8f",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 78.85000000000001,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6989385516884933,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;unaligned-event",
+          "sourceFingerprint": "eaa3e21df7ee5ece7b5105328c4beff9374796cd4af95d3947f08e2d619dfc8f",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 5,
+          "position": 83.65,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.7091329775850985,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;unaligned-event",
+          "sourceFingerprint": "eaa3e21df7ee5ece7b5105328c4beff9374796cd4af95d3947f08e2d619dfc8f",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 6,
+          "position": 91.99192672921572,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6708435658635066,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "eaa3e21df7ee5ece7b5105328c4beff9374796cd4af95d3947f08e2d619dfc8f",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 7,
+          "position": 160.0871648244546,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6108844029304241,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "eaa3e21df7ee5ece7b5105328c4beff9374796cd4af95d3947f08e2d619dfc8f",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 8,
+          "position": 191.51573625302638,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.7431314699087257,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "eaa3e21df7ee5ece7b5105328c4beff9374796cd4af95d3947f08e2d619dfc8f",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "EDM Hits/007-David Guetta-Titanium (feat. Sia)",
+      "genre": "EDM Hits",
+      "split": "tuning",
+      "sourceSha256": "c025dd5f10b40da23e703837e446f28168128a1d40077e6ecbb1d91f8eb65db2",
+      "decodedDurationSeconds": 245.04018140589474,
+      "wallSeconds": 4.8665665,
+      "events": [
+        {
+          "position": 0.5,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.47100909444521766,
+          "timbreChange": 0
+        },
+        {
+          "position": 15.05,
+          "kind": "energy-rise",
+          "strength": 0.6806909324526225,
+          "energyBefore": 0.17145022163095597,
+          "energyAfter": 0.4517474067197028,
+          "timbreChange": 0.28787517667458984
+        },
+        {
+          "position": 46.900000000000006,
+          "kind": "section",
+          "strength": 0.5148892839541656,
+          "energyBefore": 0.5536719946202548,
+          "energyAfter": 0.46052146351550144,
+          "timbreChange": 0.5659924759713402
+        },
+        {
+          "position": 76.65,
+          "kind": "section",
+          "strength": 0.4939903115308929,
+          "energyBefore": 0.4752068263495065,
+          "energyAfter": 0.5615428434365771,
+          "timbreChange": 0.5513617785376905
+        },
+        {
+          "position": 91.45,
+          "kind": "energy-fall",
+          "strength": 0.4303256614564791,
+          "energyBefore": 0.5399176861111866,
+          "energyAfter": 0.3268238025986791,
+          "timbreChange": 0.433366792912515
+        },
+        {
+          "position": 107.15,
+          "kind": "energy-rise",
+          "strength": 0.5028590653408683,
+          "energyBefore": 0.2976732607590952,
+          "energyAfter": 0.6138333825808494,
+          "timbreChange": 0.17640910080437028
+        },
+        {
+          "position": 123.10000000000001,
+          "kind": "section",
+          "strength": 0.4864610405504003,
+          "energyBefore": 0.5615643445045027,
+          "energyAfter": 0.45721103332684276,
+          "timbreChange": 0.5251650899076897
+        },
+        {
+          "position": 152.85,
+          "kind": "section",
+          "strength": 0.48942651637704637,
+          "energyBefore": 0.49940645428776104,
+          "energyAfter": 0.5720409086056042,
+          "timbreChange": 0.5421411033198579
+        },
+        {
+          "position": 164.35000000000002,
+          "kind": "energy-fall",
+          "strength": 0.3478958334071827,
+          "energyBefore": 0.5575216006432977,
+          "energyAfter": 0.37508549943402086,
+          "timbreChange": 0.3594783937710385
+        },
+        {
+          "position": 169.95000000000002,
+          "kind": "energy-fall",
+          "strength": 0.34750364065710304,
+          "energyBefore": 0.43923570139051915,
+          "energyAfter": 0.2543690865186103,
+          "timbreChange": 0.15086695113028573
+        },
+        {
+          "position": 182.45000000000002,
+          "kind": "energy-rise",
+          "strength": 0.43449866461486764,
+          "energyBefore": 0.30825245019055053,
+          "energyAfter": 0.44775670493631103,
+          "timbreChange": 0.4618612530502776
+        },
+        {
+          "position": 190.20000000000002,
+          "kind": "section",
+          "strength": 0.31569993997465845,
+          "energyBefore": 0.36374132379087337,
+          "energyAfter": 0.42865478125594125,
+          "timbreChange": 0.33537262595406797
+        },
+        {
+          "position": 213.5,
+          "kind": "section",
+          "strength": 0.3828732906994281,
+          "energyBefore": 0.4607697548216388,
+          "energyAfter": 0.5759928766848414,
+          "timbreChange": 0.4363777871533276
+        },
+        {
+          "position": 225.9,
+          "kind": "energy-fall",
+          "strength": 0.3789928194648814,
+          "energyBefore": 0.5389071611726272,
+          "energyAfter": 0.4071695238344689,
+          "timbreChange": 0.41066584698077985
+        },
+        {
+          "position": 231,
+          "kind": "energy-fall",
+          "strength": 1,
+          "energyBefore": 0.370423023980788,
+          "energyAfter": 0.05330409998098812,
+          "timbreChange": 0.26507333118909515
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 0.5864902525761222,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;nearest-beat",
+          "sourceFingerprint": "c025dd5f10b40da23e703837e446f28168128a1d40077e6ecbb1d91f8eb65db2",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 15.05,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6542072797357867,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;unaligned-event",
+          "sourceFingerprint": "c025dd5f10b40da23e703837e446f28168128a1d40077e6ecbb1d91f8eb65db2",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 46.77696644305221,
+          "label": "Texture change",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6044667851862496,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-section;nearest-beat",
+          "sourceFingerprint": "c025dd5f10b40da23e703837e446f28168128a1d40077e6ecbb1d91f8eb65db2",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 76.77696644305229,
+          "label": "Texture change",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5981970934592679,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-section;nearest-beat",
+          "sourceFingerprint": "c025dd5f10b40da23e703837e446f28168128a1d40077e6ecbb1d91f8eb65db2",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 5,
+          "position": 107.25315691924311,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6008577196022605,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "c025dd5f10b40da23e703837e446f28168128a1d40077e6ecbb1d91f8eb65db2",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 6,
+          "position": 122.967442633529,
+          "label": "Texture change",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.59593831216512,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-section;nearest-beat",
+          "sourceFingerprint": "c025dd5f10b40da23e703837e446f28168128a1d40077e6ecbb1d91f8eb65db2",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 7,
+          "position": 152.96744263352934,
+          "label": "Texture change",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5968279549131139,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-section;nearest-beat",
+          "sourceFingerprint": "c025dd5f10b40da23e703837e446f28168128a1d40077e6ecbb1d91f8eb65db2",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 8,
+          "position": 231.06268072876833,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.75,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "c025dd5f10b40da23e703837e446f28168128a1d40077e6ecbb1d91f8eb65db2",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "This Is Michael Jackson/001-Michael Jackson-Billie Jean",
+      "genre": "This Is Michael Jackson",
+      "split": "tuning",
+      "sourceSha256": "35ddc0df27b376d858bee4c4249b0120384130486ab40c50739ceb0101e572fd",
+      "decodedDurationSeconds": 293.7991836734609,
+      "wallSeconds": 9.3599837,
+      "events": [
+        {
+          "position": 0.05,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.479647495038122,
+          "timbreChange": 0
+        },
+        {
+          "position": 284.45,
+          "kind": "energy-fall",
+          "strength": 0.6155353052102664,
+          "energyBefore": 0.1611290828159461,
+          "energyAfter": 0.04890013408373689,
+          "timbreChange": 0.06360719662263256
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 0.05,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;unaligned-event",
+          "sourceFingerprint": "35ddc0df27b376d858bee4c4249b0120384130486ab40c50739ceb0101e572fd",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 284.45,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.63466059156308,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;unaligned-event",
+          "sourceFingerprint": "35ddc0df27b376d858bee4c4249b0120384130486ab40c50739ceb0101e572fd",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "100 Most Iconic EDM Songs/002-Darude-Sandstorm - Radio Edit",
+      "genre": "100 Most Iconic EDM Songs",
+      "split": "tuning",
+      "sourceSha256": "8724637be4480371867cbc2c2ef036b1cc26167617b2b3cc9f7d431c4a2f7dce",
+      "decodedDurationSeconds": 225.6666666666698,
+      "wallSeconds": 4.5872377,
+      "events": [
+        {
+          "position": 0.45,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.029634411601015983,
+          "timbreChange": 0
+        },
+        {
+          "position": 4.45,
+          "kind": "energy-fall",
+          "strength": 0.3610462027924819,
+          "energyBefore": 0.22357205977895134,
+          "energyAfter": 0.03924951767941063,
+          "timbreChange": 0.5321508206085148
+        },
+        {
+          "position": 10.15,
+          "kind": "energy-rise",
+          "strength": 0.41513126869060035,
+          "energyBefore": 0.05022108168713692,
+          "energyAfter": 0.1175546161424251,
+          "timbreChange": 0.035202740705213106
+        },
+        {
+          "position": 14.350000000000001,
+          "kind": "energy-rise",
+          "strength": 0.7662530262573483,
+          "energyBefore": 0.13724870645013704,
+          "energyAfter": 0.44164060209271666,
+          "timbreChange": 0.45494603413410983
+        },
+        {
+          "position": 21.75,
+          "kind": "energy-rise",
+          "strength": 0.561911736921312,
+          "energyBefore": 0.17207868761429326,
+          "energyAfter": 0.39324513249632465,
+          "timbreChange": 0.2961771210905034
+        },
+        {
+          "position": 29.5,
+          "kind": "energy-rise",
+          "strength": 0.32922187166449984,
+          "energyBefore": 0.4586755189501816,
+          "energyAfter": 0.6020736192245284,
+          "timbreChange": 0.3496389318368761
+        },
+        {
+          "position": 87.4,
+          "kind": "energy-fall",
+          "strength": 1,
+          "energyBefore": 0.6463430036079191,
+          "energyAfter": 0.04532586168555789,
+          "timbreChange": 0.3553577537206305
+        },
+        {
+          "position": 93,
+          "kind": "energy-rise",
+          "strength": 1,
+          "energyBefore": 0.03829674715247736,
+          "energyAfter": 0.4048894117744792,
+          "timbreChange": 0.7002127327631256
+        },
+        {
+          "position": 97.2,
+          "kind": "energy-fall",
+          "strength": 0.6991844099842226,
+          "energyBefore": 0.4546504609284163,
+          "energyAfter": 0.17088887954862667,
+          "timbreChange": 0.5824075504148084
+        },
+        {
+          "position": 101.2,
+          "kind": "energy-fall",
+          "strength": 0.47185650998535605,
+          "energyBefore": 0.34206756760323825,
+          "energyAfter": 0.1730339910409678,
+          "timbreChange": 0.2974799384109342
+        },
+        {
+          "position": 113.10000000000001,
+          "kind": "energy-rise",
+          "strength": 0.6014579630297885,
+          "energyBefore": 0.20917143619457512,
+          "energyAfter": 0.4975068070951883,
+          "timbreChange": 0.22345423953468369
+        },
+        {
+          "position": 122.4,
+          "kind": "energy-fall",
+          "strength": 0.44159862394410415,
+          "energyBefore": 0.37124729824844893,
+          "energyAfter": 0.1999107670928556,
+          "timbreChange": 0.04341960633661053
+        },
+        {
+          "position": 127.30000000000001,
+          "kind": "energy-rise",
+          "strength": 0.5349857832740863,
+          "energyBefore": 0.21228562063718256,
+          "energyAfter": 0.4795150253917551,
+          "timbreChange": 0.17190991312655324
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 0.443825933276598,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;nearest-beat",
+          "sourceFingerprint": "8724637be4480371867cbc2c2ef036b1cc26167617b2b3cc9f7d431c4a2f7dce",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 14.350000000000001,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6798759078772045,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;unaligned-event",
+          "sourceFingerprint": "8724637be4480371867cbc2c2ef036b1cc26167617b2b3cc9f7d431c4a2f7dce",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 21.6202965215119,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6185735210763936,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "8724637be4480371867cbc2c2ef036b1cc26167617b2b3cc9f7d431c4a2f7dce",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 87.35559063915855,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.75,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "8724637be4480371867cbc2c2ef036b1cc26167617b2b3cc9f7d431c4a2f7dce",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 5,
+          "position": 93.09088475680556,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.75,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "8724637be4480371867cbc2c2ef036b1cc26167617b2b3cc9f7d431c4a2f7dce",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 6,
+          "position": 97.06147299209965,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6597553229952668,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "8724637be4480371867cbc2c2ef036b1cc26167617b2b3cc9f7d431c4a2f7dce",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 7,
+          "position": 113.10000000000001,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6304373889089365,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;unaligned-event",
+          "sourceFingerprint": "8724637be4480371867cbc2c2ef036b1cc26167617b2b3cc9f7d431c4a2f7dce",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 8,
+          "position": 127.30000000000001,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6104957349822259,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;unaligned-event",
+          "sourceFingerprint": "8724637be4480371867cbc2c2ef036b1cc26167617b2b3cc9f7d431c4a2f7dce",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "EDM Hits/008-Pitbull-Timber",
+      "genre": "EDM Hits",
+      "split": "tuning",
+      "sourceSha256": "4da6f1843d0617ffa7cf2170948cc7ebce71216c6a9651ea82fecf1e47caa003",
+      "decodedDurationSeconds": 204.13426303854976,
+      "wallSeconds": 4.1920181,
+      "events": [
+        {
+          "position": 0.2,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.032127416086523045,
+          "timbreChange": 0
+        },
+        {
+          "position": 7.6000000000000005,
+          "kind": "energy-rise",
+          "strength": 0.4787242556894981,
+          "energyBefore": 0.1370957958840256,
+          "energyAfter": 0.29417112938089013,
+          "timbreChange": 0.12657264767462623
+        },
+        {
+          "position": 22.5,
+          "kind": "energy-rise",
+          "strength": 0.31042252327487035,
+          "energyBefore": 0.25600079898248385,
+          "energyAfter": 0.4201986029416066,
+          "timbreChange": 0.11665100658299142
+        },
+        {
+          "position": 37.85,
+          "kind": "energy-rise",
+          "strength": 0.5432464342039968,
+          "energyBefore": 0.41792975838496355,
+          "energyAfter": 0.6532632269440505,
+          "timbreChange": 0.5518760652326625
+        },
+        {
+          "position": 81.7,
+          "kind": "energy-rise",
+          "strength": 0.3116232685748388,
+          "energyBefore": 0.3291244401485721,
+          "energyAfter": 0.5085544577258566,
+          "timbreChange": 0.3062193043046121
+        },
+        {
+          "position": 97.2,
+          "kind": "energy-rise",
+          "strength": 0.3477121856601932,
+          "energyBefore": 0.49334323689179527,
+          "energyAfter": 0.6631694887558185,
+          "timbreChange": 0.36659446236752885
+        },
+        {
+          "position": 155.65,
+          "kind": "section",
+          "strength": 0.35310307769708515,
+          "energyBefore": 0.4783927371215291,
+          "energyAfter": 0.5496145199440275,
+          "timbreChange": 0.36598607042610953
+        },
+        {
+          "position": 170.8,
+          "kind": "energy-rise",
+          "strength": 0.3822590747139344,
+          "energyBefore": 0.526036165984947,
+          "energyAfter": 0.6982893842555886,
+          "timbreChange": 0.4054363217485667
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 0.2,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;unaligned-event",
+          "sourceFingerprint": "4da6f1843d0617ffa7cf2170948cc7ebce71216c6a9651ea82fecf1e47caa003",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 7.6000000000000005,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5936172767068495,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;unaligned-event",
+          "sourceFingerprint": "4da6f1843d0617ffa7cf2170948cc7ebce71216c6a9651ea82fecf1e47caa003",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 22.5,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5431267569824612,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;unaligned-event",
+          "sourceFingerprint": "4da6f1843d0617ffa7cf2170948cc7ebce71216c6a9651ea82fecf1e47caa003",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 37.97616404654482,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6129739302611991,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "4da6f1843d0617ffa7cf2170948cc7ebce71216c6a9651ea82fecf1e47caa003",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 5,
+          "position": 81.7,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5434869805724516,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;unaligned-event",
+          "sourceFingerprint": "4da6f1843d0617ffa7cf2170948cc7ebce71216c6a9651ea82fecf1e47caa003",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 6,
+          "position": 97.28118335156373,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5543136556980579,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "4da6f1843d0617ffa7cf2170948cc7ebce71216c6a9651ea82fecf1e47caa003",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 7,
+          "position": 155.65956172994132,
+          "label": "Texture change",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5559309233091255,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-section;nearest-beat",
+          "sourceFingerprint": "4da6f1843d0617ffa7cf2170948cc7ebce71216c6a9651ea82fecf1e47caa003",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 8,
+          "position": 170.9491370195164,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5646777224141803,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "4da6f1843d0617ffa7cf2170948cc7ebce71216c6a9651ea82fecf1e47caa003",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "This Is Michael Jackson/004-Michael Jackson-Remember the Time",
+      "genre": "This Is Michael Jackson",
+      "split": "tuning",
+      "sourceSha256": "62b9fc5812d0f3e943358b8762561405daf9da0d26fd90bc9151f52e97696423",
+      "decodedDurationSeconds": 240.1175510204027,
+      "wallSeconds": 8.584537,
+      "events": [
+        {
+          "position": 0.25,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.3675596062571442,
+          "timbreChange": 0
+        },
+        {
+          "position": 73.25,
+          "kind": "energy-fall",
+          "strength": 0.3687558235926111,
+          "energyBefore": 0.5593162598887502,
+          "energyAfter": 0.31903932572823934,
+          "timbreChange": 0.20814703557333097
+        },
+        {
+          "position": 90.95,
+          "kind": "energy-fall",
+          "strength": 0.31665533344129776,
+          "energyBefore": 0.5582008804860883,
+          "energyAfter": 0.3451816156243503,
+          "timbreChange": 0.1630114476783512
+        },
+        {
+          "position": 233,
+          "kind": "energy-fall",
+          "strength": 0.6432104935383416,
+          "energyBefore": 0.5974195412380778,
+          "energyAfter": 0.23695496869684987,
+          "timbreChange": 0.32682678267920784
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 0.27481567832804765,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;nearest-beat",
+          "sourceFingerprint": "62b9fc5812d0f3e943358b8762561405daf9da0d26fd90bc9151f52e97696423",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 73.25,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5606267470777834,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;unaligned-event",
+          "sourceFingerprint": "62b9fc5812d0f3e943358b8762561405daf9da0d26fd90bc9151f52e97696423",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 90.83037123388381,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5449966000323894,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "62b9fc5812d0f3e943358b8762561405daf9da0d26fd90bc9151f52e97696423",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 233.05259345610375,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6429631480615025,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "62b9fc5812d0f3e943358b8762561405daf9da0d26fd90bc9151f52e97696423",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "100 Most Iconic EDM Songs/003-Alice Deejay-Better Off Alone",
+      "genre": "100 Most Iconic EDM Songs",
+      "split": "tuning",
+      "sourceSha256": "354632c1d0023caf46758d93ccdc19fa2f00cdef8b17ee0a7fc75feff274819b",
+      "decodedDurationSeconds": 214.88326530612358,
+      "wallSeconds": 4.5825335,
+      "events": [
+        {
+          "position": 0,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.046192391615544795,
+          "timbreChange": 0
+        },
+        {
+          "position": 30,
+          "kind": "energy-fall",
+          "strength": 0.5114862483539453,
+          "energyBefore": 0.5113422858530047,
+          "energyAfter": 0.2336766026823114,
+          "timbreChange": 0.35578697061648684
+        },
+        {
+          "position": 57.75,
+          "kind": "energy-rise",
+          "strength": 0.5744662126188117,
+          "energyBefore": 0.3008459788821623,
+          "energyAfter": 0.5642041762732541,
+          "timbreChange": 0.577452267285958
+        },
+        {
+          "position": 128.20000000000002,
+          "kind": "energy-fall",
+          "strength": 0.5941302119301448,
+          "energyBefore": 0.5728893586390877,
+          "energyAfter": 0.23124115016102628,
+          "timbreChange": 0.509450791335772
+        },
+        {
+          "position": 132.25,
+          "kind": "energy-fall",
+          "strength": 0.4123128813505077,
+          "energyBefore": 0.2537559541773031,
+          "energyAfter": 0.13664539979951676,
+          "timbreChange": 0.19913686336355257
+        },
+        {
+          "position": 154.10000000000002,
+          "kind": "energy-rise",
+          "strength": 0.42588956601188893,
+          "energyBefore": 0.3337243431397242,
+          "energyAfter": 0.4731739004444475,
+          "timbreChange": 0.473226647719452
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 0,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;unaligned-event",
+          "sourceFingerprint": "354632c1d0023caf46758d93ccdc19fa2f00cdef8b17ee0a7fc75feff274819b",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 30.114417094931902,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6034458745061836,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "354632c1d0023caf46758d93ccdc19fa2f00cdef8b17ee0a7fc75feff274819b",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 57.806724787239496,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6223398637856435,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "354632c1d0023caf46758d93ccdc19fa2f00cdef8b17ee0a7fc75feff274819b",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 128.1363951169096,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6282390635790435,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "354632c1d0023caf46758d93ccdc19fa2f00cdef8b17ee0a7fc75feff274819b",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 5,
+          "position": 132.25,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5736938644051524,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;unaligned-event",
+          "sourceFingerprint": "354632c1d0023caf46758d93ccdc19fa2f00cdef8b17ee0a7fc75feff274819b",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 6,
+          "position": 154.07046105097544,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5777668698035667,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "354632c1d0023caf46758d93ccdc19fa2f00cdef8b17ee0a7fc75feff274819b",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "EDM Hits/010-Calvin Harris-Summer",
+      "genre": "EDM Hits",
+      "split": "tuning",
+      "sourceSha256": "b7382a2a205eda8276dbecb9c797bc7ca6c33faa1870bd29ea8ad4fab61442f1",
+      "decodedDurationSeconds": 222.533333333333,
+      "wallSeconds": 4.4854371,
+      "events": [
+        {
+          "position": 0.4,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.024258677720393834,
+          "timbreChange": 0
+        },
+        {
+          "position": 4.4,
+          "kind": "energy-fall",
+          "strength": 0.42812974815541477,
+          "energyBefore": 0.4082618936829988,
+          "energyAfter": 0.20856310070250048,
+          "timbreChange": 0.19373056373859815
+        },
+        {
+          "position": 10.25,
+          "kind": "energy-rise",
+          "strength": 0.5961917384910207,
+          "energyBefore": 0.17569377402290032,
+          "energyAfter": 0.4155809531921308,
+          "timbreChange": 0.17768230888137232
+        },
+        {
+          "position": 17.75,
+          "kind": "energy-rise",
+          "strength": 0.6424162453241977,
+          "energyBefore": 0.19753470838715065,
+          "energyAfter": 0.5298336663563423,
+          "timbreChange": 0.07419495317390604
+        },
+        {
+          "position": 48.45,
+          "kind": "section",
+          "strength": 0.30596236243112396,
+          "energyBefore": 0.49698950404702064,
+          "energyAfter": 0.6321839185746297,
+          "timbreChange": 0.30950335123432826
+        },
+        {
+          "position": 123.45,
+          "kind": "section",
+          "strength": 0.30597437854117265,
+          "energyBefore": 0.4968938233822975,
+          "energyAfter": 0.6320749668422697,
+          "timbreChange": 0.3095135099236877
+        },
+        {
+          "position": 154.15,
+          "kind": "energy-fall",
+          "strength": 0.45088205410564636,
+          "energyBefore": 0.6610868080798229,
+          "energyAfter": 0.34718490271145186,
+          "timbreChange": 0.10518995843644764
+        },
+        {
+          "position": 183.45000000000002,
+          "kind": "section",
+          "strength": 0.30169395938826093,
+          "energyBefore": 0.5043395698286587,
+          "energyAfter": 0.6309672179877531,
+          "timbreChange": 0.30525567623625055
+        },
+        {
+          "position": 214.10000000000002,
+          "kind": "energy-fall",
+          "strength": 1,
+          "energyBefore": 0.6282250253472841,
+          "energyAfter": 0.04682928502183461,
+          "timbreChange": 0.43804174347672653
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 0.5271737887900785,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;nearest-beat",
+          "sourceFingerprint": "b7382a2a205eda8276dbecb9c797bc7ca6c33faa1870bd29ea8ad4fab61442f1",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 4.262582349101363,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5784389244466244,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "b7382a2a205eda8276dbecb9c797bc7ca6c33faa1870bd29ea8ad4fab61442f1",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 10.332621259607201,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6288575215473062,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "b7382a2a205eda8276dbecb9c797bc7ca6c33faa1870bd29ea8ad4fab61442f1",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 17.803438380229764,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6427248735972593,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "b7382a2a205eda8276dbecb9c797bc7ca6c33faa1870bd29ea8ad4fab61442f1",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 5,
+          "position": 48.45,
+          "label": "Texture change",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5417887087293372,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-section;unaligned-event",
+          "sourceFingerprint": "b7382a2a205eda8276dbecb9c797bc7ca6c33faa1870bd29ea8ad4fab61442f1",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 6,
+          "position": 123.32873020902316,
+          "label": "Texture change",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5417923135623518,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-section;nearest-beat",
+          "sourceFingerprint": "b7382a2a205eda8276dbecb9c797bc7ca6c33faa1870bd29ea8ad4fab61442f1",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 7,
+          "position": 154.14585083159116,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5852646162316939,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "b7382a2a205eda8276dbecb9c797bc7ca6c33faa1870bd29ea8ad4fab61442f1",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 8,
+          "position": 214.10000000000002,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.75,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;unaligned-event",
+          "sourceFingerprint": "b7382a2a205eda8276dbecb9c797bc7ca6c33faa1870bd29ea8ad4fab61442f1",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "This Is Michael Jackson/006-Michael Jackson-Bad - 2012 Remaster",
+      "genre": "This Is Michael Jackson",
+      "split": "tuning",
+      "sourceSha256": "18624e95eeb06f7d3eef136c5c9af902cf00625e411d600e1385c8eb9e0e4c34",
+      "decodedDurationSeconds": 247.3795918367288,
+      "wallSeconds": 7.9420173,
+      "events": [
+        {
+          "position": 0.6000000000000001,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.07545822751057236,
+          "timbreChange": 0
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 0.6096690493066476,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;nearest-beat",
+          "sourceFingerprint": "18624e95eeb06f7d3eef136c5c9af902cf00625e411d600e1385c8eb9e0e4c34",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "100 Most Iconic EDM Songs/004-Swedish House Mafia-Don't You Worry Child - Radio Edit",
+      "genre": "100 Most Iconic EDM Songs",
+      "split": "tuning",
+      "sourceSha256": "7b4aa275a4fc66c24b620af6dff4faa01557fd8493849814ece90254e104540b",
+      "decodedDurationSeconds": 212.86249433106607,
+      "wallSeconds": 4.2900773,
+      "events": [
+        {
+          "position": 0.05,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.21145476717674508,
+          "timbreChange": 0
+        },
+        {
+          "position": 5.45,
+          "kind": "energy-rise",
+          "strength": 0.6741256279685647,
+          "energyBefore": 0.14592701714603304,
+          "energyAfter": 0.3905058662326527,
+          "timbreChange": 0.06412298306983293
+        },
+        {
+          "position": 13.350000000000001,
+          "kind": "energy-rise",
+          "strength": 0.6027565208329317,
+          "energyBefore": 0.20683498688324833,
+          "energyAfter": 0.5117494930108714,
+          "timbreChange": 0.19882314080215088
+        },
+        {
+          "position": 22.35,
+          "kind": "section",
+          "strength": 0.3028878246799475,
+          "energyBefore": 0.4507006798202316,
+          "energyAfter": 0.5369608497043556,
+          "timbreChange": 0.3283739197240781
+        },
+        {
+          "position": 56,
+          "kind": "energy-fall",
+          "strength": 0.3256822650390531,
+          "energyBefore": 0.5982044086068927,
+          "energyAfter": 0.3660376891847273,
+          "timbreChange": 0.01772285775971106
+        },
+        {
+          "position": 66.7,
+          "kind": "energy-rise",
+          "strength": 0.4974319602075146,
+          "energyBefore": 0.43523091971090017,
+          "energyAfter": 0.7053259249530687,
+          "timbreChange": 0.5090377769833778
+        },
+        {
+          "position": 92.9,
+          "kind": "section",
+          "strength": 0.39174211956021987,
+          "energyBefore": 0.7562224657128145,
+          "energyAfter": 0.602306235438242,
+          "timbreChange": 0.4222254912571799
+        },
+        {
+          "position": 97.15,
+          "kind": "energy-fall",
+          "strength": 1,
+          "energyBefore": 0.554832653576088,
+          "energyAfter": 0.061692006699031014,
+          "timbreChange": 0.12430797550553802
+        },
+        {
+          "position": 106.45,
+          "kind": "energy-rise",
+          "strength": 0.39153506163636187,
+          "energyBefore": 0.2429869997012209,
+          "energyAfter": 0.4501491890080243,
+          "timbreChange": 0.23881392097010207
+        },
+        {
+          "position": 145.9,
+          "kind": "energy-fall",
+          "strength": 0.32990628756197593,
+          "energyBefore": 0.6077775988776378,
+          "energyAfter": 0.37347615198858836,
+          "timbreChange": 0.08117801579984397
+        },
+        {
+          "position": 174.85000000000002,
+          "kind": "energy-rise",
+          "strength": 0.48172695167790225,
+          "energyBefore": 0.5228894134998893,
+          "energyAfter": 0.7413191924613199,
+          "timbreChange": 0.5021694193967567
+        },
+        {
+          "position": 205.9,
+          "kind": "energy-fall",
+          "strength": 1,
+          "energyBefore": 0.5522697556801133,
+          "energyAfter": 0.09158220218292314,
+          "timbreChange": 0.19832447563146105
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 0.15138781675134289,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;nearest-beat",
+          "sourceFingerprint": "7b4aa275a4fc66c24b620af6dff4faa01557fd8493849814ece90254e104540b",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 5.45,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6522376883905694,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;unaligned-event",
+          "sourceFingerprint": "7b4aa275a4fc66c24b620af6dff4faa01557fd8493849814ece90254e104540b",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 13.350000000000001,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6308269562498795,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;unaligned-event",
+          "sourceFingerprint": "7b4aa275a4fc66c24b620af6dff4faa01557fd8493849814ece90254e104540b",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 66.66301572372815,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5992295880622545,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "7b4aa275a4fc66c24b620af6dff4faa01557fd8493849814ece90254e104540b",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 5,
+          "position": 92.9,
+          "label": "Texture change",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.567522635868066,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-section;unaligned-event",
+          "sourceFingerprint": "7b4aa275a4fc66c24b620af6dff4faa01557fd8493849814ece90254e104540b",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 6,
+          "position": 97.15,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.75,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;unaligned-event",
+          "sourceFingerprint": "7b4aa275a4fc66c24b620af6dff4faa01557fd8493849814ece90254e104540b",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 7,
+          "position": 174.85000000000002,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5945180855033707,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;unaligned-event",
+          "sourceFingerprint": "7b4aa275a4fc66c24b620af6dff4faa01557fd8493849814ece90254e104540b",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 8,
+          "position": 205.9,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.75,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;unaligned-event",
+          "sourceFingerprint": "7b4aa275a4fc66c24b620af6dff4faa01557fd8493849814ece90254e104540b",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "EDM Hits/012-OMI-Cheerleader (Felix Jaehn Remix) - Radio Edit",
+      "genre": "EDM Hits",
+      "split": "tuning",
+      "sourceSha256": "ae99fd5c1813a912c1c44fd3294f053fbc4cb9db0e4affb6b77a6f64efb393e0",
+      "decodedDurationSeconds": 180.56000000000174,
+      "wallSeconds": 3.6214332000000002,
+      "events": [
+        {
+          "position": 0,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.20111087266512903,
+          "timbreChange": 0
+        },
+        {
+          "position": 14.25,
+          "kind": "energy-rise",
+          "strength": 0.49142238730627474,
+          "energyBefore": 0.1289138215546422,
+          "energyAfter": 0.26361024513765985,
+          "timbreChange": 0.061840535760198524
+        },
+        {
+          "position": 72.55,
+          "kind": "energy-fall",
+          "strength": 0.33406937999239444,
+          "energyBefore": 0.6018889484324492,
+          "energyAfter": 0.3743534403271633,
+          "timbreChange": 0.14588974474158434
+        },
+        {
+          "position": 113.65,
+          "kind": "energy-fall",
+          "strength": 0.667330589427167,
+          "energyBefore": 0.5799586039702342,
+          "energyAfter": 0.17867446185296368,
+          "timbreChange": 0.5230111232259813
+        },
+        {
+          "position": 122.5,
+          "kind": "energy-rise",
+          "strength": 0.31201712773849544,
+          "energyBefore": 0.20552221570197932,
+          "energyAfter": 0.3576481080430063,
+          "timbreChange": 0.21478035763114747
+        },
+        {
+          "position": 126.65,
+          "kind": "energy-fall",
+          "strength": 0.4818146563130671,
+          "energyBefore": 0.3908743871127984,
+          "energyAfter": 0.19134340930442537,
+          "timbreChange": 0.1980694651940967
+        },
+        {
+          "position": 145.45000000000002,
+          "kind": "energy-rise",
+          "strength": 0.35025951756137036,
+          "energyBefore": 0.429252205693487,
+          "energyAfter": 0.5990015084453327,
+          "timbreChange": 0.3965027492649797
+        },
+        {
+          "position": 174.65,
+          "kind": "energy-fall",
+          "strength": 0.9608179535591465,
+          "energyBefore": 0.5804090621491558,
+          "energyAfter": 0.15146334176498885,
+          "timbreChange": 0.7253271130662702
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 0,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;unaligned-event",
+          "sourceFingerprint": "ae99fd5c1813a912c1c44fd3294f053fbc4cb9db0e4affb6b77a6f64efb393e0",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 14.25,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5974267161918825,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;unaligned-event",
+          "sourceFingerprint": "ae99fd5c1813a912c1c44fd3294f053fbc4cb9db0e4affb6b77a6f64efb393e0",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 72.55,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5502208139977184,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;unaligned-event",
+          "sourceFingerprint": "ae99fd5c1813a912c1c44fd3294f053fbc4cb9db0e4affb6b77a6f64efb393e0",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 113.62824226826048,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6501991768281501,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "ae99fd5c1813a912c1c44fd3294f053fbc4cb9db0e4affb6b77a6f64efb393e0",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 5,
+          "position": 122.5,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5436051383215487,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;unaligned-event",
+          "sourceFingerprint": "ae99fd5c1813a912c1c44fd3294f053fbc4cb9db0e4affb6b77a6f64efb393e0",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 6,
+          "position": 126.65,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5945443968939201,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;unaligned-event",
+          "sourceFingerprint": "ae99fd5c1813a912c1c44fd3294f053fbc4cb9db0e4affb6b77a6f64efb393e0",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 7,
+          "position": 145.28781673634555,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5550778552684111,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "ae99fd5c1813a912c1c44fd3294f053fbc4cb9db0e4affb6b77a6f64efb393e0",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 8,
+          "position": 174.65,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.7382453860677439,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;unaligned-event",
+          "sourceFingerprint": "ae99fd5c1813a912c1c44fd3294f053fbc4cb9db0e4affb6b77a6f64efb393e0",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "This Is Michael Jackson/007-Michael Jackson-Rock with You - Single Version",
+      "genre": "This Is Michael Jackson",
+      "split": "tuning",
+      "sourceSha256": "1a3b958af76a89bf64bacb2f04222fc6ecde70429af1f90ff2627434ceb9ea94",
+      "decodedDurationSeconds": 219.92489795917933,
+      "wallSeconds": 7.0292057,
+      "events": [
+        {
+          "position": 0.1,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.8029665022183138,
+          "timbreChange": 0
+        },
+        {
+          "position": 43.1,
+          "kind": "energy-rise",
+          "strength": 0.3159206115211948,
+          "energyBefore": 0.2708461033656733,
+          "energyAfter": 0.4246838738534523,
+          "timbreChange": 0.03399921950542321
+        },
+        {
+          "position": 168.95000000000002,
+          "kind": "energy-rise",
+          "strength": 0.3507559844578023,
+          "energyBefore": 0.3052778219419574,
+          "energyAfter": 0.51737934459368,
+          "timbreChange": 0.10960924410777201
+        },
+        {
+          "position": 213.35000000000002,
+          "kind": "energy-fall",
+          "strength": 0.45319768595463983,
+          "energyBefore": 0.1848978068082988,
+          "energyAfter": 0.07549743746902803,
+          "timbreChange": 0.01597963239567929
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 0.2128163222062883,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;nearest-beat",
+          "sourceFingerprint": "1a3b958af76a89bf64bacb2f04222fc6ecde70429af1f90ff2627434ceb9ea94",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 43.18224863661678,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5447761834563585,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "1a3b958af76a89bf64bacb2f04222fc6ecde70429af1f90ff2627434ceb9ea94",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 168.94644077635527,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5552267953373407,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "1a3b958af76a89bf64bacb2f04222fc6ecde70429af1f90ff2627434ceb9ea94",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 213.48792549251266,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.585959305786392,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "1a3b958af76a89bf64bacb2f04222fc6ecde70429af1f90ff2627434ceb9ea94",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "100 Most Iconic EDM Songs/005-Daft Punk-One More Time",
+      "genre": "100 Most Iconic EDM Songs",
+      "split": "tuning",
+      "sourceSha256": "709d05001025efd7b271bb82d717a039e419115f57e31e77f5db1f806142f75f",
+      "decodedDurationSeconds": 320.3570068027224,
+      "wallSeconds": 6.4010541,
+      "events": [
+        {
+          "position": 0.05,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.16074305528969104,
+          "timbreChange": 0
+        },
+        {
+          "position": 30.3,
+          "kind": "energy-rise",
+          "strength": 0.5326286462741705,
+          "energyBefore": 0.14214374921350773,
+          "energyAfter": 0.3046617496620182,
+          "timbreChange": 0.3689492219497125
+        },
+        {
+          "position": 58.7,
+          "kind": "energy-fall",
+          "strength": 0.7815002961763796,
+          "energyBefore": 0.43988937169501907,
+          "energyAfter": 0.1461985232522338,
+          "timbreChange": 0.6445787937968686
+        },
+        {
+          "position": 63.050000000000004,
+          "kind": "energy-rise",
+          "strength": 0.4667899739928428,
+          "energyBefore": 0.20168198758539485,
+          "energyAfter": 0.46848439265681424,
+          "timbreChange": 0.18280770596238619
+        },
+        {
+          "position": 93.2,
+          "kind": "energy-rise",
+          "strength": 0.6343034727569968,
+          "energyBefore": 0.15818570393607614,
+          "energyAfter": 0.40893057811551464,
+          "timbreChange": 0.5506472211225175
+        },
+        {
+          "position": 141.15,
+          "kind": "energy-fall",
+          "strength": 0.4937627082812879,
+          "energyBefore": 0.43136690788996296,
+          "energyAfter": 0.2064112413249417,
+          "timbreChange": 0.29360384417250746
+        },
+        {
+          "position": 161.75,
+          "kind": "energy-fall",
+          "strength": 0.3951432681371875,
+          "energyBefore": 0.268594722902357,
+          "energyAfter": 0.14920204614014626,
+          "timbreChange": 0.15080094953778264
+        },
+        {
+          "position": 168.5,
+          "kind": "energy-fall",
+          "strength": 0.4523582921490841,
+          "energyBefore": 0.32252154351710016,
+          "energyAfter": 0.1656274659415096,
+          "timbreChange": 0.18958797584884365
+        },
+        {
+          "position": 176.65,
+          "kind": "energy-fall",
+          "strength": 0.34013436768407296,
+          "energyBefore": 0.2541997523209644,
+          "energyAfter": 0.1578276555473482,
+          "timbreChange": 0.1867284882366105
+        },
+        {
+          "position": 209.05,
+          "kind": "energy-fall",
+          "strength": 0.37690579033148636,
+          "energyBefore": 0.28745552394345125,
+          "energyAfter": 0.16288767329448073,
+          "timbreChange": 0.14795220362210676
+        },
+        {
+          "position": 214.95000000000002,
+          "kind": "energy-rise",
+          "strength": 0.35557466358032597,
+          "energyBefore": 0.17061908100434053,
+          "energyAfter": 0.29011112083463525,
+          "timbreChange": 0.0975225310890041
+        },
+        {
+          "position": 257.85,
+          "kind": "energy-rise",
+          "strength": 0.5070661949754601,
+          "energyBefore": 0.224914499660953,
+          "energyAfter": 0.45628978461204556,
+          "timbreChange": 0.506055724305613
+        },
+        {
+          "position": 285.75,
+          "kind": "energy-fall",
+          "strength": 1,
+          "energyBefore": 0.4229687720874873,
+          "energyAfter": 0.0674180079897978,
+          "timbreChange": 0.7134954643864175
+        },
+        {
+          "position": 313.65000000000003,
+          "kind": "energy-fall",
+          "strength": 0.5726060082844824,
+          "energyBefore": 0.34012413838116395,
+          "energyAfter": 0.11593663392118897,
+          "timbreChange": 0.06590471534466433
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 0.05,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;unaligned-event",
+          "sourceFingerprint": "709d05001025efd7b271bb82d717a039e419115f57e31e77f5db1f806142f75f",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 30.3,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6097885938822512,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;unaligned-event",
+          "sourceFingerprint": "709d05001025efd7b271bb82d717a039e419115f57e31e77f5db1f806142f75f",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 58.818717244044066,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6844500888529139,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "709d05001025efd7b271bb82d717a039e419115f57e31e77f5db1f806142f75f",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 93.2,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6402910418270991,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;unaligned-event",
+          "sourceFingerprint": "709d05001025efd7b271bb82d717a039e419115f57e31e77f5db1f806142f75f",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 5,
+          "position": 141.25774163428784,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5981288124843864,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "709d05001025efd7b271bb82d717a039e419115f57e31e77f5db1f806142f75f",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 6,
+          "position": 257.843107487949,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.602119858492638,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "709d05001025efd7b271bb82d717a039e419115f57e31e77f5db1f806142f75f",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 7,
+          "position": 285.6479855367301,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.75,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "709d05001025efd7b271bb82d717a039e419115f57e31e77f5db1f806142f75f",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 8,
+          "position": 313.65000000000003,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6217818024853448,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;unaligned-event",
+          "sourceFingerprint": "709d05001025efd7b271bb82d717a039e419115f57e31e77f5db1f806142f75f",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "EDM Hits/017-Daft Punk-One More Time",
+      "genre": "EDM Hits",
+      "split": "tuning",
+      "sourceSha256": "e5275c0e03f6374c7de84a80c5a53b625321b06e7aa126f2f74f1b9321141056",
+      "decodedDurationSeconds": 320.3570068027224,
+      "wallSeconds": 6.5403034,
+      "events": [
+        {
+          "position": 0.05,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.16074305528969104,
+          "timbreChange": 0
+        },
+        {
+          "position": 30.3,
+          "kind": "energy-rise",
+          "strength": 0.5326286462741705,
+          "energyBefore": 0.14214374921350773,
+          "energyAfter": 0.3046617496620182,
+          "timbreChange": 0.3689492219497125
+        },
+        {
+          "position": 58.7,
+          "kind": "energy-fall",
+          "strength": 0.7815002961763796,
+          "energyBefore": 0.43988937169501907,
+          "energyAfter": 0.1461985232522338,
+          "timbreChange": 0.6445787937968686
+        },
+        {
+          "position": 63.050000000000004,
+          "kind": "energy-rise",
+          "strength": 0.4667899739928428,
+          "energyBefore": 0.20168198758539485,
+          "energyAfter": 0.46848439265681424,
+          "timbreChange": 0.18280770596238619
+        },
+        {
+          "position": 93.2,
+          "kind": "energy-rise",
+          "strength": 0.6343034727569968,
+          "energyBefore": 0.15818570393607614,
+          "energyAfter": 0.40893057811551464,
+          "timbreChange": 0.5506472211225175
+        },
+        {
+          "position": 141.15,
+          "kind": "energy-fall",
+          "strength": 0.4937627082812879,
+          "energyBefore": 0.43136690788996296,
+          "energyAfter": 0.2064112413249417,
+          "timbreChange": 0.29360384417250746
+        },
+        {
+          "position": 161.75,
+          "kind": "energy-fall",
+          "strength": 0.3951432681371875,
+          "energyBefore": 0.268594722902357,
+          "energyAfter": 0.14920204614014626,
+          "timbreChange": 0.15080094953778264
+        },
+        {
+          "position": 168.5,
+          "kind": "energy-fall",
+          "strength": 0.4523582921490841,
+          "energyBefore": 0.32252154351710016,
+          "energyAfter": 0.1656274659415096,
+          "timbreChange": 0.18958797584884365
+        },
+        {
+          "position": 176.65,
+          "kind": "energy-fall",
+          "strength": 0.34013436768407296,
+          "energyBefore": 0.2541997523209644,
+          "energyAfter": 0.1578276555473482,
+          "timbreChange": 0.1867284882366105
+        },
+        {
+          "position": 209.05,
+          "kind": "energy-fall",
+          "strength": 0.37690579033148636,
+          "energyBefore": 0.28745552394345125,
+          "energyAfter": 0.16288767329448073,
+          "timbreChange": 0.14795220362210676
+        },
+        {
+          "position": 214.95000000000002,
+          "kind": "energy-rise",
+          "strength": 0.35557466358032597,
+          "energyBefore": 0.17061908100434053,
+          "energyAfter": 0.29011112083463525,
+          "timbreChange": 0.0975225310890041
+        },
+        {
+          "position": 257.85,
+          "kind": "energy-rise",
+          "strength": 0.5070661949754601,
+          "energyBefore": 0.224914499660953,
+          "energyAfter": 0.45628978461204556,
+          "timbreChange": 0.506055724305613
+        },
+        {
+          "position": 285.75,
+          "kind": "energy-fall",
+          "strength": 1,
+          "energyBefore": 0.4229687720874873,
+          "energyAfter": 0.0674180079897978,
+          "timbreChange": 0.7134954643864175
+        },
+        {
+          "position": 313.65000000000003,
+          "kind": "energy-fall",
+          "strength": 0.5726060082844824,
+          "energyBefore": 0.34012413838116395,
+          "energyAfter": 0.11593663392118897,
+          "timbreChange": 0.06590471534466433
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 0.05,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;unaligned-event",
+          "sourceFingerprint": "e5275c0e03f6374c7de84a80c5a53b625321b06e7aa126f2f74f1b9321141056",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 30.3,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6097885938822512,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;unaligned-event",
+          "sourceFingerprint": "e5275c0e03f6374c7de84a80c5a53b625321b06e7aa126f2f74f1b9321141056",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 58.818717244044066,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6844500888529139,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "e5275c0e03f6374c7de84a80c5a53b625321b06e7aa126f2f74f1b9321141056",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 93.2,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6402910418270991,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;unaligned-event",
+          "sourceFingerprint": "e5275c0e03f6374c7de84a80c5a53b625321b06e7aa126f2f74f1b9321141056",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 5,
+          "position": 141.25774163428784,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5981288124843864,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "e5275c0e03f6374c7de84a80c5a53b625321b06e7aa126f2f74f1b9321141056",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 6,
+          "position": 257.843107487949,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.602119858492638,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "e5275c0e03f6374c7de84a80c5a53b625321b06e7aa126f2f74f1b9321141056",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 7,
+          "position": 285.6479855367301,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.75,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "e5275c0e03f6374c7de84a80c5a53b625321b06e7aa126f2f74f1b9321141056",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 8,
+          "position": 313.65000000000003,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6217818024853448,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;unaligned-event",
+          "sourceFingerprint": "e5275c0e03f6374c7de84a80c5a53b625321b06e7aa126f2f74f1b9321141056",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "This Is Michael Jackson/008-Michael Jackson-They Don't Care About Us",
+      "genre": "This Is Michael Jackson",
+      "split": "tuning",
+      "sourceSha256": "0fb64f78ef83ec402adad3ffdf597e429063c52c98b9a799f4399e7348b02c4d",
+      "decodedDurationSeconds": 284.29061224489,
+      "wallSeconds": 9.0400815,
+      "events": [
+        {
+          "position": 3.1,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.021258840906926885,
+          "timbreChange": 0
+        },
+        {
+          "position": 13.5,
+          "kind": "energy-rise",
+          "strength": 0.40252056561500466,
+          "energyBefore": 0.027815355033457022,
+          "energyAfter": 0.06634455820313252,
+          "timbreChange": 0.04521682072371992
+        },
+        {
+          "position": 17.650000000000002,
+          "kind": "energy-rise",
+          "strength": 0.9246737627769518,
+          "energyBefore": 0.045934209796509085,
+          "energyAfter": 0.18651035621644138,
+          "timbreChange": 0.302029335657923
+        },
+        {
+          "position": 23.35,
+          "kind": "energy-rise",
+          "strength": 0.4896104647570602,
+          "energyBefore": 0.11934753907535357,
+          "energyAfter": 0.23974180162885472,
+          "timbreChange": 0.23545613183046576
+        },
+        {
+          "position": 130.4,
+          "kind": "energy-rise",
+          "strength": 0.9751449513752988,
+          "energyBefore": 0.08137943370191163,
+          "energyAfter": 0.34726221768600773,
+          "timbreChange": 0.3987700931477436
+        },
+        {
+          "position": 251.15,
+          "kind": "energy-fall",
+          "strength": 0.3059376094641863,
+          "energyBefore": 0.4839294430665384,
+          "energyAfter": 0.3577204495241919,
+          "timbreChange": 0.31238128958355776
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 3.1327937792612968,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;nearest-beat",
+          "sourceFingerprint": "0fb64f78ef83ec402adad3ffdf597e429063c52c98b9a799f4399e7348b02c4d",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 13.632793779261297,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5707561696845014,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "0fb64f78ef83ec402adad3ffdf597e429063c52c98b9a799f4399e7348b02c4d",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 17.6327937792613,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.7274021288330855,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "0fb64f78ef83ec402adad3ffdf597e429063c52c98b9a799f4399e7348b02c4d",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 23.35,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5968831394271181,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;unaligned-event",
+          "sourceFingerprint": "0fb64f78ef83ec402adad3ffdf597e429063c52c98b9a799f4399e7348b02c4d",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 5,
+          "position": 130.4,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.7425434854125896,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;unaligned-event",
+          "sourceFingerprint": "0fb64f78ef83ec402adad3ffdf597e429063c52c98b9a799f4399e7348b02c4d",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 6,
+          "position": 251.1327937792613,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5417812828392559,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "0fb64f78ef83ec402adad3ffdf597e429063c52c98b9a799f4399e7348b02c4d",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "100 Most Iconic EDM Songs/006-Skrillex-Scary Monsters and Nice Sprites",
+      "genre": "100 Most Iconic EDM Songs",
+      "split": "tuning",
+      "sourceSha256": "73bb22fd287ba9eb3c82315c3d7d5ec78419e7686a254f08dbd4e47e9bddd243",
+      "decodedDurationSeconds": 243.3536507936544,
+      "wallSeconds": 5.0238249,
+      "events": [
+        {
+          "position": 0.05,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.2857414052926583,
+          "timbreChange": 0
+        },
+        {
+          "position": 28.05,
+          "kind": "energy-fall",
+          "strength": 0.37905100551306004,
+          "energyBefore": 0.5519800731655307,
+          "energyAfter": 0.3831313092264876,
+          "timbreChange": 0.41031227396252307
+        },
+        {
+          "position": 41.5,
+          "kind": "energy-rise",
+          "strength": 0.4072644898772581,
+          "energyBefore": 0.39493521161295336,
+          "energyAfter": 0.707987228671085,
+          "timbreChange": 0.2926141820338997
+        },
+        {
+          "position": 107.10000000000001,
+          "kind": "energy-fall",
+          "strength": 0.3540145047727902,
+          "energyBefore": 0.5115247039650691,
+          "energyAfter": 0.3786495438001693,
+          "timbreChange": 0.4016378706704311
+        },
+        {
+          "position": 120.35000000000001,
+          "kind": "energy-rise",
+          "strength": 0.4006222602757777,
+          "energyBefore": 0.39277005842866053,
+          "energyAfter": 0.6964720279848295,
+          "timbreChange": 0.280485090435525
+        },
+        {
+          "position": 185.35000000000002,
+          "kind": "energy-fall",
+          "strength": 0.4333698156998716,
+          "energyBefore": 0.6558892228604599,
+          "energyAfter": 0.4764980117252221,
+          "timbreChange": 0.4414032077188702
+        },
+        {
+          "position": 199.20000000000002,
+          "kind": "energy-fall",
+          "strength": 0.4215673954803844,
+          "energyBefore": 0.5871298748793272,
+          "energyAfter": 0.3196815842941061,
+          "timbreChange": 0.325390496142325
+        },
+        {
+          "position": 211.70000000000002,
+          "kind": "section",
+          "strength": 0.33781388529157347,
+          "energyBefore": 0.3356634114529389,
+          "energyAfter": 0.36068696849009796,
+          "timbreChange": 0.3598038174622635
+        },
+        {
+          "position": 225.70000000000002,
+          "kind": "energy-fall",
+          "strength": 0.4217639629363805,
+          "energyBefore": 0.30625482169576845,
+          "energyAfter": 0.16144714511064767,
+          "timbreChange": 0.33883202506036003
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 0.05,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;unaligned-event",
+          "sourceFingerprint": "73bb22fd287ba9eb3c82315c3d7d5ec78419e7686a254f08dbd4e47e9bddd243",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 28.05,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.563715301653918,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;unaligned-event",
+          "sourceFingerprint": "73bb22fd287ba9eb3c82315c3d7d5ec78419e7686a254f08dbd4e47e9bddd243",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 41.529111868354576,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5721793469631774,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "73bb22fd287ba9eb3c82315c3d7d5ec78419e7686a254f08dbd4e47e9bddd243",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 107.10054043978346,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5562043514318371,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "73bb22fd287ba9eb3c82315c3d7d5ec78419e7686a254f08dbd4e47e9bddd243",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 5,
+          "position": 120.3862547254978,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5701866780827333,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "73bb22fd287ba9eb3c82315c3d7d5ec78419e7686a254f08dbd4e47e9bddd243",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 6,
+          "position": 185.35000000000002,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5800109447099615,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;unaligned-event",
+          "sourceFingerprint": "73bb22fd287ba9eb3c82315c3d7d5ec78419e7686a254f08dbd4e47e9bddd243",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 7,
+          "position": 199.24339758263866,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5764702186441153,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "73bb22fd287ba9eb3c82315c3d7d5ec78419e7686a254f08dbd4e47e9bddd243",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 8,
+          "position": 225.81482615406648,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5765291888809142,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "73bb22fd287ba9eb3c82315c3d7d5ec78419e7686a254f08dbd4e47e9bddd243",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "EDM Hits/019-The Chainsmokers-Roses",
+      "genre": "EDM Hits",
+      "split": "tuning",
+      "sourceSha256": "2cee10d416c8bb3af497c972be4a9be7b6fe5d9ef2a2b5874431f9cc482a1da7",
+      "decodedDurationSeconds": 226.7388435374168,
+      "wallSeconds": 4.4684847,
+      "events": [
+        {
+          "position": 0.55,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.05180066521130348,
+          "timbreChange": 0
+        },
+        {
+          "position": 10.05,
+          "kind": "energy-rise",
+          "strength": 1,
+          "energyBefore": 0.06732608275874608,
+          "energyAfter": 0.37478961261586546,
+          "timbreChange": 0.4763505033254719
+        },
+        {
+          "position": 48.6,
+          "kind": "energy-rise",
+          "strength": 0.4502270594907017,
+          "energyBefore": 0.27109624496913914,
+          "energyAfter": 0.46806649197419486,
+          "timbreChange": 0.47631784943795347
+        },
+        {
+          "position": 58.050000000000004,
+          "kind": "energy-rise",
+          "strength": 0.3152234241239621,
+          "energyBefore": 0.2990897950654918,
+          "energyAfter": 0.4686299486203713,
+          "timbreChange": 0.15374778014990834
+        },
+        {
+          "position": 82.35000000000001,
+          "kind": "energy-fall",
+          "strength": 0.3341377103004133,
+          "energyBefore": 0.3321749519215451,
+          "energyAfter": 0.24137274145148407,
+          "timbreChange": 0.369792613545822
+        },
+        {
+          "position": 86.7,
+          "kind": "energy-rise",
+          "strength": 0.6800126035565338,
+          "energyBefore": 0.17185073722375757,
+          "energyAfter": 0.3848571196280266,
+          "timbreChange": 0.6877473698936151
+        },
+        {
+          "position": 122.30000000000001,
+          "kind": "energy-fall",
+          "strength": 0.5222424726527811,
+          "energyBefore": 0.3903554573746967,
+          "energyAfter": 0.2918285849859997,
+          "timbreChange": 0.5480749477839293
+        },
+        {
+          "position": 160.8,
+          "kind": "section",
+          "strength": 0.3001320587150338,
+          "energyBefore": 0.40178760389863744,
+          "energyAfter": 0.3157166519893143,
+          "timbreChange": 0.31649783181909324
+        },
+        {
+          "position": 178.3,
+          "kind": "energy-fall",
+          "strength": 0.3384728363321936,
+          "energyBefore": 0.3341848877762297,
+          "energyAfter": 0.24234519454422768,
+          "timbreChange": 0.36780281889502653
+        },
+        {
+          "position": 182.55,
+          "kind": "energy-rise",
+          "strength": 0.6624265609353124,
+          "energyBefore": 0.16679025468306374,
+          "energyAfter": 0.3844909984333314,
+          "timbreChange": 0.6861870589724058
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 0.55,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;unaligned-event",
+          "sourceFingerprint": "2cee10d416c8bb3af497c972be4a9be7b6fe5d9ef2a2b5874431f9cc482a1da7",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 9.952604338388758,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.75,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "2cee10d416c8bb3af497c972be4a9be7b6fe5d9ef2a2b5874431f9cc482a1da7",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 48.54556916250945,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5850681178472106,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "2cee10d416c8bb3af497c972be4a9be7b6fe5d9ef2a2b5874431f9cc482a1da7",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 82.31441338361518,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.550241313090124,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "2cee10d416c8bb3af497c972be4a9be7b6fe5d9ef2a2b5874431f9cc482a1da7",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 5,
+          "position": 86.53551891125339,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6540037810669601,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "2cee10d416c8bb3af497c972be4a9be7b6fe5d9ef2a2b5874431f9cc482a1da7",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 6,
+          "position": 122.11340835848978,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6066727417958343,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "2cee10d416c8bb3af497c972be4a9be7b6fe5d9ef2a2b5874431f9cc482a1da7",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 7,
+          "position": 178.19381036853918,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5515418508996581,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "2cee10d416c8bb3af497c972be4a9be7b6fe5d9ef2a2b5874431f9cc482a1da7",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 8,
+          "position": 182.4149158961773,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6487279682805938,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "2cee10d416c8bb3af497c972be4a9be7b6fe5d9ef2a2b5874431f9cc482a1da7",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "This Is Michael Jackson/009-Michael Jackson-Human Nature",
+      "genre": "This Is Michael Jackson",
+      "split": "tuning",
+      "sourceSha256": "0d1c7c413ef039538c6a2cb23e62b146fad3661906dfdd5af2a157cc92604731",
+      "decodedDurationSeconds": 245.81224489795338,
+      "wallSeconds": 8.0743978,
+      "events": [
+        {
+          "position": 0.30000000000000004,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.04614522451375224,
+          "timbreChange": 0
+        },
+        {
+          "position": 186.35000000000002,
+          "kind": "section",
+          "strength": 0.31796605452552223,
+          "energyBefore": 0.4043876006632729,
+          "energyAfter": 0.3808458251022487,
+          "timbreChange": 0.33895608347643386
+        },
+        {
+          "position": 196.65,
+          "kind": "energy-fall",
+          "strength": 0.3324900744170539,
+          "energyBefore": 0.44072438436953854,
+          "energyAfter": 0.2594602617550016,
+          "timbreChange": 0.2421969908148026
+        },
+        {
+          "position": 238.20000000000002,
+          "kind": "energy-fall",
+          "strength": 0.8645439803541448,
+          "energyBefore": 0.3515919003850873,
+          "energyAfter": 0.07026400295280606,
+          "timbreChange": 0.2941395283218594
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 0.309967628837115,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;nearest-beat",
+          "sourceFingerprint": "0d1c7c413ef039538c6a2cb23e62b146fad3661906dfdd5af2a157cc92604731",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 186.35000000000002,
+          "label": "Texture change",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5453898163576567,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-section;unaligned-event",
+          "sourceFingerprint": "0d1c7c413ef039538c6a2cb23e62b146fad3661906dfdd5af2a157cc92604731",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 196.65,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5497470223251162,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;unaligned-event",
+          "sourceFingerprint": "0d1c7c413ef039538c6a2cb23e62b146fad3661906dfdd5af2a157cc92604731",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 238.37448375787082,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.7093631941062435,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "0d1c7c413ef039538c6a2cb23e62b146fad3661906dfdd5af2a157cc92604731",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "100 Most Iconic EDM Songs/007-Zedd-Clarity",
+      "genre": "100 Most Iconic EDM Songs",
+      "split": "tuning",
+      "sourceSha256": "63aae3cb4e03296e483b67a592c3eda092faee4564c53532307d0d4b0320a364",
+      "decodedDurationSeconds": 271.4266666666676,
+      "wallSeconds": 5.342846,
+      "events": [
+        {
+          "position": 1.85,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.07512090959857971,
+          "timbreChange": 0
+        },
+        {
+          "position": 8.700000000000001,
+          "kind": "energy-rise",
+          "strength": 0.5441957969013896,
+          "energyBefore": 0.1141283350135138,
+          "energyAfter": 0.2590529330390077,
+          "timbreChange": 0.11009433439635793
+        },
+        {
+          "position": 24.85,
+          "kind": "energy-rise",
+          "strength": 0.3673258335429226,
+          "energyBefore": 0.19542167169527136,
+          "energyAfter": 0.3507330594953174,
+          "timbreChange": 0.14582356267292257
+        },
+        {
+          "position": 39.400000000000006,
+          "kind": "energy-rise",
+          "strength": 0.43572223739694266,
+          "energyBefore": 0.26581031425238066,
+          "energyAfter": 0.5197145191125332,
+          "timbreChange": 0.031490378974314864
+        },
+        {
+          "position": 69,
+          "kind": "section",
+          "strength": 0.41577005329858274,
+          "energyBefore": 0.5459747781746693,
+          "energyAfter": 0.678544804064175,
+          "timbreChange": 0.4234653536154665
+        },
+        {
+          "position": 100.10000000000001,
+          "kind": "section",
+          "strength": 0.3208298468114298,
+          "energyBefore": 0.6314007891986524,
+          "energyAfter": 0.8112011969176747,
+          "timbreChange": 0.36635972020188273
+        },
+        {
+          "position": 116.75,
+          "kind": "energy-fall",
+          "strength": 1,
+          "energyBefore": 0.6355543740602271,
+          "energyAfter": 0.09084225866389661,
+          "timbreChange": 0.20575902292705456
+        },
+        {
+          "position": 120.80000000000001,
+          "kind": "energy-rise",
+          "strength": 0.8064043148914751,
+          "energyBefore": 0.08972805718989607,
+          "energyAfter": 0.3221363422565387,
+          "timbreChange": 0.2781014383524218
+        },
+        {
+          "position": 137.35,
+          "kind": "energy-rise",
+          "strength": 0.3170243748199806,
+          "energyBefore": 0.2209767762817644,
+          "energyAfter": 0.36810256507023736,
+          "timbreChange": 0.11109164166768756
+        },
+        {
+          "position": 151.9,
+          "kind": "energy-rise",
+          "strength": 0.4366724312052611,
+          "energyBefore": 0.2796260169623297,
+          "energyAfter": 0.5570838739167213,
+          "timbreChange": 0.019851110502530016
+        },
+        {
+          "position": 197.05,
+          "kind": "energy-rise",
+          "strength": 0.3255919592921324,
+          "energyBefore": 0.2838040214992785,
+          "energyAfter": 0.4543211804667732,
+          "timbreChange": 0.03648647431282506
+        },
+        {
+          "position": 211.9,
+          "kind": "energy-rise",
+          "strength": 0.5469852561952886,
+          "energyBefore": 0.33823722063791434,
+          "energyAfter": 0.7283823068361404,
+          "timbreChange": 0.5005912211970706
+        },
+        {
+          "position": 242.45000000000002,
+          "kind": "section",
+          "strength": 0.3295390691513252,
+          "energyBefore": 0.6400714243880206,
+          "energyAfter": 0.7995979811280722,
+          "timbreChange": 0.34998275543413915
+        },
+        {
+          "position": 259.2,
+          "kind": "energy-fall",
+          "strength": 1,
+          "energyBefore": 0.6440006831025323,
+          "energyAfter": 0.10553595905603563,
+          "timbreChange": 0.1502439232239071
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 1.85,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;unaligned-event",
+          "sourceFingerprint": "63aae3cb4e03296e483b67a592c3eda092faee4564c53532307d0d4b0320a364",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 8.691316824354303,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.613258739070417,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "63aae3cb4e03296e483b67a592c3eda092faee4564c53532307d0d4b0320a364",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 39.27955211847187,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5807166712190828,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "63aae3cb4e03296e483b67a592c3eda092faee4564c53532307d0d4b0320a364",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 116.75,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.75,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;unaligned-event",
+          "sourceFingerprint": "63aae3cb4e03296e483b67a592c3eda092faee4564c53532307d0d4b0320a364",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 5,
+          "position": 120.69131682435393,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6919212944674425,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "63aae3cb4e03296e483b67a592c3eda092faee4564c53532307d0d4b0320a364",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 6,
+          "position": 151.7501403537656,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5810017293615783,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "63aae3cb4e03296e483b67a592c3eda092faee4564c53532307d0d4b0320a364",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 7,
+          "position": 211.98543447141245,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6140955768585866,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "63aae3cb4e03296e483b67a592c3eda092faee4564c53532307d0d4b0320a364",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 8,
+          "position": 259.04425800082424,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.75,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "63aae3cb4e03296e483b67a592c3eda092faee4564c53532307d0d4b0320a364",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "EDM Hits/021-Flo Rida-Club Can't Handle Me (feat. David Guetta)",
+      "genre": "EDM Hits",
+      "split": "tuning",
+      "sourceSha256": "c31fd2ee4fb66d99426d571cd094eaaa7e3054a95160c283c41b13aefcd60434",
+      "decodedDurationSeconds": 234.56000000000165,
+      "wallSeconds": 4.738101,
+      "events": [
+        {
+          "position": 2.0500000000000003,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.05141633761983241,
+          "timbreChange": 0
+        },
+        {
+          "position": 16.150000000000002,
+          "kind": "energy-rise",
+          "strength": 0.3241049942355185,
+          "energyBefore": 0.3197733233906898,
+          "energyAfter": 0.5318274809008037,
+          "timbreChange": 0.02474003803184529
+        },
+        {
+          "position": 47.1,
+          "kind": "section",
+          "strength": 0.4502582049549534,
+          "energyBefore": 0.5579940116521548,
+          "energyAfter": 0.6886495744882114,
+          "timbreChange": 0.4590526440710574
+        },
+        {
+          "position": 61.85,
+          "kind": "energy-fall",
+          "strength": 0.3402670609703402,
+          "energyBefore": 0.688329667649828,
+          "energyAfter": 0.5233837840095052,
+          "timbreChange": 0.36229760689002327
+        },
+        {
+          "position": 65.85000000000001,
+          "kind": "energy-rise",
+          "strength": 0.3975951145187244,
+          "energyBefore": 0.5230185084103569,
+          "energyAfter": 0.6994861841257511,
+          "timbreChange": 0.42176451475392307
+        },
+        {
+          "position": 107.05000000000001,
+          "kind": "energy-rise",
+          "strength": 0.43335810701757016,
+          "energyBefore": 0.45957966393422406,
+          "energyAfter": 0.6793708470060875,
+          "timbreChange": 0.4395744891230678
+        },
+        {
+          "position": 114.60000000000001,
+          "kind": "energy-rise",
+          "strength": 0.33117427143381456,
+          "energyBefore": 0.47387506223952264,
+          "energyAfter": 0.7084289899093645,
+          "timbreChange": 0.35681977892826305
+        },
+        {
+          "position": 167.9,
+          "kind": "section",
+          "strength": 0.3521365710089832,
+          "energyBefore": 0.622359241351736,
+          "energyAfter": 0.5722064479313658,
+          "timbreChange": 0.3785428741069117
+        },
+        {
+          "position": 174.4,
+          "kind": "section",
+          "strength": 0.30419648497192303,
+          "energyBefore": 0.5881557568292953,
+          "energyAfter": 0.7030938329483165,
+          "timbreChange": 0.33315481027154237
+        },
+        {
+          "position": 228.35000000000002,
+          "kind": "energy-fall",
+          "strength": 0.8065608653162945,
+          "energyBefore": 0.6495416182389114,
+          "energyAfter": 0.1532789927860606,
+          "timbreChange": 0.18575531714101992
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 1.9429079180870907,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;nearest-beat",
+          "sourceFingerprint": "c31fd2ee4fb66d99426d571cd094eaaa7e3054a95160c283c41b13aefcd60434",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 47.2347367118613,
+          "label": "Texture change",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.585077461486486,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-section;nearest-beat",
+          "sourceFingerprint": "c31fd2ee4fb66d99426d571cd094eaaa7e3054a95160c283c41b13aefcd60434",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 61.709444883067476,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.552080118291102,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "c31fd2ee4fb66d99426d571cd094eaaa7e3054a95160c283c41b13aefcd60434",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 65.91177951341766,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5692785343556174,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "c31fd2ee4fb66d99426d571cd094eaaa7e3054a95160c283c41b13aefcd60434",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 5,
+          "position": 107.00127367684163,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5800074321052711,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "c31fd2ee4fb66d99426d571cd094eaaa7e3054a95160c283c41b13aefcd60434",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 6,
+          "position": 114.47209079746418,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5493522814301444,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "c31fd2ee4fb66d99426d571cd094eaaa7e3054a95160c283c41b13aefcd60434",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 7,
+          "position": 167.9,
+          "label": "Texture change",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.555640971302695,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-section;unaligned-event",
+          "sourceFingerprint": "c31fd2ee4fb66d99426d571cd094eaaa7e3054a95160c283c41b13aefcd60434",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 8,
+          "position": 228.40205188695793,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6919682595948884,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "c31fd2ee4fb66d99426d571cd094eaaa7e3054a95160c283c41b13aefcd60434",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "This Is Michael Jackson/010-Michael Jackson-Smooth Criminal - 2012 Remaster",
+      "genre": "This Is Michael Jackson",
+      "split": "tuning",
+      "sourceSha256": "5e783154a9959da3c597a0778cab94a6964f7376f8215bc3b04d1347c3215bad",
+      "decodedDurationSeconds": 257.7502040816262,
+      "wallSeconds": 8.2872196,
+      "events": [
+        {
+          "position": 0.9,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.027841546366813765,
+          "timbreChange": 0
+        },
+        {
+          "position": 14.5,
+          "kind": "energy-rise",
+          "strength": 0.8223108388153804,
+          "energyBefore": 0.1493359811789666,
+          "energyAfter": 0.48167036099145755,
+          "timbreChange": 0.12033643682113251
+        },
+        {
+          "position": 239.25,
+          "kind": "energy-fall",
+          "strength": 0.34066086822440106,
+          "energyBefore": 0.3591321674434308,
+          "energyAfter": 0.2036376396518715,
+          "timbreChange": 0.007411588045999826
+        },
+        {
+          "position": 244.60000000000002,
+          "kind": "energy-fall",
+          "strength": 0.40392606828374006,
+          "energyBefore": 0.1711128585106512,
+          "energyAfter": 0.0846189637633753,
+          "timbreChange": 0.015810350056513517
+        },
+        {
+          "position": 248.70000000000002,
+          "kind": "energy-fall",
+          "strength": 0.4344995063943,
+          "energyBefore": 0.08510584562041257,
+          "energyAfter": 0.03411269612536455,
+          "timbreChange": 0.0373534659734467
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 0.8909033035555074,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;nearest-beat",
+          "sourceFingerprint": "5e783154a9959da3c597a0778cab94a6964f7376f8215bc3b04d1347c3215bad",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 14.61971686287755,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.696693251644614,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "5e783154a9959da3c597a0778cab94a6964f7376f8215bc3b04d1347c3215bad",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 239.36547957474383,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5521982604673203,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "5e783154a9959da3c597a0778cab94a6964f7376f8215bc3b04d1347c3215bad",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 244.4502253374558,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.571177820485122,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "5e783154a9959da3c597a0778cab94a6964f7376f8215bc3b04d1347c3215bad",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 5,
+          "position": 248.70000000000002,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.58034985191829,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;unaligned-event",
+          "sourceFingerprint": "5e783154a9959da3c597a0778cab94a6964f7376f8215bc3b04d1347c3215bad",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "100 Most Iconic EDM Songs/008-deadmau5-Strobe - Radio Edit",
+      "genre": "100 Most Iconic EDM Songs",
+      "split": "tuning",
+      "sourceSha256": "347f5b1c860aab8ce2900df9fbed322430b5cd44653d48acacbcf7a27944a9bf",
+      "decodedDurationSeconds": 212.06666666666956,
+      "wallSeconds": 4.2847121,
+      "events": [
+        {
+          "position": 0,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.8311185049588644,
+          "timbreChange": 0
+        },
+        {
+          "position": 29.650000000000002,
+          "kind": "energy-fall",
+          "strength": 0.3705647107457564,
+          "energyBefore": 0.45778308183784144,
+          "energyAfter": 0.26651279990234883,
+          "timbreChange": 0.20743180522518706
+        },
+        {
+          "position": 76.15,
+          "kind": "energy-fall",
+          "strength": 0.36823185346150045,
+          "energyBefore": 0.34388070897336237,
+          "energyAfter": 0.18899731355543525,
+          "timbreChange": 0.2028773706953925
+        },
+        {
+          "position": 82.5,
+          "kind": "energy-rise",
+          "strength": 0.6616454513651084,
+          "energyBefore": 0.173273123819648,
+          "energyAfter": 0.45640959857280033,
+          "timbreChange": 0.42112977609500835
+        },
+        {
+          "position": 199.85000000000002,
+          "kind": "energy-fall",
+          "strength": 0.3456515149438087,
+          "energyBefore": 0.23566928050724306,
+          "energyAfter": 0.12372505530343625,
+          "timbreChange": 0.09230225548073566
+        },
+        {
+          "position": 204,
+          "kind": "energy-fall",
+          "strength": 0.48887082559630557,
+          "energyBefore": 0.12392682024018398,
+          "energyAfter": 0.04786682467033779,
+          "timbreChange": 0.20065151946098733
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 0,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;unaligned-event",
+          "sourceFingerprint": "347f5b1c860aab8ce2900df9fbed322430b5cd44653d48acacbcf7a27944a9bf",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 29.611130780037435,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5611694132237269,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "347f5b1c860aab8ce2900df9fbed322430b5cd44653d48acacbcf7a27944a9bf",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 76.19936607415492,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5604695560384502,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "347f5b1c860aab8ce2900df9fbed322430b5cd44653d48acacbcf7a27944a9bf",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 82.5,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6484936354095325,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;unaligned-event",
+          "sourceFingerprint": "347f5b1c860aab8ce2900df9fbed322430b5cd44653d48acacbcf7a27944a9bf",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 5,
+          "position": 199.96407195650744,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5536954544831426,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "347f5b1c860aab8ce2900df9fbed322430b5cd44653d48acacbcf7a27944a9bf",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 6,
+          "position": 204,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5966612476788917,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;unaligned-event",
+          "sourceFingerprint": "347f5b1c860aab8ce2900df9fbed322430b5cd44653d48acacbcf7a27944a9bf",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "EDM Hits/022-Zedd-Clarity",
+      "genre": "EDM Hits",
+      "split": "tuning",
+      "sourceSha256": "98d0d81e6720c11942e4ff1e1a8b27a8e0816964ef249d5acdab4e500be7e8f7",
+      "decodedDurationSeconds": 271.4266666666676,
+      "wallSeconds": 5.3028889,
+      "events": [
+        {
+          "position": 1.85,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.07512090959857971,
+          "timbreChange": 0
+        },
+        {
+          "position": 8.700000000000001,
+          "kind": "energy-rise",
+          "strength": 0.5441957969013896,
+          "energyBefore": 0.1141283350135138,
+          "energyAfter": 0.2590529330390077,
+          "timbreChange": 0.11009433439635793
+        },
+        {
+          "position": 24.85,
+          "kind": "energy-rise",
+          "strength": 0.3673258335429226,
+          "energyBefore": 0.19542167169527136,
+          "energyAfter": 0.3507330594953174,
+          "timbreChange": 0.14582356267292257
+        },
+        {
+          "position": 39.400000000000006,
+          "kind": "energy-rise",
+          "strength": 0.43572223739694266,
+          "energyBefore": 0.26581031425238066,
+          "energyAfter": 0.5197145191125332,
+          "timbreChange": 0.031490378974314864
+        },
+        {
+          "position": 69,
+          "kind": "section",
+          "strength": 0.41577005329858274,
+          "energyBefore": 0.5459747781746693,
+          "energyAfter": 0.678544804064175,
+          "timbreChange": 0.4234653536154665
+        },
+        {
+          "position": 100.10000000000001,
+          "kind": "section",
+          "strength": 0.3208298468114298,
+          "energyBefore": 0.6314007891986524,
+          "energyAfter": 0.8112011969176747,
+          "timbreChange": 0.36635972020188273
+        },
+        {
+          "position": 116.75,
+          "kind": "energy-fall",
+          "strength": 1,
+          "energyBefore": 0.6355543740602271,
+          "energyAfter": 0.09084225866389661,
+          "timbreChange": 0.20575902292705456
+        },
+        {
+          "position": 120.80000000000001,
+          "kind": "energy-rise",
+          "strength": 0.8064043148914751,
+          "energyBefore": 0.08972805718989607,
+          "energyAfter": 0.3221363422565387,
+          "timbreChange": 0.2781014383524218
+        },
+        {
+          "position": 137.35,
+          "kind": "energy-rise",
+          "strength": 0.3170243748199806,
+          "energyBefore": 0.2209767762817644,
+          "energyAfter": 0.36810256507023736,
+          "timbreChange": 0.11109164166768756
+        },
+        {
+          "position": 151.9,
+          "kind": "energy-rise",
+          "strength": 0.4366724312052611,
+          "energyBefore": 0.2796260169623297,
+          "energyAfter": 0.5570838739167213,
+          "timbreChange": 0.019851110502530016
+        },
+        {
+          "position": 197.05,
+          "kind": "energy-rise",
+          "strength": 0.3255919592921324,
+          "energyBefore": 0.2838040214992785,
+          "energyAfter": 0.4543211804667732,
+          "timbreChange": 0.03648647431282506
+        },
+        {
+          "position": 211.9,
+          "kind": "energy-rise",
+          "strength": 0.5469852561952886,
+          "energyBefore": 0.33823722063791434,
+          "energyAfter": 0.7283823068361404,
+          "timbreChange": 0.5005912211970706
+        },
+        {
+          "position": 242.45000000000002,
+          "kind": "section",
+          "strength": 0.3295390691513252,
+          "energyBefore": 0.6400714243880206,
+          "energyAfter": 0.7995979811280722,
+          "timbreChange": 0.34998275543413915
+        },
+        {
+          "position": 259.2,
+          "kind": "energy-fall",
+          "strength": 1,
+          "energyBefore": 0.6440006831025323,
+          "energyAfter": 0.10553595905603563,
+          "timbreChange": 0.1502439232239071
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 1.85,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;unaligned-event",
+          "sourceFingerprint": "98d0d81e6720c11942e4ff1e1a8b27a8e0816964ef249d5acdab4e500be7e8f7",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 8.691316824354303,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.613258739070417,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "98d0d81e6720c11942e4ff1e1a8b27a8e0816964ef249d5acdab4e500be7e8f7",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 39.27955211847187,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5807166712190828,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "98d0d81e6720c11942e4ff1e1a8b27a8e0816964ef249d5acdab4e500be7e8f7",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 116.75,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.75,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;unaligned-event",
+          "sourceFingerprint": "98d0d81e6720c11942e4ff1e1a8b27a8e0816964ef249d5acdab4e500be7e8f7",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 5,
+          "position": 120.69131682435393,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6919212944674425,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "98d0d81e6720c11942e4ff1e1a8b27a8e0816964ef249d5acdab4e500be7e8f7",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 6,
+          "position": 151.7501403537656,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5810017293615783,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "98d0d81e6720c11942e4ff1e1a8b27a8e0816964ef249d5acdab4e500be7e8f7",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 7,
+          "position": 211.98543447141245,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6140955768585866,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "98d0d81e6720c11942e4ff1e1a8b27a8e0816964ef249d5acdab4e500be7e8f7",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 8,
+          "position": 259.04425800082424,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.75,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "98d0d81e6720c11942e4ff1e1a8b27a8e0816964ef249d5acdab4e500be7e8f7",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    },
+    {
+      "id": "This Is Michael Jackson/011-Michael Jackson-Heaven Can Wait",
+      "genre": "This Is Michael Jackson",
+      "split": "tuning",
+      "sourceSha256": "22853d626a35a16866a031f900d5c5a55696736abef5d856b4c97e2a85dd3de0",
+      "decodedDurationSeconds": 289.6718367346856,
+      "wallSeconds": 10.6376019,
+      "events": [
+        {
+          "position": 0.2,
+          "kind": "start",
+          "strength": 0.7,
+          "energyBefore": 0,
+          "energyAfter": 0.0644383541268676,
+          "timbreChange": 0
+        },
+        {
+          "position": 15.5,
+          "kind": "energy-rise",
+          "strength": 1,
+          "energyBefore": 0.06842458542340828,
+          "energyAfter": 0.5921027279577153,
+          "timbreChange": 0.5653638521064479
+        },
+        {
+          "position": 53,
+          "kind": "energy-rise",
+          "strength": 0.9818220821610332,
+          "energyBefore": 0.11396777647351469,
+          "energyAfter": 0.48711066440142736,
+          "timbreChange": 0.5612940190936837
+        },
+        {
+          "position": 150.35,
+          "kind": "section",
+          "strength": 0.6360268164882665,
+          "energyBefore": 0.5655428036157357,
+          "energyAfter": 0.44113518230724935,
+          "timbreChange": 0.6672781241127711
+        },
+        {
+          "position": 219.8,
+          "kind": "energy-rise",
+          "strength": 0.3332245100371516,
+          "energyBefore": 0.3132294175270982,
+          "energyAfter": 0.5781160562167843,
+          "timbreChange": 0.3449306179291357
+        },
+        {
+          "position": 270.75,
+          "kind": "energy-fall",
+          "strength": 0.49066035949893355,
+          "energyBefore": 0.28473926279126305,
+          "energyAfter": 0.11187645554014178,
+          "timbreChange": 0.1777204649412174
+        },
+        {
+          "position": 283.90000000000003,
+          "kind": "energy-fall",
+          "strength": 0.5461150727531313,
+          "energyBefore": 0.1167094036275856,
+          "energyAfter": 0.04427114530292067,
+          "timbreChange": 0.14428891403599295
+        }
+      ],
+      "cues": [
+        {
+          "slot": 1,
+          "position": 0.22586629191568336,
+          "label": "First sound",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.66,
+          "kind": "intro",
+          "locked": false,
+          "rationale": "native-sustained-start;nearest-beat",
+          "sourceFingerprint": "22853d626a35a16866a031f900d5c5a55696736abef5d856b4c97e2a85dd3de0",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 2,
+          "position": 15.545015228085893,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.75,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "22853d626a35a16866a031f900d5c5a55696736abef5d856b4c97e2a85dd3de0",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 3,
+          "position": 52.821610972766734,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.7445466246483099,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "22853d626a35a16866a031f900d5c5a55696736abef5d856b4c97e2a85dd3de0",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 4,
+          "position": 150.3535258663843,
+          "label": "Texture change",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6408080449464799,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-section;nearest-beat",
+          "sourceFingerprint": "22853d626a35a16866a031f900d5c5a55696736abef5d856b4c97e2a85dd3de0",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 5,
+          "position": 219.8003343770216,
+          "label": "Energy rise",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5499673530111455,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-rise;nearest-beat",
+          "sourceFingerprint": "22853d626a35a16866a031f900d5c5a55696736abef5d856b4c97e2a85dd3de0",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 6,
+          "position": 270.86416416425493,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.5971981078496801,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;nearest-beat",
+          "sourceFingerprint": "22853d626a35a16866a031f900d5c5a55696736abef5d856b4c97e2a85dd3de0",
+          "downbeatAligned": false
+        },
+        {
+          "slot": 7,
+          "position": 283.90000000000003,
+          "label": "Energy fall",
+          "color": "#FF5500",
+          "origin": "analysis",
+          "generatorVersion": "auto-cues-v2-events",
+          "confidence": 0.6138345218259393,
+          "kind": "section",
+          "locked": false,
+          "rationale": "native-sustained-energy-fall;unaligned-event",
+          "sourceFingerprint": "22853d626a35a16866a031f900d5c5a55696736abef5d856b4c97e2a85dd3de0",
+          "downbeatAligned": false
+        }
+      ],
+      "artifactAndGridRoundTripOk": true
+    }
+  ]
+}

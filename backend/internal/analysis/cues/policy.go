@@ -6,6 +6,8 @@ import (
 	"errors"
 	"math"
 	"sort"
+
+	"github.com/ajbergh/viib-mediahub/internal/analysis/localcontract"
 )
 
 type ApplyMode string
@@ -68,7 +70,7 @@ func ApplyPolicy(existing, generated []Cue, mode ApplyMode, suppressions []Suppr
 		}
 	}
 	for _, cue := range generated {
-		if suppressed[cue.Slot][cue.Kind] {
+		if suppressed[cue.Slot][cue.Kind] || localcontract.CueSuppressionIsSlotWide(cue.GeneratorVersion) && len(suppressed[cue.Slot]) > 0 {
 			continue
 		}
 		current, exists := bySlot[cue.Slot]

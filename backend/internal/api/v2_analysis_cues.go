@@ -174,9 +174,9 @@ func (a *API) analysisCueList(songID string) (AnalysisCueListResponse, error) {
 	if err != nil {
 		return AnalysisCueListResponse{}, err
 	}
-	structure, err := features.DecodeBounded(energyArtifact.Data, features.MaxStructureStatusArtifactBytes)
+	structure, err := features.DecodeCurrentBounded(energyArtifact.Data, features.MaxStructureStatusArtifactBytes)
 	if err != nil {
-		return AnalysisCueListResponse{}, err
+		return AnalysisCueListResponse{}, errStaleAnalysisCueSource
 	}
 	var grid *beatgrid.Grid
 	resolvedGrid, err := a.db.ResolveBeatGrid(songID, resolved.Fingerprint)

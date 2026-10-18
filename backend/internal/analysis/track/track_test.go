@@ -11,12 +11,65 @@ import (
 	"testing"
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
+	analysiscues "github.com/ajbergh/viib-mediahub/internal/analysis/cues"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/features"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/key"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/tempo"
 	"github.com/ajbergh/viib-mediahub/internal/analysisbench"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 )
+
+func TestDecodedArrangementEventsPersistAndRegenerateIdentically(t *testing.T) {
+	const rate = 22050
+	fixture := analysisbench.PCMFixture{Name: "arrangement", SampleRate: rate, Channels: 1, Samples: make([]float32, 32*rate)}
+	for i := range fixture.Samples {
+		s := float64(i) / rate
+		if s < 2.3 {
+			continue
+		}
+		frequency := 100.0
+		if s >= 13.35 {
+			frequency = 3000
+		}
+		amp := .4
+		if s >= 24.2 {
+			amp = .1
+		}
+		fixture.Samples[i] = float32(amp * math.Sin(2*math.Pi*frequency*s))
+	}
+	database := catalogSong(t, fixture, "arrangement")
+	opts := DefaultOptions()
+	opts.SkipTempo = true
+	opts.SkipKey = true
+	r, err := Analyze(context.Background(), database, analysis.NewDefaultDecoderRegistry(), "arrangement", opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := PersistWithAutoCueMode(database, r, db.AutomaticCuePointsReplaceGenerated); err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := database.GetTrackAnalysisArtifact("arrangement", features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := features.DecodeBounded(artifact.Data, features.MaxStructureStatusArtifactBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	generated, err := analysiscues.Generate(1, nil, decoded, r.Source.Fingerprint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, err := database.GetDJHotCues("arrangement")
+	if err != nil || len(persisted) != 3 || len(generated) != 3 {
+		t.Fatalf("events missing: stored=%#v generated=%#v err=%v", persisted, generated, err)
+	}
+	for i, want := range []float64{2.3, 13.35, 24.2} {
+		if math.Abs(persisted[i].Position-want) > .15 || persisted[i].Position != generated[i].Position || persisted[i].Label != generated[i].Label {
+			t.Fatalf("decoded event %d drifted: stored=%#v generated=%#v", i, persisted[i], generated[i])
+		}
+	}
+}
 
 // catalogSong writes a fixture as WAV, registers it as a canonical local song,
 // and returns an open database handle.
@@ -87,7 +140,7 @@ func tonalClickTrack(t *testing.T, name string, bpm float64, tonic int, minor bo
 func TestAnalyzeAndPersistRecordsBothDimensionsInOneRecord(t *testing.T) {
 	fixture := tonalClickTrack(t, "song", 128, 9, true, 12, 22050)
 	database := catalogSong(t, fixture, "song")
-	if err := database.SaveDJHotCues("song", []db.DJHotCue{{Slot: 1, Position: 1.25, Label: "Manual intro", Color: "#123456", Origin: "user"}}); err != nil {
+	if err := database.SaveDJHotCues("song", []db.DJHotCue{{Slot: 8, Position: 1.25, Label: "Manual intro", Color: "#123456", Origin: "user"}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -147,7 +200,7 @@ func TestAnalyzeAndPersistRecordsBothDimensionsInOneRecord(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(hotCues) < 2 || hotCues[0].Origin != "user" || hotCues[0].Position != 1.25 {
+	if len(hotCues) < 2 || hotCues[len(hotCues)-1].Origin != "user" || hotCues[len(hotCues)-1].Slot != 8 || hotCues[len(hotCues)-1].Position != 1.25 {
 		t.Fatalf("analysis did not preserve user cue and add generated cues: %#v", hotCues)
 	}
 	generatedCount := 0
@@ -156,7 +209,7 @@ func TestAnalyzeAndPersistRecordsBothDimensionsInOneRecord(t *testing.T) {
 			continue
 		}
 		generatedCount++
-		if cue.GeneratorVersion != "auto-cues-v1" || cue.Confidence == nil || cue.Kind == "" || cue.Locked || cue.SourceFingerprint != record.SourceFingerprint || cue.Rationale == "" {
+		if cue.GeneratorVersion != "auto-cues-v2-events" || cue.Confidence == nil || cue.Kind == "" || cue.Locked || cue.SourceFingerprint != record.SourceFingerprint || cue.Rationale == "" {
 			t.Fatalf("generated cue provenance incomplete: %#v", cue)
 		}
 		if cue.DownbeatAligned {

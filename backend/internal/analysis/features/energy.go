@@ -62,6 +62,10 @@ type CueSuggestion struct {
 // Result contains measured loudness and compact structure suitable for a
 // library row, a waveform overlay, or explainable recommendation scoring.
 type Result struct {
+	// Duration and events share the production decoder's frame-zero timeline.
+	DurationSeconds float64          `json:"durationSeconds,omitempty"`
+	EventVersion    string           `json:"eventVersion,omitempty"`
+	Events          []StructureEvent `json:"events,omitempty"`
 	// Compatibility alias for unweighted mono RMS dB proxy.
 	IntegratedLUFS float64 `json:"integratedLufs"`
 	// Compatibility alias for sample-plus-midpoint peak dBFS proxy.
@@ -298,9 +302,10 @@ func maxFloat(a, b float64) float64 {
 	return b
 }
 
-// Accumulator keeps only 500 ms RMS windows and a few scalars; full PCM is
-// never retained.  It is fed during the same decode pass as tempo/key/grid.
+// Accumulator keeps compact RMS and novelty timelines; full PCM is never
+// retained. It is fed during the same decode pass as tempo/key/grid.
 type Accumulator struct {
+	novelty     *noveltyAccumulator
 	sampleRate  int
 	window      int
 	filled      int
@@ -313,10 +318,11 @@ type Accumulator struct {
 }
 
 func NewAccumulator(sampleRate int) *Accumulator {
-	return &Accumulator{sampleRate: sampleRate, window: max(1, sampleRate/2)}
+	return &Accumulator{sampleRate: sampleRate, window: max(1, sampleRate/2), novelty: newNoveltyAccumulator(sampleRate)}
 }
 
 func (a *Accumulator) Feed(samples []float32) {
+	a.novelty.feed(samples)
 	for _, sample := range samples {
 		value := float64(sample)
 		magnitude := math.Abs(value)
@@ -383,7 +389,7 @@ func (a *Accumulator) Result() (Result, error) {
 	if a.peak > 0 {
 		peak = 20 * math.Log10(a.peak)
 	}
-	return qualifyMeasurement(Result{IntegratedLUFS: integrated, TruePeakDBFS: peak, Energy: points, Sections: segment(points)}), nil
+	return qualifyMeasurement(Result{DurationSeconds: float64(a.frames) / float64(a.sampleRate), EventVersion: EventVersion, Events: a.novelty.events(), IntegratedLUFS: integrated, TruePeakDBFS: peak, Energy: points, Sections: segment(points)}), nil
 }
 
 func segment(points []EnergyPoint) []Section {
@@ -416,6 +422,11 @@ func summarize(points []EnergyPoint) Section {
 
 // Encode is deterministic: the gzip header has no clock or host metadata.
 func (r Result) Encode() ([]byte, error) {
+	if r.EventVersion != "" {
+		if err := r.ValidateNativeEvents(); err != nil {
+			return nil, err
+		}
+	}
 	if len(r.Energy) == 0 {
 		return nil, errors.New("energy artifact requires points")
 	}
@@ -485,6 +496,20 @@ func DecodeBounded(data []byte, maxBytes int64) (Result, error) {
 		return Result{}, errors.New("energy artifact has no points")
 	}
 	return qualifyMeasurement(result), nil
+}
+
+// DecodeCurrentBounded is for readers of AlgorithmVersion artifacts. Decode
+// remains backward compatible, but legacy payloads mislabeled as current must
+// not settle preparation or silently switch cue generation to legacy behavior.
+func DecodeCurrentBounded(data []byte, maxBytes int64) (Result, error) {
+	r, err := DecodeBounded(data, maxBytes)
+	if err != nil {
+		return Result{}, err
+	}
+	if err := r.ValidateNativeEvents(); err != nil {
+		return Result{}, err
+	}
+	return r, nil
 }
 
 var unixEpoch = time.Unix(0, 0).UTC()
