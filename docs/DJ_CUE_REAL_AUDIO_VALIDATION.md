@@ -101,12 +101,15 @@ The following passed after the schema validation, suppression-family and atomic
 artifact-retirement fixes:
 
 ```powershell
-go test ./cmd/cuebench ./internal/analysis/... ./internal/api ./internal/db -skip '^TestDownloadRetention'
+go test ./cmd/cuebench ./internal/analysis/... ./internal/api ./internal/db -count=1
 go vet ./cmd/cuebench ./internal/analysis/features ./internal/analysis/cues ./internal/analysis/localcontract ./internal/analysis/track ./internal/api ./internal/db
 ```
 
-The nine existing download-retention failures are excluded as documented in the
-implementation report; they were previously reproduced on the unchanged base.
+Run the test command with filesystem path-resolution access. The nine earlier
+download-retention failures came from sandbox-denied `filepath.EvalSymlinks`
+calls on readable temporary directories. The nine tests pass unchanged outside
+that restriction; they should no longer be excluded. Retention's conservative
+response to unresolved paths remains intact. See the implementation report.
 Tests cover missing/unknown native schemas, invalid durations/event evidence,
 mislabeled-current artifact discovery and repair, cue API conflict responses,
 deletion policy across future generator versions, and source-fenced artifact

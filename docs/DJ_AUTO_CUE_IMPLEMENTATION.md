@@ -92,16 +92,23 @@ models and a reviewed cue corpus remain follow-up research from the original rep
 Validation on Windows, 2026-10-17:
 
 ```powershell
-# From backend; a writable GOCACHE was used in the host temporary directory.
-go test ./internal/analysis/... ./internal/api ./internal/db -skip '^TestDownloadRetention'
+# From backend; run with filesystem path-resolution access (see below).
+# A writable GOCACHE was used in the host temporary directory.
+go test ./cmd/cuebench ./internal/analysis/... ./internal/api ./internal/db -count=1
 go vet ./internal/analysis/features ./internal/analysis/cues ./internal/analysis/track ./internal/api ./internal/db
 go test ./internal/analysis/features -run '^$' -bench BenchmarkNativeCueFeatures -benchtime=1x -benchmem
 ```
 
-The test command and vet passed. The unrestricted package run also encountered
-nine download-retention failures; a Go build overlay restoring all changed Go
-files to the original `HEAD` and excluding the new files reproduced those same
-nine failures. The explicit skip above isolates that existing failure group.
+The earlier sandboxed run produced nine download-retention failures, reproduced
+on the original code as well. Those were filesystem-access failures, not baseline
+product defects: readable temporary roots passed lexical containment, while
+`filepath.EvalSymlinks` on both root and file returned **Access is denied**.
+Retention correctly deferred cleanup because physical containment was unverified.
+The nine tests pass unchanged outside that filesystem restriction. Use an
+execution environment with path-resolution access rather than skipping the tests
+or weakening retention's handling of symlinks and inaccessible roots.
+The complete command above subsequently passed outside the sandbox with
+`-count=1` and no test-name exclusions, including all retention tests.
 
 The single-iteration feature benchmark on this host's Ryzen 5 3600 took about
 104 ms for five minutes of generated 44.1 kHz audio, with 1,281,392 bytes allocated
