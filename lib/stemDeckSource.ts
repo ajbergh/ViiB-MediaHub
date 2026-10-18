@@ -59,7 +59,7 @@ const EMPTY_STEM_STATE = (): StemDeckState => ({
   bass: { gain: 1, muted: false, solo: false },
   music: { gain: 1, muted: false, solo: false },
 });
-const MAX_CHUNK_FRAMES = 32760; // Keep four stereo float32 buses below the endpoint's 4 MiB limit.
+const MAX_CHUNK_FRAMES = (4 * 1024 * 1024) / (4 * 2 * Float32Array.BYTES_PER_ELEMENT);
 const DEFAULT_TARGET_BUFFER_SECONDS = 4;
 // A seek this far inside the worklet's retained frames skips the flush and
 // refetch; the margin covers evictions still in flight from the audio thread.
@@ -87,6 +87,10 @@ export class StemDeckSource implements DeckSource {
   private tempo = 1;
   private keyLockRequested = false;
   private generation = 0;
+  private transportRevision = 0;
+  private bufferRevision = 0;
+  private fillingRevision: number | null = null;
+  private buffering = false;
   private controllers = new Set<AbortController>();
   private prefetchPromise: Promise<void> | null = null;
   private nextPrefetchFrame = 0;
@@ -218,14 +222,24 @@ export class StemDeckSource implements DeckSource {
 
   private onWorkletMessage(message: WorkletMessage): void {
     if (message.type === 'position' && typeof message.frame === 'number') {
+      if (this.buffering) return; // Ignore queued reports from before a seek/underrun.
       this.positionFrame = message.frame;
       this.positionAnchorTime = this.context.currentTime;
       // Keep the read-ahead topped up; waiting for an underrun leaves a gap.
       if (this.mode === 'stems') this.startPrefetch(this.generation);
       this.emit('timeupdate');
     } else if (message.type === 'underrun') {
+      if (this.mode !== 'stems') return;
       this.underruns++;
+      if (typeof message.frame === 'number') this.positionFrame = message.frame;
+      this.positionAnchorTime = this.context.currentTime;
+      this.buffering = true;
       this.startPrefetch(this.generation, true);
+    } else if (message.type === 'recovered') {
+      if (this.mode !== 'stems') return;
+      if (typeof message.frame === 'number') this.positionFrame = message.frame;
+      this.positionAnchorTime = this.context.currentTime;
+      this.buffering = false;
     } else if (message.type === 'ended') {
       this.playing = false;
       this.emit('ended');
@@ -244,44 +258,39 @@ export class StemDeckSource implements DeckSource {
   }
 
   private startPrefetch(generation: number, urgent = false): void {
-    if (this.prefetchPromise || !this.descriptor || !this.worklet || generation !== this.generation) return;
+    if (this.prefetchPromise || this.fillingRevision === this.bufferRevision || !this.descriptor || !this.worklet || generation !== this.generation) return;
     // Position reports call this ~10x a second; skip the async loop when already full.
-    const target = Math.ceil(this.targetBufferSeconds * this.descriptor.sampleRate);
+    const target = this.targetBufferFrames();
     if (this.nextPrefetchFrame >= this.descriptor.frames || (!urgent && this.nextPrefetchFrame - this.currentFrame() >= target)) return;
-    this.prefetchPromise = this.prefetchLoop(generation, urgent).finally(() => { this.prefetchPromise = null; });
+    const pending = this.prefetchLoop(generation, this.bufferRevision, urgent);
+    this.prefetchPromise = pending;
+    void pending.finally(() => { if (this.prefetchPromise === pending) this.prefetchPromise = null; });
   }
 
-  private async prefetchLoop(generation: number, urgent: boolean): Promise<void> {
+  private targetBufferFrames(): number {
+    // Preserve wall-clock coverage when pitch increases source consumption.
+    return Math.ceil(this.targetBufferSeconds * Math.max(1, this.tempo) * (this.descriptor?.sampleRate ?? 0));
+  }
+
+  private async prefetchLoop(generation: number, revision: number, urgent: boolean): Promise<void> {
     const descriptor = this.descriptor;
     const worklet = this.worklet;
     if (!descriptor || !worklet) return;
-    const targetFrames = Math.ceil(this.targetBufferSeconds * descriptor.sampleRate);
-    while (generation === this.generation && this.nextPrefetchFrame < descriptor.frames) {
+    const targetFrames = this.targetBufferFrames();
+    while (generation === this.generation && revision === this.bufferRevision && this.nextPrefetchFrame < descriptor.frames) {
       const buffered = this.nextPrefetchFrame - this.currentFrame();
       if (!urgent && buffered >= targetFrames) break;
       urgent = false;
-      const startFrame = this.nextPrefetchFrame;
-      const count = Math.min(this.chunkFrames, descriptor.frames - startFrame, Math.max(1, targetFrames - buffered));
-      const controller = new AbortController();
-      this.controllers.add(controller);
       try {
-        const query = new URLSearchParams({ startFrame: String(startFrame), frameCount: String(count), layout: 'dj4', format: 'f32le' });
-        const response = await this.fetcher(`/api/v2/stems/${encodeURIComponent(this.song!.id)}/${encodeURIComponent(descriptor.id)}/frames?${query}`, { signal: controller.signal, cache: 'no-store' });
-        if (!response.ok) throw new Error(`Stem frame request failed (${response.status})`);
-        const payload = await response.arrayBuffer();
-        if (generation !== this.generation || controller.signal.aborted) return;
-        this.validateFrameResponse(response, startFrame, count, descriptor, payload.byteLength);
-        this.nextPrefetchFrame += count;
-        this.bufferEndFrame = this.nextPrefetchFrame;
-        worklet.port.postMessage({ type: 'frames', generation, startFrame, frameCount: count, channels: descriptor.channels, data: payload }, [payload]);
+        // Full bounded chunks avoid repeatedly hashing/reading a package for
+        // tiny top-ups on every position report.
+        await this.fetchNextChunk(generation, revision);
       } catch (cause) {
-        if ((cause as Error).name !== 'AbortError' && generation === this.generation) this.fallbackFromError(cause as Error);
+        if ((cause as Error).name !== 'AbortError' && generation === this.generation && revision === this.bufferRevision) this.fallbackFromError(cause as Error);
         return;
-      } finally {
-        this.controllers.delete(controller);
       }
       if (this.mode === 'stems' && this.playing && this.currentFrame() >= this.bufferEndFrame) {
-        // The worklet has advanced into missing data; promptly refill before normal prefetch resumes.
+        // Refill a depleted watermark before normal position-driven top-ups.
         urgent = true;
       }
     }
@@ -302,6 +311,7 @@ export class StemDeckSource implements DeckSource {
     this.error = error.message;
     const position = this.getPosition();
     this.mode = 'fallback';
+    this.buffering = false;
     this.stopFrameRequests();
     this.fallback.seek(position);
     if (this.playing) void this.fallback.play().catch(() => {});
@@ -314,7 +324,7 @@ export class StemDeckSource implements DeckSource {
     const descriptor = this.descriptor;
     if (!descriptor) return 0;
     let frame = this.positionFrame;
-    if (this.playing && this.mode === 'stems') frame += Math.max(0, this.context.currentTime - this.positionAnchorTime) * descriptor.sampleRate * this.tempo;
+    if (this.playing && !this.buffering && this.mode === 'stems') frame += Math.max(0, this.context.currentTime - this.positionAnchorTime) * descriptor.sampleRate * this.tempo;
     if (this.loop.enabled && this.loop.endFrame > this.loop.startFrame && frame >= this.loop.endFrame) {
       frame = this.loop.startFrame + ((frame - this.loop.startFrame) % (this.loop.endFrame - this.loop.startFrame));
     }
@@ -322,31 +332,44 @@ export class StemDeckSource implements DeckSource {
   }
 
   async setStemMode(mode: 'full' | 'stems'): Promise<void> {
+    const operation = ++this.transportRevision;
+    const generation = this.generation;
     if (mode === 'full' || !this.descriptor || !this.worklet) {
       const position = this.getPosition();
+      this.stopFrameRequests();
+      this.buffering = false;
       this.fallback.seek(position);
       this.mode = this.descriptor ? 'full' : 'fallback';
       if (this.playing) await this.fallback.play();
+      if (operation !== this.transportRevision || generation !== this.generation) return;
       this.worklet?.port.postMessage({ type: 'pause' });
       this.ramp(this.fallbackGain, 1);
       for (const bus of STEM_BUSES) this.ramp(this.stemGains[bus], 0);
       return;
     }
-    const generation = this.generation;
-    const frame = this.mode === 'stems' ? this.currentFrame() : Math.round(this.fallback.getPosition() * this.descriptor.sampleRate);
+    let frame = this.mode === 'stems' ? this.currentFrame() : Math.round(this.fallback.getPosition() * this.descriptor.sampleRate);
+    if (this.mode === 'stems') this.buffering = true;
     try { await this.prefetchFrom(frame, generation); }
     catch (cause) {
-      if (generation !== this.generation) return;
+      if (generation !== this.generation || operation !== this.transportRevision || (cause as Error).name === 'AbortError') return;
       this.fallbackFromError(cause as Error);
       return;
     }
-    if (this.loop.enabled) await this.prefetchLoopFrames(generation, this.loop.startFrame, this.loop.endFrame);
-    if (generation !== this.generation || this.mode === 'fallback' || !this.worklet || !this.descriptor) return;
+    if (generation !== this.generation || operation !== this.transportRevision || this.mode === 'fallback' || !this.worklet || !this.descriptor) return;
+    if (this.mode === 'full') {
+      // Full-track playback can advance while its stem buffer is being filled.
+      frame = Math.round(this.fallback.getPosition() * this.descriptor.sampleRate);
+      if (frame >= this.bufferEndFrame && frame < this.descriptor.frames) {
+        this.fallbackFromError(new Error('Stem buffering could not keep up with full-track playback'));
+        return;
+      }
+    }
     this.positionFrame = frame;
     this.positionAnchorTime = this.context.currentTime;
     this.worklet.port.postMessage({ type: 'seek', frame, generation });
     this.worklet.port.postMessage({ type: this.playing ? 'play' : 'pause', rate: this.tempo });
     this.mode = 'stems';
+    this.buffering = false;
     if (this.playing) this.fallback.pause();
     this.ramp(this.fallbackGain, 0);
     this.applyStemGains();
@@ -355,19 +378,29 @@ export class StemDeckSource implements DeckSource {
   private async prefetchFrom(frame: number, generation: number): Promise<void> {
     if (!this.descriptor || !this.worklet) return;
     this.stopFrameRequests();
-    this.worklet.port.postMessage({ type: 'flush', generation });
-    this.nextPrefetchFrame = Math.min(this.descriptor.frames, frame);
-    this.retainedStartFrame = this.nextPrefetchFrame;
-    this.bufferEndFrame = this.nextPrefetchFrame;
-    const wantedEnd = Math.min(this.descriptor.frames, frame + Math.max(this.chunkFrames, Math.floor(this.descriptor.sampleRate * 0.35)));
-    while (generation === this.generation && this.nextPrefetchFrame < wantedEnd) {
-      const before = this.nextPrefetchFrame;
-      await this.fetchNextChunk(generation);
-      if (this.nextPrefetchFrame <= before) break;
+    const revision = this.bufferRevision;
+    this.fillingRevision = revision;
+    try {
+      this.worklet.port.postMessage({ type: 'flush', generation });
+      this.nextPrefetchFrame = Math.min(this.descriptor.frames, frame);
+      this.retainedStartFrame = this.nextPrefetchFrame;
+      this.bufferEndFrame = this.nextPrefetchFrame;
+      const wantedEnd = Math.min(this.descriptor.frames, frame + this.targetBufferFrames());
+      while (generation === this.generation && revision === this.bufferRevision && this.nextPrefetchFrame < wantedEnd) {
+        const before = this.nextPrefetchFrame;
+        await this.fetchNextChunk(generation, revision);
+        if (this.nextPrefetchFrame <= before) break;
+      }
+      if (generation !== this.generation || revision !== this.bufferRevision) throw abortError('Stem buffering superseded');
+      // A flush also discards retained loop history. Refill it before resuming.
+      if (this.loop.enabled) await this.prefetchLoopFrames(generation, this.loop.startFrame, this.loop.endFrame);
+      if (generation !== this.generation || revision !== this.bufferRevision) throw abortError('Stem buffering superseded');
+    } finally {
+      if (this.fillingRevision === revision) this.fillingRevision = null;
     }
   }
 
-  private async fetchNextChunk(generation: number): Promise<void> {
+  private async fetchNextChunk(generation: number, revision: number): Promise<void> {
     const descriptor = this.descriptor;
     const worklet = this.worklet;
     if (!descriptor || !worklet || !this.song) return;
@@ -380,7 +413,7 @@ export class StemDeckSource implements DeckSource {
       const response = await this.fetcher(`/api/v2/stems/${encodeURIComponent(this.song.id)}/${encodeURIComponent(descriptor.id)}/frames?${query}`, { signal: controller.signal, cache: 'no-store' });
       if (!response.ok) throw new Error(`Stem frame request failed (${response.status})`);
       const payload = await response.arrayBuffer();
-      if (generation !== this.generation || controller.signal.aborted) return;
+      if (generation !== this.generation || revision !== this.bufferRevision || controller.signal.aborted) throw abortError('Stem frame request superseded');
       this.validateFrameResponse(response, startFrame, count, descriptor, payload.byteLength);
       this.nextPrefetchFrame += count;
       this.bufferEndFrame = this.nextPrefetchFrame;
@@ -393,6 +426,7 @@ export class StemDeckSource implements DeckSource {
     const worklet = this.worklet;
     if (!descriptor || !worklet || generation !== this.generation) return;
     const loopGeneration = ++this.loopPrefetchGeneration;
+    const revision = this.bufferRevision;
     for (let start = startFrame; start < endFrame; start += this.chunkFrames) {
       if (generation !== this.generation || loopGeneration !== this.loopPrefetchGeneration) return;
       const count = Math.min(this.chunkFrames, endFrame - start);
@@ -407,13 +441,18 @@ export class StemDeckSource implements DeckSource {
         this.validateFrameResponse(response, start, count, descriptor, payload.byteLength);
         worklet.port.postMessage({ type: 'frames', generation, startFrame: start, frameCount: count, channels: descriptor.channels, data: payload }, [payload]);
       } catch (cause) {
-        if ((cause as Error).name !== 'AbortError' && generation === this.generation) this.fallbackFromError(cause as Error);
+        if ((cause as Error).name !== 'AbortError' && generation === this.generation
+          && revision === this.bufferRevision && loopGeneration === this.loopPrefetchGeneration) this.fallbackFromError(cause as Error);
         return;
       } finally { this.controllers.delete(controller); }
     }
   }
 
   private stopFrameRequests(): void {
+    ++this.bufferRevision;
+    this.fillingRevision = null;
+    ++this.loopPrefetchGeneration;
+    this.prefetchPromise = null;
     for (const controller of this.controllers) controller.abort();
     this.controllers.clear();
   }
@@ -461,6 +500,8 @@ export class StemDeckSource implements DeckSource {
 
   cancelLoad(): void {
     ++this.generation;
+    ++this.transportRevision;
+    this.buffering = false;
     this.stopFrameRequests();
     this.fallback.cancelLoad();
     this.worklet?.port.postMessage({ type: 'pause' });
@@ -486,7 +527,7 @@ export class StemDeckSource implements DeckSource {
   async play(): Promise<void> {
     this.playing = true;
     if (this.mode === 'stems') {
-      this.worklet?.port.postMessage({ type: 'play', rate: this.tempo });
+      if (!this.buffering) this.worklet?.port.postMessage({ type: 'play', rate: this.tempo });
       this.startPrefetch(this.generation);
     } else await this.fallback.play();
   }
@@ -496,6 +537,7 @@ export class StemDeckSource implements DeckSource {
     this.fallback.pause();
   }
   seek(seconds: number): void {
+    const operation = ++this.transportRevision;
     const position = Math.max(0, Math.min(seconds, this.getDuration()));
     this.fallback.seek(position);
     if (this.descriptor && this.worklet) {
@@ -504,14 +546,22 @@ export class StemDeckSource implements DeckSource {
       this.positionAnchorTime = this.context.currentTime;
       this.worklet.port.postMessage({ type: 'seek', frame, generation: this.generation });
       const retainedFrom = this.retainedStartFrame + RETAINED_SEEK_MARGIN_SECONDS * this.descriptor.sampleRate;
-      if (this.mode === 'stems' && frame >= retainedFrom && frame < this.bufferEndFrame) {
+      if (this.mode === 'stems' && !this.buffering && frame >= retainedFrom && frame < this.bufferEndFrame) {
         // Cues and jog releases usually land in frames the worklet still holds.
         this.startPrefetch(this.generation);
       } else if (this.mode === 'stems') {
         const generation = this.generation;
+        this.buffering = true;
         void this.prefetchFrom(frame, generation).then(() => {
-          if (this.playing && this.mode === 'stems' && generation === this.generation) this.worklet?.port.postMessage({ type: 'play', rate: this.tempo });
-        }).catch(cause => this.fallbackFromError(cause as Error));
+          if (operation !== this.transportRevision || generation !== this.generation || this.mode !== 'stems') return;
+          this.positionFrame = frame;
+          this.positionAnchorTime = this.context.currentTime;
+          this.buffering = false;
+          if (this.playing) this.worklet?.port.postMessage({ type: 'play', rate: this.tempo });
+          this.startPrefetch(generation);
+        }).catch(cause => {
+          if (operation === this.transportRevision && generation === this.generation && (cause as Error).name !== 'AbortError') this.fallbackFromError(cause as Error);
+        });
       }
     }
     this.emit('timeupdate');
