@@ -27,7 +27,7 @@ export function mixtrackGoMappings(deviceId: string): MidiMapping[] {
     add(`${prefix}.headphoneCue`, index, 0x1B, 'toggle');
     add(`${prefix}.volume`, index, 0x16, 'absolute', 'cc');
     add(`${prefix}.filter`, index, 0x1A, 'absolute', 'cc');
-    add(`${prefix}.tempo`, index, 0x09, 'absolute', 'cc', { ccLSB: 0x29 });
+    add(`${prefix}.tempo`, index, 0x09, 'absolute', 'cc', { ccLSB: 0x29, invert: true, tempoRange: 0.08 });
     add(`${prefix}.jogWheel`, index, 0x06, 'relative', 'cc');
     add(`${prefix}.jogTouch`, index, 0x50, 'momentary');
     add(`${prefix}.stemAcapella`, index, 0x46, 'toggle');

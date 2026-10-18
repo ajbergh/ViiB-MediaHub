@@ -20,6 +20,8 @@ The [preset](../lib/mixtrackGoProfile.ts) uses the [MixTrack Go MIDI XML](https:
 
 Fade FX and Shift-layer controls are not included in this preset yet. ViiB has no equivalent crossfader-driven Fade FX mode, and Shift combinations require a separate modifier model. They are not silently assigned unrelated functions. Stems still require a prepared stem package and enabled stem playback; sample pads require loaded samples. Jog sensitivity and pitch direction need a physical controller check.
 
+Other controller input presets and their limitations are listed in [Experimental DJ controller presets](EXPERIMENTAL_DJ_CONTROLLERS.md). MixTrack Go's output handshake and LEDs remain specific to that device.
+
 ## Per-mode overrides
 
 Use **Mapping bank** in the MIDI mapping panel to choose Deck A/B plus Hot Cue, Loops, Sampler, or Stems. Then select any action category and Learn the pad for that action. The same MIDI note can be learned as different actions in all four banks. Selecting a configuration bank does not change the hardware's active mode; the panel also shows the actual active modes. Mode-button mappings are always global.

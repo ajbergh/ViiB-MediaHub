@@ -3,6 +3,26 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { expect, it, vi } from 'vitest';
 import { DJMidiMapping } from './DJMidiMapping';
+
+it.each([
+  ['DDJ-400', 'Pioneer DDJ-400 · Experimental · hardware untested · input only'],
+  ['CMD MICRO', 'Behringer CMD Micro · Experimental · hardware untested · input only'],
+  ['Generic Keyboard', 'No preset · use MIDI Learn'],
+])('shows the connected preset status for %s', async (name, status) => {
+  (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+  localStorage.clear();
+  const midi = getDJMidiService();
+  const input = { id: 'experimental', name, state: 'connected', onmidimessage: null } as unknown as MIDIInput;
+  vi.stubGlobal('navigator', { requestMIDIAccess: vi.fn().mockResolvedValue({
+    inputs: new Map([[input.id, input]]), outputs: new Map(), sysexEnabled: true,
+  }) });
+  await midi.init();
+  const host = document.createElement('div'); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<DJMidiMapping onClose={() => {}} />));
+    expect(host.querySelector('[data-testid="controller-profile-experimental"]')?.textContent).toContain(status);
+  } finally { await act(async () => root.unmount()); midi.destroy(); localStorage.clear(); vi.unstubAllGlobals(); }
+});
 import { getDJMidiService } from '../../../lib/djMidi';
 
 it('learns the same physical pad as independent actions in two banks and restores the automatic preset', async () => {

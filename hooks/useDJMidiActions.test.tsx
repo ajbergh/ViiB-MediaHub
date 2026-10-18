@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   seek: vi.fn(), loop: vi.fn(), toggleLoop: vi.fn(), volume: vi.fn(), trigger: vi.fn(), stop: vi.fn(), led: vi.fn(),
   stemMute: vi.fn(), stemStatus: { available: true, mode: 'stems' }, modeProvider: null as any,
   feedbackProvider: null as any, refresh: vi.fn(), storeListener: null as any, storeUnsubscribe: vi.fn(),
-  headphones: vi.fn(), filter: vi.fn(), filterValue: vi.fn(), tempo: vi.fn(),
+  headphones: vi.fn(), filter: vi.fn(), filterValue: vi.fn(), tempo: vi.fn(), eq: vi.fn(),
   scratchStart: vi.fn(), scratchEnd: vi.fn(), scratchMove: vi.fn(), nudge: vi.fn(),
   browse: vi.fn(), load: vi.fn(), open: vi.fn(),
   stemStates: null as any,
@@ -23,7 +23,7 @@ vi.mock('./useDJAudioEngine', () => ({ useDJAudioEngineActions: () => ({
   getStemState: (deck: string) => mocks.stemStates?.[deck] ?? ({ vocals: { muted: false, gain: 1 }, music: { muted: false, gain: 1 }, bass: { muted: false, gain: 1 }, drums: { muted: false, gain: 1 } }),
   setStemMuted: mocks.stemMute,
   returnToCue: vi.fn(), togglePlay: vi.fn().mockResolvedValue(undefined),
-  setHeadphoneVolume: mocks.headphones, setFilterFX: mocks.filter, setTempo: mocks.tempo,
+  setHeadphoneVolume: mocks.headphones, setFilterFX: mocks.filter, setTempo: mocks.tempo, setEQ: mocks.eq,
   startScratch: mocks.scratchStart, endScratch: mocks.scratchEnd, updateScratch: mocks.scratchMove, nudgePosition: mocks.nudge,
 }) }));
 vi.mock('../lib/djMidiLibrary', () => ({ browseDJMidiLibrary: mocks.browse, loadDJMidiLibrary: mocks.load, toggleDJMidiLibrary: mocks.open }));
@@ -90,6 +90,17 @@ it.each([
     tap('performancePad4');
     expect(mocks.feedbackProvider().find((message: number[]) => message[0] === (deck === 'A' ? 0x94 : 0x95)
       && message[1] === 0x17)?.[2]).toBe(0);
+    const dedicatedLoop = () => mocks.handler(`deck${deck}.loopToggle`, 1, 'press', { deviceId: 'controller', builtIn: true, loopBeats: 0.25 });
+    dedicatedLoop();
+    expect(mocks.loop).toHaveBeenLastCalledWith(deck, 0.25);
+    expect(target.loop.enabled).toBe(true);
+    dedicatedLoop();
+    expect(target.loop.enabled).toBe(false);
+    target.loop = { enabled: true, start: 10, end: 10 + 0.125 * 0.5 };
+    const togglesBeforeQuarter = mocks.toggleLoop.mock.calls.length;
+    dedicatedLoop(); // A manual eighth-beat loop is not the same as a quarter-beat preset.
+    expect(mocks.toggleLoop.mock.calls.length).toBe(togglesBeforeQuarter);
+    expect(mocks.loop).toHaveBeenLastCalledWith(deck, 0.25);
   } finally {
     await act(async () => root.unmount());
     mocks.loop.mockReset(); mocks.toggleLoop.mockReset();
@@ -129,6 +140,12 @@ it('connects the printed pad modes to deck audio, sampler banks, stem mutes, and
     expect(mocks.filter).toHaveBeenLastCalledWith('A', false, 'lowpass', 20000, 0.5);
     value('deckA.tempo', 0.5);
     expect(mocks.tempo).toHaveBeenCalledWith('A', 1);
+    mocks.handler('deckA.tempo', 0, 'value', { deviceId: 'controller', builtIn: true, tempoRange: 0.06 });
+    expect(mocks.tempo).toHaveBeenLastCalledWith('A', 0.94);
+    mocks.handler('deckA.tempo', 1, 'value', { deviceId: 'controller', builtIn: true, tempoRange: 0.06 });
+    expect(mocks.tempo).toHaveBeenLastCalledWith('A', 1.06);
+    value('deckA.eqMid', 0.5);
+    expect(mocks.eq).toHaveBeenLastCalledWith('A', 'mid', 0);
     button('A', 'jogTouch', true);
     value('deckA.jogWheel', 1 / 63);
     expect(mocks.scratchStart).toHaveBeenCalledWith('A');

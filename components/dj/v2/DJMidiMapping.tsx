@@ -9,6 +9,7 @@
 
 import React, { useState, useEffect, useCallback, memo } from 'react';
 import { PAD_MODE_NAMES, type PadMode } from '../../../lib/djPadModes';
+import { controllerProfileForName, DJ_CONTROLLER_PROFILES } from '../../../lib/djControllerProfiles';
 import type { DeckId } from '../../../slices/djMixerSlice';
 import { 
   getDJMidiService, 
@@ -174,7 +175,8 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
                   </select>
                 </label>
                 <div className="mt-1">Active: A · {PAD_MODE_NAMES[activeModes.A]} / B · {PAD_MODE_NAMES[activeModes.B]}</div>
-                <p className="mt-1">MixTrack Go controls are pre-mapped. Select a bank to override a pad for that mode only. Mode buttons always apply to all modes.</p>
+                <p className="mt-1">Recognized controllers are pre-mapped. MIDI Learn overrides preset controls. Select a bank for ViiB Mode-button overrides; use All modes for hardware banks that send different notes.</p>
+                <p className="mt-1">Experimental presets (hardware untested): {DJ_CONTROLLER_PROFILES.filter(profile => profile.experimental).map(profile => profile.label).join(', ')}. Input only; no LED feedback.</p>
               </div>
               {/* Device list */}
               <div className="px-4 py-2 bg-[var(--dj-surface-2)] border-b border-[var(--dj-border)]">
@@ -193,6 +195,11 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
                         }`}
                       >
                         {d.name}
+                        <div data-testid={`controller-profile-${d.id}`}>
+                          {controllerProfileForName(d.name)
+                            ? `Preset: ${controllerProfileForName(d.name)!.label}${controllerProfileForName(d.name)!.experimental ? ' · Experimental · hardware untested · input only' : ''}`
+                            : 'No preset · use MIDI Learn'}
+                        </div>
                       </div>
                     ))}
                   </div>

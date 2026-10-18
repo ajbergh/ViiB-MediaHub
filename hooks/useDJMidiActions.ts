@@ -27,6 +27,17 @@ export function useDJMidiActions(): boolean {
     const heldButtons = new Map<string, { deviceId: string; deck: DeckId; kind: string }>();
     const touchedJogs = new Map<DeckId, string>();
     const stemPresets = new Map<DeckId, { track: unknown; preset: string; restore: Record<StemBus, boolean> }>();
+    const toggleBeatLoop = (deck: DeckId, beats: number) => {
+      const state = useStore.getState();
+      const target = deck === 'A' ? state.djDeckA : state.djDeckB;
+      if (!target.track) return;
+      const bpm = target.originalBpm || 120;
+      const loopBeats = target.loop.presetBeats ?? (target.loop.end - target.loop.start) * bpm / 60;
+      const matches = target.loop.presetBeats !== undefined ? loopBeats === beats
+        : Math.abs(loopBeats - beats) < Math.min(0.15, beats / 4);
+      if (target.loop.enabled && matches) actionsRef.current.toggleLoop(deck);
+      else actionsRef.current.setLoopBeats(deck, beats);
+    };
     const padModes = new DJPadModeController({
       hotCue: (deck, slot) => {
         const state = useStore.getState();
@@ -36,15 +47,7 @@ export function useDJMidiActions(): boolean {
         if (cue) actionsRef.current.seek(deck, cue.position);
         else state.setHotCue(deck, slot, target.position);
       },
-      autoLoop: (deck, beats) => {
-        const state = useStore.getState();
-        const target = deck === 'A' ? state.djDeckA : state.djDeckB;
-        if (!target.track) return;
-        const bpm = target.originalBpm || 120;
-        const loopBeats = target.loop.presetBeats ?? (target.loop.end - target.loop.start) * bpm / 60;
-        if (target.loop.enabled && Math.abs(loopBeats - beats) < 0.15) actionsRef.current.toggleLoop(deck);
-        else actionsRef.current.setLoopBeats(deck, beats);
-      },
+      autoLoop: toggleBeatLoop,
       sampler: (deck, pad) => {
         const index = (deck === 'A' ? 0 : 4) + pad - 1;
         const sampler = getDJSamplerEngine();
@@ -232,7 +235,11 @@ export function useDJMidiActions(): boolean {
       }
       if (kind === 'loopIn' && pressed) { currentActions.setLoopIn(deck); return; }
       if (kind === 'loopOut' && pressed) { currentActions.setLoopOut(deck); return; }
-      if (kind === 'loopToggle' && pressed) { currentActions.toggleLoop(deck); return; }
+      if (kind === 'loopToggle' && pressed) {
+        if (mapping.loopBeats !== undefined) toggleBeatLoop(deck, mapping.loopBeats);
+        else currentActions.toggleLoop(deck);
+        return;
+      }
       if (kind === 'headphoneCue') {
         if (mapping.valueMode === 'momentary') {
           if (trigger !== 'value') currentActions.setCueEnabled(deck, pressed);
@@ -244,7 +251,10 @@ export function useDJMidiActions(): boolean {
         return;
       }
       if (kind === 'volume' && trigger === 'value') { currentActions.setVolume(deck, normalized); return; }
-      if (kind === 'tempo' && trigger === 'value') { currentActions.setTempo(deck, mapping.builtIn ? 1.08 - normalized * 0.16 : 0.5 + normalized); return; }
+      if (kind === 'tempo' && trigger === 'value') {
+        currentActions.setTempo(deck, mapping.builtIn ? 1 + (normalized * 2 - 1) * (mapping.tempoRange ?? 0.08) : 0.5 + normalized);
+        return;
+      }
       if (kind === 'jogWheel' && trigger === 'value') {
         if (touchedJogs.has(deck)) currentActions.updateScratch(deck, value * 0.1, value * 10);
         else currentActions.nudgePosition(deck, value * 100);
@@ -256,7 +266,11 @@ export function useDJMidiActions(): boolean {
         return;
       }
       const eqBand = kind === 'eqHigh' ? 'high' : kind === 'eqMid' ? 'mid' : kind === 'eqLow' ? 'low' : null;
-      if (eqBand && trigger === 'value') { currentActions.setEQ(deck, eqBand, -24 + normalized * 36); return; }
+      if (eqBand && trigger === 'value') {
+        const gain = mapping.builtIn ? (normalized <= 0.5 ? -24 + normalized * 48 : (normalized - 0.5) * 24) : -24 + normalized * 36;
+        currentActions.setEQ(deck, eqBand, gain);
+        return;
+      }
       const cueSlotMatch = /^hotCue([1-4])$/.exec(kind);
       if (cueSlotMatch && pressed) {
         const slot = Number(cueSlotMatch[1]);
