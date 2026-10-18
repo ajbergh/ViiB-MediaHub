@@ -56,8 +56,44 @@ describe('DJAudioEngine DeckSource integration', () => {
     try {
       state.djMixer.quantize = false;
       engine.setLoopBeats('A', 1);
-      expect(state.setLoop).toHaveBeenLastCalledWith('A', 0.3, 0.8);
+      expect(state.setLoop).toHaveBeenLastCalledWith('A', 0.3, 0.8, true, 1);
     } finally { state.djMixer.quantize = previous; }
+  });
+
+  it.each([0.8, 1.2])('keeps beat-loop lengths in source time at tempo %s', tempo => {
+    const engine = new DJAudioEngine();
+    Object.assign(engine, { deckSourceA: fakeSource(0.3).source });
+    const previous = { ...state.djDeckA };
+    try {
+      Object.assign(state.djDeckA, { tempo, originalBpm: 120, effectiveBpm: 120 * tempo });
+      for (const beats of [1, 2, 4, 8]) {
+        engine.setLoopBeats('A', beats);
+        expect(state.setLoop).toHaveBeenLastCalledWith('A', 0.3, 0.3 + beats * 0.5, true, beats);
+      }
+    } finally { Object.assign(state.djDeckA, previous); }
+  });
+
+  it('retains requested loop identity on locked-grid A and unquantized B', () => {
+    const engine = new DJAudioEngine();
+    Object.assign(engine, { deckSourceA: fakeSource(0.3).source, deckSourceB: fakeSource(0.3).source });
+    const previousA = { ...state.djDeckA }, previousB = { ...state.djDeckB };
+    const previousQuantize = state.djMixer.quantize;
+    try {
+      state.djMixer.quantize = true;
+      Object.assign(state.djDeckA, { beatGrid: [0, 0.65, 1.4, 2.1, 2.8], beatGridSource: 'manual', beatGridLocked: true });
+      state.djDeckB.beatGridLocked = false;
+      engine.setLoopBeats('A', 2);
+      expect(state.setLoop).toHaveBeenLastCalledWith('A', 0, 1.4, true, 2);
+      engine.setLoopBeats('B', 2);
+      expect(state.setLoop).toHaveBeenLastCalledWith('B', 0.3, 1.3, true, 2);
+      Object.assign(engine, { deckSourceA: fakeSource(19.8).source });
+      state.djMixer.quantize = false;
+      engine.setLoopBeats('A', 8);
+      expect(state.setLoop).toHaveBeenLastCalledWith('A', 19.8, 20, true, 8);
+    } finally {
+      Object.assign(state.djDeckA, previousA); Object.assign(state.djDeckB, previousB);
+      state.djMixer.quantize = previousQuantize;
+    }
   });
 
   it('runs the fallback loop ticker only for playing, non-scratched non-native loops', async () => {
@@ -116,11 +152,11 @@ describe('DJAudioEngine DeckSource integration', () => {
     state.setLoop.mockClear();
     try {
       engine.setLoopBeats('A', 1);
-      expect(state.setLoop).toHaveBeenCalledWith('A', provenance === 'manual' ? 0.5 : 0.3, provenance === 'manual' ? 1 : 0.8);
+      expect(state.setLoop).toHaveBeenCalledWith('A', provenance === 'manual' ? 0.5 : 0.3, provenance === 'manual' ? 1 : 0.8, true, 1);
       state.setLoop.mockClear();
       state.djDeckA.beatGridLocked = false;
       engine.setLoopBeats('A', 1);
-      expect(state.setLoop).toHaveBeenCalledWith('A', 0.3, 0.8);
+      expect(state.setLoop).toHaveBeenCalledWith('A', 0.3, 0.8, true, 1);
     } finally {
       Object.assign(state.djDeckA, previous);
       state.djMixer.quantize = previousQuantize;

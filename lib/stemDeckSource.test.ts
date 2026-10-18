@@ -93,8 +93,9 @@ describe('StemDeckSource', () => {
     await vi.waitFor(() => expect(worklet.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'frames', startFrame: 0, channels: 1 }), expect.any(Array)));
     expect(fetcher).toHaveBeenCalledWith('/api/v2/stems/song', expect.objectContaining({ cache: 'no-store' }));
     expect(worklet.node.connect).toHaveBeenCalledTimes(4);
-    expect(source.getStemStatus()).toMatchObject({ available: true, mode: 'full' });
+    expect(source.getStemStatus()).toMatchObject({ available: true, mode: 'stems' });
 
+    await source.setStemMode('full');
     await source.play();
     fallback.position = 1.25;
     await source.setStemMode('stems');
@@ -153,6 +154,69 @@ describe('StemDeckSource', () => {
     expect(fallback.isLoaded()).toBe(true);
   });
 
+  it('rejects malformed ready-package frames before selecting stems', async () => {
+    const { source, fetcher, fallback } = fixture();
+    const fetch = vi.mocked(fetcher);
+    const original = fetch.getMockImplementation()!;
+    fetch.mockImplementation(async (input, init) => {
+      if (String(input).includes('/frames?')) return new Response(new ArrayBuffer(4), { status: 200 });
+      return original(input, init);
+    });
+    try {
+      await source.load({ id: 'song', title: 'Song', url: '/song' } as never);
+      expect(source.getStemStatus()).toMatchObject({ mode: 'fallback', error: 'Stem frame response geometry did not match the active package' });
+      await source.play();
+      expect(fallback.play).toHaveBeenCalled();
+    } finally { source.dispose(); }
+  });
+
+  it('rechecks each new song instead of inheriting a previous manual Full-mode choice', async () => {
+    const { source, fetcher, gains, fallback } = fixture();
+    try {
+      const track = { id: 'song', title: 'Song', url: '/song' } as never;
+      await source.load(track);
+      expect(source.getStemStatus().mode).toBe('stems');
+      await source.setStemMode('full');
+      source.setStemMuted('vocals', true);
+      await source.load(track);
+      expect(source.getStemStatus().mode).toBe('stems');
+      expect(source.getStemState().vocals.muted).toBe(false);
+      vi.mocked(fetcher).mockResolvedValue(new Response(JSON.stringify({ status: 'none', stemSets: [] }), { status: 200 }));
+      await source.load({ id: 'no-stems', title: 'No stems', url: '/no-stems' } as never);
+      expect(source.getStemStatus()).toMatchObject({ available: false, mode: 'fallback' });
+      expect(gains[1].gain.setTargetAtTime).toHaveBeenLastCalledWith(1, 0, 0.01);
+      for (const gain of gains.slice(2)) expect(gain.gain.setTargetAtTime).toHaveBeenLastCalledWith(0, 0, 0.01);
+      await source.play();
+      expect(fallback.play).toHaveBeenCalled();
+    } finally { source.dispose(); }
+  });
+
+  it('does not let a superseded frame failure switch the newly loaded song out of stems', async () => {
+    const { source, fetcher } = fixture();
+    const fetch = vi.mocked(fetcher);
+    const original = fetch.getMockImplementation()!;
+    let settle!: (response: Response) => void;
+    let first = true;
+    fetch.mockImplementation(async (input, init) => {
+      if (first && String(input).includes('/frames?')) {
+        first = false;
+        return new Promise(resolve => { settle = resolve; });
+      }
+      return original(String(input).includes('/frames?') ? input : '/api/v2/stems/song', init);
+    });
+    try {
+      const oldLoad = source.load({ id: 'old', title: 'Old', url: '/old' } as never);
+      const cancelled = expect(oldLoad).rejects.toMatchObject({ name: 'AbortError' });
+      await vi.waitFor(() => expect(settle).toBeTypeOf('function'));
+      await source.load({ id: 'new', title: 'New', url: '/new' } as never);
+      expect(source.getStemStatus().mode).toBe('stems');
+      settle(response(false, 0, 1024));
+      await cancelled;
+      expect(source.getStemStatus()).toMatchObject({ mode: 'stems', available: true });
+      expect(source.getStemStatus().error).toBeUndefined();
+    } finally { source.dispose(); }
+  });
+
   it('preserves the current stem position when frame loading falls back to the full-track source', async () => {
     const { source, worklet, fallback, setFrameRequestOk } = fixture();
     await source.load({ id: 'song', title: 'Song', url: '/song' } as never);
@@ -197,9 +261,10 @@ describe('StemDeckSource', () => {
 
   it('cancels stale frame responses, then unloads and reloads with fresh stem state', async () => {
     let releaseFrameResponse: ((response: Response) => void) | undefined;
+    let delayFrames = true;
     const base = fixture();
     const controlledFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input).includes('/frames?')) return await new Promise<Response>(resolve => { releaseFrameResponse = resolve; });
+      if (delayFrames && String(input).includes('/frames?')) return await new Promise<Response>(resolve => { releaseFrameResponse = resolve; });
       return base.fetcher(input, init);
     }) as unknown as typeof fetch;
     const source = new StemDeckSource({
@@ -212,16 +277,20 @@ describe('StemDeckSource', () => {
       targetBufferSeconds: 2,
     });
 
-    await source.load({ id: 'song', title: 'Song', url: '/song' } as never);
+    const loading = source.load({ id: 'song', title: 'Song', url: '/song' } as never);
+    const cancelled = expect(loading).rejects.toMatchObject({ name: 'AbortError' });
     await vi.waitFor(() => expect(releaseFrameResponse).toBeTypeOf('function'));
     source.cancelLoad();
     releaseFrameResponse?.(response(true, 0, 1024));
+    await cancelled;
     await vi.waitFor(() => expect(source.getStemStatus().bufferedSeconds).toBe(0));
     expect(base.worklet.port.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'frames' }), expect.any(Array));
 
     source.unload();
     expect(source.getStemStatus()).toMatchObject({ available: false, mode: 'fallback' });
+    delayFrames = false;
     await source.load({ id: 'song', title: 'Song', url: '/song' } as never);
+    expect(source.getStemStatus().mode).toBe('stems');
     expect(source.getStemState()).toEqual({
       vocals: { gain: 1, muted: false, solo: false }, drums: { gain: 1, muted: false, solo: false },
       bass: { gain: 1, muted: false, solo: false }, music: { gain: 1, muted: false, solo: false },

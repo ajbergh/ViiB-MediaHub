@@ -4,6 +4,7 @@ import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef,
 import { Library, X } from 'lucide-react';
 import { DJLibraryBrowserV2 } from './DJLibraryBrowserV2';
 import { DJErrorBoundary } from './DJErrorBoundary';
+import { registerDJMidiLibraryOpener } from '../../../lib/djMidiLibrary';
 
 export interface DJLibraryDrawerHandle {
   open: () => void;
@@ -47,6 +48,11 @@ export const DJLibraryDrawer = forwardRef<DJLibraryDrawerHandle, DJLibraryDrawer
   }, [open]);
 
   const toggle = useCallback(() => { if (open) close(); else show(); }, [open, close, show]);
+  const showRef = useRef(show);
+  const toggleRef = useRef(toggle);
+  showRef.current = show;
+  toggleRef.current = toggle;
+  useEffect(() => registerDJMidiLibraryOpener(() => showRef.current(), () => toggleRef.current()), []);
 
   useImperativeHandle(ref, () => ({ open: show, close, toggle }), [show, close, toggle]);
 

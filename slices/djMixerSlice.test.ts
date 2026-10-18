@@ -16,6 +16,30 @@ function createTestMixerState(): DJMixerSlice {
   return state as unknown as DJMixerSlice;
 }
 
+describe('loop preset identity', () => {
+  it.each(['A', 'B'] as const)('preserves %s preset on toggle and clears it on manual edits and loads', deck => {
+    const state = createTestMixerState();
+    const current = () => deck === 'A' ? state.djDeckA : state.djDeckB;
+    state.setLoop(deck, 10, 10.3, true, 8);
+    state.toggleLoop(deck);
+    expect(current().loop).toMatchObject({ enabled: false, presetBeats: 8 });
+    state.toggleLoop(deck);
+    expect(current().loop).toMatchObject({ enabled: true, presetBeats: 8 });
+    state.setLoop(deck, 10, 12);
+    expect(current().loop.presetBeats).toBeUndefined();
+    state.setLoop(deck, 10, 10.3, true, 8);
+    state.setPendingLoopIn(deck, 11);
+    expect(current().loop.presetBeats).toBeUndefined();
+    state.setLoop(deck, 10, 10.3, true, 8);
+    state.clearLoop(deck);
+    expect(current().loop.presetBeats).toBeUndefined();
+    state.setLoop(deck, 10, 10.3, true, 8);
+    state.loadTrackToDeck(deck, { id: 'next', title: 'Next' } as never);
+    expect(current().loop).toMatchObject({ enabled: false });
+    expect(current().loop.presetBeats).toBeUndefined();
+  });
+});
+
 describe('deck analysis patches', () => {
   it('prefers WebGL by default and retains the user Canvas toggle', () => {
     const state = createTestMixerState();

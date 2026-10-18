@@ -8,6 +8,8 @@
  */
 
 import React, { useState, useEffect, useCallback, memo } from 'react';
+import { PAD_MODE_NAMES, type PadMode } from '../../../lib/djPadModes';
+import type { DeckId } from '../../../slices/djMixerSlice';
 import { 
   getDJMidiService, 
   MIDI_ACTION_CATEGORIES,
@@ -32,15 +34,20 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
   const [learningAction, setLearningAction] = useState<MidiAction | null>(null);
   const [lastMessage, setLastMessage] = useState<MidiMessage | null>(null);
   const [selectedCategory, setSelectedCategory] = useState(0);
+  const [mappingBank, setMappingBank] = useState('all');
+  const [activeModes, setActiveModes] = useState(() => ({ A: midi.getPadMode('A'), B: midi.getPadMode('B') }));
+  const scope = mappingBank === 'all' ? undefined : { deck: mappingBank[0] as DeckId, padMode: Number(mappingBank[1]) as PadMode };
   
   // Subscribe to MIDI service changes
   useEffect(() => {
     const unsub = midi.subscribe(() => {
       setDevices(midi.getDevices());
       setMappings(midi.getMappings());
+      setActiveModes({ A: midi.getPadMode('A'), B: midi.getPadMode('B') });
     });
     return unsub;
   }, [midi]);
+  useEffect(() => () => midi.cancelLearn(), [midi]);
   
   // Initialize MIDI
   const handleInit = useCallback(async () => {
@@ -60,6 +67,7 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
     setLastMessage(null);
     
     midi.startLearn((msg: MidiMessage) => {
+      if (msg.type === 'noteoff' || msg.velocity === 0) return;
       setLastMessage(msg);
       
       // Find default mode for this action
@@ -74,14 +82,15 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
       
       // Create mapping
       const mapping: MidiMapping = {
-        id: `${action}-${msg.deviceId}-${msg.channel}-${msg.note}`,
+        id: `${action}-${msg.deviceId}-${msg.channel}-${msg.note}-${action.endsWith('.padMode') ? 'all' : mappingBank}`,
         deviceId: msg.deviceId,
-        type: msg.type === 'noteoff' ? 'noteon' : msg.type,
+        type: msg.type,
         channel: msg.channel,
         note: msg.note,
         action,
         valueMode: defaultMode,
         label: `${msg.deviceName} Ch${msg.channel + 1} ${msg.type === 'cc' ? 'CC' : 'Note'}${msg.note}`,
+        ...(action.endsWith('.padMode') ? {} : scope),
       };
       
       midi.addMapping(mapping);
@@ -89,8 +98,8 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
       midi.cancelLearn();
       setLearning(false);
       setLearningAction(null);
-    });
-  }, [midi]);
+    }, action);
+  }, [midi, mappingBank]);
   
   const handleCancelLearn = useCallback(() => {
     midi.cancelLearn();
@@ -110,7 +119,8 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
   
   // Get mapping for a specific action
   const getMappingForAction = (action: MidiAction): MidiMapping | undefined => {
-    return mappings.find(m => m.action === action);
+    const selected = action.endsWith('.padMode') ? undefined : scope;
+    return mappings.find(m => m.action === action && m.deck === selected?.deck && m.padMode === selected?.padMode);
   };
   
   const category = MIDI_ACTION_CATEGORIES[selectedCategory];
@@ -154,6 +164,18 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
             </div>
           ) : (
             <>
+              <div className="px-4 py-2 border-b border-[var(--dj-border)] text-[12px] text-[var(--dj-text-secondary)]">
+                <label className="flex items-center gap-2">
+                  Mapping bank
+                  <select aria-label="Mapping bank" disabled={learning} value={mappingBank} onChange={event => setMappingBank(event.target.value)}
+                    className="bg-[var(--dj-surface-1)] text-[var(--dj-text-primary)] rounded px-2 py-1">
+                    <option value="all">All modes</option>
+                    {(['A', 'B'] as const).flatMap(deck => PAD_MODE_NAMES.map((name, mode) => <option key={`${deck}${mode}`} value={`${deck}${mode}`}>Deck {deck} · {name}</option>))}
+                  </select>
+                </label>
+                <div className="mt-1">Active: A · {PAD_MODE_NAMES[activeModes.A]} / B · {PAD_MODE_NAMES[activeModes.B]}</div>
+                <p className="mt-1">MixTrack Go controls are pre-mapped. Select a bank to override a pad for that mode only. Mode buttons always apply to all modes.</p>
+              </div>
               {/* Device list */}
               <div className="px-4 py-2 bg-[var(--dj-surface-2)] border-b border-[var(--dj-border)]">
                 <div className="text-[12px] text-[var(--dj-text-secondary)] uppercase tracking-wider mb-1">Connected Devices</div>
@@ -251,6 +273,7 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
                               {mapping && (
                                 <span className="text-[12px] text-[var(--dj-text-secondary)] bg-[var(--dj-surface-3)] px-1 py-0.5 rounded">
                                   {mapping.valueMode}
+                                  {mapping.builtIn && ' · preset'}
                                 </span>
                               )}
                             </td>
@@ -294,6 +317,7 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
             <span className="text-[12px] text-[var(--dj-text-secondary)]">
               {mappings.length} mapping(s) configured
             </span>
+            <button onClick={() => { midi.restoreDefaultMappings(); setMappings(midi.getMappings()); }} className="text-[12px] text-[var(--dj-info)] hover:text-[var(--dj-text-primary)]">Restore preset</button>
             <button
               onClick={handleClearAll}
               className="text-[12px] text-[color-mix(in_srgb,var(--dj-danger)_60%,transparent)] hover:text-[var(--dj-danger)] transition-colors"

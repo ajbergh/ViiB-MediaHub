@@ -138,6 +138,9 @@ export class StemDeckSource implements DeckSource {
     this.error = undefined;
     this.playing = false;
     this.underruns = 0;
+    // A new track must not inherit the muted full-track path from stem playback.
+    this.ramp(this.fallbackGain, 1);
+    for (const bus of STEM_BUSES) this.ramp(this.stemGains[bus], 0);
     this.fallback.unload();
     const fallbackUrl = await this.fallback.load(track);
     if (generation !== this.generation) throw abortError('Stem source load superseded');
@@ -170,10 +173,15 @@ export class StemDeckSource implements DeckSource {
         this.bufferEndFrame = 0;
         this.retainedStartFrame = 0;
         this.mode = 'full';
-        this.startPrefetch(generation);
+        // A ready descriptor alone is not enough: validate/buffer the first
+        // frames before selecting stems, retaining full-track error fallback.
+        await this.setStemMode('stems');
+        if (generation !== this.generation) throw abortError('Stem source load superseded');
+        if (this.getStemStatus().mode === 'stems') this.startPrefetch(generation);
         return fallbackUrl;
       }
     } catch (cause) {
+      if (generation !== this.generation) throw abortError('Stem source load superseded');
       this.stopFrameRequests();
       if ((cause as Error).name === 'AbortError') throw cause;
       this.error = (cause as Error).message || 'Stem package unavailable';
@@ -328,6 +336,7 @@ export class StemDeckSource implements DeckSource {
     const frame = this.mode === 'stems' ? this.currentFrame() : Math.round(this.fallback.getPosition() * this.descriptor.sampleRate);
     try { await this.prefetchFrom(frame, generation); }
     catch (cause) {
+      if (generation !== this.generation) return;
       this.fallbackFromError(cause as Error);
       return;
     }
