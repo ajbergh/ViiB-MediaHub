@@ -293,12 +293,30 @@ jobs:
           ln -s /Applications "$stage/Applications"
 
           dmg="ViiB-MediaHub-${VERSION}-macos-${ARCH}.dmg"
-          hdiutil create \
-            -volname "ViiB MediaHub ${VERSION}" \
-            -srcfolder "$stage" \
-            -ov \
-            -format UDZO \
-            "$dmg"
+          # macOS runners can briefly hold the disk-image service busy.
+          # Retry only that transient error; fail immediately for other causes.
+          dmg_log="$RUNNER_TEMP/viib-hdiutil-${ARCH}.log"
+          for attempt in 1 2 3 4; do
+            if hdiutil create \
+              -volname "ViiB MediaHub ${VERSION}" \
+              -srcfolder "$stage" \
+              -ov \
+              -format UDZO \
+              "$dmg" >"$dmg_log" 2>&1; then
+              cat "$dmg_log"
+              break
+            fi
+
+            cat "$dmg_log" >&2
+            if (( attempt == 4 )) || ! grep -qi 'Resource busy' "$dmg_log"; then
+              echo "DMG packaging failed on attempt ${attempt}; not retrying." >&2
+              exit 1
+            fi
+            rm -f "$dmg"
+            echo "Disk image service busy (attempt ${attempt}/4); retrying." >&2
+            sleep "$((attempt * 5))"
+          done
+          test -s "$dmg"
           shasum -a 256 "$dmg"
 
       - name: Upload macOS release asset
