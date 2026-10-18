@@ -1,5 +1,9 @@
 # DJ auto-cue accuracy research
 
+Implementation follow-up: [native event-based cue generation](DJ_AUTO_CUE_IMPLEMENTATION.md)
+now replaces the baseline described in this research. The current-behavior review
+below records the pre-implementation state.
+
 Research date: 2026-10-17. Scope: current implementation review, external research,
 and a proposed improvement/evaluation plan. No production algorithm changes or new
 real-audio accuracy measurements are included. Recommendations below are hypotheses

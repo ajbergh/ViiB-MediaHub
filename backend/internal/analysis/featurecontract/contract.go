@@ -5,7 +5,7 @@ package featurecontract
 const (
 	ArtifactKind                    = "energy-structure"
 	FormatVersion                   = 1
-	AlgorithmVersion                = "energy-structure-v1"
+	AlgorithmVersion                = "energy-structure-v2-native-novelty"
 	EnergyLevelAlgorithmVersion     = "energy-level-v1-fixed-reference"
 	LocalDurationAlgorithmVersion   = "decoded-pcm-duration-v1"
 	Encoding                        = "gzip-json-v1"

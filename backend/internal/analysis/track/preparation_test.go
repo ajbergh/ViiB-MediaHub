@@ -108,6 +108,75 @@ func TestPreparationRepairsMultipleMissingCapabilitiesInOneDecode(t *testing.T) 
 	}
 }
 
+func TestPreparationRepairsLegacyCueFeaturesWithoutReplacingUserCues(t *testing.T) {
+	database, ids := runnerCatalog(t, 1)
+	registry := analysis.NewDefaultDecoderRegistry()
+	if _, err := Run(t.Context(), database, registry, ids, RunOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	record, err := database.GetTrackAnalysis(ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := database.GetTrackAnalysisArtifact(ids[0], features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.DeleteTrackAnalysisArtifact(ids[0], features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion); err != nil {
+		t.Fatal(err)
+	}
+	artifact.AlgorithmVersion = "energy-structure-v1"
+	artifact.ID = ids[0] + ":" + artifact.AlgorithmVersion
+	legacy, err := features.Decode(artifact.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy.Events = nil
+	legacy.EventVersion = ""
+	legacy.DurationSeconds = 0
+	artifact.Data, err = legacy.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertTrackAnalysisArtifact(artifact); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SaveDJHotCues(ids[0], []db.DJHotCue{{Slot: 1, Position: 1.25, Label: "Keep", Color: "#abcdef", Origin: "user"}}); err != nil {
+		t.Fatal(err)
+	}
+	source, err := analysis.ResolveLocalSource(database, ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := missingPreparation(database, source, record)
+	if err != nil || !plan["local_features"] {
+		t.Fatalf("legacy feature version accepted as current: %v, %v", plan, err)
+	}
+	opens := 0
+	options := RunOptions{ResolveSource: func(ctx context.Context, id string) (analysis.ResolvedSource, error) {
+		s, e := analysis.ResolveLocalSource(database, id)
+		open := s.Open
+		s.OpenStream = func() (io.ReadCloser, error) { opens++; return open() }
+		return s, e
+	}}
+	progress, err := Run(t.Context(), database, registry, ids, options)
+	if err != nil || progress.Analyzed != 1 || opens != 1 {
+		t.Fatalf("repair failed or decoded twice: %+v, %v, opens=%d", progress, err, opens)
+	}
+	current, err := database.GetTrackAnalysisArtifact(ids[0], features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := features.Decode(current.Data)
+	if err != nil || result.EventVersion != features.EventVersion || result.DurationSeconds <= 0 {
+		t.Fatalf("cue evidence not regenerated: %#v, %v", result, err)
+	}
+	cues, err := database.GetDJHotCues(ids[0])
+	if err != nil || len(cues) != 1 || cues[0].Position != 1.25 || cues[0].Origin != "user" {
+		t.Fatalf("manual cue changed on repair: %#v, %v", cues, err)
+	}
+}
+
 func TestMissingLocalEnergyEnvelopeFieldIsSelectedAndRepaired(t *testing.T) {
 	database, ids := runnerCatalog(t, 1)
 	registry := analysis.NewDefaultDecoderRegistry()

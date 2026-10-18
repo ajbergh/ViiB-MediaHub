@@ -73,7 +73,7 @@ func TestV2AnalysisCueListAndApplyPolicies(t *testing.T) {
 	if err := json.NewDecoder(listRecorder.Body).Decode(&listed); err != nil {
 		t.Fatal(err)
 	}
-	if listed.GeneratorVersion != "auto-cues-v1" || listed.SourceFingerprint != resolvedSource.Fingerprint || listed.DefaultApplyMode != "fill-empty" || len(listed.GeneratedCandidates) == 0 || len(listed.HotCues) != 1 {
+	if listed.GeneratorVersion != "auto-cues-v2-events" || listed.SourceFingerprint != resolvedSource.Fingerprint || listed.DefaultApplyMode != "fill-empty" || len(listed.GeneratedCandidates) == 0 || len(listed.HotCues) != 1 {
 		t.Fatalf("cue list response = %#v", listed)
 	}
 	if listed.Suppressions == nil || len(listed.Suppressions) != 0 {
@@ -134,6 +134,23 @@ func TestV2AnalysisCueListAndApplyPolicies(t *testing.T) {
 		if candidate.DownbeatAligned {
 			t.Fatal("stale manual grid supplied cue alignment", candidate)
 		}
+	}
+
+	// Metadata duration can be shorter than the actual decoded audio. API
+	// regeneration must agree with the scan-time generator on the same artifact.
+	featureResult.DurationSeconds = 80
+	featureResult.EventVersion = features.EventVersion
+	featureResult.Events = []features.StructureEvent{{Position: 70.25, Kind: "energy-rise", Strength: .8}}
+	energyData, err = featureResult.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: "song:energy", SongID: "song", Kind: features.ArtifactKind, FormatVersion: features.FormatVersion, AlgorithmVersion: features.AlgorithmVersion, Encoding: features.Encoding, Data: energyData}); err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := (&API{db: database}).analysisCueList("song")
+	if err != nil || len(canonical.GeneratedCandidates) != 1 || canonical.GeneratedCandidates[0].Position != 70.25 {
+		t.Fatalf("catalog duration changed decoded event: %#v, %v", canonical, err)
 	}
 
 }

@@ -46,6 +46,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ajbergh/viib-mediahub/internal/analysis/localcontract"
 	"github.com/ajbergh/viib-mediahub/internal/crypto"
 )
 
@@ -5132,7 +5133,7 @@ func applyGeneratedDJHotCuesTx(tx *sql.Tx, songID string, cues []DJHotCue, mode 
 		eligible := make(map[int]string, len(cues))
 		for _, cue := range cues {
 			var suppressed int
-			if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM dj_hot_cue_suppressions WHERE song_id = ? AND slot = ? AND kind = ?)`, songID, cue.Slot, cue.Kind).Scan(&suppressed); err != nil {
+			if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM dj_hot_cue_suppressions WHERE song_id = ? AND slot = ? AND (kind = ? OR ?))`, songID, cue.Slot, cue.Kind, localcontract.CueSuppressionIsSlotWide(cue.GeneratorVersion)).Scan(&suppressed); err != nil {
 				return err
 			}
 			if suppressed == 0 {
@@ -5168,7 +5169,7 @@ func applyGeneratedDJHotCuesTx(tx *sql.Tx, songID string, cues []DJHotCue, mode 
 	}
 	for _, cue := range cues {
 		var suppressed int
-		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM dj_hot_cue_suppressions WHERE song_id = ? AND slot = ? AND kind = ?)`, songID, cue.Slot, cue.Kind).Scan(&suppressed); err != nil {
+		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM dj_hot_cue_suppressions WHERE song_id = ? AND slot = ? AND (kind = ? OR ?))`, songID, cue.Slot, cue.Kind, localcontract.CueSuppressionIsSlotWide(cue.GeneratorVersion)).Scan(&suppressed); err != nil {
 			return err
 		}
 		if suppressed != 0 {
