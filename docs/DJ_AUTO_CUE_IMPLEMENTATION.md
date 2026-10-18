@@ -5,6 +5,10 @@ Implemented on `research/dj-auto-cue-accuracy` from the
 
 ## Behavior
 
+This change applies to DJ hot-cue pads. Transition recommendations and the
+energy-features API still use the separate, older advisory `CueSuggestions`;
+they do not yet consume native events. Raw events remain internal artifact data.
+
 Automatic cues now select observed musical changes instead of targeting fixed
 percentages of a track. The native analyzer measures broad-band energy and
 frequency-balance changes in 50 ms frames during the existing decode pass. It
@@ -41,7 +45,7 @@ novelty peaks within four seconds.
 
 User cues and locked cues retain their existing protections. Because event-based
 selection changes each pad's role, **any existing deletion suppression at a pad
-blocks v2 event cues in that pad**, including suppressions created under a
+blocks v2 and later event cues in that pad**, including suppressions created under a
 different old kind. This applies to fill-empty, refresh and selected-only modes.
 An explicit suppression clear or saving a manual cue restores the pad under the
 existing lifecycle. Old v1 cue application keeps its original slot/kind behavior.
@@ -52,6 +56,16 @@ The energy/structure algorithm is now `energy-structure-v2-native-novelty` and t
 cue generator is `auto-cues-v2-events`. The gzip-JSON format stays backward
 readable. The feature-version change makes older analysis eligible for repair by
 the existing preparation workflow, while unrelated current artifacts are reused.
+
+Current cue and preparation readers require the exact supported event schema,
+finite positive decoded duration and valid event evidence. Legacy decoding stays
+available for compatibility, but a legacy payload mislabeled as current is
+repaired rather than accepted as prepared. Unknown event versions fail explicitly.
+The cue endpoint returns a conflict for malformed current artifacts.
+
+Successful publication removes the known superseded `energy-structure-v1`
+artifact for the same song/source in the same transaction. A failure rolls both
+the replacement and deletion back; artifacts for other sources remain intact.
 
 Run Track Analysis to prepare older tracks. **Fill empty slots** keeps existing
 cues, including old generated cues. Use **Refresh generated** in the cue editor
@@ -69,10 +83,11 @@ of manual/locked/deleted cues. A decoded WAV integration test checks independent
 constructed transitions against persisted and regenerated cue timestamps. A
 preparation test checks migration from old feature artifacts in one decode.
 
-The synthetic fixtures establish deterministic behavior on known signals; they
-do not measure DJ acceptance on real recordings. Learned downbeat/structure
-models and a reviewed real-audio cue corpus remain follow-up research from the
-original report.
+The synthetic fixtures establish deterministic behavior on known signals.
+[Real-track testing](DJ_CUE_REAL_AUDIO_VALIDATION.md) additionally exercises the
+production decoder and artifact/beatgrid round trips. Neither establishes DJ
+acceptance without independent reviewed cue annotations. Learned downbeat/structure
+models and a reviewed cue corpus remain follow-up research from the original report.
 
 Validation on Windows, 2026-10-17:
 

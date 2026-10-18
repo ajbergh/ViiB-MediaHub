@@ -1,11 +1,42 @@
 package features
 
 import (
+	"errors"
 	"math"
 	"sort"
 )
 
 const EventVersion = "native-novelty-v1"
+
+// ValidateNativeEvents qualifies the event contract independently of the
+// backward-readable energy envelope. Empty events are legitimate abstention.
+func (r Result) ValidateNativeEvents() error {
+	if r.EventVersion != EventVersion {
+		return errors.New("unsupported or missing structure event version")
+	}
+	if r.DurationSeconds <= 0 || math.IsNaN(r.DurationSeconds) || math.IsInf(r.DurationSeconds, 0) {
+		return errors.New("native events require a finite positive decoded duration")
+	}
+	if len(r.Events) > 128 {
+		return errors.New("too many structure events")
+	}
+	for _, e := range r.Events {
+		if e.Position < 0 || e.Position >= r.DurationSeconds || math.IsNaN(e.Position) || math.IsInf(e.Position, 0) {
+			return errors.New("structure event outside decoded audio")
+		}
+		for _, value := range []float64{e.Strength, e.EnergyBefore, e.EnergyAfter, e.TimbreChange} {
+			if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 1+1e-9 {
+				return errors.New("invalid structure event evidence")
+			}
+		}
+		switch e.Kind {
+		case "start", "energy-rise", "energy-fall", "section":
+		default:
+			return errors.New("unsupported structure event kind")
+		}
+	}
+	return nil
+}
 
 // StructureEvent describes observed change, not an inferred chorus/drop or
 // calibrated probability. Position is deliberately unsnapped: grids can be edited

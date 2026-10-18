@@ -84,7 +84,7 @@ func missingPreparation(database *db.DB, source analysis.ResolvedSource, record 
 		"local_energy":    localEnergyAvailable,
 		"local_amplitude": currentWaveform(database, source),
 		"local_features": artifactValid(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion, features.Encoding, features.MaxStructureStatusArtifactBytes, func(b []byte) bool {
-			_, e := features.DecodeBounded(b, features.MaxStructureStatusArtifactBytes)
+			_, e := features.DecodeCurrentBounded(b, features.MaxStructureStatusArtifactBytes)
 			return e == nil
 		}),
 		"local_loudness": loudnessAvailable,

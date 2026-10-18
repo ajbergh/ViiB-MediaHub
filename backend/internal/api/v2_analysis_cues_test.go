@@ -38,6 +38,7 @@ func TestV2AnalysisCueListAndApplyPolicies(t *testing.T) {
 		t.Fatal(err)
 	}
 	featureResult := features.Result{
+		DurationSeconds: 64, EventVersion: features.EventVersion, Events: []features.StructureEvent{{Position: 0, Kind: "start", Strength: .7}, {Position: 16, Kind: "energy-rise", Strength: .8}, {Position: 32, Kind: "energy-fall", Strength: .8}, {Position: 48, Kind: "energy-rise", Strength: .7}},
 		Energy:   []features.EnergyPoint{{Time: 0, Value: .2}, {Time: 32, Value: .8}},
 		Sections: []features.Section{{Start: 0, End: 16, Energy: .2}, {Start: 16, End: 32, Energy: .8}, {Start: 32, End: 48, Energy: .3}, {Start: 48, End: 64, Energy: .7}},
 	}
@@ -151,6 +152,23 @@ func TestV2AnalysisCueListAndApplyPolicies(t *testing.T) {
 	canonical, err := (&API{db: database}).analysisCueList("song")
 	if err != nil || len(canonical.GeneratedCandidates) != 1 || canonical.GeneratedCandidates[0].Position != 70.25 {
 		t.Fatalf("catalog duration changed decoded event: %#v, %v", canonical, err)
+	}
+	// A legacy payload labeled with the current artifact version must request
+	// repair, not silently generate the old section-based fallback.
+	featureResult.EventVersion = ""
+	featureResult.Events = nil
+	featureResult.DurationSeconds = 0
+	energyData, err = featureResult.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertTrackAnalysisArtifact(db.TrackAnalysisArtifact{ID: "song:energy", SongID: "song", Kind: features.ArtifactKind, FormatVersion: features.FormatVersion, AlgorithmVersion: features.AlgorithmVersion, Encoding: features.Encoding, Data: energyData}); err != nil {
+		t.Fatal(err)
+	}
+	stale := httptest.NewRecorder()
+	handler.ServeHTTP(stale, httptest.NewRequest(http.MethodGet, "/analysis/song/cues", nil))
+	if stale.Code != http.StatusConflict {
+		t.Fatalf("mislabeled current artifact accepted: %d %s", stale.Code, stale.Body.String())
 	}
 
 }

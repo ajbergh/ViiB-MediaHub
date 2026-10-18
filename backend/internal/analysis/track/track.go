@@ -535,6 +535,7 @@ func persistWithAutoCueModeClaimed(database *db.DB, result Result, autoCueMode d
 		publication.ApplyCues = true
 	}
 	publication.Artifacts = collector.artifacts
+	publication.RetireLegacyEnergy = result.Features != nil && result.Features.ValidateNativeEvents() == nil
 	publication.Capabilities = preparationStatuses(generated)
 	return database.PublishTrackPreparation(publication)
 }

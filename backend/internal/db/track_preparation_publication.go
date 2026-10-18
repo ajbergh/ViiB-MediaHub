@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/ajbergh/viib-mediahub/internal/analysis/featurecontract"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/threeband"
 )
 
@@ -14,6 +15,8 @@ type preparationExecutor interface {
 }
 
 type TrackPreparationPublication struct {
+	// Set by the analyzer only after qualifying the replacement event payload.
+	RetireLegacyEnergy bool
 	// Retire only historical provider claims for this source, preserving local
 	// capability status. The retirement shares publication ownership/rollback.
 	ClearProviderThreeBand bool
@@ -85,6 +88,13 @@ func (d *DB) PublishTrackPreparation(p TrackPreparationPublication) error {
 		}
 		if err := upsertTrackAnalysisArtifact(tx, a); err != nil {
 			return err
+		}
+		// Retire only the known superseded energy representation, and only
+		// after its source-bound replacement is in this same transaction.
+		if p.RetireLegacyEnergy && a.Kind == featurecontract.ArtifactKind && a.FormatVersion == featurecontract.FormatVersion && a.AlgorithmVersion == featurecontract.AlgorithmVersion && a.Encoding == featurecontract.Encoding && a.Provenance == "measured" {
+			if _, err := tx.Exec(`DELETE FROM track_analysis_artifacts WHERE song_id=? AND source_fingerprint=? AND kind=? AND format_version=? AND algorithm_version='energy-structure-v1'`, a.SongID, a.SourceFingerprint, a.Kind, a.FormatVersion); err != nil {
+				return err
+			}
 		}
 	}
 	if p.ApplyCues {

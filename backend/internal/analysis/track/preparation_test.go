@@ -109,6 +109,11 @@ func TestPreparationRepairsMultipleMissingCapabilitiesInOneDecode(t *testing.T) 
 }
 
 func TestPreparationRepairsLegacyCueFeaturesWithoutReplacingUserCues(t *testing.T) {
+	t.Run("old metadata", func(t *testing.T) { testRepairCueFeatures(t, false) })
+	t.Run("mislabeled current metadata", func(t *testing.T) { testRepairCueFeatures(t, true) })
+}
+
+func testRepairCueFeatures(t *testing.T, mislabeled bool) {
 	database, ids := runnerCatalog(t, 1)
 	registry := analysis.NewDefaultDecoderRegistry()
 	if _, err := Run(t.Context(), database, registry, ids, RunOptions{}); err != nil {
@@ -125,7 +130,9 @@ func TestPreparationRepairsLegacyCueFeaturesWithoutReplacingUserCues(t *testing.
 	if err := database.DeleteTrackAnalysisArtifact(ids[0], features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion); err != nil {
 		t.Fatal(err)
 	}
-	artifact.AlgorithmVersion = "energy-structure-v1"
+	if !mislabeled {
+		artifact.AlgorithmVersion = "energy-structure-v1"
+	}
 	artifact.ID = ids[0] + ":" + artifact.AlgorithmVersion
 	legacy, err := features.Decode(artifact.Data)
 	if err != nil {
@@ -152,6 +159,10 @@ func TestPreparationRepairsLegacyCueFeaturesWithoutReplacingUserCues(t *testing.
 	if err != nil || !plan["local_features"] {
 		t.Fatalf("legacy feature version accepted as current: %v, %v", plan, err)
 	}
+	selected, err := ExpandPreparationSelection(t.Context(), database, db.AnalysisSelection{Mode: db.AnalysisSelectionMissing}, nil)
+	if err != nil || len(selected) != 1 || selected[0] != ids[0] {
+		t.Fatalf("invalid feature payload hidden from missing discovery: %v, %v", selected, err)
+	}
 	opens := 0
 	options := RunOptions{ResolveSource: func(ctx context.Context, id string) (analysis.ResolvedSource, error) {
 		s, e := analysis.ResolveLocalSource(database, id)
@@ -170,6 +181,11 @@ func TestPreparationRepairsLegacyCueFeaturesWithoutReplacingUserCues(t *testing.
 	result, err := features.Decode(current.Data)
 	if err != nil || result.EventVersion != features.EventVersion || result.DurationSeconds <= 0 {
 		t.Fatalf("cue evidence not regenerated: %#v, %v", result, err)
+	}
+	if !mislabeled {
+		if _, err := database.GetTrackAnalysisArtifact(ids[0], features.ArtifactKind, features.FormatVersion, "energy-structure-v1"); err == nil {
+			t.Fatal("superseded same-source energy artifact retained")
+		}
 	}
 	cues, err := database.GetDJHotCues(ids[0])
 	if err != nil || len(cues) != 1 || cues[0].Position != 1.25 || cues[0].Origin != "user" {

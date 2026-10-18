@@ -81,7 +81,7 @@ func TestGeneratePrefersActualEventsToDurationFractions(t *testing.T) {
 func TestGenerateAbstainsWithoutEventsAndDoesNotPadSlots(t *testing.T) {
 	grid, _ := beatgrid.BuildStraight(120, 0, 240, 4)
 	for _, events := range [][]features.StructureEvent{nil, {{Position: 1, Kind: "start", Strength: .7}}} {
-		cues, err := Generate(240, &grid, features.Result{EventVersion: features.EventVersion, Events: events, Sections: []features.Section{{Start: 0, End: 240, Energy: 1}}}, "source")
+		cues, err := Generate(240, &grid, features.Result{DurationSeconds: 240, EventVersion: features.EventVersion, Events: events, Sections: []features.Section{{Start: 0, End: 240, Energy: 1}}}, "source")
 		if err != nil || len(cues) != len(events) {
 			t.Fatalf("invented cues: %#v, %v", cues, err)
 		}
@@ -92,7 +92,7 @@ func TestGenerateBoundsSnapsAndRetainsDownbeatProvenance(t *testing.T) {
 	for _, p := range []beatgrid.Provenance{beatgrid.ProvenanceManual, beatgrid.ProvenanceMeasured, beatgrid.ProvenanceInferredFromMeter, beatgrid.ProvenanceSpotify} {
 		grid, _ := beatgrid.BuildStraight(120, 0, 80, 4)
 		grid.Provenance = p
-		structure := features.Result{EventVersion: features.EventVersion, Events: []features.StructureEvent{{Position: 8.1, Kind: "section", Strength: .8}, {Position: 25.05, Kind: "energy-rise", Strength: .8}, {Position: 42.25, Kind: "section", Strength: .8}}}
+		structure := features.Result{DurationSeconds: 80, EventVersion: features.EventVersion, Events: []features.StructureEvent{{Position: 8.1, Kind: "section", Strength: .8}, {Position: 25.05, Kind: "energy-rise", Strength: .8}, {Position: 42.25, Kind: "section", Strength: .8}}}
 		cues, err := Generate(80, &grid, structure, "source")
 		if err != nil || len(cues) != 3 {
 			t.Fatalf("%s cues=%#v err=%v", p, cues, err)
@@ -115,7 +115,6 @@ func TestGenerateRanksDeduplicatesAndUsesDecodedDuration(t *testing.T) {
 	for i := 1; i <= 9; i++ {
 		structure.Events = append(structure.Events, features.StructureEvent{Position: float64(20 * i), Kind: "energy-rise", Strength: .8})
 	}
-	structure.Events = append(structure.Events, features.StructureEvent{Position: 200, Kind: "section", Strength: 1}, features.StructureEvent{Position: math.NaN(), Kind: "section", Strength: 1})
 	cues, err := Generate(60, nil, structure, "source")
 	if err != nil || len(cues) != 8 {
 		t.Fatalf("cues=%#v err=%v", cues, err)
@@ -148,6 +147,14 @@ func TestGenerateWithoutGridIsUnalignedAndHonorsShortTracks(t *testing.T) {
 	}
 	if _, err := Generate(0, nil, features.Result{}, "source-hash"); err == nil {
 		t.Fatal("zero-duration input accepted")
+	}
+}
+
+func TestGenerateRejectsUnknownEventSchemaAndBadDuration(t *testing.T) {
+	for _, r := range []features.Result{{EventVersion: "future", DurationSeconds: 20}, {EventVersion: features.EventVersion}, {EventVersion: features.EventVersion, DurationSeconds: math.NaN()}, {EventVersion: features.EventVersion, DurationSeconds: 20, Events: []features.StructureEvent{{Position: 21, Kind: "start", Strength: .7}}}} {
+		if _, err := Generate(20, nil, r, "source"); err == nil {
+			t.Fatalf("invalid native schema silently accepted: %#v", r)
+		}
 	}
 }
 

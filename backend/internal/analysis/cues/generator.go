@@ -41,6 +41,11 @@ type cueCandidate struct {
 // A beat is an alignment anchor, never by itself evidence of a useful cue.
 // Confidence remains an evidence heuristic, not calibrated DJ acceptance.
 func Generate(duration float64, grid *beatgrid.Grid, structure features.Result, sourceFingerprint string) ([]Cue, error) {
+	if structure.EventVersion != "" {
+		if err := structure.ValidateNativeEvents(); err != nil {
+			return nil, err
+		}
+	}
 	// Persisted and regenerated cues must use the identical decoded timeline,
 	// even when catalog duration was rounded or supplied by a metadata provider.
 	if finitePositive(structure.DurationSeconds) {

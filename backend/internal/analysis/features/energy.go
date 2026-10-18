@@ -422,6 +422,11 @@ func summarize(points []EnergyPoint) Section {
 
 // Encode is deterministic: the gzip header has no clock or host metadata.
 func (r Result) Encode() ([]byte, error) {
+	if r.EventVersion != "" {
+		if err := r.ValidateNativeEvents(); err != nil {
+			return nil, err
+		}
+	}
 	if len(r.Energy) == 0 {
 		return nil, errors.New("energy artifact requires points")
 	}
@@ -491,6 +496,20 @@ func DecodeBounded(data []byte, maxBytes int64) (Result, error) {
 		return Result{}, errors.New("energy artifact has no points")
 	}
 	return qualifyMeasurement(result), nil
+}
+
+// DecodeCurrentBounded is for readers of AlgorithmVersion artifacts. Decode
+// remains backward compatible, but legacy payloads mislabeled as current must
+// not settle preparation or silently switch cue generation to legacy behavior.
+func DecodeCurrentBounded(data []byte, maxBytes int64) (Result, error) {
+	r, err := DecodeBounded(data, maxBytes)
+	if err != nil {
+		return Result{}, err
+	}
+	if err := r.ValidateNativeEvents(); err != nil {
+		return Result{}, err
+	}
+	return r, nil
 }
 
 var unixEpoch = time.Unix(0, 0).UTC()
