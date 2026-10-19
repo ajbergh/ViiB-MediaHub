@@ -110,6 +110,7 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
         activePresetId: 'flat',
         mainOutputDevice: '',        // Empty = default device
         headphoneOutputDevice: '',   // Empty = default device (same as main)
+        djOutputMode: 'separate',
     },
     isEqOpen: false,
     
@@ -506,6 +507,14 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
     setMainOutputDevice: (deviceId) => {
         set((state) => {
             const newSettings = { ...state.audioSettings, mainOutputDevice: deviceId };
+            saveAudioSettingsToBackend(newSettings);
+            return { audioSettings: newSettings };
+        });
+    },
+    setDJOutputRouting: (mode, mainDeviceId, headphoneDeviceId) => {
+        set((state) => {
+            const newSettings = { ...state.audioSettings, djOutputMode: mode,
+                mainOutputDevice: mainDeviceId, headphoneOutputDevice: headphoneDeviceId };
             saveAudioSettingsToBackend(newSettings);
             return { audioSettings: newSettings };
         });

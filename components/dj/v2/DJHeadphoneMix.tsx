@@ -26,7 +26,9 @@ export const DJHeadphoneMix: React.FC<DJHeadphoneMixProps> = ({
 }) => {
   const mix = useStore(state => state.djMixer.headphoneMix);
   const volume = useStore(state => state.djMixer.headphoneVolume);
-  const masterCueEnabled = useStore(state => state.djMixer.masterCueEnabled);
+  const fourChannel = useStore(state => state.audioSettings.djOutputMode === 'four-channel');
+  const legacyMasterCueEnabled = useStore(state => state.djMixer.masterCueEnabled);
+  const masterCueEnabled = fourChannel ? mix > 0 : legacyMasterCueEnabled;
   const setHeadphoneMix = useStore(state => state.setHeadphoneMix);
   const setHeadphoneVolume = useStore(state => state.setHeadphoneVolume);
   const toggleMasterCue = useStore(state => state.toggleMasterCue);
@@ -44,8 +46,9 @@ export const DJHeadphoneMix: React.FC<DJHeadphoneMixProps> = ({
   }, [setHeadphoneVolume]);
 
   const handleMasterCueToggle = useCallback(() => {
-    toggleMasterCue();
-  }, [toggleMasterCue]);
+    if (fourChannel) setHeadphoneMix(mix > 0 ? 0 : 1);
+    else toggleMasterCue();
+  }, [toggleMasterCue, fourChannel, mix, setHeadphoneMix]);
 
   // Handle slider drag
   useEffect(() => {

@@ -269,6 +269,8 @@ export interface AudioSettings {
   mainOutputDevice: string;
   /** DJ Mode: Headphone/Cue output audio device ID (empty = default) */
   headphoneOutputDevice: string;
+  /** One stereo device per bus, or Main 1–2 / Headphones 3–4 on one device. */
+  djOutputMode?: 'separate' | 'four-channel';
 }
 
 /**

@@ -14,6 +14,7 @@
  */
 
 import { useStore } from '../store';
+import { getDJAudioEngine } from './djAudio';
 
 // ============================================================================
 // Sampler Engine Singleton
@@ -29,24 +30,43 @@ class DJSamplerEngine {
   private gains: (GainNode | null)[] = new Array(8).fill(null);
   private loadedUrls: (string | null)[] = new Array(8).fill(null);
   private startedAt: (number | null)[] = new Array(8).fill(null);
+  private triggerGeneration = new Array<number>(8).fill(0);
 
   // ========================================================================
   // Initialization
   // ========================================================================
 
+  /** The DJ engine owns the context and physical output routing. */
+  attachOutput(context: AudioContext, destination: AudioNode): void {
+    if (this.audioContext === context && this.masterGain) return;
+    if (this.audioContext || this.masterGain) this.detachOutput();
+    this.audioContext = context;
+    this.masterGain = context.createGain();
+    this.masterGain.gain.value = 1.0;
+    this.masterGain.connect(destination);
+
+    for (let i = 0; i < 8; i++) {
+      this.gains[i] = context.createGain();
+      this.gains[i]!.gain.value = 0.8;
+      this.gains[i]!.connect(this.masterGain);
+    }
+  }
+
+  detachOutput(): void {
+    for (let i = 0; i < 8; i++) {
+      ++this.triggerGeneration[i];
+      if (this.sources[i]) this.stopPad(i);
+      this.gains[i]?.disconnect();
+    }
+    this.masterGain?.disconnect();
+    this.masterGain = null;
+    this.audioContext = null;
+    this.gains.fill(null);
+  }
+
   private ensureContext(): AudioContext {
     if (!this.audioContext || this.audioContext.state === 'closed') {
-      this.audioContext = new AudioContext();
-      this.masterGain = this.audioContext.createGain();
-      this.masterGain.gain.value = 1.0;
-      this.masterGain.connect(this.audioContext.destination);
-      
-      // Create per-pad gain nodes
-      for (let i = 0; i < 8; i++) {
-        this.gains[i] = this.audioContext.createGain();
-        this.gains[i]!.gain.value = 0.8;
-        this.gains[i]!.connect(this.masterGain!);
-      }
+      throw new Error('DJ audio must be initialized before sampler playback.');
     }
     
     if (this.audioContext.state === 'suspended') {
@@ -64,6 +84,7 @@ class DJSamplerEngine {
     if (padId < 0 || padId >= 8) return false;
     
     try {
+      if (!this.audioContext || this.audioContext.state === 'closed') await getDJAudioEngine().initialize();
       const ctx = this.ensureContext();
       
       // Skip if already loaded
@@ -97,11 +118,18 @@ class DJSamplerEngine {
   // Playback
   // ========================================================================
 
-  triggerPad(padId: number): void {
+  async triggerPad(padId: number): Promise<void> {
     if (padId < 0 || padId >= 8) return;
     
     const buffer = this.buffers[padId];
     if (!buffer) return;
+    const generation = ++this.triggerGeneration[padId];
+    if (!this.audioContext || this.audioContext.state === 'closed') {
+      try { await getDJAudioEngine().initialize(); }
+      catch (error) { console.error('[DJSampler] DJ audio initialization failed:', error); return; }
+      // A gate release or another press while initializing cancels this trigger.
+      if (this.triggerGeneration[padId] !== generation) return;
+    }
     
     const ctx = this.ensureContext();
     const store = useStore.getState();
@@ -139,6 +167,7 @@ class DJSamplerEngine {
 
   stopPad(padId: number): void {
     if (padId < 0 || padId >= 8) return;
+    ++this.triggerGeneration[padId];
     this.stopSource(padId);
     useStore.getState().setSamplerPadPlaying(padId, false);
   }
@@ -197,6 +226,7 @@ class DJSamplerEngine {
   }
 
   destroy(): void {
+    this.detachOutput();
     for (let i = 0; i < 8; i++) {
       this.stopSource(i);
       this.buffers[i] = null;
@@ -204,9 +234,6 @@ class DJSamplerEngine {
       this.startedAt[i] = null;
     }
     
-    if (this.audioContext && this.audioContext.state !== 'closed') {
-      this.audioContext.close();
-    }
     this.audioContext = null;
     this.masterGain = null;
     this.gains.fill(null);

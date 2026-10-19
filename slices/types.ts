@@ -74,6 +74,7 @@ export interface PlayerSlice {
   setNormalization: (enabled: boolean) => void;
   setMainOutputDevice: (deviceId: string) => void;
   setHeadphoneOutputDevice: (deviceId: string) => void;
+  setDJOutputRouting: (mode: 'separate' | 'four-channel', mainDeviceId: string, headphoneDeviceId: string) => void;
   toggleEqPanel: () => void;
   loadAudioSettings: () => Promise<void>; // Load audio settings from backend on startup
   
