@@ -698,9 +698,9 @@ Validation: **7/7 Chromium journeys passed** in 11.7 seconds against the
 production preview; the new import journey completed in 2.2 seconds. The optional
 picker capability fixture follows the app
 property-presence feature-detection contract. Repository typecheck and documentation/whitespace
-checks passed. No production source or unit-test changes; hosted checks pending.
+checks passed. No production source or unit-test changes; hosted checks were pending at this initial PR #152 checkpoint. Current integration evidence is linked in the roll-up audit.
 
-Hosted checkpoint: PR #150 (`ddcecc4`) and #151 (`5c77771`) each now have
+Historical hosted checkpoint (October 20): PR #150 (`ddcecc4`) and #151 (`5c77771`) each had
 **16 successful hosted checks**. These are PR-head results, not merged-main or
 real-host qualification.
 

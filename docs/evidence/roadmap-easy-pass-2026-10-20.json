@@ -246,5 +246,118 @@
       "failed": []
     }
   },
-  "scope": "Open implementation PR history; no merge or release performed. The roll-up adds documentation only to the implementation head. Qualification/deferred scope remains open."
+  "scope": "Open implementation PR history; no merge or release performed. The roll-up adds documentation only to the implementation head. Qualification/deferred scope remains open.",
+  "implementationHeadMeaning": "Last source implementation head (PR #152); subsequent roll-up commits update documentation only.",
+  "rollupObservation": {
+    "observedAtUtc": "2026-10-20T23:28:00.975562+00:00",
+    "pr": 153,
+    "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/153",
+    "ref": "codex/roadmap-easy-pass-rollup",
+    "head": "6acdd31b498ec2e156e0abdb483d7b9b57baf136",
+    "qualification": "Open PR-head evidence only; not merged-main, live signing or release qualification. Later documentation commits may follow this observed head.",
+    "checks": [
+      {
+        "name": "Validate release candidate",
+        "status": "IN_PROGRESS",
+        "conclusion": "",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910127/job/118938042620"
+      },
+      {
+        "name": "frontend",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938042664"
+      },
+      {
+        "name": "backend",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938042993"
+      },
+      {
+        "name": "Track analysis (linux)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938042886"
+      },
+      {
+        "name": "Track analysis (windows)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938042997"
+      },
+      {
+        "name": "Track analysis (darwin)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938043030"
+      },
+      {
+        "name": "Semantic foundation (windows/amd64)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938042868"
+      },
+      {
+        "name": "Semantic foundation (windows/arm64)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938043186"
+      },
+      {
+        "name": "Semantic foundation (linux/amd64)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938043237"
+      },
+      {
+        "name": "Semantic foundation (darwin/amd64)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938043064"
+      },
+      {
+        "name": "Semantic foundation (darwin/arm64)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938043413"
+      },
+      {
+        "name": "browser-e2e",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938561704"
+      },
+      {
+        "name": "Track analysis scalar determinism",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938730523"
+      },
+      {
+        "name": "Desktop build (linux-amd64)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118943474759"
+      },
+      {
+        "name": "Desktop build (macos-arm64)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118943474676"
+      },
+      {
+        "name": "Desktop build (macos-amd64)",
+        "status": "IN_PROGRESS",
+        "conclusion": "",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118943474837"
+      },
+      {
+        "name": "windows-build",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118943474658"
+      }
+    ]
+  }
 }

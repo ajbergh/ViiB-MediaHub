@@ -11,7 +11,11 @@ roadmap names it as a stable 1.0 gate.
 The [PR #153](https://github.com/ajbergh/ViiB-MediaHub/pull/153) (`codex/roadmap-easy-pass-rollup`) branch targets `main` and includes every
 source head from PRs #131–#152, followed by this documentation audit. The
 [snapshot](evidence/roadmap-easy-pass-2026-10-20.json) records exact heads,
-ancestry verification and selected hosted results. Main at the snapshot is
+ancestry verification and selected hosted results. `implementationHead` identifies
+the last source head (#152); `rollupObservation` separately identifies the
+observed #153 head, check states and observation time. Later documentation
+commits can follow that observation; consult the live PR for current-head CI.
+Main at the snapshot is
 `c50e2b440996783a315be7150fce379fdd830c9d`; no implementation PR has been merged
 and no release has been published by this pass.
 
