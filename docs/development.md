@@ -245,6 +245,13 @@ It checks the Library Operations redirect, consequence disclosures, cancellation
 without mutation and selected-archive staging/restart messaging. It does not
 activate a database or verify recovery integrity. Add fixture-backed journeys
 incrementally.
+The real-file import journey additionally follows the source-settings button
+through the standard directory-upload fallback, parses the four tagged fixtures
+with the bundled worker, then checks IndexedDB tags/artwork and reload behavior.
+Only optional picker availability is controlled; parser/store data are real.
+This does not exercise native picker handles or retained audio playback after
+reload: standard upload has no durable file handle and strips temporary media
+URLs. Context-level request interception also blocks external worker requests.
 
 CI uses the frontend production artifact. Failures retain screenshots, traces
 and an HTML report under `output/playwright/` for seven days. Use only synthetic

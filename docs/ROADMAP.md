@@ -105,7 +105,7 @@ The current [preparation baseline](SPOTIFY_PREPARATION_PERFORMANCE.md) includes 
 | **P2.1** | Representative benchmark harness | **Planned** | The 105-track offline preparation experiment and library performance changes are useful baselines; no representative 1K/10K/100K percentile/resource reporting harness is established.| CI or scheduled reports provide p50/p95/p99 where applicable, memory/CPU/disk/artifact totals, environment and reproducible inputs |
 | **P2.2** | Bounded analysis and scanning | **Partial** | Atomic analysis claims, bounded scanner TagLib execution, timeout/retry ownership, and cancellation/restart tests are delivered in #123. Workload-level decode/concurrency/resource measurements remain open.| No unbounded worker/provider storms; warm runs avoid unnecessary decodes; measured improvements do not regress accuracy or provenance |
 | **P2.3** | Cache lifecycle | **Partial** | Binary three-band storage and bounded legacy compaction are delivered in #123. Global quotas, safe eviction, disk-budget enforcement, and WAL/restoration qualification remain open.| Predictable disk limits; cache eviction cannot destroy user data or invalidate retained provenance; reference workloads stay inside approved resource budgets |
-| **P2.4** | Browser end-to-end gates | **Partial; proposed implementation** | Six deterministic Chromium journeys (four browser-only plus synthetic recovery review/cancel/stage and failure-reference display/copy); config and CI retain failure screenshots/traces/report. Remaining: merged-head validation, backend/import/playback/recovery-integrity/provider flows and other browser profiles.| Critical flows reliably pass in CI; failures retain screenshots/traces/logs without secrets |
+| **P2.4** | Browser end-to-end gates | **Partial; proposed implementation** | Seven deterministic Chromium journeys (four browser-only, two synthetic recovery/reference flows, and real four-format browser upload/persistence); config and CI retain failure screenshots/traces/report. Remaining: merged-head validation, backend/import/playback/recovery-integrity/provider flows and other browser profiles.| Critical flows reliably pass in CI; failures retain screenshots/traces/logs without secrets |
 | **P2.5** | Native system qualification | **Partial** | Native builds and bounded Windows user-reported functional samples exist. Long-session/device/WebView coverage and macOS/Linux host execution remain open.| Tested platform/architecture matrix with explicit passes, failures and accepted exceptions |
 | **P2.6** | Troubleshooting evidence | **Partial** | Request IDs, job diagnostics and an opt-in bounded/redacted support archive with tests exist. Proposed schema-2 support export replaces raw log text with bounded allowlisted diagnostic records. Structured v2 handler failures now have a server-generated reference propagated to Library Operations and allowlisted support records. Local logging privacy, legacy/middleware/provider correlation and full troubleshooting qualification remain open.| A user-visible failure can be traced to a sanitized diagnostic record; tokens, cookies, local-private data are excluded by default |
 
@@ -125,7 +125,7 @@ This phase should be **incremental and behavior-preserving**, not a rewrite. Lar
 | --- | --- | --- | --- | --- |
 | **P3.1** | Domain boundaries | **Partial** | Dedicated source adapters, media-capability and semantic modules exist. Oversized Settings/API/DB/audio modules still need incremental decomposition and coupling verification.| Existing routes/storage schemas preserved or explicitly migrated; targeted regression suite green; coupling decreases without new circular dependencies |
 | **P3.2** | Stronger frontend contracts | **Partial; global strict gate proposed** | Typed capability/service boundaries and library/Spotify surface performance work are delivered. The proposed global TS-only strict gate passes with zero diagnostics; concrete nullable/ref/callback fixes and precise JS declarations complete the compiler migration. Existing explicit any/suppression cleanup, JS body verification and measured code-splitting benefits remain open.| New code uses strict typing; targeted modules migrate with no `any` escape hatch proliferation; bundle/startup gain is measured |
-| **P3.3** | First-run and library workflows | **Partial** | First-launch source setup, tabbed Settings, loading/empty/retry states, Spotify surface persistence and local preparation status exist. Proposed browser-only source-settings and playlist persistence E2E coverage is in #131. Assisted usability and end-to-end source-repair qualification remain open.| First-run and source-repair journeys pass assisted usability review and end-to-end tests |
+| **P3.3** | First-run and library workflows | **Partial** | First-launch source setup, tabbed Settings, loading/empty/retry states, Spotify surface persistence and local preparation status exist. Proposed browser-only navigation/playlist coverage plus a real-file upload journey now test metadata/artwork persistence for four supported formats. Assisted usability and end-to-end source-repair qualification remain open.| First-run and source-repair journeys pass assisted usability review and end-to-end tests |
 | **P3.4** | Design consistency and accessibility | **Partial** | Design tokens, shared UI components, responsive layouts and DJ keyboard/focus work are delivered. Proposed playlist-name accessible labeling is in #131; the modal follow-up adds named Direct Download controls and keyboard/focus-safe confirmations. A draft [WCAG 2.2 AA plan and findings register](ACCESSIBILITY_QUALIFICATION.md) now covers standard workflows and candidate DJ alternatives. Plan approval, full criterion ledger, host execution and accessible-alternative qualification remain open.| Standard app flows meet approved WCAG 2.2 AA test plan; specialized DJ controls have documented accessible alternatives where feasible |
 | **P3.5** | Diagnostics and data operations UX | **Partial** | Duplicate review, diagnostics/repair, backup/staged restore and support export UI exist. Proposed modal focus/cancellation, synthetic playlist deletion-cancel coverage and explicit repair/restore consequence disclosures improve destructive-action review. Full recovery continuity acceptance and storage-quota UX remain open.| Destructive actions are reviewable; recovery progress and outcome are explicit; tests protect catalog continuity |
 
@@ -641,7 +641,7 @@ broader P3.2 acceptance remain open.
 
 ### P2.6 safe maintenance-failure references (October 20)
 
-The central structured-v2 error helper generates a fresh opaque UUID-v4
+[PR #151](https://github.com/ajbergh/ViiB-MediaHub/pull/151): the central structured-v2 error helper generates a fresh opaque UUID-v4
 `diagnosticToken` per failure, independently of caller headers and legacy
 hostname-bearing request IDs. The body/response header expose the same token;
 CORS exposes the response header without adding it as a client request header.
@@ -673,6 +673,34 @@ checks passed. Browser fixtures are synthetic; backend route-to-ZIP evidence
 uses the actual exporter. Hosted checks remain pending.
 PR #148 (`363f2e1`) and #149 (`b17deef`) now each have **16 successful
 hosted checks**; #150 still has validation running without reported failures.
+
+### P2.4/P3.3 real-file browser import persistence (October 20)
+
+The new browser journey starts at the empty catalog, follows Add Music to
+Settings, and clicks Scan Local Directory. Its sole capability fixture removes
+the optional native directory-picker API, selecting the production standard
+upload fallback. A real directory selection supplies the four original tagged
+MP3/OGG/FLAC/M4A fixtures (and an ignored README). The real bundled worker/parser
+extracts tags and artwork; no store, parser or persistence result is injected.
+All API calls fail locally and external requests are blocked at browser-context
+level, including worker requests.
+
+Read-only IndexedDB checks verify all four songs' tags, duration, relative path,
+PNG signature and durable URL policy. Reload retains identical records and all
+four visible song rows; reconstructed Blob artwork URLs load successfully.
+The fallback deliberately stores no file handle or temporary media URL, so
+persistent audio playback, native FileSystemFileHandle permission behavior,
+backend scans/imports, output devices and live providers remain unqualified.
+
+Validation: **7/7 Chromium journeys passed** in 11.7 seconds against the
+production preview; the new import journey completed in 2.2 seconds. The optional
+picker capability fixture follows the app
+property-presence feature-detection contract. Repository typecheck and documentation/whitespace
+checks passed. No production source or unit-test changes; hosted checks pending.
+
+Hosted checkpoint: PR #150 (`ddcecc4`) and #151 (`5c77771`) each now have
+**16 successful hosted checks**. These are PR-head results, not merged-main or
+real-host qualification.
 
 ### Baseline evidence and implementation references
 
