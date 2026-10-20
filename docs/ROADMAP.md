@@ -126,8 +126,8 @@ This phase should be **incremental and behavior-preserving**, not a rewrite. Lar
 | **P3.1** | Domain boundaries | **Partial** | Dedicated source adapters, media-capability and semantic modules exist. Oversized Settings/API/DB/audio modules still need incremental decomposition and coupling verification.| Existing routes/storage schemas preserved or explicitly migrated; targeted regression suite green; coupling decreases without new circular dependencies |
 | **P3.2** | Stronger frontend contracts | **Partial** | Typed capability/service boundaries and library/Spotify surface performance work are delivered. Proposed strict coverage grows from four to twelve selected modules without source changes or new escape hatches; broader migration and measured code-splitting benefits remain open.| New code uses strict typing; targeted modules migrate with no `any` escape hatch proliferation; bundle/startup gain is measured |
 | **P3.3** | First-run and library workflows | **Partial** | First-launch source setup, tabbed Settings, loading/empty/retry states, Spotify surface persistence and local preparation status exist. Proposed browser-only source-settings and playlist persistence E2E coverage is in #131. Assisted usability and end-to-end source-repair qualification remain open.| First-run and source-repair journeys pass assisted usability review and end-to-end tests |
-| **P3.4** | Design consistency and accessibility | **Partial** | Design tokens, shared UI components, responsive layouts and DJ keyboard/focus work are delivered. Proposed playlist-name accessible labeling is in #131. A draft [WCAG 2.2 AA plan and findings register](ACCESSIBILITY_QUALIFICATION.md) now covers standard workflows and candidate DJ alternatives. Plan approval, full criterion ledger, host execution and accessible-alternative qualification remain open.| Standard app flows meet approved WCAG 2.2 AA test plan; specialized DJ controls have documented accessible alternatives where feasible |
-| **P3.5** | Diagnostics and data operations UX | **Partial** | Duplicate review, diagnostics/repair, backup/staged restore and support export UI exist. Full destructive-action/recovery continuity acceptance and storage-quota UX remain open.| Destructive actions are reviewable; recovery progress and outcome are explicit; tests protect catalog continuity |
+| **P3.4** | Design consistency and accessibility | **Partial** | Design tokens, shared UI components, responsive layouts and DJ keyboard/focus work are delivered. Proposed playlist-name accessible labeling is in #131; the modal follow-up adds named Direct Download controls and keyboard/focus-safe confirmations. A draft [WCAG 2.2 AA plan and findings register](ACCESSIBILITY_QUALIFICATION.md) now covers standard workflows and candidate DJ alternatives. Plan approval, full criterion ledger, host execution and accessible-alternative qualification remain open.| Standard app flows meet approved WCAG 2.2 AA test plan; specialized DJ controls have documented accessible alternatives where feasible |
+| **P3.5** | Diagnostics and data operations UX | **Partial** | Duplicate review, diagnostics/repair, backup/staged restore and support export UI exist. Proposed modal focus/cancellation and synthetic playlist deletion-cancel coverage improve destructive-action review. Full recovery continuity acceptance and storage-quota UX remain open.| Destructive actions are reviewable; recovery progress and outcome are explicit; tests protect catalog continuity |
 
 **Progress & Evidence Log (Phase 3, October 15):**
 - [PR #122](https://github.com/ajbergh/ViiB-MediaHub/pull/122) (`4b86824`) delivers the shared visual refresh, library-performance changes and Spotify surface persistence, with targeted frontend tests. These changes do not establish representative workload percentiles or WCAG acceptance.
@@ -275,9 +275,24 @@ actual read-only export recorded **302 Go modules** locally. Release-level npm
 SBOM generation produced **287 components**; both changed workflows parsed
 successfully; extracted shell syntax checks passed. A synthetic publish-gate
 experiment checksummed all **13 required assets** and rejected a missing Go
-inventory. Hosted packaging/publish-path validation remains open.
+inventory. The [hosted release prepare artifact](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39441891481) was downloaded and verified: **302 Go modules / 287 npm components**, preserved versioned replacement, no cache/checkout fields. Full packaging/publish-path validation remains open.
 No signing/provenance, native/target-specific SBOM, licensing or release
 qualification is claimed. Those remaining scopes retain their existing gates.
+
+### P3.4/P3.5 modal keyboard follow-up (October 20)
+
+Branch `codex/p3-4-direct-download-dialog`, based on PR #133, repairs Direct
+Download dialog semantics/field and close-control names, and adds focus trapping,
+Escape dismissal and focus restoration. Confirmation dialogs initially focus
+Cancel, trap Tab and keep busy actions protected. The shared focus hook now uses
+the latest Escape callback without resetting focus or recapturing its opener
+on callback updates. AX-004 tracks this concrete finding and remaining host review.
+Targeted regression checks cover both dialogs and the shared hook; a browser-only
+flow reviews/cancels synthetic playlist deletion and reloads to check continuity.
+`npm run check` passed **151 files / 728 tests**, TypeScript/style gates and
+production build; **4/4 Chromium tests** passed, including deletion cancellation.
+Documentation and whitespace checks also passed. This
+does not close native/screen-reader, backup/restore or source-repair qualification.
 
 ### Baseline evidence and implementation references
 
@@ -292,4 +307,4 @@ qualification is claimed. Those remaining scopes retain their existing gates.
 
 ---
 
-*Last updated: 2026-10-20 against local/hosted main `c50e2b4` plus proposed `codex/roadmap-easy-foundations` changes. This file establishes work priorities and acceptance criteria; it does not certify unfinished functionality or authorize merging, releasing, changing credentials, or expanding DJ research scope without the corresponding review.*
+*Last updated: 2026-10-20 against local/hosted main `c50e2b4` plus the proposed roadmap implementation branches. This file establishes work priorities and acceptance criteria; it does not certify unfinished functionality or authorize merging, releasing, changing credentials, or expanding DJ research scope without the corresponding review.*

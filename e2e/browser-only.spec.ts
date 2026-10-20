@@ -56,3 +56,27 @@ test('browser-only playlist creation persists across reload and opens its detail
   await expect(page.getByRole('heading', { name: 'Offline continuity fixture', exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('canceling playlist deletion keeps the saved playlist after reload', async ({ page }) => {
+  await page.goto('/songs');
+  await expect(page.getByRole('heading', { name: 'Your library is empty', exact: true })).toBeVisible();
+  await page.goto('/playlists');
+  await page.getByRole('button', { name: 'Create Playlist', exact: true }).first().click();
+  await page.getByRole('textbox', { name: 'Playlist name', exact: true }).fill('Keep this fixture');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  const playlist = page.getByRole('button', { name: 'Open playlist Keep this fixture', exact: true });
+  await expect(playlist).toBeVisible();
+  await playlist.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Delete Playlist', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Delete Playlist?', exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(dialog.getByRole('button', { name: 'Delete', exact: true })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await page.reload();
+  await expect(playlist).toBeVisible();
+});

@@ -15,7 +15,8 @@
  * @module ConfirmDialog
  */
 
-import React from 'react';
+import React, { useCallback, useId } from 'react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 
 interface ConfirmDialogProps {
@@ -41,6 +42,11 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onConfirm,
   onCancel,
 }) => {
+  const dialogId = useId();
+  const handleEscape = useCallback(() => {
+    if (!isLoading) onCancel();
+  }, [isLoading, onCancel]);
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen, handleEscape);
   if (!isOpen) return null;
 
   const getVariantStyles = () => {
@@ -66,20 +72,17 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   const styles = getVariantStyles();
 
   return (
-    <div 
+    <div
+      ref={dialogRef}
+      tabIndex={-1}
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 motion-reduce:animate-none motion-reduce:transition-none"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="confirm-dialog-title"
-      aria-describedby="confirm-dialog-description"
+      aria-labelledby={`${dialogId}-title`}
+      aria-describedby={`${dialogId}-description`}
       onClick={(e) => {
         // Close on backdrop click unless loading
         if (e.target === e.currentTarget && !isLoading) {
-          onCancel();
-        }
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape' && !isLoading) {
           onCancel();
         }
       }}
@@ -89,10 +92,10 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           {variant !== 'default' && (
             <AlertTriangle size={28} className={styles.iconColor} aria-hidden="true" />
           )}
-          <h2 id="confirm-dialog-title" className="text-lg font-bold text-text-main">{title}</h2>
+          <h2 id={`${dialogId}-title`} className="text-lg font-bold text-text-main">{title}</h2>
         </div>
         
-        <div id="confirm-dialog-description" className="text-text-secondary mb-6 leading-relaxed">
+        <div id={`${dialogId}-description`} className="text-text-secondary mb-6 leading-relaxed">
           {message}
         </div>
         
@@ -108,7 +111,6 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             onClick={onConfirm}
             disabled={isLoading}
             className={`px-5 py-2 rounded-lg font-bold text-surface-0 transition-colors flex items-center gap-2 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-text-main focus:ring-offset-2 focus:ring-offset-surface-2 ${styles.buttonBg}`}
-            autoFocus
           >
             {isLoading && <Loader2 size={16} className="animate-spin" aria-hidden="true" />}
             {confirmLabel}

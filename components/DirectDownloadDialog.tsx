@@ -1,10 +1,11 @@
 /** Validates Spotify track/album/playlist links and submits direct downloads. */
 
-import React, { useState } from 'react';
+import React, { useCallback, useId, useState } from 'react';
 import { Link2, Loader2, X, Music, Disc3, ListMusic, CheckCircle, AlertCircle } from 'lucide-react';
 import api from '../services/api';
 import { useStore } from '../store';
 import { SpotifyAccountNotice } from './SpotifyAccountNotice';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 interface DirectDownloadDialogProps {
   isOpen: boolean;
@@ -60,6 +61,7 @@ const getTypeName = (type?: string) => {
 };
 
 export const DirectDownloadDialog: React.FC<DirectDownloadDialogProps> = ({ isOpen, onClose, onQueued }) => {
+  const dialogId = useId();
   const mediaDisabled = useStore(s => !s.spotifyConnected || s.spotifyAccountProduct !== 'premium');
   const [url, setUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -109,17 +111,27 @@ export const DirectDownloadDialog: React.FC<DirectDownloadDialogProps> = ({ isOp
     }
   };
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     setUrl('');
     setError(null);
     setSuccess(null);
     onClose();
-  };
+  }, [onClose]);
+  const handleEscape = useCallback(() => {
+    if (!isLoading) handleClose();
+  }, [isLoading, handleClose]);
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen, handleEscape);
 
   if (!isOpen) return null;
 
   return (
-    <div 
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={`${dialogId}-title`}
+      aria-describedby={`${dialogId}-description`}
+      tabIndex={-1}
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 motion-reduce:animate-none motion-reduce:transition-none"
       onClick={(e) => {
         if (e.target === e.currentTarget && !isLoading) {
@@ -135,11 +147,13 @@ export const DirectDownloadDialog: React.FC<DirectDownloadDialogProps> = ({ isOp
               <Link2 size={20} className="text-brand" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-text-main">Direct Download</h2>
-              <p className="text-sm text-text-secondary">Paste a Spotify URL or URI</p>
+              <h2 id={`${dialogId}-title`} className="text-lg font-bold text-text-main">Direct Download</h2>
+              <p id={`${dialogId}-description`} className="text-sm text-text-secondary">Paste a Spotify URL or URI</p>
             </div>
           </div>
           <button
+            type="button"
+            aria-label="Close direct download dialog"
             onClick={handleClose}
             disabled={isLoading}
             className="p-2 hover:bg-surface-3 rounded-lg transition-colors disabled:opacity-50"
@@ -152,8 +166,10 @@ export const DirectDownloadDialog: React.FC<DirectDownloadDialogProps> = ({ isOp
         <form onSubmit={handleSubmit}>
           <SpotifyAccountNotice />
           <div className="mb-4">
+            <label htmlFor={`${dialogId}-url`} className="mb-2 block text-sm font-medium text-text-main">Spotify URL or URI</label>
             <div className="relative">
               <input
+                id={`${dialogId}-url`}
                 type="text"
                 value={url}
                 onChange={(e) => {
@@ -166,7 +182,6 @@ export const DirectDownloadDialog: React.FC<DirectDownloadDialogProps> = ({ isOp
                   error ? 'border-error' : validation.valid ? 'border-success' : 'border-surface-border'
                 }`}
                 disabled={isLoading}
-                autoFocus
               />
               {url.trim() && (
                 <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">

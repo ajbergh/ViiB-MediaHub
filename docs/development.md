@@ -236,7 +236,7 @@ After `npm ci` and `npm run build`, install the locked Chromium revision with
 Keep this port free; CI always starts its own preview server.
 
 The initial suite exercises browser-only empty-library navigation and the legacy
-DJ redirect/reload plus playlist creation/reload using fresh IndexedDB contexts and locally intercepted API
+DJ redirect/reload, playlist creation/reload and deletion cancellation using fresh IndexedDB contexts and locally intercepted API
 failures. External requests are blocked. No backend, accounts, credentials or
 real music are needed. This does not qualify playback, native WebViews, import,
 source repair or provider sessions. Add fixture-backed journeys incrementally.

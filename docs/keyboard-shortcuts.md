@@ -83,3 +83,5 @@ DJ Mode has its own dedicated set of shortcuts active only while on the DJ Mode 
 - Global shortcuts work across normal pages except when an input is focused; DJ Mode adds its dedicated mappings while active.
 - The `Escape` key blurs a focused input, closes Now Playing/Queue/EQ or context menus, and closes the DJ library/shortcut dialog according to the active surface.
 - No modifier key is required for the basic media shortcuts.
+
+- Direct Download and confirmation dialogs keep `Tab` / `Shift + Tab` within the dialog. `Escape` dismisses an idle dialog; it does not interrupt a busy action. Confirmation dialogs initially focus Cancel. Closing a dialog restores its previous focus target when that element is still present.

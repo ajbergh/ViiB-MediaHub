@@ -26,6 +26,10 @@ export function useFocusTrap<T extends HTMLElement>(
 ) {
   const containerRef = useRef<T | null>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const onEscapeRef = useRef(onEscape);
+
+  // Callback updates must not recapture the opener or move focus while typing.
+  useEffect(() => { onEscapeRef.current = onEscape; }, [onEscape]);
 
   useEffect(() => {
     if (!active) return;
@@ -42,9 +46,9 @@ export function useFocusTrap<T extends HTMLElement>(
     initial.focus({ preventScroll: true });
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && onEscape) {
+      if (e.key === 'Escape' && onEscapeRef.current) {
         e.stopPropagation();
-        onEscape();
+        onEscapeRef.current();
         return;
       }
       if (e.key !== 'Tab') return;
@@ -78,7 +82,7 @@ export function useFocusTrap<T extends HTMLElement>(
         previous.focus({ preventScroll: true });
       }
     };
-  }, [active, onEscape]);
+  }, [active]);
 
   return containerRef;
 }
