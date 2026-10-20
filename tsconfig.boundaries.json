@@ -20,6 +20,8 @@
     "lib/analysisConfidence.ts",
     "lib/analysisReadiness.ts",
     "lib/djLibraryLUFS.ts",
-    "lib/djLibraryTruePeak.ts"
+    "lib/djLibraryTruePeak.ts",
+    "lib/beatGridConfidence.ts",
+    "lib/hotCueEditor.ts"
   ]
 }

@@ -124,7 +124,7 @@ This phase should be **incremental and behavior-preserving**, not a rewrite. Lar
 | ID | Work package | Status | Current scope and deliverables | Definition of done |
 | --- | --- | --- | --- | --- |
 | **P3.1** | Domain boundaries | **Partial** | Dedicated source adapters, media-capability and semantic modules exist. Oversized Settings/API/DB/audio modules still need incremental decomposition and coupling verification.| Existing routes/storage schemas preserved or explicitly migrated; targeted regression suite green; coupling decreases without new circular dependencies |
-| **P3.2** | Stronger frontend contracts | **Partial** | Typed capability/service boundaries and library/Spotify surface performance work are delivered. Proposed strict entry coverage grows from four to sixteen roots; the latest four DJ-library display helpers expand the actual import closure from 19 to 23 local files. No source changes or new escape hatches. Broader migration and measured code-splitting benefits remain open.| New code uses strict typing; targeted modules migrate with no `any` escape hatch proliferation; bundle/startup gain is measured |
+| **P3.2** | Stronger frontend contracts | **Partial** | Typed capability/service boundaries and library/Spotify surface performance work are delivered. Proposed strict entry coverage grows from four to eighteen roots; display-helper and reviewed-grid/cue follow-ups expand the measured local import closure from 19 to 27 files, including the mixer slice. No source changes or new escape hatches. Broader migration and measured code-splitting benefits remain open.| New code uses strict typing; targeted modules migrate with no `any` escape hatch proliferation; bundle/startup gain is measured |
 | **P3.3** | First-run and library workflows | **Partial** | First-launch source setup, tabbed Settings, loading/empty/retry states, Spotify surface persistence and local preparation status exist. Proposed browser-only source-settings and playlist persistence E2E coverage is in #131. Assisted usability and end-to-end source-repair qualification remain open.| First-run and source-repair journeys pass assisted usability review and end-to-end tests |
 | **P3.4** | Design consistency and accessibility | **Partial** | Design tokens, shared UI components, responsive layouts and DJ keyboard/focus work are delivered. Proposed playlist-name accessible labeling is in #131; the modal follow-up adds named Direct Download controls and keyboard/focus-safe confirmations. A draft [WCAG 2.2 AA plan and findings register](ACCESSIBILITY_QUALIFICATION.md) now covers standard workflows and candidate DJ alternatives. Plan approval, full criterion ledger, host execution and accessible-alternative qualification remain open.| Standard app flows meet approved WCAG 2.2 AA test plan; specialized DJ controls have documented accessible alternatives where feasible |
 | **P3.5** | Diagnostics and data operations UX | **Partial** | Duplicate review, diagnostics/repair, backup/staged restore and support export UI exist. Proposed modal focus/cancellation, synthetic playlist deletion-cancel coverage and explicit repair/restore consequence disclosures improve destructive-action review. Full recovery continuity acceptance and storage-quota UX remain open.| Destructive actions are reviewable; recovery progress and outcome are explicit; tests protect catalog continuity |
@@ -469,7 +469,7 @@ No authenticated provider or native-host qualification is claimed.
 
 ### P3.2 strict DJ-library display helpers (October 20)
 
-Add confidence, readiness, LUFS and true-peak display/sorting helpers to the
+[PR #144](https://github.com/ajbergh/ViiB-MediaHub/pull/144) adds confidence, readiness, LUFS and true-peak display/sorting helpers to the
 strict boundary configuration. [Compiler-program evidence](evidence/strict-analysis-display-2026-10-20.json)
 separates explicit entry files (**12 → 16**) from the actual repository-local
 import closure (**19 → 23**). Exactly the four intended helpers enter the
@@ -478,11 +478,28 @@ closure; source, runtime behavior and suppression counts are unchanged.
 Existing helper and consuming DJ-library tests passed: **5 files / 19 tests**.
 Repository `npm run typecheck`, documentation links/JSON and whitespace checks
 passed. Hosted validation remains pending.
-Broader mixer/UI migration remains open: those candidates currently expose ten
-beat-grid phase-sync nullability diagnostics in `djMixerSlice.ts`. This is a
-separate concrete follow-up, not a reason to add non-null assertions or disable
-strict checking. This slice does not change DSP estimators, qualify analysis
+At this checkpoint, mixer/UI candidates exposed ten beat-grid phase-sync
+nullability diagnostics in `djMixerSlice.ts`. The reviewed-grid predicate
+follow-up below resolves that blocker without assertions or weaker checking;
+broader UI migration remains open. This slice does not change DSP estimators, qualify analysis
 accuracy or demonstrate bundle/startup gains.
+
+### P3.2 reviewed-grid and cue contracts (October 20)
+
+`canSyncBeatGrid` now expresses its existing runtime validation as a type
+predicate: a valid grid with manual provenance and a lock. This lets guarded
+phase-sync code safely treat timing as present, resolving the ten strict
+nullability diagnostics without assertions, suppressions or runtime changes.
+Beat-grid confidence and hot-cue helpers enter the strict gate; their imported
+mixer slice and tempo-evidence helper also gain coverage. Explicit entry files
+increase **16 → 18**, while the [measured local closure](evidence/strict-grid-contracts-2026-10-20.json)
+increases **23 → 27**. This is not whole-frontend strict migration.
+
+Repository typecheck passed; **3 existing test files / 19 tests** passed,
+including rejecting estimated grids for phase alignment and accepting reviewed
+grids. The changed helper emits identical JavaScript before/after the type
+refinement. Documentation/JSON and whitespace checks passed; hosted checks
+remain pending. No DSP estimator or accuracy qualification changes.
 
 ### Baseline evidence and implementation references
 
