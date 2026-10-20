@@ -1,7 +1,7 @@
 # ViiB MediaHub — Product & Engineering Roadmap
 
 > **Status:** Active / living plan  
-> **Last reviewed:** 2026-10-15<br>
+> **Last reviewed:** 2026-10-20<br>
 > **Target:** Reliable, secure, supportable **ViiB MediaHub 1.0** followed by qualified professional-DJ improvements  
 > **Source of truth:** This file owns cross-project priorities and release gates. Domain-specific plans and dated evidence remain authoritative for the technical detail they cover.
 
@@ -9,15 +9,16 @@
 
 ViiB MediaHub is a local-first music hub: React 19 / TypeScript frontend, Go / SQLite backend, Wails desktop builds, browser/server mode, a unified local/Plex music catalog, separate Spotify integration, AI-assisted library intelligence, and two-deck DJ functionality.
 
-**Repository checkpoint (2026-10-15, local `main` at `08322ba`):**
+**Historical repository checkpoint (2026-10-15, local `main` at `08322ba`):**
 
 - Since the October 13 checkpoint, `main` includes API trust-boundary hardening ([#118](https://github.com/ajbergh/ViiB-MediaHub/pull/118)), versioned credential storage ([#119](https://github.com/ajbergh/ViiB-MediaHub/pull/119)), media capabilities ([#120](https://github.com/ajbergh/ViiB-MediaHub/pull/120)), FLAC/M4A import and unsupported-analysis handling ([#121](https://github.com/ajbergh/ViiB-MediaHub/pull/121)), UI/library-performance and Spotify surface work ([#122](https://github.com/ajbergh/ViiB-MediaHub/pull/122)), scan/analysis stability and storage work ([#123](https://github.com/ajbergh/ViiB-MediaHub/pull/123)), and managed local semantic matching plus Spotify account-plan gates ([#124](https://github.com/ajbergh/ViiB-MediaHub/pull/124)). The latest checkpoint commit is [`08322ba`](https://github.com/ajbergh/ViiB-MediaHub/commit/08322ba).
-- The previously recorded successful [CI run for `6a76cafd`](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/38343013399) is historical evidence. Hosted CI on the current head was not rechecked in this review. Passing CI alone does not establish real-device, provider, musical-accuracy, or production-release qualification.
-- The latest release recorded in the prior review is [`v1.0.0-rc5`](https://github.com/ajbergh/ViiB-MediaHub/releases/tag/v1.0.0-rc5), published October 5; local tags still end at RC5. Current hosted release/open-issue/PR state was not rechecked. **Stable 1.0 is not declared complete.**
-- Branch protection was reported disabled at the October 13 hosted checkpoint. Current branch rules require external verification; repository CI files do not prove enforcement. Proposed follow-up titles below are not a current GitHub issue inventory.
+- **October 20 refresh:** local/hosted `main` is now `c50e2b4`, including MIDI/recovery work ([#128](https://github.com/ajbergh/ViiB-MediaHub/pull/128)), experimental controller presets ([#129](https://github.com/ajbergh/ViiB-MediaHub/pull/129)), and four-channel routing ([#130](https://github.com/ajbergh/ViiB-MediaHub/pull/130)). Implementation does not qualify Phase 5 hardware/accuracy gates.
+- Hosted [CI for `c50e2b4`](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39435304421) was in progress at review; the preceding [CI for `41b9d4e`](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39435237378) passed. Passing CI alone does not establish real-device, provider, musical-accuracy, or release qualification.
+- Latest hosted release: [`v1.0.0-rc7`](https://github.com/ajbergh/ViiB-MediaHub/releases/tag/v1.0.0-rc7), published October 17 America/Chicago (October 18 UTC). Local tags include RC7. **Stable 1.0 is not declared complete.**
+- GitHub reports `main` unprotected and no repository rulesets on October 20. No open PRs existed before this branch. Suggested follow-up titles below are not a live issue inventory.
 - The repository contains extensive Go and frontend tests, native build workflows, analysis determinism checks, vulnerability scans, and developer documentation. Preserve those investments.
-- **Release-pipeline baseline (from [`release.yml`](../.github/workflows/release.yml)):** the workflow builds a Windows x64 installer, macOS arm64/x64 DMGs, a Linux amd64 `.deb`/tarball, and web builds for Windows/macOS/Linux on x64 and arm64; it publishes `SHA256SUMS.txt` and marks RC tags as pre-releases. macOS bundles are **ad-hoc signed and not notarized**; Windows Authenticode signing runs **only when repository secrets exist** and otherwise continues unsigned. There is no SBOM or provenance attestation step.
-- **Test-tooling baseline:** `@playwright/test` is a dev dependency and several Playwright-driven audit scripts exist under `scripts/` (for example `djv2-audit.mjs`, `mobile-audit.mjs`), but there is no Playwright config or browser end-to-end job in CI. TypeScript `strict` currently applies to only four files, listed in `tsconfig.boundaries.json`.
+- **Release-pipeline baseline (from [`release.yml`](../.github/workflows/release.yml)):** the workflow builds a Windows x64 installer, macOS arm64/x64 DMGs, a Linux amd64 `.deb`/tarball, and web builds for Windows/macOS/Linux on x64 and arm64; it publishes `SHA256SUMS.txt` and marks RC tags as pre-releases. macOS bundles are **ad-hoc signed and not notarized**; Windows Authenticode signing runs **only when repository secrets exist** and otherwise continues unsigned. The October 20 branch adds an npm CI SBOM; release-artifact SBOMs and provenance remain open.
+- **Proposed tooling update (October 20):** a deterministic Chromium browser-only suite/config and CI job are implemented on `codex/roadmap-easy-foundations`. Strict TypeScript coverage expands from four to twelve selected files. Local checks pass; PR/merged-head acceptance remains open.
 
 **Important continuity decision:** The owner previously deferred further local DSP estimator research from the Spotify metadata branch. PR #117 is merged; deferred work belongs in a **separate future scope** (Phase 5), not retroactively in that PR or as an undisclosed 1.0 dependency. Subsequent scan lifecycle/storage fixes (#123) and local semantic matching (#124) are delivered maintenance/product work; they do not close deferred estimator accuracy gates. See [Spotify scope](SPOTIFY_BRANCH_REMAINING_WORK.md), [closeout](SPOTIFY_BRANCH_CLOSEOUT_NEXT_STEPS.md), and [deferred local analysis](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
 
@@ -64,7 +65,7 @@ Work packages use stable IDs (`P0.1` etc.) for GitHub issues, PR titles, and pro
 | **P0.2** | Versioned credential key storage | **Baseline delivered; qualification open** ([PR #119](https://github.com/ajbergh/ViiB-MediaHub/pull/119)) | `enc:v2`, Windows DPAPI, non-Windows keywrap fallback, readable legacy migration and reauthentication handling merged. Remaining: supported-host install/relocation/upgrade/restart and rollback qualification | Install/relocate/upgrade/restart tests on supported OSes; readable old secrets migrate without disclosure or silent loss; unresolvable legacy secrets report a clear reauthentication path |
 | **P0.3** | Governance and required checks | **Planned** | Protect `main` via branch ruleset; require frontend, Go test/race/vet/staticcheck, vulnerability and packaging checks; document emergency bypass | Normal PR cannot merge without passing required checks; explicit reviewed emergency process exists |
 | **P0.4** | Release signing and provenance | **Planned** | Stable-release signing policy; macOS Developer ID + notarization, Windows Authenticode, checksums and verifiable build/source provenance | Production (non-RC) release workflow fails closed when mandatory signing/verification is unavailable (today Windows signing is skipped without secrets and macOS is ad-hoc signed only); install and signature-verification smoke tests pass |
-| **P0.5** | Supply-chain and licensing review | **Planned** | Runtime/dev dependency inventory, pinned build tooling (CI currently installs `staticcheck` and `govulncheck` with `@latest`), SBOM/third-party notice review, especially bundled upstream code and Spotify-related dependencies | License obligations and security advisories are recorded; no unaccepted shipped critical/high vulnerability; reproducible dependency inputs |
+| **P0.5** | Supply-chain and licensing review | **Partial; proposed implementation** | Exact Staticcheck/govulncheck pins across workflows and npm CI CycloneDX inventory. Remaining: hosted validation, Go/release SBOMs, attribution/license review and shipped advisory acceptance | License obligations and security advisories are recorded; no unaccepted shipped critical/high vulnerability; reproducible dependency inputs |
 
 **Progress & Evidence Log (Phase 0):**
 - **2026-10-13 (`P0.1`, [PR #118](https://github.com/ajbergh/ViiB-MediaHub/pull/118), branch `codex/p0-1-loopback-api-trust-boundary`):** Implemented centralized `loopbackTrustBoundary` middleware (`IsTrustedHost`, `IsTrustedOrigin`, and `Sec-Fetch-Site: cross-site` enforcement) in [`backend/internal/server/server.go`](../backend/internal/server/server.go), removed wildcard `Access-Control-Allow-Origin: *` overrides across all five legacy SSE handlers in [`backend/internal/api/api.go`](../backend/internal/api/api.go), and added negative/positive unit and handler tests. Merged to `main`; remaining acceptance evidence is tracked in the row above.
@@ -104,7 +105,7 @@ The current [preparation baseline](SPOTIFY_PREPARATION_PERFORMANCE.md) includes 
 | **P2.1** | Representative benchmark harness | **Planned** | The 105-track offline preparation experiment and library performance changes are useful baselines; no representative 1K/10K/100K percentile/resource reporting harness is established.| CI or scheduled reports provide p50/p95/p99 where applicable, memory/CPU/disk/artifact totals, environment and reproducible inputs |
 | **P2.2** | Bounded analysis and scanning | **Partial** | Atomic analysis claims, bounded scanner TagLib execution, timeout/retry ownership, and cancellation/restart tests are delivered in #123. Workload-level decode/concurrency/resource measurements remain open.| No unbounded worker/provider storms; warm runs avoid unnecessary decodes; measured improvements do not regress accuracy or provenance |
 | **P2.3** | Cache lifecycle | **Partial** | Binary three-band storage and bounded legacy compaction are delivered in #123. Global quotas, safe eviction, disk-budget enforcement, and WAL/restoration qualification remain open.| Predictable disk limits; cache eviction cannot destroy user data or invalidate retained provenance; reference workloads stay inside approved resource budgets |
-| **P2.4** | Browser end-to-end gates | **Planned** | Playwright audit and screenshot scripts exist; deterministic critical-flow suite/configuration and a browser-E2E CI gate remain open.| Critical flows reliably pass in CI; failures retain screenshots/traces/logs without secrets |
+| **P2.4** | Browser end-to-end gates | **Partial; proposed implementation** | Two deterministic Chromium browser-only tests, config and CI job with failure screenshots/traces/report. Remaining: hosted validation, backend/import/playback/recovery/provider flows and other browser profiles.| Critical flows reliably pass in CI; failures retain screenshots/traces/logs without secrets |
 | **P2.5** | Native system qualification | **Partial** | Native builds and bounded Windows user-reported functional samples exist. Long-session/device/WebView coverage and macOS/Linux host execution remain open.| Tested platform/architecture matrix with explicit passes, failures and accepted exceptions |
 | **P2.6** | Troubleshooting evidence | **Partial** | Request IDs, job diagnostics and an opt-in bounded/redacted support archive with tests exist. End-to-end failure correlation, broader log/privacy review, and troubleshooting qualification remain open.| A user-visible failure can be traced to a sanitized diagnostic record; tokens, cookies, local-private data are excluded by default |
 
@@ -123,7 +124,7 @@ This phase should be **incremental and behavior-preserving**, not a rewrite. Lar
 | ID | Work package | Status | Current scope and deliverables | Definition of done |
 | --- | --- | --- | --- | --- |
 | **P3.1** | Domain boundaries | **Partial** | Dedicated source adapters, media-capability and semantic modules exist. Oversized Settings/API/DB/audio modules still need incremental decomposition and coupling verification.| Existing routes/storage schemas preserved or explicitly migrated; targeted regression suite green; coupling decreases without new circular dependencies |
-| **P3.2** | Stronger frontend contracts | **Partial** | Typed capability/service boundaries and library/Spotify surface performance work are delivered. Strict mode still covers four files; broader strict migration and measured code-splitting benefits remain open.| New code uses strict typing; targeted modules migrate with no `any` escape hatch proliferation; bundle/startup gain is measured |
+| **P3.2** | Stronger frontend contracts | **Partial** | Typed capability/service boundaries and library/Spotify surface performance work are delivered. Proposed strict coverage grows from four to twelve selected modules without source changes or new escape hatches; broader migration and measured code-splitting benefits remain open.| New code uses strict typing; targeted modules migrate with no `any` escape hatch proliferation; bundle/startup gain is measured |
 | **P3.3** | First-run and library workflows | **Partial** | First-launch source setup, tabbed Settings, loading/empty/retry states, Spotify surface persistence and local preparation status exist. Assisted usability and end-to-end source-repair qualification remain open.| First-run and source-repair journeys pass assisted usability review and end-to-end tests |
 | **P3.4** | Design consistency and accessibility | **Partial** | Design tokens, shared UI components, responsive layouts and DJ keyboard/focus work are delivered. A WCAG 2.2 AA test plan, findings register, and accessible-alternative qualification remain open.| Standard app flows meet approved WCAG 2.2 AA test plan; specialized DJ controls have documented accessible alternatives where feasible |
 | **P3.5** | Diagnostics and data operations UX | **Partial** | Duplicate review, diagnostics/repair, backup/staged restore and support export UI exist. Full destructive-action/recovery continuity acceptance and storage-quota UX remain open.| Destructive actions are reviewable; recovery progress and outcome are explicit; tests protect catalog continuity |
@@ -226,7 +227,7 @@ cd backend
 go test ./...
 go test -race ./... -timeout 25m
 go vet ./...
-go install honnef.co/go/tools/cmd/staticcheck@latest   # if not installed
+go install honnef.co/go/tools/cmd/staticcheck@v0.8.1   # match CI
 staticcheck ./...
 ```
 
@@ -241,6 +242,16 @@ CI additionally runs `npm audit --omit=dev --audit-level=high`, binary `govulnch
 - Rebaseline this document after releases or major integration changes; distinguish **verified on main** from **proposed** or **host-untested**.
 - Avoid publishing credentials, local-library paths, proprietary media, account identifiers or uncensored diagnostic artifacts in GitHub.
 
+### October 20 implementation and deferrals
+
+Branch: `codex/roadmap-easy-foundations` (proposed; not merged or Qualified). These are bounded implementation slices; work packages retain their remaining acceptance scope.
+
+- **P0.5:** pin Staticcheck `v0.8.1` and govulncheck `v1.6.0` in all six workflow installs. `npm sbom --package-lock-only --sbom-format cyclonedx` generated a valid CycloneDX 1.5 inventory of **287 npm components** locally; CI retains it for 14 days. Go/native inventories, licenses and security acceptance remain open.
+- **P2.4:** `npm run test:e2e` passed **2/2 Chromium tests**: fresh IndexedDB empty library to Add Music to Settings; legacy DJ redirect to workstation and reload with backend unavailable. Tests intercept all API/external requests, use no private data/accounts, and exercise the production preview. CI consumes the frontend artifact and retains synthetic failure evidence for seven days. Audio output, import, providers, native WebViews and recovery integrity remain unqualified. See [developer instructions](development.md#browser-smoke-gate).
+- **P3.2:** strict include list grows **4 to 12** modules, adding capabilities, imported catalog, jobs, recovery API, backend conversion, three-band data and DJ output services/hooks. No runtime changes or typing suppressions. `npm run check` passed palette/raw-color checks, TypeScript, **148 files / 725 Vitest tests**, and production build. Existing large-chunk warnings remain; no bundle/startup gain is claimed.
+- **Deferred for complexity:** P2.1 representative 1K/10K/100K benchmark design, P2.3 cache quota/eviction policy, P3.1 major decomposition and Phase 5 research need dedicated scopes and evidence. P0.1/P0.2 and P1 target-host qualification remain open.
+- **Human/external follow-up:** review/enable main protection and emergency bypass policy (P0.3); signing/notarization credentials and signed-installer tests (P0.4); attribution/licensing acceptance (P0.5); authenticated providers, native hosts, assistive-technology review and stable-release signoff (P4). No release qualification is claimed.
+
 ### Baseline evidence and implementation references
 
 - [Documentation index](index.md)
@@ -254,4 +265,4 @@ CI additionally runs `npm audit --omit=dev --audit-level=high`, binary `govulnch
 
 ---
 
-*Last updated: 2026-10-15 against local main `08322ba`. This file establishes work priorities and acceptance criteria; it does not certify unfinished functionality or authorize merging, releasing, changing credentials, or expanding DJ research scope without the corresponding review.*
+*Last updated: 2026-10-20 against local/hosted main `c50e2b4` plus proposed `codex/roadmap-easy-foundations` changes. This file establishes work priorities and acceptance criteria; it does not certify unfinished functionality or authorize merging, releasing, changing credentials, or expanding DJ research scope without the corresponding review.*

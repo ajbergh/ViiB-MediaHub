@@ -228,3 +228,25 @@ The Plex implementation is covered with fake/`httptest` PMS behavior and does no
 
 ---
 
+## Browser smoke gate
+
+After `npm ci` and `npm run build`, install the locked Chromium revision with
+`npx playwright install chromium` (Linux CI uses `--with-deps`), then run
+`npm run test:e2e`. Playwright starts a production preview at `127.0.0.1:4173`.
+Keep this port free; CI always starts its own preview server.
+
+The initial suite exercises browser-only empty-library navigation and the legacy
+DJ redirect/reload using fresh IndexedDB contexts and locally intercepted API
+failures. External requests are blocked. No backend, accounts, credentials or
+real music are needed. This does not qualify playback, native WebViews, import,
+source repair or provider sessions. Add fixture-backed journeys incrementally.
+
+CI uses the frontend production artifact. Failures retain screenshots, traces
+and an HTML report under `output/playwright/` for seven days. Use only synthetic
+fixtures: traces can include network bodies and browser storage. View a report
+with `npx playwright show-report output/playwright/report`.
+
+CI publishes an npm CycloneDX SBOM from `package-lock.json` for 14 days.
+Staticcheck `v0.8.1` and govulncheck `v1.6.0` are pinned across workflows;
+update all install sites together after compatibility validation. The npm SBOM
+is a dependency inventory, not a Go/native SBOM or license approval.

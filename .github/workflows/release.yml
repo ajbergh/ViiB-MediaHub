@@ -95,7 +95,7 @@ jobs:
           go test ./...
           go test -race ./... -timeout 25m
           go vet ./...
-          go install honnef.co/go/tools/cmd/staticcheck@latest
+          go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
           staticcheck ./...
 
       - name: Upload validated frontend bundle
@@ -378,7 +378,7 @@ jobs:
 
       - name: Install govulncheck
         shell: pwsh
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
 
       - name: Scan packaged Windows binary
         shell: pwsh

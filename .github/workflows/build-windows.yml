@@ -109,7 +109,7 @@ jobs:
           Write-Host "✅ Build successful: $exePath ($([math]::Round($size, 2)) MB)"
 
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
 
       - name: Scan release binary for reachable vulnerabilities
         shell: pwsh

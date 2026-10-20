@@ -12,6 +12,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "check": "npm run check:palette && npm run check:raw-colors && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
