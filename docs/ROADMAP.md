@@ -312,7 +312,7 @@ on supported hosts remain open; no atomic/crash-complete publication is claimed.
 
 ### P3.5 maintenance-action disclosure follow-up (October 20)
 
-Branch `codex/p3-5-recovery-action-disclosures`, based on PR #135, explains that
+[PR #136](https://github.com/ajbergh/ViiB-MediaHub/pull/136), branch `codex/p3-5-recovery-action-disclosures`, based on PR #135, explains that
 removing missing catalog tracks also removes likes and playlist entries, and
 that restore activation replaces current catalog/playlists/likes/history/settings
 with the backup contents. Prompts recommend a current backup and clarify that
