@@ -42,6 +42,89 @@ describe('MixTrack connection SysEx', () => {
     vi.restoreAllMocks();
   });
 
+  it.each([
+    ['Numark DJ2Go MIDI 1', 0x90, 0x3B, 0x90, 0x42],
+    ['CMD MICRO', 0x90, 0x17, 0x90, 0x27],
+    ['Hercules DJControl Compact', 0x90, 0x21, 0x90, 0x51],
+    ['DDJ-400', 0x90, 0x0B, 0x91, 0x0B],
+  ] as const)('routes %s transport without opening or writing its output', async (name, statusA, noteA, statusB, noteB) => {
+    const { input, output, emit } = fixture();
+    Object.assign(input, { name }); Object.assign(output, { name });
+    midi.setFeedbackProvider(() => [[0x90, 0, 127]]);
+    await midi.init();
+    const handler = vi.fn(); midi.setActionHandler(handler);
+    const send = (status: number, note: number, value: number) => input.onmidimessage?.({ data: new Uint8Array([status, note, value]) } as MIDIMessageEvent);
+    send(statusA, noteA, 127); send(statusA, noteA, 0);
+    send(statusB, noteB, 127); send(statusB, noteB, 0);
+    expect(handler.mock.calls.map(call => call[0])).toEqual(['deckA.play', 'deckB.play']);
+    midi.addMapping({ id: 'my-override', deviceId: input.id, type: 'noteon', channel: statusA & 15,
+      note: noteA, action: 'deckB.cue', valueMode: 'momentary' });
+    handler.mockClear(); send(statusA, noteA, 127); send(statusA, noteA, 0);
+    expect(handler.mock.calls.map(call => [call[0], call[2]])).toEqual([['deckB.cue', 'press'], ['deckB.cue', 'release']]);
+    midi.sendPadModeFeedback(input.id, 'A', 1); midi.refreshFeedback();
+    emit(output, 'disconnected'); emit(output, 'connected');
+    await Promise.resolve();
+    expect(output.open).not.toHaveBeenCalled(); expect(output.send).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['CMD MICRO', 0xB0, 0x11], ['DDJ-400', 0xB0, 0x22],
+  ] as const)('decodes offset-binary jog values for %s', async (name, status, note) => {
+    const { input } = fixture(); Object.assign(input, { name }); await midi.init();
+    const handler = vi.fn(); midi.setActionHandler(handler);
+    for (const raw of [63, 64, 65]) input.onmidimessage?.({ data: new Uint8Array([status, note, raw]) } as MIDIMessageEvent);
+    expect(handler.mock.calls.map(call => [call[0], call[1]])).toEqual([
+      ['deckA.jogWheel', -1 / 63], ['deckA.jogWheel', 0], ['deckA.jogWheel', 1 / 63],
+    ]);
+  });
+
+  it('combines DDJ-400 CC pairs and applies its tempo fader direction', async () => {
+    const { input } = fixture(); Object.assign(input, { name: 'DDJ-400' }); await midi.init();
+    const handler = vi.fn(); midi.setActionHandler(handler);
+    const send = (channel: number, note: number, value: number) => input.onmidimessage?.({ data: new Uint8Array([0xB0 + channel, note, value]) } as MIDIMessageEvent);
+    send(0, 0x20, 127);
+    expect(handler).not.toHaveBeenCalled();
+    send(0, 0, 127);
+    expect(handler).toHaveBeenLastCalledWith('deckA.tempo', 0, 'value', expect.objectContaining({ tempoRange: 0.06, ccLSB: 0x20 }));
+    send(0, 0x13, 64); send(0, 0x33, 3);
+    expect(handler).toHaveBeenLastCalledWith('deckA.volume', 8195 / 16383, 'value', expect.anything());
+    send(6, 0x1F, 127); send(6, 0x3F, 127);
+    expect(handler).toHaveBeenLastCalledWith('crossfader', 1, 'value', expect.anything());
+  });
+
+  it('keeps simultaneous controller profiles and disabled defaults isolated by device', async () => {
+    const storage = new Map<string, string>();
+    vi.stubGlobal('localStorage', { getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value) });
+    const { input, access } = fixture(); Object.assign(input, { name: 'Numark DJ2Go MIDI 1' });
+    const second = { ...input, id: 'ddj-input', name: 'DDJ-400' } as MIDIInput;
+    (access.inputs as Map<string, MIDIInput>).set(second.id, second);
+    await midi.init();
+    const handler = vi.fn(); midi.setActionHandler(handler);
+    input.onmidimessage?.({ data: new Uint8Array([0x90, 0x3B, 127]) } as MIDIMessageEvent);
+    input.onmidimessage?.({ data: new Uint8Array([0x80, 0x3B, 0]) } as MIDIMessageEvent);
+    second.onmidimessage?.({ data: new Uint8Array([0x90, 0x0B, 127]) } as MIDIMessageEvent);
+    second.onmidimessage?.({ data: new Uint8Array([0x80, 0x0B, 0]) } as MIDIMessageEvent);
+    expect(handler.mock.calls.map(call => call[3].deviceId)).toEqual([input.id, second.id]);
+    const preset = midi.getMappings().find(mapping => mapping.deviceId === input.id && mapping.action === 'deckA.play')!;
+    midi.removeMapping(preset.id); midi.saveMappings(); midi.loadMappings();
+    expect(midi.getMappings().some(mapping => mapping.id === preset.id)).toBe(false);
+    expect(midi.getMappings().some(mapping => mapping.deviceId === second.id && mapping.action === 'deckA.play')).toBe(true);
+    midi.restoreDefaultMappings();
+    expect(midi.getMappings().some(mapping => mapping.id === preset.id)).toBe(true);
+  });
+
+  it('routes firmware pad-bank notes independently of MixTrack software modes', async () => {
+    const { input } = fixture(); Object.assign(input, { name: 'DDJ-400' }); await midi.init();
+    const handler = vi.fn(); midi.setActionHandler(handler);
+    for (const note of [0, 0x30, 0x64]) {
+      input.onmidimessage?.({ data: new Uint8Array([0x97, note, 127]) } as MIDIMessageEvent);
+      input.onmidimessage?.({ data: new Uint8Array([0x87, note, 0]) } as MIDIMessageEvent);
+    }
+    expect(handler.mock.calls.filter(call => call[2] === 'press').map(call => call[0])).toEqual(['deckA.hotCue1', 'sampler.pad1', 'deckA.loopToggle']);
+    expect(handler).toHaveBeenCalledWith('deckA.loopToggle', 1, 'press', expect.objectContaining({ loopBeats: 4 }));
+  });
+
   it('routes repeated Browse pushes and Load 1/2 to the correct library actions', async () => {
     const { input } = fixture();
     await midi.init();
@@ -306,9 +389,9 @@ describe('MixTrack connection SysEx', () => {
     input.onmidimessage?.({ data: new Uint8Array([0xB0, 0x29, 127]) } as MIDIMessageEvent);
     expect(handler).not.toHaveBeenCalled();
     input.onmidimessage?.({ data: new Uint8Array([0xB0, 0x09, 64]) } as MIDIMessageEvent);
-    expect(handler).toHaveBeenLastCalledWith('deckA.tempo', (64 * 128 + 127) / 16383, 'value', expect.anything());
+    expect(handler).toHaveBeenLastCalledWith('deckA.tempo', 1 - (64 * 128 + 127) / 16383, 'value', expect.anything());
     input.onmidimessage?.({ data: new Uint8Array([0xB0, 0x29, 0]) } as MIDIMessageEvent);
-    expect(handler).toHaveBeenLastCalledWith('deckA.tempo', 8192 / 16383, 'value', expect.anything());
+    expect(handler).toHaveBeenLastCalledWith('deckA.tempo', 1 - 8192 / 16383, 'value', expect.anything());
   });
 
   it('persists custom bank overrides and disabled defaults, with a preset restore path', async () => {

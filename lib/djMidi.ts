@@ -20,7 +20,8 @@
 import type { DeckId } from '../slices/djMixerSlice';
 import type { PadMode } from './djPadModes';
 import type { MidiLEDMessage } from './djMidiFeedback';
-import { isMixtrackGo, mixtrackGoMappings } from './mixtrackGoProfile';
+import { isMixtrackGo } from './mixtrackGoProfile';
+import { controllerProfileForName } from './djControllerProfiles';
 
 export type MidiMessageType = 'noteon' | 'noteoff' | 'cc' | 'pitchbend';
 
@@ -95,6 +96,10 @@ export interface MidiMapping {
   deck?: DeckId;          // Source deck for a mode-specific mapping
   padMode?: PadMode;      // Omitted for controls available in every mode
   ccLSB?: number;         // Optional paired-CC low byte for 14-bit absolute values
+  relativeEncoding?: 'offset-binary'; // Omitted: signed two's-complement MIDI encoder
+  invert?: boolean;      // Reverse an absolute fader/knob direction
+  tempoRange?: number;   // Built-in tempo range as a fraction (0.06 = ±6%)
+  loopBeats?: number;    // Dedicated beat-loop button, independent of pad mode
   builtIn?: boolean;      // Generated preset; user overrides are stored separately
 }
 
@@ -128,7 +133,7 @@ class DJMidiService {
   private learnAction: MidiAction | undefined;
   private enabled = false;
   private listeners: Set<() => void> = new Set();
-  private outputConnections = new Map<MIDIOutput, { input: MIDIInput; ready: Promise<void> }>();
+  private outputConnections = new Map<MIDIOutput, { input: MIDIInput; protocol: 'mixtrack-go'; ready: Promise<void> }>();
   private initializing: Promise<boolean> | null = null;
   private generation = 0;
   private padModeProvider: ((deck: DeckId) => PadMode) | null = null;
@@ -276,7 +281,8 @@ class DJMidiService {
     const outputs = Array.from(access.outputs.values()).filter(output => output.state === 'connected');
     for (const output of outputs) {
       const name = midiPortName(output.name);
-      if (output.state !== 'connected' || !name.includes('mixtrackgo') || this.outputConnections.has(output)) continue;
+      const profile = controllerProfileForName(output.name || '');
+      if (output.state !== 'connected' || profile?.outputProtocol !== 'mixtrack-go' || this.outputConnections.has(output)) continue;
       // Port IDs are direction-specific. Require one matching name/manufacturer,
       // never choose an arbitrary output or broadcast to unrelated hardware.
       const matches = inputs.filter(input => midiPortName(input.name) === name
@@ -286,7 +292,8 @@ class DJMidiService {
       if (outputs.filter(candidate => midiPortName(candidate.name) === name
         && candidate.manufacturer === output.manufacturer).length !== 1) continue;
 
-      const connection = { input: matches[0], ready: Promise.resolve() };
+      if (controllerProfileForName(matches[0].name || '')?.id !== profile.id) continue;
+      const connection = { input: matches[0], protocol: 'mixtrack-go' as const, ready: Promise.resolve() };
       this.outputConnections.set(output, connection);
       connection.ready = (async () => {
         try {
@@ -440,13 +447,15 @@ class DJMidiService {
           value = mapping.ccLSB === undefined ? msg.velocity / 127
             : (((this.ccValues.get(`${msg.deviceId}:${msg.channel}:${mapping.note}`) ?? 0) << 7)
               | (this.ccValues.get(`${msg.deviceId}:${msg.channel}:${mapping.ccLSB}`) ?? 0)) / 16383;
+          if (mapping.invert) value = 1 - value;
           break;
           
         case 'relative': {
           triggerType = 'value';
           // Relative encoding: 1-63 = positive, 65-127 = negative
           const raw = msg.velocity;
-          value = raw < 64 ? raw / 63 : -(128 - raw) / 63;
+          value = mapping.relativeEncoding === 'offset-binary' ? (raw - 64) / 63
+            : raw < 64 ? raw / 63 : -(128 - raw) / 63;
           break;
         }
       }
@@ -506,6 +515,7 @@ class DJMidiService {
   }
 
   private writePadModeLEDs(output: MIDIOutput, deck: DeckId): void {
+    if (this.outputConnections.get(output)?.protocol !== 'mixtrack-go') return;
     // Protocol reference: josefveiga/Numark-Mixtrack-Go-mapping-for-Mixxx,
     // Numark-Mixtrack-Go.scripts.js, led.mode_* and bright/off values.
     // Deck A/B: channel 5/6; notes 01/02/03/04: cue/loops/sampler/stems.
@@ -553,7 +563,7 @@ class DJMidiService {
   }
 
   private writeControlLEDs(output: MIDIOutput): void {
-    if (!this.feedbackProvider) return;
+    if (!this.feedbackProvider || this.outputConnections.get(output)?.protocol !== 'mixtrack-go') return;
     const cache = this.feedbackLastSent.get(output) ?? new Map<string, number>();
     this.feedbackLastSent.set(output, cache);
     try {
@@ -604,7 +614,7 @@ class DJMidiService {
   }
 
   private getDefaultMappings(): MidiMapping[] {
-    return this.getDevices().filter(device => device.connected && isMixtrackGo(device.name)).flatMap(device => mixtrackGoMappings(device.id));
+    return this.getDevices().filter(device => device.connected).flatMap(device => controllerProfileForName(device.name)?.mappings(device.id) ?? []);
   }
 
   getPadMode(deck: DeckId): PadMode {
