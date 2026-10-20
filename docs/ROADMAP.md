@@ -327,7 +327,7 @@ remains open.
 
 ### P0.3 governance proposal (October 20)
 
-Branch `codex/p0-3-main-governance`, based on PR #136, adds a
+[PR #137](https://github.com/ajbergh/ViiB-MediaHub/pull/137), branch `codex/p0-3-main-governance`, based on PR #136, adds a
 [main-only ruleset and governance runbook](repository-governance.md). The proposed
 policy requires PRs, current branches, resolved review threads and all **16
 always-on CI contexts**, bound to the observed GitHub Actions app (15368). It
