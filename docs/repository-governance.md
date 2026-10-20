@@ -37,7 +37,22 @@ Release workflow contexts are conditional on version/workflow changes and are
 not unconditional branch requirements. Release qualification still requires
 that workflow and the roadmap's signing, installer and real-host evidence.
 
-## Existing PR stack
+## Consolidated integration route
+
+The main-targeted `codex/roadmap-easy-pass-rollup` branch includes all source
+heads from PRs #131–#152. Review the combined diff and wait for all 16 required
+checks plus conditional release validation. Keep it current with main and use
+the normal protected PR process. After integration, inspect merged-head CI and
+qualification evidence; source PRs can then be closed as superseded without
+merging duplicate changes. See the [dated audit](ROADMAP_EASY_PASS_2026-10-20.md)
+for exact scope and deferrals. Do not use emergency bypass for ordinary CI delay.
+
+## Original PR stack (alternative)
+
+The consolidated route is the primary review path. If integrating source PRs
+individually, first account for PR #139's historical preflight failure: its queued
+scan fixture repair is in #141, so that repair must accompany earlier integration
+before the failing preflight can pass.
 
 The roadmap PRs are stacked. Merge an ancestor first, retarget its next child to
 main, bring that child current and wait for fresh required checks. Merge commits
