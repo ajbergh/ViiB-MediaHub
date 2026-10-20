@@ -17,13 +17,13 @@ export async function parseBrowserSongMetadata(file: File, path: string, relevan
     let title = fileName;
     let artist = "Unknown Artist";
     let album = "Unknown Album";
-    let albumArtist;
-    let trackNumber;
-    let discNumber;
-    let genre;
-    let year;
+    let albumArtist: string | undefined;
+    let trackNumber: number | undefined;
+    let discNumber: number | undefined;
+    let genre: string[] | undefined;
+    let year: number | undefined;
     let duration = 0;
-    let coverData; // Return Blob, NOT URL
+    let coverData: Blob | undefined; // Return Blob, NOT URL
 
     const applyPathFallbacks = () => {
         if (path) {

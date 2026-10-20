@@ -19,8 +19,10 @@ describe('browser audio metadata fixtures', () => {
     expect(result.genre).toContain('Electronic');
     expect(result.duration).toBeGreaterThan(0.9);
     expect(result.duration).toBeLessThan(1.2);
-    expect(result.coverData?.type).toBe('image/png');
-    const artwork = new Uint8Array(await result.coverData.arrayBuffer());
+    const cover = result.coverData;
+    if (!cover) throw new Error('Expected embedded fixture artwork');
+    expect(cover.type).toBe('image/png');
+    const artwork = new Uint8Array(await cover.arrayBuffer());
     expect([...artwork.slice(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
   });
 

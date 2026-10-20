@@ -22,6 +22,16 @@
     "lib/djLibraryLUFS.ts",
     "lib/djLibraryTruePeak.ts",
     "lib/beatGridConfidence.ts",
-    "lib/hotCueEditor.ts"
-  ]
+    "lib/hotCueEditor.ts",
+    "lib/browserMetadata.ts",
+    "vite-env.d.ts",
+    "pages/AlbumDetail.tsx",
+    "pages/Albums.tsx",
+    "pages/Artists.tsx",
+    "pages/LikedAlbums.tsx",
+    "pages/Songs.tsx",
+    "pages/SpotifyArtistDetail.tsx",
+    "slices/librarySlice.ts"
+  ],
+  "compileOnSave": false
 }

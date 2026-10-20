@@ -124,7 +124,7 @@ This phase should be **incremental and behavior-preserving**, not a rewrite. Lar
 | ID | Work package | Status | Current scope and deliverables | Definition of done |
 | --- | --- | --- | --- | --- |
 | **P3.1** | Domain boundaries | **Partial** | Dedicated source adapters, media-capability and semantic modules exist. Oversized Settings/API/DB/audio modules still need incremental decomposition and coupling verification.| Existing routes/storage schemas preserved or explicitly migrated; targeted regression suite green; coupling decreases without new circular dependencies |
-| **P3.2** | Stronger frontend contracts | **Partial** | Typed capability/service boundaries and library/Spotify surface performance work are delivered. Proposed strict entry coverage grows from four to eighteen roots; display-helper and reviewed-grid/cue follow-ups expand the measured local import closure from 19 to 27 files, including the mixer slice. No source changes or new escape hatches. Broader migration and measured code-splitting benefits remain open.| New code uses strict typing; targeted modules migrate with no `any` escape hatch proliferation; bundle/startup gain is measured |
+| **P3.2** | Stronger frontend contracts | **Partial** | Typed capability/service boundaries and library/Spotify surface performance work are delivered. Proposed strict coverage now has 27 entry paths (26 production TS/TSX plus the existing ambient declaration root) and a measured 76-file local closure, including two declaration files. Concrete nullable/metadata fixes add no suppressions or any types. Broader migration and measured code-splitting benefits remain open.| New code uses strict typing; targeted modules migrate with no `any` escape hatch proliferation; bundle/startup gain is measured |
 | **P3.3** | First-run and library workflows | **Partial** | First-launch source setup, tabbed Settings, loading/empty/retry states, Spotify surface persistence and local preparation status exist. Proposed browser-only source-settings and playlist persistence E2E coverage is in #131. Assisted usability and end-to-end source-repair qualification remain open.| First-run and source-repair journeys pass assisted usability review and end-to-end tests |
 | **P3.4** | Design consistency and accessibility | **Partial** | Design tokens, shared UI components, responsive layouts and DJ keyboard/focus work are delivered. Proposed playlist-name accessible labeling is in #131; the modal follow-up adds named Direct Download controls and keyboard/focus-safe confirmations. A draft [WCAG 2.2 AA plan and findings register](ACCESSIBILITY_QUALIFICATION.md) now covers standard workflows and candidate DJ alternatives. Plan approval, full criterion ledger, host execution and accessible-alternative qualification remain open.| Standard app flows meet approved WCAG 2.2 AA test plan; specialized DJ controls have documented accessible alternatives where feasible |
 | **P3.5** | Diagnostics and data operations UX | **Partial** | Duplicate review, diagnostics/repair, backup/staged restore and support export UI exist. Proposed modal focus/cancellation, synthetic playlist deletion-cancel coverage and explicit repair/restore consequence disclosures improve destructive-action review. Full recovery continuity acceptance and storage-quota UX remain open.| Destructive actions are reviewable; recovery progress and outcome are explicit; tests protect catalog continuity |
@@ -558,7 +558,8 @@ publication/activation qualification. Those gates remain open.
 
 ### P2.6 fail-closed support diagnostic projection (October 20)
 
-The proposed [schema-2 support archive](support-bundles.md) replaces regex-only
+[PR #148](https://github.com/ajbergh/ViiB-MediaHub/pull/148) proposes the
+[schema-2 support archive](support-bundles.md) replaces regex-only
 log sanitization with new JSONL objects from allowlisted audio-read, catalog and
 analysis lifecycle grammars. Unknown/free-form data never passes through. Raw
 HTTP request IDs are excluded (existing IDs may contain hostnames or arbitrary
@@ -584,9 +585,34 @@ and end-to-end failure correlation are not claimed.
 Hosted checkpoint: PR #143 (`cda08d4`) and #144 (`3936307`) each have **16
 successful checks**. PR #146's macOS analysis job `118808250710` never acquired
 a hosted runner; GitHub annotations report capacity constraints, with no test
-execution. The CLI rejected a targeted rerun (`job cannot be rerun`); retry
-remains follow-up once the workflow permits it. Other pending checks remain pending;
+execution. The initial targeted rerun was rejected while the workflow was
+active. Once it completed, a failed-job rerun was accepted: run `39474912703`,
+attempt **2**, is queued. Other pending checks remain pending;
 this is not a code-regression failure or all-green claim.
+
+### P3.2 application-surface strict contracts (October 20)
+
+The non-DJ application follow-up normalizes absent scroll parents to the
+virtualized-list optional contract across five library pages, expresses the
+existing non-null Spotify release filter as a predicate, captures a known Plex
+image value before a store callback, and gives browser metadata locals concrete
+optional types. Existing metadata fixture checks now narrow artwork before
+reading its bytes. No casts, suppressions or new `any` declarations are added.
+
+[Compiler evidence](evidence/application-surface-strict-2026-10-20.json) records
+**18 → 27 entry paths / 27 → 76 local closure files**. Entries include the
+existing `vite-env.d.ts` ambient root; closure includes two declaration files,
+so 76 does not mean 76 newly migrated implementation files. The gate also reaches
+the application store, player/library/Spotify/UI slices and shared components.
+Whole-frontend TS-only strict diagnostics fall **46 → 26** (19 production
+issues plus the fixture null check removed). Global strict mode remains off;
+DJ/WebGL, test callbacks, worklet/config declarations and generated-JS scope
+remain follow-ups. No bundle/startup benefit or DSP accuracy change is claimed.
+
+Validation: full `npm run check` passed **153 files / 739 tests**, style/type
+gates and production build; **5/5 Chromium journeys passed** against that build.
+Documentation/JSON and whitespace checks passed; hosted checks pending. PR #145
+(`1b1f965`) now has **16 successful hosted checks**.
 
 ### Baseline evidence and implementation references
 

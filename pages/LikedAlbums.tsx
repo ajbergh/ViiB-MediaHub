@@ -185,7 +185,7 @@ export const LikedAlbums: React.FC = () => {
             <div style={{ '--card-cols': cardCols } as React.CSSProperties}>
               <VirtuosoGrid
                 useWindowScroll={false}
-                customScrollParent={scrollParent}
+                customScrollParent={scrollParent ?? undefined}
                 data={sortedLikedAlbums}
                 components={{ List: ListContainer, Item: ItemContainer }}
                 itemContent={(index, album) => {
