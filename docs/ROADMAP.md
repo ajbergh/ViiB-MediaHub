@@ -65,7 +65,7 @@ Work packages use stable IDs (`P0.1` etc.) for GitHub issues, PR titles, and pro
 | **P0.2** | Versioned credential key storage | **Baseline delivered; qualification open** ([PR #119](https://github.com/ajbergh/ViiB-MediaHub/pull/119)) | `enc:v2`, Windows DPAPI, non-Windows keywrap fallback, readable legacy migration and reauthentication handling merged. Remaining: supported-host install/relocation/upgrade/restart and rollback qualification | Install/relocate/upgrade/restart tests on supported OSes; readable old secrets migrate without disclosure or silent loss; unresolvable legacy secrets report a clear reauthentication path |
 | **P0.3** | Governance and required checks | **Partial; activation awaits owner approval** | [Versioned main-only ruleset and emergency process](repository-governance.md) prepared for 16 observed GitHub Actions checks. Hosted main remains unprotected; activation and effective-policy verification require explicit owner approval | Normal PR cannot merge without passing required checks; explicit reviewed emergency process exists |
 | **P0.4** | Release signing and provenance | **Partial; proposed stable-release guard** | [Shared prerelease-only guard and signing policy](release-signing-policy.md) block unqualified stable canonical/legacy Windows releases. Credentials, mandatory production signing/notarization/verification, real-host acceptance and provenance remain open | Production (non-RC) release workflow fails closed when mandatory signing/verification is unavailable (today Windows signing is skipped without secrets and macOS is ad-hoc signed only); install and signature-verification smoke tests pass |
-| **P0.5** | Supply-chain and licensing review | **Partial; proposed implementation** | Exact Staticcheck/govulncheck pins, npm CI CycloneDX inventory and proposed required/checksummed npm SBOM plus Go graph release assets. Remaining: hosted release-path validation, per-target/native SBOMs, attribution/license review and shipped advisory acceptance | License obligations and security advisories are recorded; no unaccepted shipped critical/high vulnerability; reproducible dependency inputs |
+| **P0.5** | Supply-chain and licensing review | **Partial; proposed implementation** | Exact Staticcheck/govulncheck pins, npm CI CycloneDX inventory and proposed required/checksummed npm SBOM plus Go graph release assets. Remaining: published-asset verification, per-target/native SBOMs, attribution/license review and shipped advisory acceptance | License obligations and security advisories are recorded; no unaccepted shipped critical/high vulnerability; reproducible dependency inputs |
 
 **Progress & Evidence Log (Phase 0):**
 - **2026-10-13 (`P0.1`, [PR #118](https://github.com/ajbergh/ViiB-MediaHub/pull/118), branch `codex/p0-1-loopback-api-trust-boundary`):** Implemented centralized `loopbackTrustBoundary` middleware (`IsTrustedHost`, `IsTrustedOrigin`, and `Sec-Fetch-Site: cross-site` enforcement) in [`backend/internal/server/server.go`](../backend/internal/server/server.go), removed wildcard `Access-Control-Allow-Origin: *` overrides across all five legacy SSE handlers in [`backend/internal/api/api.go`](../backend/internal/api/api.go), and added negative/positive unit and handler tests. Merged to `main`; remaining acceptance evidence is tracked in the row above.
@@ -244,7 +244,7 @@ CI additionally runs `npm audit --omit=dev --audit-level=high`, binary `govulnch
 
 ### October 20 implementation and deferrals
 
-[PR #131](https://github.com/ajbergh/ViiB-MediaHub/pull/131), branch `codex/roadmap-easy-foundations` (proposed; not merged or Qualified). These are bounded implementation slices; work packages retain their remaining acceptance scope. [PR CI](https://github.com/ajbergh/ViiB-MediaHub/pull/131/checks): **All 28 checks passed** on `ffb79ea`, including backend, browser, native builds and RC packaging. This is PR-head evidence, not merged-head or real-device qualification. Merged-head qualification remains open.
+[PR #131](https://github.com/ajbergh/ViiB-MediaHub/pull/131), branch `codex/roadmap-easy-foundations` (proposed; not merged or Qualified). These are bounded implementation slices; work packages retain their remaining acceptance scope. [PR CI](https://github.com/ajbergh/ViiB-MediaHub/pull/131/checks): **27 validation checks passed** on `ffb79ea`, including backend, browser, native builds and RC packaging; release publication was intentionally skipped on the PR. This is PR-head evidence, not merged-head or real-device qualification. Merged-head qualification remains open.
 
 - **P0.5:** pin Staticcheck `v0.8.1` and govulncheck `v1.6.0` in all six workflow installs. `npm sbom --package-lock-only --sbom-format cyclonedx` generated a valid CycloneDX 1.5 inventory of **287 npm components** locally; CI retains it for 14 days. Go/native inventories, licenses and security acceptance remain open.
 - **P2.4:** `npm run test:e2e` passed **3/3 Chromium tests**: fresh IndexedDB empty library to Add Music to Settings; legacy DJ redirect to workstation and reload; and create an IndexedDB playlist, reload, then open its detail with backend unavailable. Tests intercept all API/external requests, use no private data/accounts, and exercise the production preview. CI consumes the frontend artifact and retains synthetic failure evidence for seven days. Audio output, import, providers, native WebViews and recovery integrity remain unqualified. See [developer instructions](development.md#browser-smoke-gate).
@@ -345,7 +345,7 @@ no emergency merge/bypass or release has been performed.
 
 ### P0.4 stable release boundary follow-up (October 20)
 
-Branch `codex/p0-4-stable-release-guard`, based on PR #137, adds a dependency-free
+[PR #138](https://github.com/ajbergh/ViiB-MediaHub/pull/138), branch `codex/p0-4-stable-release-guard`, based on PR #137, adds a dependency-free
 [shared channel guard and signing policy](release-signing-policy.md). Canonical
 release preflight/publication and the independent Windows tag/archive path reject
 stable or malformed versions until production signing is qualified. Current RC7
@@ -360,6 +360,17 @@ explicitly propagate native-command failures. All three workflow YAML files pars
 links and whitespace checks passed. No artifacts were built or released by
 these experiments; signing/notarization, credentials and host qualification
 remain external/complex follow-up. This is not a stable-signing implementation.
+
+### Hosted PR checkpoint after the P0 proposals (October 20)
+
+- PR #133 (`00260f3`): **27 successful validation/packaging checks**; release
+  publication intentionally skipped. The actual release-inventory artifact was
+  already verified above. This is not published-release qualification.
+- PR #134 (`04dfbec`) and PR #135 (`7fa7118`): **16 successful checks each**,
+  including backend and native builds. Neither is merged or fully qualified.
+- PR #136–#138: latest checks still running at this checkpoint; no failures
+  reported. Main remains at `c50e2b4` and unprotected. Governance activation
+  awaits the owner's explicit answer to the prepared PR #137 proposal.
 
 ### Baseline evidence and implementation references
 
