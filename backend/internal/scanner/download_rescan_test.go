@@ -131,6 +131,38 @@ func TestNotifyDownloadCompleteDisabledAtZero(t *testing.T) {
 	}
 }
 
+func TestCloseDrainsAutomaticScanAndRejectsNewWork(t *testing.T) {
+	sc, _, tempDir := newDownloadRescanTestScanner(t)
+	sc.SetSpotifyDownloadDir(filepath.Join(tempDir, "downloads"))
+	sc.SetRescanThreshold(1)
+	// Keep the worker waiting for scan ownership until shutdown cancels it.
+	if !sc.TryBeginScan() {
+		t.Fatal("failed to reserve scanner")
+	}
+	defer sc.EndScan()
+	if !sc.NotifyDownloadComplete() {
+		t.Fatal("expected an automatic scan to be queued")
+	}
+	sc.Close()
+	sc.rescanMutex.Lock()
+	running := sc.autoScanWorkerRunning
+	sc.rescanMutex.Unlock()
+	if running {
+		t.Fatal("Close returned before the automatic scan exited")
+	}
+	if sc.NotifyDownloadComplete() {
+		t.Fatal("closed scanner accepted a new automatic scan")
+	}
+	// The queued notification still reaches this threshold, so lowering it
+	// would restart a worker unless the settings path also rejects closure.
+	sc.SetRescanThreshold(1)
+	sc.rescanMutex.Lock()
+	defer sc.rescanMutex.Unlock()
+	if sc.autoScanWorkerRunning {
+		t.Fatal("threshold change restarted a closed scanner")
+	}
+}
+
 func TestEnsureDownloadDirIsScannedDoesNotMistakeNestedRootForCoverage(t *testing.T) {
 	sc, database, tempDir := newDownloadRescanTestScanner(t)
 	downloadDir := filepath.Join(tempDir, "downloads")
