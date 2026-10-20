@@ -296,7 +296,7 @@ does not close native/screen-reader, backup/restore or source-repair qualificati
 
 ### P1.6 backup preservation follow-up (October 20)
 
-Branch `codex/p1-6-preserve-backup-archives`, based on PR #134, prevents backup
+[PR #135](https://github.com/ajbergh/ViiB-MediaHub/pull/135), branch `codex/p1-6-preserve-backup-archives`, based on PR #134, prevents backup
 creation from truncating an existing archive. Exclusive creation protects even
 concurrent requests; duplicate names return `409 backup_exists`; generated names
 include subsecond precision. Failed writes clean up only the newly created
