@@ -38,3 +38,8 @@ cross-platform recovery qualification.
   notarization and verification are qualified. RC/prerelease packaging remains
   available with existing signing limitations. Non-tag manual Windows builds
   use development artifact versions; accepted tag drafts are marked prerelease.
+
+Proposed canonical release provenance: attest the exact 13 payloads and verify
+repository/workflow/commit/ref before publication. Live attestation qualification
+and production platform signing remain pending; see
+[provenance policy](../release-provenance.md).

@@ -29,6 +29,8 @@ binaries or publish a release. Channel eligibility is enforced separately by the
 publisher identity, signature, license approval or successful installation.
 
 The canonical publish job invokes this same verifier before release creation.
+The proposed [provenance gate](release-provenance.md) consumes the manifest and
+verifies every payload identity before publication.
 CI and release preparation run its standard-library unit tests. A failed verifier
 step prevents the later wildcard upload from executing.
 

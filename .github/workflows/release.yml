@@ -13,6 +13,8 @@ on:
       - 'scripts/test_release_channel_guard.py'
       - 'scripts/verify_release_assets.py'
       - 'scripts/test_release_assets.py'
+      - 'scripts/verify_release_provenance.py'
+      - 'scripts/test_release_provenance.py'
       - '.github/workflows/build-windows.yml'
   push:
     branches: [main]
@@ -49,6 +51,9 @@ jobs:
 
       - name: Validate release asset policy
         run: python -m unittest discover -s scripts -p 'test_release_assets.py'
+
+      - name: Validate release provenance policy
+        run: python -m unittest discover -s scripts -p 'test_release_provenance.py'
 
       - name: Resolve release version
         id: version
@@ -660,6 +665,10 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: [prepare, linux, macos, windows, web]
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     env:
       GH_TOKEN: ${{ github.token }}
       VERSION: ${{ needs.prepare.outputs.version }}
@@ -686,6 +695,30 @@ jobs:
       - name: Verify assets and create checksum manifest
         run: python scripts/verify_release_assets.py --directory release-assets --version "$VERSION"
 
+      - name: Attest exact release payloads
+        id: provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: release-assets/SHA256SUMS.txt
+          create-storage-record: false
+
+      - name: Verify every payload against release workflow identity
+        env:
+          ATTESTATION_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+        run: >-
+          python scripts/verify_release_provenance.py
+          --directory release-assets --version "$VERSION"
+          --bundle "$ATTESTATION_BUNDLE" --repository "$GITHUB_REPOSITORY"
+          --source-digest "$GITHUB_SHA" --source-ref "$GITHUB_REF"
+
+      - name: Retain verified provenance bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: provenance-attestation
+          path: ${{ steps.provenance.outputs.bundle-path }}
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Write release notes
         shell: bash
         run: |
@@ -696,7 +729,10 @@ jobs:
             cat >> release-notes.md <<'EOF'
 
           ### Dependency inventories
-          npm-sbom.cdx.json and go-modules.json record npm and Go dependencies and are covered by SHA256SUMS.txt. They do not establish signing, provenance, native-library coverage or license compliance.
+          npm-sbom.cdx.json and go-modules.json record npm and Go dependencies and are covered by SHA256SUMS.txt. They do not establish production platform signing, native-library coverage or license compliance.
+
+          ### Artifact provenance
+          All 13 payloads have GitHub build-provenance attestations verified against this release workflow, source commit and ref before publication. See https://github.com/ajbergh/ViiB-MediaHub/blob/main/docs/release-provenance.md for consumer verification and limitations.
           EOF
             exit 0
           fi
@@ -715,6 +751,9 @@ jobs:
 
           SHA256SUMS.txt contains checksums for the packages and dependency inventories.
           npm-sbom.cdx.json is the lockfile-based npm CycloneDX SBOM; go-modules.json records resolved Go modules, including versioned replacements. These inventories do not cover bundled native libraries, establish license compliance, or replace signature/provenance verification.
+
+          ### Artifact provenance
+          All 13 payloads have GitHub build-provenance attestations verified against this release workflow, source commit and ref before publication. See https://github.com/ajbergh/ViiB-MediaHub/blob/main/docs/release-provenance.md for consumer verification and limitations.
 
           ### Release-candidate notes
           - macOS packages are ad-hoc signed but not Apple-notarized in this RC, so Gatekeeper may require **Open Anyway** on first launch.

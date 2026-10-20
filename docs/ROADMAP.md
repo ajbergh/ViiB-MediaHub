@@ -64,7 +64,7 @@ Work packages use stable IDs (`P0.1` etc.) for GitHub issues, PR titles, and pro
 | **P0.1** | Loopback API trust boundary | **Baseline delivered; qualification open** ([PR #118](https://github.com/ajbergh/ViiB-MediaHub/pull/118)) | Centralized Host/Origin/CORS/SSE policy and negative/positive tests merged. Remaining: threat-model review, privileged-mutation/CSRF acceptance and target-client qualification | Negative tests for attacker-controlled origins/hosts (including DNS-rebinding-style `Host` values) and mutating requests, positive tests for approved desktop/browser clients, consistent SSE response headers; threat model reviewed |
 | **P0.2** | Versioned credential key storage | **Baseline delivered; qualification open** ([PR #119](https://github.com/ajbergh/ViiB-MediaHub/pull/119)) | `enc:v2`, Windows DPAPI, non-Windows keywrap fallback, readable legacy migration and reauthentication handling merged. Remaining: supported-host install/relocation/upgrade/restart and rollback qualification | Install/relocate/upgrade/restart tests on supported OSes; readable old secrets migrate without disclosure or silent loss; unresolvable legacy secrets report a clear reauthentication path |
 | **P0.3** | Governance and required checks | **Active; merged-head qualification open** | [Main-only ruleset and emergency process](repository-governance.md) activated with owner approval; 16 app-bound checks, PR requirement, deletion/force-push blocks and sole-owner PR-only bypass verified by API. Feature branches excluded; actual merged-head enforcement still needs qualification | Normal PR cannot merge without passing required checks; explicit reviewed emergency process exists |
-| **P0.4** | Release signing and provenance | **Partial; proposed stable-release guard** | [Shared prerelease-only guard and signing policy](release-signing-policy.md) block unqualified stable canonical/legacy Windows releases. Credentials, mandatory production signing/notarization/verification, real-host acceptance and provenance remain open | Production (non-RC) release workflow fails closed when mandatory signing/verification is unavailable (today Windows signing is skipped without secrets and macOS is ad-hoc signed only); install and signature-verification smoke tests pass |
+| **P0.4** | Release signing and provenance | **Partial; proposed stable guard and provenance gate** | [Shared prerelease-only guard and signing policy](release-signing-policy.md) block unqualified stable canonical/legacy Windows releases. [Exact-payload provenance gate](release-provenance.md) proposed; live OIDC/consumer verification, credentials, mandatory production signing/notarization/verification and real-host acceptance remain open | Production (non-RC) release workflow fails closed when mandatory signing/verification is unavailable (today Windows signing is skipped without secrets and macOS is ad-hoc signed only); install and signature-verification smoke tests pass |
 | **P0.5** | Supply-chain and licensing review | **Partial; proposed implementation** | Exact Staticcheck/govulncheck pins, npm CI CycloneDX inventory, required/checksummed npm/Go release assets and proposed exact-set verification with real candidate evidence. Remaining: published-asset verification, per-target/native SBOMs, attribution/license review and shipped advisory acceptance | License obligations and security advisories are recorded; no unaccepted shipped critical/high vulnerability; reproducible dependency inputs |
 
 **Progress & Evidence Log (Phase 0):**
@@ -402,6 +402,7 @@ installation, licensing, native SBOMs and provenance remain open.
 
 ### P0.3 approved activation evidence (October 20)
 
+[PR #140](https://github.com/ajbergh/ViiB-MediaHub/pull/140) records the activation.
 Owner approval was received and the exact PR #137 policy activated as
 [ruleset 25487842](https://github.com/ajbergh/ViiB-MediaHub/rules/25487842).
 [Recorded API readback](evidence/main-governance-2026-10-20.json) verified the
@@ -417,7 +418,7 @@ resulting main head.
 PR #139 preflight run `39453599101` exposed a backend race-test cleanup failure:
 `TestConfiguredStemLibraryScanQueuesOnlyEnabledRootSnapshot` launched scheduler
 workers while only asserting a persisted job, allowing SQLite activity to race
-TempDir removal. The follow-up uses the existing queue-inspection pattern to
+TempDir removal. [PR #141](https://github.com/ajbergh/ViiB-MediaHub/pull/141) uses the existing queue-inspection pattern to
 suppress worker startup in that test and explicitly asserts queued status.
 The request still validates/snapshots enabled roots and persists the job.
 Validation: **50 race-detector repetitions passed** on Windows with MinGW;
@@ -427,6 +428,24 @@ remain pending for this repair.
 Production scheduler shutdown remains a separate P2.2/P4.3 follow-up: `API.Close`
 does not currently stop/wait for its durable-job heartbeat and workers. This
 narrow test repair does not qualify shutdown, cancellation or crash recovery.
+
+### P0.4 canonical artifact provenance proposal (October 20)
+
+The [provenance gate](release-provenance.md) proposes a pinned GitHub attestation
+step for the exact 13 release payloads followed by fail-closed verification of
+each payload's repository, canonical workflow, source commit/ref, SLSA predicate
+and hosted-runner identity. OIDC/attestation permissions are publish-job-only;
+the bundle stays outside release assets and is retained for 14 days. Stable
+publication remains blocked by the signing guard. No release/tag/dispatch or
+live attestation was created. Live OIDC, consumer tamper/wrong-identity evidence,
+legacy Windows draft provenance and production platform signing remain open.
+
+Validation: **6 provenance policy tests**, **6 asset tests** (1 Windows symlink
+skip), **7 channel tests** and **4 inventory tests** passed. Both changed
+workflows parsed and publisher-only OIDC permissions/publication order were
+checked. The real GitHub CLI rejected a synthetic malformed bundle and the
+wrapper exited 1. This negative probe is not successful signature verification.
+Documentation links and whitespace checks passed; hosted checks pending.
 
 ### Baseline evidence and implementation references
 

@@ -30,6 +30,10 @@ tags. Canonical prerelease publication retains its existing prerelease flag.
 Stable requests fail rather than silently yielding unsigned stable artifacts.
 No signing credentials are inspected by the guard or its tests.
 
+The proposed [artifact-provenance gate](release-provenance.md) adds keyless
+workflow/source identity verification for canonical prerelease payloads. It does
+not provide platform signing or relax this stable boundary.
+
 ## Replacing the temporary guard
 
 Stable enablement needs a separate reviewed implementation and evidence:
