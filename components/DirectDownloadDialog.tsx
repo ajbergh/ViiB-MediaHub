@@ -1,6 +1,6 @@
 /** Validates Spotify track/album/playlist links and submits direct downloads. */
 
-import React, { useCallback, useId, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link2, Loader2, X, Music, Disc3, ListMusic, CheckCircle, AlertCircle } from 'lucide-react';
 import api from '../services/api';
 import { useStore } from '../store';
@@ -68,55 +68,89 @@ export const DirectDownloadDialog: React.FC<DirectDownloadDialogProps> = ({ isOp
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ type: string; title: string; count?: number } | null>(null);
 
+  const generation = useRef(0);
+  const active = useRef(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
+  const clearCloseTimer = useCallback(() => {
+    if (closeTimer.current !== null) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  }, []);
+
+  // A hidden/unmounted dialog cannot own a later request completion or timer.
+  useEffect(() => {
+    active.current = isOpen;
+    if (!isOpen) {
+      setUrl('');
+      setError(null);
+      setSuccess(null);
+      setIsLoading(false);
+    }
+    return () => {
+      active.current = false;
+      generation.current += 1;
+      clearCloseTimer();
+    };
+  }, [isOpen, clearCloseTimer]);
+
+  const handleClose = useCallback(() => {
+    active.current = false;
+    generation.current += 1;
+    clearCloseTimer();
+    setUrl('');
+    setError(null);
+    setSuccess(null);
+    setIsLoading(false);
+    onCloseRef.current();
+  }, [clearCloseTimer]);
+
   const validation = url.trim() ? validateSpotifyInput(url) : { valid: false };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (mediaDisabled) return;
-    
+    if (mediaDisabled || isLoading || !active.current) return;
+
     if (!validation.valid) {
       setError('Please enter a valid Spotify URL or URI');
       return;
     }
 
+    clearCloseTimer();
+    const submission = ++generation.current;
+    const isCurrent = () => active.current && generation.current === submission;
     setIsLoading(true);
     setError(null);
     setSuccess(null);
 
     try {
       const result = await api.downloadFromURL(url.trim());
-      setSuccess({
-        type: result.type,
-        title: result.title,
-        count: result.count,
-      });
+      if (!isCurrent()) return;
+      setSuccess({ type: result.type, title: result.title, count: result.count });
       setUrl('');
-      // The queue-change event may be missed while a native app reconnects its
-      // SSE stream. Refresh the owning page directly once the queue is saved.
+      // Refresh only after persistence. The refresh itself can replace this
+      // dialog when the owning page transitions out of its empty state.
       try {
         await onQueued?.();
       } catch (refreshError) {
-        console.warn('Direct download was queued but the download list could not be refreshed:', refreshError);
+        if (isCurrent()) {
+          console.warn('Direct download was queued but the download list could not be refreshed:', refreshError);
+        }
       }
-      
-      // Auto-close after 2 seconds on success
-      setTimeout(() => {
-        onClose();
-        setSuccess(null);
+      if (!isCurrent()) return;
+      closeTimer.current = setTimeout(() => {
+        if (isCurrent()) handleClose();
       }, 2000);
     } catch (err: any) {
-      setError(err.message || 'Failed to queue download');
+      if (isCurrent()) setError(err.message || 'Failed to queue download');
     } finally {
-      setIsLoading(false);
+      if (isCurrent()) setIsLoading(false);
     }
   };
 
-  const handleClose = useCallback(() => {
-    setUrl('');
-    setError(null);
-    setSuccess(null);
-    onClose();
-  }, [onClose]);
   const handleEscape = useCallback(() => {
     if (!isLoading) handleClose();
   }, [isLoading, handleClose]);

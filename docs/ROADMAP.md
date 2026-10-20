@@ -431,7 +431,8 @@ narrow test repair does not qualify shutdown, cancellation or crash recovery.
 
 ### P0.4 canonical artifact provenance proposal (October 20)
 
-The [provenance gate](release-provenance.md) proposes a pinned GitHub attestation
+[PR #142](https://github.com/ajbergh/ViiB-MediaHub/pull/142) proposes a
+[provenance gate](release-provenance.md) using a pinned GitHub attestation
 step for the exact 13 release payloads followed by fail-closed verification of
 each payload's repository, canonical workflow, source commit/ref, SLSA predicate
 and hosted-runner identity. OIDC/attestation permissions are publish-job-only;
@@ -446,6 +447,25 @@ workflows parsed and publisher-only OIDC permissions/publication order were
 checked. The real GitHub CLI rejected a synthetic malformed bundle and the
 wrapper exited 1. This negative probe is not successful signature verification.
 Documentation links and whitespace checks passed; hosted checks pending.
+
+### P1.4/P3.3 direct-download dialog lifecycle follow-up (October 20)
+
+The success timeout could close a reopened dialog; a completed queue refresh
+could also replace the empty-state dialog while its submit handler was still
+awaiting the refresh. The repair owns/cancels the close timer and invalidates
+async completions when the dialog is hidden, closed or unmounted. Current
+submissions still refresh the queue after persistence and close two seconds
+after refresh; stale submissions cannot mutate the replacement/reopened dialog
+or refresh through an unmounted owner. Backend queue requests are not cancelled.
+
+Five mocked-provider lifecycle tests cover ordinary refresh/close timing,
+close/reopen, unmount-before-response, stale success/failure after reopening and
+empty-to-nonempty instance replacement. Four fail against the original component;
+all five plus existing dialog/focus-trap regressions pass with the repair.
+Full `npm run check` passed: **153 files / 735 tests**, TypeScript/style gates
+and production build. Documentation and whitespace checks passed; hosted checks
+remain pending.
+No authenticated provider or native-host qualification is claimed.
 
 ### Baseline evidence and implementation references
 
