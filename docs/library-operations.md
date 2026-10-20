@@ -91,6 +91,15 @@ The watcher status reports whether monitoring is running, its interval, check co
 
 ## Safety notes
 
+Before removing missing tracks, review the listed entries and create a backup if
+you may need their likes or playlist entries: those details are removed with the
+catalog entries. The confirmation discloses this; canceling sends no repair call.
+Before staging a restore, the confirmation explains that activation replaces the
+current catalog, playlists, likes, listening history and settings with the backup
+contents. Changes after that backup will not appear in the restored library.
+Create a current backup first. Staging alone does not replace the active library;
+activation still requires closing ViiB and running the restore helper.
+
 - New backups exclude Spotify cookie sessions and OAuth credentials. Sign in to Spotify again after restoring one. Other encrypted integration credentials may remain in the database, and older archives may contain Spotify credentials; store archives with the same care as the application data directory.
 - Repair and restore act only on the ViiB SQLite database. They do not delete or rewrite local audio files or Plex-hosted media.
 - Track analysis only reads audio. It never rewrites a media file's tags or contents, and it never writes measured values back to Plex.

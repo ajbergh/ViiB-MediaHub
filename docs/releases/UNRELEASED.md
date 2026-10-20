@@ -14,6 +14,12 @@ See [Library Operations](../library-operations.md#backup-and-staged-restore) for
 backup/restore behavior. This fix does not establish RC5 upgrade or complete
 cross-platform recovery qualification.
 
+## Maintenance
+
+- Removal and restore confirmations explain which library details change and
+  recommend creating a current backup before continuing. Declining leaves the
+  repair or restore request unsent.
+
 ## Accessibility
 
 - Proposed modal improvements in [PR #134](https://github.com/ajbergh/ViiB-MediaHub/pull/134)

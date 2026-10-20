@@ -127,7 +127,7 @@ This phase should be **incremental and behavior-preserving**, not a rewrite. Lar
 | **P3.2** | Stronger frontend contracts | **Partial** | Typed capability/service boundaries and library/Spotify surface performance work are delivered. Proposed strict coverage grows from four to twelve selected modules without source changes or new escape hatches; broader migration and measured code-splitting benefits remain open.| New code uses strict typing; targeted modules migrate with no `any` escape hatch proliferation; bundle/startup gain is measured |
 | **P3.3** | First-run and library workflows | **Partial** | First-launch source setup, tabbed Settings, loading/empty/retry states, Spotify surface persistence and local preparation status exist. Proposed browser-only source-settings and playlist persistence E2E coverage is in #131. Assisted usability and end-to-end source-repair qualification remain open.| First-run and source-repair journeys pass assisted usability review and end-to-end tests |
 | **P3.4** | Design consistency and accessibility | **Partial** | Design tokens, shared UI components, responsive layouts and DJ keyboard/focus work are delivered. Proposed playlist-name accessible labeling is in #131; the modal follow-up adds named Direct Download controls and keyboard/focus-safe confirmations. A draft [WCAG 2.2 AA plan and findings register](ACCESSIBILITY_QUALIFICATION.md) now covers standard workflows and candidate DJ alternatives. Plan approval, full criterion ledger, host execution and accessible-alternative qualification remain open.| Standard app flows meet approved WCAG 2.2 AA test plan; specialized DJ controls have documented accessible alternatives where feasible |
-| **P3.5** | Diagnostics and data operations UX | **Partial** | Duplicate review, diagnostics/repair, backup/staged restore and support export UI exist. Proposed modal focus/cancellation and synthetic playlist deletion-cancel coverage improve destructive-action review. Full recovery continuity acceptance and storage-quota UX remain open.| Destructive actions are reviewable; recovery progress and outcome are explicit; tests protect catalog continuity |
+| **P3.5** | Diagnostics and data operations UX | **Partial** | Duplicate review, diagnostics/repair, backup/staged restore and support export UI exist. Proposed modal focus/cancellation, synthetic playlist deletion-cancel coverage and explicit repair/restore consequence disclosures improve destructive-action review. Full recovery continuity acceptance and storage-quota UX remain open.| Destructive actions are reviewable; recovery progress and outcome are explicit; tests protect catalog continuity |
 
 **Progress & Evidence Log (Phase 3, October 15):**
 - [PR #122](https://github.com/ajbergh/ViiB-MediaHub/pull/122) (`4b86824`) delivers the shared visual refresh, library-performance changes and Spotify surface persistence, with targeted frontend tests. These changes do not establish representative workload percentiles or WCAG acceptance.
@@ -306,9 +306,23 @@ continuity, concurrent writers, failed-write cleanup and distinct default names,
 alongside the existing Spotify-credential-exclusion regression. **Five focused
 tests and the full API package suite passed**; the concurrent/failure writer
 tests also passed with **Windows race detection** using the installed MinGW
-compiler. `go vet ./internal/api`, OpenAPI YAML parsing, documentation and
+compiler. `go vet ./internal/api`, `staticcheck ./internal/api`, OpenAPI YAML parsing, documentation and
 whitespace checks passed. RC5 upgrades and complete restore continuity
 on supported hosts remain open; no atomic/crash-complete publication is claimed.
+
+### P3.5 maintenance-action disclosure follow-up (October 20)
+
+Branch `codex/p3-5-recovery-action-disclosures`, based on PR #135, explains that
+removing missing catalog tracks also removes likes and playlist entries, and
+that restore activation replaces current catalog/playlists/likes/history/settings
+with the backup contents. Prompts recommend a current backup and clarify that
+audio files are unaffected. No destructive backend behavior changes.
+Two focused component regressions passed: declining sends no repair/stage call;
+approving repair sends only reviewed missing IDs (excluding unavailable media),
+and approving restore stages only the selected archive. `npm run check` passed
+**152 files / 730 tests**, TypeScript/style gates and production build;
+documentation and whitespace checks also passed. Real-host restore continuity
+remains open.
 
 ### Baseline evidence and implementation references
 

@@ -110,7 +110,7 @@ export const LibraryOperationsPanel: React.FC = () => {
 
   const repair = (removeMissing: boolean) => run('repair', async () => {
     const confirmedIds = removeMissing ? diagnostics?.missingMedia.map(item => item.songId) ?? [] : [];
-    if (removeMissing && (!confirmedIds.length || !window.confirm(`Remove the ${confirmedIds.length} missing tracks shown by diagnostics from the catalog?`))) return;
+    if (removeMissing && (!confirmedIds.length || !window.confirm(`Remove the ${confirmedIds.length} missing tracks shown by diagnostics from the catalog? Their likes and playlist entries will also be removed. Audio files are not deleted. Create a backup first if you want to recover these details.`))) return;
     const result = await libraryOperationsV2.repair(removeMissing, undefined, confirmedIds);
     setMessage(`Repair complete: ${result.removedMissing || 0} missing tracks removed and ${result.removedPlaylistReferences || 0} broken playlist references repaired.`);
     setDiagnostics(await libraryOperationsV2.diagnostics());
@@ -129,7 +129,7 @@ export const LibraryOperationsPanel: React.FC = () => {
   });
 
   const stageRestore = (backup: BackupInfo) => run(`restore-${backup.name}`, async () => {
-    const confirmed = window.confirm(`Stage ${backup.name} for restore? The current library database will be replaced after applying the staged restore during maintenance.`);
+    const confirmed = window.confirm(`Stage ${backup.name} for restore? Applying this backup replaces your current catalog, playlists, likes, listening history and settings with the backup contents. Changes made after the backup will not appear in the restored library. Audio files are unaffected. Create a current backup before continuing. Activation requires closing ViiB and applying the staged restore during maintenance.`);
     if (!confirmed) return;
     const result = await libraryOperationsV2.stageRestore(backup.name);
     setMessage(`Restore staged in ${result.path}. Close ViiB before applying the staged database. A restart is required.`);
