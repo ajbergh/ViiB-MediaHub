@@ -146,7 +146,7 @@ describe('stem transport worklet', () => {
     expect(transport.messages.filter(message => message.type === 'ended')).toEqual([{ type: 'ended', frame: 2 }]);
   });
 
-  it('rejects stale-generation frames and zero-fills an underrun before recovering', () => {
+  it('holds the missing position until late frames arrive, ignoring stale and ahead-only blocks', () => {
     const transport = createTransport();
     transport.configure(8, 48000, 2, 2);
     transport.addFrames(0, 2, () => 9, 2, 1);
@@ -155,7 +155,13 @@ describe('stem transport worklet', () => {
     expect(transport.messages.filter(message => message.type === 'underrun')).toHaveLength(1);
 
     transport.addFrames(2, 2, () => 0.75, 2, 2);
+    expect(transport.render(2)[0][0]).toEqual(new Float32Array(2));
+    expect(transport.processor.position).toBe(0);
+    expect(transport.messages.filter(message => message.type === 'underrun')).toHaveLength(1);
+    transport.addFrames(0, 2, () => 0.75, 2, 2);
     expect(transport.render(2)[0][0]).toEqual(new Float32Array([0.75, 0.75]));
+    expect(transport.processor.position).toBe(2);
+    expect(transport.messages).toContainEqual({ type: 'recovered', frame: 0 });
     expect(transport.messages.filter(message => message.type === 'underrun')).toHaveLength(1);
   });
 

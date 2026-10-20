@@ -2465,7 +2465,7 @@ export class DJAudioEngine {
   /**
    * Set loop points for a deck
    */
-  setLoop(deck: DeckId, startTime: number, endTime: number): void {
+  setLoop(deck: DeckId, startTime: number, endTime: number, presetBeats?: number): void {
     const source = this.getDeckSource(deck);
     if (!source) return;
     
@@ -2476,7 +2476,8 @@ export class DJAudioEngine {
     }
     
     // Update store
-    useStore.getState().setLoop(deck, startTime, endTime);
+    if (presetBeats !== undefined) useStore.getState().setLoop(deck, startTime, endTime, true, presetBeats);
+    else useStore.getState().setLoop(deck, startTime, endTime);
     this.setDeckLoopOnSource(deck);
     if (DJ_DEBUG) console.log(`🔁 Loop set for deck ${deck}: ${startTime.toFixed(2)}s - ${endTime.toFixed(2)}s`);
   }
@@ -2557,7 +2558,9 @@ export class DJAudioEngine {
     if (!source) return;
     
     const deckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
-    const bpm = deckState.effectiveBpm || deckState.originalBpm || 120;
+    // Loop boundaries use source-track seconds; playback tempo already changes
+    // how quickly those seconds pass. Do not apply pitch a second time here.
+    const bpm = deckState.originalBpm || 120;
     
     const state = useStore.getState();
     const latestDeck = deck === 'A' ? state.djDeckA : state.djDeckB;
@@ -2583,7 +2586,7 @@ export class DJAudioEngine {
     }
     end = Math.min(end, source.getDuration());
     
-    this.setLoop(deck, start, end);
+    this.setLoop(deck, start, end, beats);
     if (DJ_DEBUG) console.log(`🔁 ${beats}-beat loop set for deck ${deck}: ${(end - start).toFixed(2)}s @ ${bpm.toFixed(1)} BPM`);
   }
 

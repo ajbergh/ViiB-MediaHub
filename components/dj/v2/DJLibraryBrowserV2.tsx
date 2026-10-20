@@ -13,7 +13,7 @@ import { useAudioMetadataRevision } from '../../../hooks/useAudioMetadataRevisio
  */
 
 import React, { useState, useMemo, useCallback, useEffect, useRef, memo } from 'react';
-import { TableVirtuoso, type TableComponents } from 'react-virtuoso';
+import { TableVirtuoso, type TableComponents, type TableVirtuosoHandle } from 'react-virtuoso';
 import { useStore } from '../../../store';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
 import { getKeyCompatibility } from '../../../lib/keyDetection';
@@ -23,6 +23,7 @@ import { compareIntegratedLUFS, formatIntegratedLUFS, isFiniteIntegratedLUFS } f
 import { compareTruePeakDBTP, formatTruePeakDBTP, isFiniteTruePeakDBTP } from '../../../lib/djLibraryTruePeak';
 import { PROVIDER_SCORE_OPTIONS, usableProviderScore, providerScoreMatches, compareProviderScores } from '../../../lib/djProviderScores';
 import { DJSaveResultsPlaylist } from './DJSaveResultsPlaylist';
+import { registerDJMidiLibrary } from '../../../lib/djMidiLibrary';
 import { CamelotChip } from './CamelotChip';
 import { api, type TrackAnalysisFeature } from '../../../services/api';
 import type { DeckId } from '../../../slices/djMixerSlice';
@@ -449,6 +450,8 @@ interface DJLibraryBrowserV2Props {
 interface LibraryTableContext {
   isLoadedOnDeck: (songId: string) => 'A' | 'B' | null;
   handleLoadToDeck: (song: Song, deck: DeckId) => Promise<void>;
+  selectedID: string | null;
+  selectSong: (songId: string) => void;
 }
 
 // Stable component identities preserve rows, focus and scroll across UI updates.
@@ -457,8 +460,9 @@ const libraryTableComponents: TableComponents<Song, LibraryTableContext> = {
     <table {...props} style={{ ...style, width: '100%', borderCollapse: 'collapse' }} />
   ),
   TableRow: ({ item, context, ...props }) => {
-    const { isLoadedOnDeck, handleLoadToDeck } = context!;
+    const { isLoadedOnDeck, handleLoadToDeck, selectedID, selectSong } = context!;
     const loadedDeck = item ? isLoadedOnDeck(item.id) : null;
+    const selected = !!item && selectedID === item.id;
     const deckIndicatorClass = loadedDeck === 'A'
       ? 'bg-[color-mix(in_srgb,var(--dj-deck-a)_15%,transparent)] border-l-2 border-[var(--dj-deck-a)] shadow-[inset_0_0_12px_rgba(59,130,246,0.08)]'
       : loadedDeck === 'B'
@@ -467,6 +471,9 @@ const libraryTableComponents: TableComponents<Song, LibraryTableContext> = {
     return (
       <tr
         {...props}
+        aria-selected={selected}
+        data-controller-selected={selected || undefined}
+        onClick={() => item && selectSong(item.id)}
         draggable={!!item}
         onDragStart={(e) => {
           if (!item) return;
@@ -475,7 +482,7 @@ const libraryTableComponents: TableComponents<Song, LibraryTableContext> = {
           e.dataTransfer.setData(DJ_TRACK_DRAG_MIME, payload);
           e.dataTransfer.setData('text/plain', item.id);
         }}
-        className={`hover:bg-white/5 transition-colors text-xs ${deckIndicatorClass}`}
+        className={`hover:bg-white/5 transition-colors text-xs ${deckIndicatorClass} ${selected ? '!bg-[color-mix(in_srgb,var(--dj-info)_25%,var(--dj-surface-2))] outline outline-1 -outline-offset-1 outline-[var(--dj-info)]' : ''}`}
         onDoubleClick={() => item && handleLoadToDeck(item, 'A')}
       />
     );
@@ -847,13 +854,36 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
     }
   }, [sortKey]);
 
+  const [midiSelectedID, setMidiSelectedID] = useState<string | null>(null);
+  const midiSelectedRef = useRef<string | null>(null);
+  const tableRef = useRef<TableVirtuosoHandle>(null);
+  const selectSong = useCallback((songId: string) => {
+    midiSelectedRef.current = songId;
+    setMidiSelectedID(songId);
+  }, []);
   const handleLoadToDeck = useCallback(async (song: Song, deck: DeckId) => {
+    selectSong(song.id);
     try {
       await loadTrack(deck, song);
     } catch (error) {
       console.error(`Failed to load ${song.title} to Deck ${deck}:`, error);
     }
-  }, [loadTrack]);
+  }, [loadTrack, selectSong]);
+
+  useEffect(() => registerDJMidiLibrary({
+    browse: steps => {
+      if (!filteredSongs.length) return;
+      const current = filteredSongs.findIndex(song => song.id === midiSelectedRef.current);
+      const index = current < 0 ? (steps >= 0 ? 0 : filteredSongs.length - 1)
+        : Math.max(0, Math.min(filteredSongs.length - 1, current + steps));
+      selectSong(filteredSongs[index].id);
+      tableRef.current?.scrollIntoView({ index, align: 'center', behavior: 'auto' });
+    },
+    load: deck => {
+      const song = filteredSongs.find(item => item.id === midiSelectedRef.current) ?? filteredSongs[0];
+      if (song) void handleLoadToDeck(song, deck);
+    },
+  }), [filteredSongs, handleLoadToDeck, selectSong]);
 
   const isLoadedOnDeck = useCallback((songId: string): 'A' | 'B' | null => {
     if (djDeckATrack?.id === songId) return 'A';
@@ -861,7 +891,8 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
     return null;
   }, [djDeckATrack, djDeckBTrack]);
 
-  const tableContext = useMemo(() => ({ isLoadedOnDeck, handleLoadToDeck }), [isLoadedOnDeck, handleLoadToDeck]);
+  const tableContext = useMemo(() => ({ isLoadedOnDeck, handleLoadToDeck, selectedID: midiSelectedID, selectSong }),
+    [isLoadedOnDeck, handleLoadToDeck, midiSelectedID, selectSong]);
 
   const toggleCategory = useCallback((categoryId: string) => {
     setExpandedCategories(prev => {
@@ -1056,6 +1087,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
           </>}
         </div>
         <DJSaveResultsPlaylist songIds={filteredSongs.map(song => song.id)} />
+        {midiSelectedID && <div className="px-2 text-[12px] text-[var(--dj-info)]">Controller selection: {filteredSongs.find(song => song.id === midiSelectedID)?.title || 'Choose a track with Browse'}</div>}
         {/* Virtualized track table */}
         <div className="flex-1 overflow-hidden">
           {filteredSongs.length === 0 ? (
@@ -1064,6 +1096,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
             </div>
           ) : (
             <TableVirtuoso
+              ref={tableRef}
               data={filteredSongs}
               className="h-full"
               computeItemKey={(_idx, song) => song.id}

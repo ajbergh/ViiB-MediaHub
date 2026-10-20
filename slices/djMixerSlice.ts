@@ -58,6 +58,8 @@ export interface HotCue {
 }
 
 export interface Loop {
+  /** Requested beat-loop length; cleared when loop boundaries are edited manually. */
+  presetBeats?: number;
   enabled: boolean;
   start: number;     // seconds
   end: number;       // seconds
@@ -320,7 +322,7 @@ export interface DJMixerSlice {
   resetBeatGridOffset: (deck: DeckId) => void;
   
   // Loop (Phase 3+)
-  setLoop: (deck: DeckId, start: number, end: number, enabled?: boolean) => void;
+  setLoop: (deck: DeckId, start: number, end: number, enabled?: boolean, presetBeats?: number) => void;
   setPendingLoopIn: (deck: DeckId, position: number | null) => void;
   toggleLoop: (deck: DeckId) => void;
   clearLoop: (deck: DeckId) => void;
@@ -795,12 +797,12 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
   },
   
   // Loop
-  setLoop: (deck, start, end, enabled = true) => {
+  setLoop: (deck, start, end, enabled = true, presetBeats) => {
     const deckKey = deck === 'A' ? 'djDeckA' : 'djDeckB';
     set((state) => ({
       [deckKey]: { 
         ...state[deckKey], 
-        loop: { ...state[deckKey].loop, enabled, start, end, pendingIn: null }
+        loop: { ...state[deckKey].loop, enabled, start, end, pendingIn: null, presetBeats }
       }
     }));
   },
@@ -810,7 +812,7 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
     set((state) => ({
       [deckKey]: {
         ...state[deckKey],
-        loop: { ...state[deckKey].loop, pendingIn: position },
+        loop: { ...state[deckKey].loop, pendingIn: position, presetBeats: undefined },
       },
     }));
   },
