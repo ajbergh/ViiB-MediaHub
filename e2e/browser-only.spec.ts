@@ -35,3 +35,24 @@ test('legacy DJ route opens the workstation and survives reload offline', async 
   await expect(page.locator('[data-dj-workspace]')).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('browser-only playlist creation persists across reload and opens its detail', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/songs');
+  // Wait for fallback initialization before making a persistent mutation.
+  await expect(page.getByRole('heading', { name: 'Your library is empty', exact: true })).toBeVisible();
+  await page.goto('/playlists');
+  await expect(page.getByRole('heading', { name: 'No playlists yet', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Create Playlist', exact: true }).first().click();
+  await page.getByRole('textbox', { name: 'Playlist name', exact: true }).fill('Offline continuity fixture');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  const playlist = page.getByRole('button', { name: 'Open playlist Offline continuity fixture', exact: true });
+  await expect(playlist).toBeVisible();
+  await page.reload();
+  await expect(playlist).toBeVisible();
+  await playlist.click();
+  await expect(page).toHaveURL(/\/playlist\/[^/]+$/);
+  await expect(page.getByRole('heading', { name: 'Offline continuity fixture', exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+});

@@ -109,7 +109,8 @@ export const Playlists: React.FC = () => {
         <div className="mb-6 p-4 bg-surface-2 rounded-lg border border-surface-border flex gap-3 items-center">
           <input 
             type="text" 
-            placeholder="My Playlist #1" 
+            placeholder="My Playlist #1"
+            aria-label="Playlist name"
             className="flex-1 bg-surface-3 border border-transparent focus:border-surface-slider rounded-full px-4 py-2 text-sm text-text-main outline-none"
             value={newPlaylistName}
             onChange={(e) => setNewPlaylistName(e.target.value)}
