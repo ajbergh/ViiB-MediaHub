@@ -105,9 +105,9 @@ The current [preparation baseline](SPOTIFY_PREPARATION_PERFORMANCE.md) includes 
 | **P2.1** | Representative benchmark harness | **Planned** | The 105-track offline preparation experiment and library performance changes are useful baselines; no representative 1K/10K/100K percentile/resource reporting harness is established.| CI or scheduled reports provide p50/p95/p99 where applicable, memory/CPU/disk/artifact totals, environment and reproducible inputs |
 | **P2.2** | Bounded analysis and scanning | **Partial** | Atomic analysis claims, bounded scanner TagLib execution, timeout/retry ownership, and cancellation/restart tests are delivered in #123. Workload-level decode/concurrency/resource measurements remain open.| No unbounded worker/provider storms; warm runs avoid unnecessary decodes; measured improvements do not regress accuracy or provenance |
 | **P2.3** | Cache lifecycle | **Partial** | Binary three-band storage and bounded legacy compaction are delivered in #123. Global quotas, safe eviction, disk-budget enforcement, and WAL/restoration qualification remain open.| Predictable disk limits; cache eviction cannot destroy user data or invalidate retained provenance; reference workloads stay inside approved resource budgets |
-| **P2.4** | Browser end-to-end gates | **Partial; proposed implementation** | Three deterministic Chromium browser-only tests, config and CI job with failure screenshots/traces/report. Remaining: hosted validation, backend/import/playback/recovery/provider flows and other browser profiles.| Critical flows reliably pass in CI; failures retain screenshots/traces/logs without secrets |
+| **P2.4** | Browser end-to-end gates | **Partial; proposed implementation** | Five deterministic Chromium journeys (four browser-only plus synthetic Library Operations review/cancel/stage); config and CI retain failure screenshots/traces/report. Remaining: merged-head validation, backend/import/playback/recovery-integrity/provider flows and other browser profiles.| Critical flows reliably pass in CI; failures retain screenshots/traces/logs without secrets |
 | **P2.5** | Native system qualification | **Partial** | Native builds and bounded Windows user-reported functional samples exist. Long-session/device/WebView coverage and macOS/Linux host execution remain open.| Tested platform/architecture matrix with explicit passes, failures and accepted exceptions |
-| **P2.6** | Troubleshooting evidence | **Partial** | Request IDs, job diagnostics and an opt-in bounded/redacted support archive with tests exist. End-to-end failure correlation, broader log/privacy review, and troubleshooting qualification remain open.| A user-visible failure can be traced to a sanitized diagnostic record; tokens, cookies, local-private data are excluded by default |
+| **P2.6** | Troubleshooting evidence | **Partial** | Request IDs, job diagnostics and an opt-in bounded/redacted support archive with tests exist. Arbitrary frontend payloads can expose private metadata through support logs; an allowlisted diagnostic projection, end-to-end correlation and troubleshooting qualification remain open.| A user-visible failure can be traced to a sanitized diagnostic record; tokens, cookies, local-private data are excluded by default |
 
 **Progress & Evidence Log (Phase 2, October 15):**
 - [PR #123](https://github.com/ajbergh/ViiB-MediaHub/pull/123) (`79a04eb`) delivers the bounded analysis/scanner and binary waveform conversion described in [scan stability and storage](scan-stability-and-storage.md). Compaction reuses SQLite pages; it does not automatically shrink the database file. TagLib cannot be forcibly canceled; fully stuck slots require restart.
@@ -375,7 +375,7 @@ remain external/complex follow-up. This is not a stable-signing implementation.
 - PR #139 (`ae2224c`): release preflight failed during backend race testing with
   a temporary-directory cleanup race in the queued Stem Library scan test. The
   asset tests passed on the previous head; this is not an all-green PR claim.
-  A focused test-isolation follow-up is being prepared.
+  The test-isolation repair is published in PR #141; its 16 hosted checks now pass.
 
 ### P0.5 exact release input and assembly verification (October 20)
 
@@ -422,8 +422,8 @@ TempDir removal. [PR #141](https://github.com/ajbergh/ViiB-MediaHub/pull/141) us
 suppress worker startup in that test and explicitly asserts queued status.
 The request still validates/snapshots enabled roots and persists the job.
 Validation: **50 race-detector repetitions passed** on Windows with MinGW;
-documentation links and whitespace checks passed. Hosted full-suite checks
-remain pending for this repair.
+documentation links and whitespace checks passed. PR #141 (`4296d4d`) now has
+**16 successful hosted checks**, including backend and native builds.
 
 Production scheduler shutdown remains a separate P2.2/P4.3 follow-up: `API.Close`
 does not currently stop/wait for its durable-job heartbeat and workers. This
@@ -486,7 +486,7 @@ accuracy or demonstrate bundle/startup gains.
 
 ### P3.2 reviewed-grid and cue contracts (October 20)
 
-`canSyncBeatGrid` now expresses its existing runtime validation as a type
+[PR #145](https://github.com/ajbergh/ViiB-MediaHub/pull/145): `canSyncBeatGrid` now expresses its existing runtime validation as a type
 predicate: a valid grid with manual provenance and a lock. This lets guarded
 phase-sync code safely treat timing as present, resolving the ten strict
 nullability diagnostics without assertions, suppressions or runtime changes.
@@ -500,6 +500,37 @@ including rejecting estimated grids for phase alignment and accepting reviewed
 grids. The changed helper emits identical JavaScript before/after the type
 refinement. Documentation/JSON and whitespace checks passed; hosted checks
 remain pending. No DSP estimator or accuracy qualification changes.
+
+### P2.4/P3.3 Library Operations recovery-flow follow-up (October 20)
+
+The maintenance panel's initial backup-list cleanup was returned from an async
+loader and ignored. The repair makes its effect own a request scope, aborts
+client work on unmount, and checks the captured scope after each awaited
+request. Repair/backup completions after navigation cannot start follow-up reads
+or update a replacement view. A synchronous admission guard also prevents
+rapid clicks from overlapping maintenance requests. Aborting a client request
+does not undo work already accepted by the server; restore activation stays
+offline. Continuous Monitoring lifecycle remains separate from this panel.
+
+Six component tests cover disclosures/cancellation, initial-read cancellation,
+repair/backup completion after unmount and rapid-click serialization. A synthetic
+Chromium journey exercises the legacy recovery route into Settings, missing vs
+unavailable track review, validation of a selected archive, cancellation of both
+destructive prompts without mutation, then staging only that archive and the
+restart-required notice. **5/5 Chromium journeys passed** against the production
+preview, with no browser page errors in the recovery journey. Full `npm run check`
+passed **153 files / 739 tests**, TypeScript/style gates and production build.
+Documentation/JSON and whitespace checks passed; hosted checks pending.
+Browser/backend recovery integrity, crash-safe staging
+and supported-host restore continuity remain unqualified.
+
+Reassessment deferrals: arbitrary frontend log payloads can contain private
+metadata that survives current support-export redaction (P2.6); a reviewed
+allowlisted diagnostic projection is needed, beyond adding regexes. Full-relation
+backup/stage/offline-activation/rollback evidence remains a P1.6 follow-up.
+Durable-job shutdown needs cancellation/wait/recovery policy across heterogeneous
+workers (P2.2/P4.3), so it remains deferred alongside the previously recorded
+human/external and larger scopes.
 
 ### Baseline evidence and implementation references
 

@@ -6,7 +6,7 @@
  * Restore activation stays outside the running app and is performed by
  * viib-restore after ViiB has exited.
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Activity, Archive, CheckCircle2, Database, Eye, Play, RefreshCw, ShieldCheck, Square, Wrench } from 'lucide-react';
 import { Page, PageHeader } from '../components/ui/Page';
 import { BackupInfo, LibraryDiagnostics, WatcherStatus, libraryOperationsV2 } from '../services/libraryOperationsV2';
@@ -80,58 +80,77 @@ export const LibraryOperationsPanel: React.FC = () => {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
-  const load = useCallback(async () => {
+  const requestScope = useRef<AbortController | null>(null);
+  const running = useRef(false);
+
+  useEffect(() => {
     const controller = new AbortController();
-    try {
-      const backupResult = await libraryOperationsV2.listBackups(controller.signal);
-      setBackups(backupResult.backups);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Unable to load library operations');
-    }
-    return () => controller.abort();
+    requestScope.current = controller;
+    void libraryOperationsV2.listBackups(controller.signal).then(result => {
+      if (!controller.signal.aborted) setBackups(result.backups);
+    }).catch(loadError => {
+      if (!controller.signal.aborted) {
+        setError(loadError instanceof Error ? loadError.message : 'Unable to load library operations');
+      }
+    });
+    return () => {
+      controller.abort();
+      running.current = false;
+    };
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
-
-  // Serialize user-triggered maintenance actions so an expensive repair or
-  // backup cannot overlap another operation in this UI.
-  const run = async (label: string, operation: () => Promise<void>) => {
+  // Abort releases client work on navigation; it cannot undo a server mutation.
+  // Check the captured scope after each await before UI updates/follow-up calls.
+  const run = async (label: string, operation: (signal: AbortSignal) => Promise<void>) => {
+    const signal = requestScope.current?.signal;
+    if (!signal || signal.aborted || running.current) return;
+    running.current = true;
     setBusy(label); setError(''); setMessage('');
-    try { await operation(); }
-    catch (operationError) { setError(operationError instanceof Error ? operationError.message : `${label} failed`); }
-    finally { setBusy(null); }
+    try { await operation(signal); }
+    catch (operationError) {
+      if (!signal.aborted) setError(operationError instanceof Error ? operationError.message : `${label} failed`);
+    } finally {
+      if (!signal.aborted) { running.current = false; setBusy(null); }
+    }
   };
 
-  const runDiagnostics = () => run('diagnostics', async () => {
-    const result = await libraryOperationsV2.diagnostics();
+  const runDiagnostics = () => run('diagnostics', async signal => {
+    const result = await libraryOperationsV2.diagnostics(signal);
+    if (signal.aborted) return;
     setDiagnostics(result);
     setMessage(`Diagnostics completed. Integrity: ${result.integrity}.`);
   });
 
-  const repair = (removeMissing: boolean) => run('repair', async () => {
+  const repair = (removeMissing: boolean) => run('repair', async signal => {
     const confirmedIds = removeMissing ? diagnostics?.missingMedia.map(item => item.songId) ?? [] : [];
     if (removeMissing && (!confirmedIds.length || !window.confirm(`Remove the ${confirmedIds.length} missing tracks shown by diagnostics from the catalog? Their likes and playlist entries will also be removed. Audio files are not deleted. Create a backup first if you want to recover these details.`))) return;
-    const result = await libraryOperationsV2.repair(removeMissing, undefined, confirmedIds);
+    const result = await libraryOperationsV2.repair(removeMissing, signal, confirmedIds);
+    if (signal.aborted) return;
     setMessage(`Repair complete: ${result.removedMissing || 0} missing tracks removed and ${result.removedPlaylistReferences || 0} broken playlist references repaired.`);
-    setDiagnostics(await libraryOperationsV2.diagnostics());
+    const refreshed = await libraryOperationsV2.diagnostics(signal);
+    if (!signal.aborted) setDiagnostics(refreshed);
   });
 
-  const createBackup = () => run('backup', async () => {
-    const created = await libraryOperationsV2.createBackup();
+  const createBackup = () => run('backup', async signal => {
+    const created = await libraryOperationsV2.createBackup('', signal);
+    if (signal.aborted) return;
     setMessage(`Backup ${created.name} created and validated.`);
-    setBackups((await libraryOperationsV2.listBackups()).backups);
+    const refreshed = await libraryOperationsV2.listBackups(signal);
+    if (!signal.aborted) setBackups(refreshed.backups);
   });
 
-  const previewRestore = (backup: BackupInfo) => run(`preview-${backup.name}`, async () => {
-    const preview = await libraryOperationsV2.previewRestore(backup.name);
-    setMessage(`Backup ${backup.name} is valid. Restore requires an application restart.`);
+  const previewRestore = (backup: BackupInfo) => run(`preview-${backup.name}`, async signal => {
+    const preview = await libraryOperationsV2.previewRestore(backup.name, signal);
+    if (signal.aborted) return;
     if (!preview.valid) throw new Error('Backup validation did not complete');
+    setMessage(`Backup ${backup.name} is valid. Restore requires an application restart.`);
   });
 
-  const stageRestore = (backup: BackupInfo) => run(`restore-${backup.name}`, async () => {
+  const stageRestore = (backup: BackupInfo) => run(`restore-${backup.name}`, async signal => {
     const confirmed = window.confirm(`Stage ${backup.name} for restore? Applying this backup replaces your current catalog, playlists, likes, listening history and settings with the backup contents. Changes made after the backup will not appear in the restored library. Audio files are unaffected. Create a current backup before continuing. Activation requires closing ViiB and applying the staged restore during maintenance.`);
     if (!confirmed) return;
-    const result = await libraryOperationsV2.stageRestore(backup.name);
+    const result = await libraryOperationsV2.stageRestore(backup.name, signal);
+    if (signal.aborted) return;
     setMessage(`Restore staged in ${result.path}. Close ViiB before applying the staged database. A restart is required.`);
   });
 

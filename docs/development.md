@@ -239,7 +239,12 @@ The initial suite exercises browser-only empty-library navigation and the legacy
 DJ redirect/reload, playlist creation/reload and deletion cancellation using fresh IndexedDB contexts and locally intercepted API
 failures. External requests are blocked. No backend, accounts, credentials or
 real music are needed. This does not qualify playback, native WebViews, import,
-source repair or provider sessions. Add fixture-backed journeys incrementally.
+source repair or provider sessions. The synthetic recovery journey separately
+fulfills only backup-list, diagnostics, validation and restore-stage endpoints.
+It checks the Library Operations redirect, consequence disclosures, cancellation
+without mutation and selected-archive staging/restart messaging. It does not
+activate a database or verify recovery integrity. Add fixture-backed journeys
+incrementally.
 
 CI uses the frontend production artifact. Failures retain screenshots, traces
 and an HTML report under `output/playwright/` for seven days. Use only synthetic
