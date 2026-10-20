@@ -42,3 +42,8 @@ The release validation job retains inventories for 14 days, including PR builds.
 Future release publication attaches them to the GitHub release. Native/MinGW DLLs,
 OS libraries, vendored upstream code, license obligations, per-target linked
 packages and security advisory acceptance still need separate review.
+
+The [release asset verifier](release-asset-verification.md) requires the exact
+package/inventory set and rejects unexpected upload inputs before generating
+checksums. A recorded PR-candidate assembly check uses real downloaded artifacts;
+it is separate from verifying a published release.

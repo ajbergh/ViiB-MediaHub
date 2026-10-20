@@ -1,0 +1,111 @@
+{
+  "reviewDate": "2026-10-20",
+  "reviewer": "Codex",
+  "scope": "PR #133 CI validation artifacts; these are not the published RC7 release assets",
+  "publishedRelease": false,
+  "source": {
+    "repository": "ajbergh/ViiB-MediaHub",
+    "pullRequest": 133,
+    "runId": 39441891481,
+    "headCommit": "00260f3ac88cb573fb47f526c7f3f0d03d8f6471",
+    "versionLabel": "1.0.0-rc7",
+    "runUrl": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39441891481"
+  },
+  "result": {
+    "assetCount": 13,
+    "totalAssetBytes": 156404395,
+    "exactAssetSet": true,
+    "nonemptyRegularFiles": true,
+    "independentSha256sumVerification": true,
+    "unexpectedInputRejected": true,
+    "priorManifestPreservedOnFailure": true
+  },
+  "inventories": {
+    "goModuleCount": 302,
+    "npmComponentCount": 287,
+    "npmFormat": "CycloneDX",
+    "npmFormatVersion": "1.5",
+    "goVersionedReplacementRetained": true,
+    "goMachinePathsOmitted": true
+  },
+  "manifest": {
+    "name": "SHA256SUMS.txt",
+    "sha256": "d087a4c80ff7a3e0e0eac698e330ee8226a63c765d316343cd9faedf8a21becf",
+    "selfHashed": false
+  },
+  "assets": [
+    {
+      "name": "ViiB-MediaHub-1.0.0-rc7-linux-amd64.deb",
+      "bytes": 12698844,
+      "sha256": "dc43a369c9005852e5beac2801d55cae58f8ebe95cbd17edc87b1bd558aeae5f"
+    },
+    {
+      "name": "ViiB-MediaHub-1.0.0-rc7-linux-amd64.tar.gz",
+      "bytes": 15524357,
+      "sha256": "21837507a32e94cd4e500a6c9512c4bbb158d6a833150a625bb40d7470dd6c76"
+    },
+    {
+      "name": "ViiB-MediaHub-1.0.0-rc7-macos-arm64.dmg",
+      "bytes": 16406524,
+      "sha256": "e08362a7824506dcd6cb3ef26200d73625e0c8e2dd5c3fcbe62ad17fe5218f73"
+    },
+    {
+      "name": "ViiB-MediaHub-1.0.0-rc7-macos-x64.dmg",
+      "bytes": 17708762,
+      "sha256": "2083e401066ccc405f7e05067c39b536b2b95f7738fa0c318dd44adc7cbbb295"
+    },
+    {
+      "name": "ViiB-MediaHub-1.0.0-rc7-web-linux-amd64.zip",
+      "bytes": 14152161,
+      "sha256": "ebe0034fa0f88eb6b1474845b7b4c634bb95df2795b7d5928f8dce246a6a26d8"
+    },
+    {
+      "name": "ViiB-MediaHub-1.0.0-rc7-web-linux-arm64.zip",
+      "bytes": 13049102,
+      "sha256": "ea8cd72d6bedabb446d25e057d8ea34fff00e40d95d251254df8d78145f99177"
+    },
+    {
+      "name": "ViiB-MediaHub-1.0.0-rc7-web-macos-arm64.zip",
+      "bytes": 13369406,
+      "sha256": "d4d79002f2961e6ba27b52f11f54b8bc03cf3086e85feb318635235df32180c1"
+    },
+    {
+      "name": "ViiB-MediaHub-1.0.0-rc7-web-macos-x64.zip",
+      "bytes": 14178496,
+      "sha256": "0df2295f7e1979ec775b016fa397b42e5ef467c2ed795453dcef146d555b56ca"
+    },
+    {
+      "name": "ViiB-MediaHub-1.0.0-rc7-web-windows-arm64.zip",
+      "bytes": 13111804,
+      "sha256": "5a3569a8f0d903c426b91b88134a2779ccbb9112b260b93206e28e252d5f23d0"
+    },
+    {
+      "name": "ViiB-MediaHub-1.0.0-rc7-web-windows-x64.zip",
+      "bytes": 14370461,
+      "sha256": "56680cf3f37901f8a7e2a4be3fa1b08143932c8481091004a30f48645fc205f6"
+    },
+    {
+      "name": "ViiB-MediaHub-1.0.0-rc7-windows-x64-setup.exe",
+      "bytes": 11502927,
+      "sha256": "cd81963a2c27e04710618186255afffb0a3cdd141d0ec242ebd71a91f1f5cb81"
+    },
+    {
+      "name": "go-modules.json",
+      "bytes": 52677,
+      "sha256": "9fbf5241b394f546685ddc86abbc6b8209175e8f25f961061cc092cf32c9eee1"
+    },
+    {
+      "name": "npm-sbom.cdx.json",
+      "bytes": 278874,
+      "sha256": "f9cd549391c0dbbfcd58e3350bb3f26fbfb2761e3ced5897ae4732148489ef83"
+    }
+  ],
+  "notQualified": [
+    "published-release identity",
+    "production signatures/notarization",
+    "installation/upgrade",
+    "licensing",
+    "per-target/native SBOM",
+    "build provenance"
+  ]
+}

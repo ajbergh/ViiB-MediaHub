@@ -11,6 +11,8 @@ on:
       - 'scripts/test_go_module_inventory.py'
       - 'scripts/release_channel_guard.py'
       - 'scripts/test_release_channel_guard.py'
+      - 'scripts/verify_release_assets.py'
+      - 'scripts/test_release_assets.py'
       - '.github/workflows/build-windows.yml'
   push:
     branches: [main]
@@ -44,6 +46,9 @@ jobs:
           python-version: '3.12'
       - name: Validate release channel policy
         run: python -m unittest discover -s scripts -p 'test_release_channel_guard.py'
+
+      - name: Validate release asset policy
+        run: python -m unittest discover -s scripts -p 'test_release_assets.py'
 
       - name: Resolve release version
         id: version
@@ -679,32 +684,7 @@ jobs:
           merge-multiple: true
 
       - name: Verify assets and create checksum manifest
-        shell: bash
-        run: |
-          set -euo pipefail
-          expected=(
-            "npm-sbom.cdx.json"
-            "go-modules.json"
-            "ViiB-MediaHub-${VERSION}-windows-x64-setup.exe"
-            "ViiB-MediaHub-${VERSION}-macos-arm64.dmg"
-            "ViiB-MediaHub-${VERSION}-macos-x64.dmg"
-            "ViiB-MediaHub-${VERSION}-linux-amd64.deb"
-            "ViiB-MediaHub-${VERSION}-linux-amd64.tar.gz"
-            "ViiB-MediaHub-${VERSION}-web-windows-x64.zip"
-            "ViiB-MediaHub-${VERSION}-web-windows-arm64.zip"
-            "ViiB-MediaHub-${VERSION}-web-macos-x64.zip"
-            "ViiB-MediaHub-${VERSION}-web-macos-arm64.zip"
-            "ViiB-MediaHub-${VERSION}-web-linux-amd64.zip"
-            "ViiB-MediaHub-${VERSION}-web-linux-arm64.zip"
-          )
-          for asset in "${expected[@]}"; do
-            test -s "release-assets/$asset" || { echo "Missing release asset: $asset" >&2; exit 1; }
-          done
-          (
-            cd release-assets
-            sha256sum "${expected[@]}" > SHA256SUMS.txt
-          )
-          cat release-assets/SHA256SUMS.txt
+        run: python scripts/verify_release_assets.py --directory release-assets --version "$VERSION"
 
       - name: Write release notes
         shell: bash

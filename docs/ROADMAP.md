@@ -65,7 +65,7 @@ Work packages use stable IDs (`P0.1` etc.) for GitHub issues, PR titles, and pro
 | **P0.2** | Versioned credential key storage | **Baseline delivered; qualification open** ([PR #119](https://github.com/ajbergh/ViiB-MediaHub/pull/119)) | `enc:v2`, Windows DPAPI, non-Windows keywrap fallback, readable legacy migration and reauthentication handling merged. Remaining: supported-host install/relocation/upgrade/restart and rollback qualification | Install/relocate/upgrade/restart tests on supported OSes; readable old secrets migrate without disclosure or silent loss; unresolvable legacy secrets report a clear reauthentication path |
 | **P0.3** | Governance and required checks | **Partial; activation awaits owner approval** | [Versioned main-only ruleset and emergency process](repository-governance.md) prepared for 16 observed GitHub Actions checks. Hosted main remains unprotected; activation and effective-policy verification require explicit owner approval | Normal PR cannot merge without passing required checks; explicit reviewed emergency process exists |
 | **P0.4** | Release signing and provenance | **Partial; proposed stable-release guard** | [Shared prerelease-only guard and signing policy](release-signing-policy.md) block unqualified stable canonical/legacy Windows releases. Credentials, mandatory production signing/notarization/verification, real-host acceptance and provenance remain open | Production (non-RC) release workflow fails closed when mandatory signing/verification is unavailable (today Windows signing is skipped without secrets and macOS is ad-hoc signed only); install and signature-verification smoke tests pass |
-| **P0.5** | Supply-chain and licensing review | **Partial; proposed implementation** | Exact Staticcheck/govulncheck pins, npm CI CycloneDX inventory and proposed required/checksummed npm SBOM plus Go graph release assets. Remaining: published-asset verification, per-target/native SBOMs, attribution/license review and shipped advisory acceptance | License obligations and security advisories are recorded; no unaccepted shipped critical/high vulnerability; reproducible dependency inputs |
+| **P0.5** | Supply-chain and licensing review | **Partial; proposed implementation** | Exact Staticcheck/govulncheck pins, npm CI CycloneDX inventory, required/checksummed npm/Go release assets and proposed exact-set verification with real candidate evidence. Remaining: published-asset verification, per-target/native SBOMs, attribution/license review and shipped advisory acceptance | License obligations and security advisories are recorded; no unaccepted shipped critical/high vulnerability; reproducible dependency inputs |
 
 **Progress & Evidence Log (Phase 0):**
 - **2026-10-13 (`P0.1`, [PR #118](https://github.com/ajbergh/ViiB-MediaHub/pull/118), branch `codex/p0-1-loopback-api-trust-boundary`):** Implemented centralized `loopbackTrustBoundary` middleware (`IsTrustedHost`, `IsTrustedOrigin`, and `Sec-Fetch-Site: cross-site` enforcement) in [`backend/internal/server/server.go`](../backend/internal/server/server.go), removed wildcard `Access-Control-Allow-Origin: *` overrides across all five legacy SSE handlers in [`backend/internal/api/api.go`](../backend/internal/api/api.go), and added negative/positive unit and handler tests. Merged to `main`; remaining acceptance evidence is tracked in the row above.
@@ -371,6 +371,28 @@ remain external/complex follow-up. This is not a stable-signing implementation.
 - PR #136–#138: latest checks still running at this checkpoint; no failures
   reported. Main remains at `c50e2b4` and unprotected. Governance activation
   awaits the owner's explicit answer to the prepared PR #137 proposal.
+
+### P0.5 exact release input and assembly verification (October 20)
+
+Branch `codex/p0-5-exact-release-asset-validation`, based on PR #138, moves the
+publish asset contract into a [shared verifier](release-asset-verification.md).
+The earlier publisher checked a fixed list but uploaded a wildcard; the new
+verifier rejects extras as well as missing/empty/non-regular inputs so files
+cannot silently ship outside checksum coverage. The existing 13-file contract
+and SHA-256 manifest format are preserved. No application/storage changes.
+
+[Real candidate evidence](evidence/release-assets-pr133-2026-10-20.json): all
+**13 CI artifacts, 156,404,395 bytes**, from PR #133 (`00260f3`, run
+`39441891481`) were assembled and passed independent `sha256sum -c` verification.
+An extra-input probe failed and retained the prior manifest. Inventories were
+verified as **302 Go modules / 287 npm components**. These are PR-validation
+artifacts labelled RC7, **not the published RC7 assets**; no binaries were run.
+
+Local tests: **6 asset cases passed, 1 symlink case skipped on Windows** (creation
+privilege unavailable; Linux CI includes it), plus **7 channel and 4 inventory
+tests passed**. Both changed workflows parsed; documentation links and
+whitespace checks passed. Published-release identity, production signatures/notarization,
+installation, licensing, native SBOMs and provenance remain open.
 
 ### Baseline evidence and implementation references
 

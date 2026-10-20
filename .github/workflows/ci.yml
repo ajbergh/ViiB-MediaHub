@@ -25,6 +25,8 @@ jobs:
         run: for script in scripts/*.sh; do bash -n "$script"; done
       - name: Validate documentation links and evidence JSON
         run: python3 scripts/check_documentation_links.py
+      - name: Validate release asset policy
+        run: python3 -m unittest discover -s scripts -p 'test_release_assets.py'
       - name: Validate release channel policy
         run: python3 -m unittest discover -s scripts -p 'test_release_channel_guard.py'
       - name: Validate release module inventory generator
