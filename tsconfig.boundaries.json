@@ -16,6 +16,10 @@
     "lib/djOutputRouting.ts",
     "hooks/useFourChannelDJAudio.ts",
     "services/localThreeBand.ts",
-    "services/backendService.ts"
+    "services/backendService.ts",
+    "lib/analysisConfidence.ts",
+    "lib/analysisReadiness.ts",
+    "lib/djLibraryLUFS.ts",
+    "lib/djLibraryTruePeak.ts"
   ]
 }

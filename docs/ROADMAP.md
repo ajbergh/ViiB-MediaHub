@@ -124,7 +124,7 @@ This phase should be **incremental and behavior-preserving**, not a rewrite. Lar
 | ID | Work package | Status | Current scope and deliverables | Definition of done |
 | --- | --- | --- | --- | --- |
 | **P3.1** | Domain boundaries | **Partial** | Dedicated source adapters, media-capability and semantic modules exist. Oversized Settings/API/DB/audio modules still need incremental decomposition and coupling verification.| Existing routes/storage schemas preserved or explicitly migrated; targeted regression suite green; coupling decreases without new circular dependencies |
-| **P3.2** | Stronger frontend contracts | **Partial** | Typed capability/service boundaries and library/Spotify surface performance work are delivered. Proposed strict coverage grows from four to twelve selected modules without source changes or new escape hatches; broader migration and measured code-splitting benefits remain open.| New code uses strict typing; targeted modules migrate with no `any` escape hatch proliferation; bundle/startup gain is measured |
+| **P3.2** | Stronger frontend contracts | **Partial** | Typed capability/service boundaries and library/Spotify surface performance work are delivered. Proposed strict entry coverage grows from four to sixteen roots; the latest four DJ-library display helpers expand the actual import closure from 19 to 23 local files. No source changes or new escape hatches. Broader migration and measured code-splitting benefits remain open.| New code uses strict typing; targeted modules migrate with no `any` escape hatch proliferation; bundle/startup gain is measured |
 | **P3.3** | First-run and library workflows | **Partial** | First-launch source setup, tabbed Settings, loading/empty/retry states, Spotify surface persistence and local preparation status exist. Proposed browser-only source-settings and playlist persistence E2E coverage is in #131. Assisted usability and end-to-end source-repair qualification remain open.| First-run and source-repair journeys pass assisted usability review and end-to-end tests |
 | **P3.4** | Design consistency and accessibility | **Partial** | Design tokens, shared UI components, responsive layouts and DJ keyboard/focus work are delivered. Proposed playlist-name accessible labeling is in #131; the modal follow-up adds named Direct Download controls and keyboard/focus-safe confirmations. A draft [WCAG 2.2 AA plan and findings register](ACCESSIBILITY_QUALIFICATION.md) now covers standard workflows and candidate DJ alternatives. Plan approval, full criterion ledger, host execution and accessible-alternative qualification remain open.| Standard app flows meet approved WCAG 2.2 AA test plan; specialized DJ controls have documented accessible alternatives where feasible |
 | **P3.5** | Diagnostics and data operations UX | **Partial** | Duplicate review, diagnostics/repair, backup/staged restore and support export UI exist. Proposed modal focus/cancellation, synthetic playlist deletion-cancel coverage and explicit repair/restore consequence disclosures improve destructive-action review. Full recovery continuity acceptance and storage-quota UX remain open.| Destructive actions are reviewable; recovery progress and outcome are explicit; tests protect catalog continuity |
@@ -450,7 +450,7 @@ Documentation links and whitespace checks passed; hosted checks pending.
 
 ### P1.4/P3.3 direct-download dialog lifecycle follow-up (October 20)
 
-The success timeout could close a reopened dialog; a completed queue refresh
+[PR #143](https://github.com/ajbergh/ViiB-MediaHub/pull/143) repairs a success timeout that could close a reopened dialog; a completed queue refresh
 could also replace the empty-state dialog while its submit handler was still
 awaiting the refresh. The repair owns/cancels the close timer and invalidates
 async completions when the dialog is hidden, closed or unmounted. Current
@@ -466,6 +466,23 @@ Full `npm run check` passed: **153 files / 735 tests**, TypeScript/style gates
 and production build. Documentation and whitespace checks passed; hosted checks
 remain pending.
 No authenticated provider or native-host qualification is claimed.
+
+### P3.2 strict DJ-library display helpers (October 20)
+
+Add confidence, readiness, LUFS and true-peak display/sorting helpers to the
+strict boundary configuration. [Compiler-program evidence](evidence/strict-analysis-display-2026-10-20.json)
+separates explicit entry files (**12 → 16**) from the actual repository-local
+import closure (**19 → 23**). Exactly the four intended helpers enter the
+closure; source, runtime behavior and suppression counts are unchanged.
+
+Existing helper and consuming DJ-library tests passed: **5 files / 19 tests**.
+Repository `npm run typecheck`, documentation links/JSON and whitespace checks
+passed. Hosted validation remains pending.
+Broader mixer/UI migration remains open: those candidates currently expose ten
+beat-grid phase-sync nullability diagnostics in `djMixerSlice.ts`. This is a
+separate concrete follow-up, not a reason to add non-null assertions or disable
+strict checking. This slice does not change DSP estimators, qualify analysis
+accuracy or demonstrate bundle/startup gains.
 
 ### Baseline evidence and implementation references
 
