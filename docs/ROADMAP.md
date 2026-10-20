@@ -265,7 +265,7 @@ runtime changes or new host audit. Human execution/approval remain deferred.
 
 ### P0.5 release dependency inventory follow-up (October 20)
 
-Branch `codex/p0-5-release-dependency-inventories`, based on PR #132, adds
+[PR #133](https://github.com/ajbergh/ViiB-MediaHub/pull/133), branch `codex/p0-5-release-dependency-inventories`, based on PR #132, adds
 [required npm/Go inventory release assets](release-dependency-inventories.md).
 The release prepare job generates and uploads both files; publishing requires
 both and includes them in `SHA256SUMS.txt`. A normalized Go graph preserves
