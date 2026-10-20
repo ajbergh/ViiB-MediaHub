@@ -16,6 +16,16 @@ function setup() {
 }
 afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks();managedObjectUrls.releaseAll()});
 
+it('stores the DJ output mode and both device selections atomically', () => {
+ vi.useFakeTimers();
+ const state = setup();
+ state.setDJOutputRouting('four-channel', 'mixtrack', 'previous-headphones');
+ expect(state.audioSettings.djOutputMode).toBe('four-channel');
+ expect(state.audioSettings.mainOutputDevice).toBe('mixtrack');
+ expect(state.audioSettings.headphoneOutputDevice).toBe('previous-headphones');
+ vi.clearAllTimers();
+});
+
 describe('Spotify account capabilities', () => {
  it.each(['free', 'unknown'])('blocks %s streaming and preloads without disturbing current local playback', async product => {
   const state = setup(); state.spotifyAccountProduct = product;

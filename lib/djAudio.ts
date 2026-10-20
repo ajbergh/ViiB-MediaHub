@@ -6,6 +6,8 @@ import { crossfaderGains, beatPhaseCorrection } from './djMixerControls';
 import type { DeckSource } from './deckSource';
 import { StemDeckSource, type StemBus, type StemDeckState, type StemDeckStatus } from './stemDeckSource';
 import { SingleTrackDeckSource } from './singleTrackDeckSource';
+import { connectFourChannelOutput, type DJOutputMode } from './djOutputRouting';
+import { getDJSamplerEngine } from './djSampler';
 /**
  * ViiB MediaHub - DJ Audio Engine
  * 
@@ -225,6 +227,11 @@ export class DJAudioEngine {
   private masterDirectOutputConnected = false;
   private headphoneStreamDestination: MediaStreamAudioDestinationNode | null = null;
   private headphoneContext: AudioContext | null = null;
+  private outputMode: DJOutputMode = 'separate';
+  private outputConfigured = false;
+  private changingOutput = false;
+  private initializing: Promise<void> | null = null;
+  private fourChannelOutput: ReturnType<typeof connectFourChannelOutput> | null = null;
   private headphoneStreamSource: MediaStreamAudioSourceNode | null = null;
   private headphoneAudioElement: HTMLAudioElement | null = null;  // Fallback for routing
 
@@ -287,6 +294,12 @@ export class DJAudioEngine {
    */
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
+    if (this.initializing) return this.initializing;
+    this.initializing = this.initializeAudio();
+    try { await this.initializing; } finally { this.initializing = null; }
+  }
+
+  private async initializeAudio(): Promise<void> {
 
     try {
       // WebKit historically exposed this as webkitAudioContext. Modern
@@ -313,15 +326,13 @@ export class DJAudioEngine {
       // Create the audio graph
       this.createAudioGraph();
 
-      // Apply saved master device after the graph exists so media-element
-      // fallback routing can attach to the master analyser if needed.
-      if (this.mainOutputDeviceId) {
-        try {
-          await this.setMainOutputDevice(this.mainOutputDeviceId);
-        } catch (error) {
-          console.warn('Failed to apply saved main output device:', error);
-        }
+      const settings = useStore.getState().audioSettings;
+      this.headphoneOutputDeviceId = settings?.headphoneOutputDevice ?? this.headphoneOutputDeviceId;
+      if (!this.outputConfigured) {
+        this.mainOutputDeviceId = settings?.mainOutputDevice ?? this.mainOutputDeviceId;
+        this.outputMode = settings?.djOutputMode === 'four-channel' ? 'four-channel' : 'separate';
       }
+      await this.applyOutputConfiguration(this.outputMode, this.mainOutputDeviceId);
 
       // Set up event listeners
       this.setupEventListeners();
@@ -333,6 +344,7 @@ export class DJAudioEngine {
       this.isInitialized = true;
       console.log('🎧 DJ Audio Engine initialized');
     } catch (error) {
+      this.dispose();
       console.error('Failed to initialize DJ Audio Engine:', error);
       throw error;
     }
@@ -433,6 +445,7 @@ export class DJAudioEngine {
     // ========== Master Section ==========
     this.masterGain = ctx.createGain();
     this.masterGain.gain.value = 1.0;
+    getDJSamplerEngine().attachOutput(ctx, this.masterGain);
 
     // Limiter (dynamics compressor with extreme settings)
     this.limiter = ctx.createDynamicsCompressor();
@@ -451,9 +464,7 @@ export class DJAudioEngine {
     this.analyserB.connect(this.masterGain);
     this.masterGain
       .connect(this.limiter)
-      .connect(this.analyserMaster)
-      .connect(ctx.destination);
-    this.masterDirectOutputConnected = true;
+      .connect(this.analyserMaster);
 
     // ========== Headphone Cue Section (Phase 4) ==========
     // Create cue send gains for each deck (taps signal after EQ, before crossfader)
@@ -490,16 +501,22 @@ export class DJAudioEngine {
     this.headphoneCueMix.connect(this.headphoneMixer);
     this.headphoneMasterMix.connect(this.headphoneMixer);
     
+    this.updateHeadphoneMix(0);
+    console.log('🎧 Audio graph created');
+  }
+
+  private createSeparateHeadphoneOutput(): void {
+    const ctx = this.audioContext!;
     // ========== Headphone Output Device Routing ==========
     // Create a MediaStreamDestination to capture headphone audio
     // This allows routing to a separate audio device via HTMLAudioElement.setSinkId()
     this.headphoneStreamDestination = ctx.createMediaStreamDestination();
-    this.headphoneMixer.connect(this.headphoneStreamDestination);
+    this.headphoneMixer!.connect(this.headphoneStreamDestination);
     
     // We use a secondary AudioContext to route the headphone stream.
     // This bypasses HTMLMediaElement quirks with setSinkId on MediaStreams,
     // especially when the primary AudioContext is routed to a different device.
-    if (typeof (AudioContext.prototype as AudioContext & { setSinkId?: unknown }).setSinkId === 'function') {
+    if (typeof (ctx as AudioContext & { setSinkId?: unknown }).setSinkId === 'function') {
       this.headphoneContext = new AudioContext({
         sampleRate: this.config.sampleRate,
         latencyHint: 'interactive',
@@ -520,24 +537,6 @@ export class DJAudioEngine {
       this.headphoneAudioElement.autoplay = true;
     }
     
-    // Start the headphone output stream. With the corrected updateHeadphoneMix logic,
-    // master bleed is prevented by default (masterCueEnabled gates the master send).
-    // Starting the stream unconditionally is safe: cue sends start at gain=0 and the
-    // master send is at 0 unless masterCueEnabled is explicitly turned on.
-    void this.ensureHeadphoneOutputPlaying();
-    
-    // Apply saved headphone device if set
-    if (this.headphoneOutputDeviceId) {
-      void this.setHeadphoneOutputDevice(this.headphoneOutputDeviceId).catch(error => {
-        console.warn('Failed to apply saved headphone output device:', error);
-      });
-    }
-    
-    // Set initial mix to 0 (cue-only). Cue deck gains start at 0 so headphone
-    // output is silent until the user enables CUE on a deck.
-    this.updateHeadphoneMix(0);
-
-    console.log('🎧 Audio graph created');
   }
 
   /**
@@ -1679,12 +1678,13 @@ export class DJAudioEngine {
    * @param mix - 0 = cue only, 1 = master only
    *
    * Design intent:
-   *   - The master signal ONLY enters the headphone path when masterCueEnabled = true.
+   *   - Separate-device mode gates the master send with masterCueEnabled.
    *     This prevents the master from bleeding into the headphone output just because
    *     the mix knob is at center, which caused both outputs to sound identical.
    *   - When masterCueEnabled = false, cued decks play at full gain in headphones,
    *     and the mix knob has no effect (it is only relevant when master monitoring is on).
-   *   - When masterCueEnabled = true, the mix knob provides a constant-power crossfade
+   *   - Four-channel mode always enables the mix knob. When master monitoring
+   *     is enabled in separate mode, it also provides a constant-power crossfade
    *     between cue-only (mix=0) and master-only (mix=1).
    */
   updateHeadphoneMix(mix: number): void {
@@ -1700,9 +1700,9 @@ export class DJAudioEngine {
     let cueGain: number;
     let masterGain: number;
 
-    if (this.masterCueEnabled) {
+    if (this.masterCueEnabled || this.outputMode === 'four-channel') {
       // Master monitoring on: mix knob blends between cue (0) and master (1)
-      cueGain = Math.cos(safeMix * Math.PI / 2);   // 1 at mix=0, 0 at mix=1
+      cueGain = safeMix === 1 ? 0 : Math.cos(safeMix * Math.PI / 2);
       masterGain = Math.sin(safeMix * Math.PI / 2); // 0 at mix=0, 1 at mix=1
     } else {
       // Master monitoring off: only cued decks play in headphones at full gain.
@@ -1728,7 +1728,7 @@ export class DJAudioEngine {
   }
 
   getMasterCueEnabled(): boolean {
-    return this.masterCueEnabled;
+    return this.outputMode === 'four-channel' ? this.headphoneMixValue > 0 : this.masterCueEnabled;
   }
 
   /**
@@ -1856,7 +1856,7 @@ export class DJAudioEngine {
   }
 
   private connectMasterDirectOutput(): void {
-    if (!this.audioContext || !this.analyserMaster || this.masterDirectOutputConnected) return;
+    if (!this.audioContext || !this.analyserMaster || this.masterDirectOutputConnected || this.outputMode === 'four-channel') return;
 
     this.analyserMaster.connect(this.audioContext.destination);
     this.masterDirectOutputConnected = true;
@@ -1914,6 +1914,123 @@ export class DJAudioEngine {
     this.connectMasterDirectOutput();
   }
 
+  getOutputMode(): DJOutputMode { return this.outputMode; }
+
+  getOutputDiagnostics() {
+    const context = this.audioContext;
+    const sink = (context as AudioContext & { sinkId?: unknown } | null)?.sinkId;
+    return {
+      mode: this.outputMode,
+      contextState: context?.state ?? 'not initialized',
+      sampleRate: context?.sampleRate ?? 0,
+      channelCount: context?.destination.channelCount ?? 0,
+      maxChannelCount: context?.destination.maxChannelCount ?? 0,
+      selectedDeviceId: this.mainOutputDeviceId,
+      actualDeviceId: typeof sink === 'string' ? sink : null,
+      cueA: this.cueEnabledA,
+      cueB: this.cueEnabledB,
+      cueMix: this.headphoneMixValue,
+      headphoneVolume: this.headphoneMixer?.gain.value ?? 0,
+    };
+  }
+
+  async testOutputChannel(channel: number): Promise<void> {
+    if (this.changingOutput) throw new Error('Wait for the output change to finish.');
+    const route = this.fourChannelOutput;
+    if (!this.isInitialized || !route || this.outputMode !== 'four-channel') {
+      throw new Error('Apply the four-channel output device before testing its channels.');
+    }
+    if (this.audioContext?.state === 'suspended') await this.audioContext.resume();
+    if (this.fourChannelOutput !== route || this.changingOutput) throw new Error('The audio route changed. Please test again.');
+    await route.testChannel(channel);
+  }
+
+  stopOutputTest(): void { this.fourChannelOutput?.stopTests(); }
+
+  private async clearHeadphoneDeviceOutput(): Promise<void> {
+    if (this.headphoneStreamDestination && this.headphoneMixer) {
+      this.headphoneMixer.disconnect(this.headphoneStreamDestination);
+    }
+    this.headphoneStreamDestination = null;
+    this.headphoneStreamSource?.disconnect();
+    this.headphoneStreamSource = null;
+    const context = this.headphoneContext;
+    this.headphoneContext = null;
+    this.headphoneAudioElement?.pause();
+    if (this.headphoneAudioElement) {
+      this.headphoneAudioElement.srcObject = null;
+      this.headphoneAudioElement.remove();
+      this.headphoneAudioElement = null;
+    }
+    this.headphoneOutputActive = false;
+    if (context && context.state !== 'closed') await context.close();
+  }
+
+  private async applyOutputConfiguration(mode: DJOutputMode, deviceId: string): Promise<void> {
+    const ctx = this.audioContext! as AudioContext & { setSinkId?: (id: string) => Promise<void> };
+    this.fourChannelOutput?.disconnect();
+    this.fourChannelOutput = null;
+    this.disconnectMasterDirectOutput();
+    if (this.mainOutputElementRoutingEnabled) {
+      this.analyserMaster!.disconnect(this.mainOutputStreamDestination!);
+      this.mainOutputElementRoutingEnabled = false;
+    }
+    this.mainOutputAudioElement?.pause();
+    await this.clearHeadphoneDeviceOutput();
+
+    if (mode === 'four-channel') {
+      if (typeof ctx.setSinkId === 'function') await ctx.setSinkId(deviceId || '');
+      else if (deviceId && deviceId !== 'default') {
+        throw new Error('This runtime cannot select a four-channel device. Choose the controller as the OS default and select System default here.');
+      }
+      this.fourChannelOutput = connectFourChannelOutput(ctx, this.analyserMaster!, this.headphoneMixer!);
+      this.outputMode = mode;
+      this.mainOutputDeviceId = deviceId;
+    } else {
+      ctx.destination.channelCount = 2;
+      ctx.destination.channelCountMode = 'explicit';
+      ctx.destination.channelInterpretation = 'speakers';
+      this.outputMode = mode;
+      await this.setMainOutputDevice(deviceId);
+      this.createSeparateHeadphoneOutput();
+      await this.setHeadphoneOutputDevice(this.headphoneOutputDeviceId);
+      await this.ensureHeadphoneOutputPlaying();
+    }
+    this.updateHeadphoneMix(this.headphoneMixValue);
+  }
+
+  /** Reconfigure the live graph; never route a four-channel bus through a media element. */
+  async setOutputRouting(mode: DJOutputMode, deviceId: string): Promise<void> {
+    if (this.changingOutput) throw new Error('An audio output change is already in progress.');
+    this.changingOutput = true;
+    try {
+      if (!this.isInitialized) {
+        this.outputConfigured = true;
+        this.outputMode = mode;
+        this.mainOutputDeviceId = deviceId;
+        await this.initialize();
+        return;
+      }
+      const ctx = this.audioContext!;
+      const previous = { mode: this.outputMode, device: this.mainOutputDeviceId };
+      const wasRunning = ctx.state === 'running';
+      // Suspend before changing the sink, so an old four-channel graph cannot
+      // downmix headphone audio into the new device's speakers during the switch.
+      if (wasRunning) await ctx.suspend();
+      try {
+        await this.applyOutputConfiguration(mode, deviceId);
+      } catch (error) {
+        try { await this.applyOutputConfiguration(previous.mode, previous.device); }
+        catch (restoreError) { console.error('Could not restore previous audio route:', restoreError); }
+        throw error;
+      } finally {
+        if (wasRunning) await ctx.resume();
+      }
+    } finally {
+      this.changingOutput = false;
+    }
+  }
+
   /**
    * Set the main/live audio output device
    * Uses AudioContext.setSinkId() when available, otherwise falls back to a
@@ -1921,6 +2038,7 @@ export class DJAudioEngine {
    * @param deviceId - Device ID from navigator.mediaDevices.enumerateDevices(), or empty for default
    */
   async setMainOutputDevice(deviceId: string): Promise<void> {
+    if (this.outputMode === 'four-channel') return this.setOutputRouting('four-channel', deviceId);
     this.mainOutputDeviceId = deviceId;
     
     if (!this.audioContext) {
@@ -1963,6 +2081,9 @@ export class DJAudioEngine {
    * @param deviceId - Device ID from navigator.mediaDevices.enumerateDevices(), or empty for default
    */
   async setHeadphoneOutputDevice(deviceId: string): Promise<void> {
+    if (this.outputMode === 'four-channel') {
+      throw new Error('Headphones use channels 3–4 of the shared four-channel output device.');
+    }
     this.headphoneOutputDeviceId = deviceId;
 
     // Primary approach: use secondary AudioContext
@@ -2010,7 +2131,7 @@ export class DJAudioEngine {
    * Get current headphone output device ID
    */
   getHeadphoneOutputDeviceId(): string {
-    return this.headphoneOutputDeviceId;
+    return this.outputMode === 'four-channel' ? this.mainOutputDeviceId : this.headphoneOutputDeviceId;
   }
 
   // ============================================================================
@@ -2819,6 +2940,10 @@ export class DJAudioEngine {
    * Clean up and release resources
    */
   dispose(): void {
+    getDJSamplerEngine().detachOutput();
+    this.fourChannelOutput?.disconnect();
+    this.fourChannelOutput = null;
+    void this.clearHeadphoneDeviceOutput().catch(error => console.warn('Headphone cleanup failed:', error));
     this.loopTrackingActive = false;
     this.loopStoreUnsubscribe?.(); this.loopStoreUnsubscribe = null;
     this.stopLoopTicker();
@@ -2879,6 +3004,7 @@ export class DJAudioEngine {
     if (this.audioContext) {
       this.audioContext.close();
     }
+    this.audioContext = null;
 
     this.isInitialized = false;
     console.log('🎧 DJ Audio Engine disposed');

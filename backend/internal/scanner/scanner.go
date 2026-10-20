@@ -181,6 +181,8 @@ type Scanner struct {
 	downloadsSinceLastScan int
 	rescanThreshold        int // Rescan after this many downloads
 	autoScanWorkerRunning  bool
+	autoScanClosed         bool
+	autoScanWg             sync.WaitGroup
 	rescanMutex            sync.Mutex
 
 	// Event broadcasting to multiple SSE clients
@@ -305,6 +307,10 @@ func (s *Scanner) SetSpotifyDownloadDir(dir string) {
 // SetRescanThreshold sets how many downloads trigger an automatic rescan
 func (s *Scanner) SetRescanThreshold(threshold int) {
 	s.rescanMutex.Lock()
+	if s.autoScanClosed {
+		s.rescanMutex.Unlock()
+		return
+	}
 	if threshold < 0 {
 		threshold = 0
 	}
@@ -318,6 +324,7 @@ func (s *Scanner) SetRescanThreshold(threshold int) {
 		!s.autoScanWorkerRunning
 	if shouldStart {
 		s.autoScanWorkerRunning = true
+		s.autoScanWg.Add(1)
 	}
 	s.rescanMutex.Unlock()
 	logger.Scanner("Rescan threshold set to: %d downloads", threshold)
@@ -331,6 +338,10 @@ func (s *Scanner) SetRescanThreshold(threshold int) {
 // Returns true if a rescan was triggered
 func (s *Scanner) NotifyDownloadComplete() bool {
 	s.rescanMutex.Lock()
+	if s.autoScanClosed {
+		s.rescanMutex.Unlock()
+		return false
+	}
 	threshold := s.rescanThreshold
 	if threshold == 0 {
 		s.rescanMutex.Unlock()
@@ -344,6 +355,7 @@ func (s *Scanner) NotifyDownloadComplete() bool {
 	shouldStart := downloads >= threshold && downloadDir != "" && !s.autoScanWorkerRunning
 	if shouldStart {
 		s.autoScanWorkerRunning = true
+		s.autoScanWg.Add(1)
 	}
 	s.rescanMutex.Unlock()
 
@@ -361,6 +373,7 @@ func (s *Scanner) NotifyDownloadComplete() bool {
 // while another scan or this automatic scan is running. Counts are claimed at
 // the start of a scan so downloads that finish during discovery are never lost.
 func (s *Scanner) performQuickScan() {
+	defer s.autoScanWg.Done()
 	retry := time.NewTicker(100 * time.Millisecond)
 	defer retry.Stop()
 
