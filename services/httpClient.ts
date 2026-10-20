@@ -7,6 +7,7 @@ export interface APIErrorPayload {
   message: string;
   retryable: boolean;
   requestId?: string;
+  diagnosticToken?: string;
   details?: Record<string, unknown>;
 }
 
@@ -14,6 +15,7 @@ export class APIError extends Error {
   readonly code: string;
   readonly retryable: boolean;
   readonly requestId?: string;
+  readonly diagnosticToken?: string;
   readonly details?: Record<string, unknown>;
   readonly status: number;
 
@@ -24,6 +26,7 @@ export class APIError extends Error {
     this.code = payload.code;
     this.retryable = payload.retryable;
     this.requestId = payload.requestId;
+    this.diagnosticToken = typeof payload.diagnosticToken === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(payload.diagnosticToken) ? payload.diagnosticToken : undefined;
     this.details = payload.details;
   }
 }
@@ -55,6 +58,7 @@ async function parseError(response: Response): Promise<APIError> {
     message: response.statusText || `HTTP ${response.status}`,
     retryable: response.status >= 500 || response.status === 429,
     requestId,
+    diagnosticToken: response.headers.get('X-ViiB-Diagnostic-Token') || undefined,
   });
 }
 

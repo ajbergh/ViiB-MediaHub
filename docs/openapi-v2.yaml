@@ -1084,6 +1084,7 @@ components:
             message: { type: string }
             retryable: { type: boolean }
             requestId: { type: string }
+            diagnosticToken: { type: string, format: uuid, description: "Server-generated opaque support reference; independent of requestId" }
             details: { type: object, additionalProperties: true }
     BackupInfo:
       type: object

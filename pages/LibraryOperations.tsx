@@ -10,6 +10,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Activity, Archive, CheckCircle2, Database, Eye, Play, RefreshCw, ShieldCheck, Square, Wrench } from 'lucide-react';
 import { Page, PageHeader } from '../components/ui/Page';
 import { BackupInfo, LibraryDiagnostics, WatcherStatus, libraryOperationsV2 } from '../services/libraryOperationsV2';
+import { APIError } from '../services/httpClient';
 import { MetadataHealthWidget } from '../components/MetadataHealthWidget';
 import { LibraryAnalysisPanel } from '../components/LibraryAnalysisPanel';
 
@@ -79,6 +80,16 @@ export const LibraryOperationsPanel: React.FC = () => {
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [diagnosticToken, setDiagnosticToken] = useState<string | undefined>();
+  const [copyMessage, setCopyMessage] = useState('');
+  const referenceGeneration = useRef(0);
+  const reportError = useCallback((failure: unknown, fallback: string) => {
+    referenceGeneration.current += 1;
+    setError(failure instanceof Error ? failure.message : fallback);
+    setDiagnosticToken(failure instanceof APIError ? failure.diagnosticToken : undefined);
+    setCopyMessage('');
+  }, []);
+
 
   const requestScope = useRef<AbortController | null>(null);
   const running = useRef(false);
@@ -90,14 +101,14 @@ export const LibraryOperationsPanel: React.FC = () => {
       if (!controller.signal.aborted) setBackups(result.backups);
     }).catch(loadError => {
       if (!controller.signal.aborted) {
-        setError(loadError instanceof Error ? loadError.message : 'Unable to load library operations');
+        reportError(loadError, 'Unable to load library operations');
       }
     });
     return () => {
       controller.abort();
       running.current = false;
     };
-  }, []);
+  }, [reportError]);
 
   // Abort releases client work on navigation; it cannot undo a server mutation.
   // Check the captured scope after each await before UI updates/follow-up calls.
@@ -105,10 +116,11 @@ export const LibraryOperationsPanel: React.FC = () => {
     const signal = requestScope.current?.signal;
     if (!signal || signal.aborted || running.current) return;
     running.current = true;
-    setBusy(label); setError(''); setMessage('');
+    referenceGeneration.current += 1;
+    setBusy(label); setError(''); setMessage(''); setDiagnosticToken(undefined); setCopyMessage('');
     try { await operation(signal); }
     catch (operationError) {
-      if (!signal.aborted) setError(operationError instanceof Error ? operationError.message : `${label} failed`);
+      if (!signal.aborted) reportError(operationError, `${label} failed`);
     } finally {
       if (!signal.aborted) { running.current = false; setBusy(null); }
     }
@@ -154,6 +166,18 @@ export const LibraryOperationsPanel: React.FC = () => {
     setMessage(`Restore staged in ${result.path}. Close ViiB before applying the staged database. A restart is required.`);
   });
 
+  const copyReference = async () => {
+    const signal = requestScope.current?.signal;
+    if (!diagnosticToken || !signal || signal.aborted) return;
+    const generation = referenceGeneration.current;
+    try {
+      await navigator.clipboard.writeText(diagnosticToken);
+      if (!signal.aborted && referenceGeneration.current === generation) setCopyMessage('Reference copied');
+    } catch {
+      if (!signal.aborted && referenceGeneration.current === generation) setCopyMessage('Select and copy the reference above');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <p className="max-w-3xl text-text-secondary text-sm">Prepare tracks for DJ features, diagnose and repair library consistency, and create validated backups or stage recovery. Configure local folders, Plex, and continuous monitoring in Library Sources.</p>
@@ -161,6 +185,14 @@ export const LibraryOperationsPanel: React.FC = () => {
       {(message || error) && (
         <div className={`rounded-lg border p-4 text-sm ${error ? 'border-error/40 bg-error/10 text-error' : 'border-accent-green/30 bg-accent-green/10 text-text-main'}`} role="status">
           {error || message}
+          {error && diagnosticToken && <div className="mt-3 flex flex-wrap items-center gap-3">
+            <label className="text-xs">Support reference
+              <input className="ml-2 rounded bg-surface-2 px-2 py-1 font-mono" readOnly value={diagnosticToken} />
+            </label>
+            <button className={secondaryClass} onClick={() => void copyReference()}>Copy reference</button>
+            <span className="text-xs" aria-live="polite">{copyMessage}</span>
+          </div>}
+
         </div>
       )}
 

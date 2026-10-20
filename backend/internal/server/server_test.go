@@ -323,3 +323,27 @@ func httpTestRequestWithCancel(method, target string) (*http.Request, func()) {
 	ctx, cancel := context.WithCancel(req.Context())
 	return req.WithContext(ctx), cancel
 }
+
+func TestMaintenanceDiagnosticReferenceCORSAndLegacyRequestID(t *testing.T) {
+	handler := newTestServerHandler(t)
+	request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:34115/api/v2/operations/repair", strings.NewReader(`{"broken":`))
+	request.Header.Set("Origin", "wails://wails")
+	request.Header.Set("X-Request-ID", "private-caller-request")
+	request.Header.Set(api.DiagnosticTokenHeader, "private-incoming-token")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	var envelope struct{ Error api.V2Error }
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil || response.Code != http.StatusBadRequest {
+		t.Fatalf("response: %d %v", response.Code, err)
+	}
+	token := response.Header().Get(api.DiagnosticTokenHeader)
+	if len(token) != 36 || token != envelope.Error.DiagnosticToken || token == "private-incoming-token" {
+		t.Fatal("missing independent diagnostic reference")
+	}
+	if response.Header().Get("X-Request-ID") != "private-caller-request" || envelope.Error.RequestID != "private-caller-request" {
+		t.Fatal("request ID compatibility changed")
+	}
+	if !strings.Contains(strings.ToLower(response.Header().Get("Access-Control-Expose-Headers")), strings.ToLower(api.DiagnosticTokenHeader)) {
+		t.Fatal("diagnostic response header is not exposed")
+	}
+}

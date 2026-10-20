@@ -120,3 +120,13 @@ From `backend`, run:
 ```bash
 go test ./internal/api ./internal/db -run '(Backup|Restore)' -count=1
 ```
+
+## Failure references
+
+When a structured maintenance failure includes a support reference, use **Copy
+reference** and share it with a freshly created support bundle. The reference
+matches a minimal `v2_error` diagnostic record and contains no song/path/error
+text. It is separate from legacy HTTP request IDs. Clipboard access can be
+unavailable; the reference field also supports selecting and copying manually.
+Not every error path has a reference, and support-log retention limits can omit
+older records. See [support-bundle scope](support-bundles.md).

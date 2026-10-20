@@ -93,7 +93,7 @@ func TestSupportBundleContainsSanitizedDiagnosticsOnly(t *testing.T) {
 		t.Fatal("wrong bundle schema", err)
 	}
 	var diagnostics supportBundleDiagnostics
-	if err := json.Unmarshal([]byte(entries["diagnostics.json"]), &diagnostics); err != nil || diagnostics.Version != 1 || diagnostics.Included != 1 || diagnostics.Dropped != 3 {
+	if err := json.Unmarshal([]byte(entries["diagnostics.json"]), &diagnostics); err != nil || diagnostics.Version != 2 || diagnostics.Included != 1 || diagnostics.Dropped != 3 {
 		t.Fatalf("projection metadata: %+v %v", diagnostics, err)
 	}
 	retained, err := os.ReadFile(filepath.Join(dataDir, "viib.log"))

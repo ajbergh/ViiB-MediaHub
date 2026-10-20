@@ -6,6 +6,7 @@ const service = vi.hoisted(() => ({ listBackups: vi.fn(), diagnostics: vi.fn(), 
 vi.mock('../services/libraryOperationsV2', () => ({ libraryOperationsV2: service }));
 vi.mock('../components/MetadataHealthWidget', () => ({ MetadataHealthWidget: () => null }));
 vi.mock('../components/LibraryAnalysisPanel', () => ({ LibraryAnalysisPanel: () => null }));
+import { APIError } from '../services/httpClient';
 import { LibraryOperationsPanel } from './LibraryOperations';
 
 let container: HTMLDivElement;
@@ -30,7 +31,7 @@ beforeEach(async () => {
   await act(async () => root.render(<LibraryOperationsPanel />));
 });
 afterEach(async () => {
-  await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks();
+  await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
 
 it('discloses missing-track data loss, makes no mutation on cancel, and sends only reviewed missing IDs after approval', async () => {
@@ -110,4 +111,32 @@ it('serializes maintenance requests even when clicks arrive in one render batch'
   await act(async () => { button.click(); button.click(); });
   expect(service.repair).toHaveBeenCalledOnce();
   await act(async () => pending.resolve({ removedMissing: 0 }));
+});
+
+it('shows and copies only a validated support reference, then clears it on a new action', async () => {
+  const token = '12345678-1234-4123-8123-123456789abc';
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal('navigator', { clipboard: { writeText } });
+  service.diagnostics.mockRejectedValueOnce(new APIError(503, { code: 'diagnostics_failed', message: 'Maintenance unavailable', retryable: false, requestId: 'private-host', diagnosticToken: token, details: { reason: 'private-detail' } }));
+  await click('Run diagnostics');
+  expect(container.textContent).toContain('Maintenance unavailable');
+  expect(container.querySelector<HTMLInputElement>('input[readonly]')?.value).toBe(token);
+  expect(container.textContent).not.toContain('private-host');
+  expect(container.textContent).not.toContain('private-detail');
+  await click('Copy reference');
+  expect(writeText).toHaveBeenCalledExactlyOnceWith(token);
+  expect(container.textContent).toContain('Reference copied');
+  writeText.mockRejectedValueOnce(new Error('Clipboard denied'));
+  await click('Copy reference');
+  expect(container.textContent).toContain('Select and copy the reference above');
+  await click('Run diagnostics');
+  expect(container.querySelector('input[readonly]')).toBeNull();
+});
+
+it('does not show untrusted reference values or legacy request IDs', async () => {
+  service.diagnostics.mockRejectedValueOnce(new APIError(503, { code: 'failure', message: 'Unavailable', retryable: false, diagnosticToken: '/private/fixture', requestId: '12345678-1234-4123-8123-123456789abc' }));
+  await click('Run diagnostics');
+  expect(container.querySelector('input[readonly]')).toBeNull();
+  expect(container.textContent).not.toContain('Copy reference');
+  expect(container.textContent).not.toContain('/private/fixture');
 });

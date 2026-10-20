@@ -73,3 +73,30 @@ test('recovery route reviews diagnostics, cancels destructive actions and stages
   expect(mutations).toEqual([{ path: '/api/v2/operations/restore/stage', body: { name: 'selected-fixture.zip' } }]);
   expect(errors).toEqual([]);
 });
+
+
+test('maintenance failure shows and copies a safe reference without rendering private request details', async ({ page, context }) => {
+  const token = '12345678-1234-4123-8123-123456789abc';
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.origin !== 'http://127.0.0.1:4173') return route.abort();
+    if (url.pathname === '/api/v2/operations/backups') return route.fulfill({ json: { backups: [] } });
+    if (url.pathname === '/api/v2/operations/diagnostics') return route.fulfill({ status: 503, json: { error: {
+      code: 'diagnostics_failed', message: 'Maintenance temporarily unavailable', retryable: true,
+      requestId: 'private-host-request', diagnosticToken: token,
+      details: { reason: 'Private fixture detail /private/fixture' },
+    } } });
+    if (url.pathname.startsWith('/api/')) return route.fulfill({ status: 503, json: { error: 'Synthetic backend unavailable' } });
+    return route.continue();
+  });
+  await page.goto('/library-operations');
+  await page.getByRole('button', { name: 'Run diagnostics', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Maintenance temporarily unavailable' })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Support reference', exact: true })).toHaveValue(token);
+  await expect(page.locator('body')).not.toContainText('private-host-request');
+  await expect(page.locator('body')).not.toContainText('Private fixture detail');
+  await page.getByRole('button', { name: 'Copy reference', exact: true }).click();
+  await expect(page.getByText('Reference copied', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(token);
+});

@@ -14,20 +14,21 @@ import (
 )
 
 const (
-	supportProjectionVersion  = 1
+	supportProjectionVersion  = 2
 	maxSupportLineBytes       = 8 << 10
 	maxSupportRecords         = 2000
 	maxSupportProjectionBytes = 256 << 10
 )
 
 var (
-	supportLineGrammar    = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{6}) \[(FE WARN|API|Analysis)\] (.*)$`)
-	supportAudioGrammar   = regexp.MustCompile(`^\[AudioRead\] Audio read failed \| Data: (\{.*\})$`)
-	supportCatalogGrammar = regexp.MustCompile(`^Spotify catalog failure: code=(unknown|upstream_http|cancelled|deadline|schema_incompatible|invalid_query|authentication_required|provider_changed|temporarily_unavailable) stage=(catalog|client_token|profile|search|album|artist|playlist|library|track) upstream_status=([0-9]{1,3})$`)
-	supportJobIdentity    = `job_id="([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})" mode="(all|missing|stale|ids|playlist)"`
-	supportJobStarted     = regexp.MustCompile(`^job started ` + supportJobIdentity + ` tracks=([0-9]{1,7}) algorithm=` + regexp.QuoteMeta(strconv.Quote(track.AlgorithmVersion)) + `$`)
-	supportJobCanceled    = regexp.MustCompile(`^job canceled ` + supportJobIdentity + ` processed=([0-9]{1,7}) total=([0-9]{1,7})$`)
-	supportJobCompleted   = regexp.MustCompile(`^job completed ` + supportJobIdentity + ` total=([0-9]{1,7}) analyzed=([0-9]{1,7}) skipped=([0-9]{1,7}) failed=([0-9]{1,7})$`)
+	supportLineGrammar      = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{6}) \[(FE WARN|API|Analysis)\] (.*)$`)
+	supportReferenceGrammar = regexp.MustCompile(`^support reference issued token="([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})" status=([45][0-9]{2})$`)
+	supportAudioGrammar     = regexp.MustCompile(`^\[AudioRead\] Audio read failed \| Data: (\{.*\})$`)
+	supportCatalogGrammar   = regexp.MustCompile(`^Spotify catalog failure: code=(unknown|upstream_http|cancelled|deadline|schema_incompatible|invalid_query|authentication_required|provider_changed|temporarily_unavailable) stage=(catalog|client_token|profile|search|album|artist|playlist|library|track) upstream_status=([0-9]{1,3})$`)
+	supportJobIdentity      = `job_id="([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})" mode="(all|missing|stale|ids|playlist)"`
+	supportJobStarted       = regexp.MustCompile(`^job started ` + supportJobIdentity + ` tracks=([0-9]{1,7}) algorithm=` + regexp.QuoteMeta(strconv.Quote(track.AlgorithmVersion)) + `$`)
+	supportJobCanceled      = regexp.MustCompile(`^job canceled ` + supportJobIdentity + ` processed=([0-9]{1,7}) total=([0-9]{1,7})$`)
+	supportJobCompleted     = regexp.MustCompile(`^job completed ` + supportJobIdentity + ` total=([0-9]{1,7}) analyzed=([0-9]{1,7}) skipped=([0-9]{1,7}) failed=([0-9]{1,7})$`)
 )
 
 type supportProjection struct {
@@ -125,6 +126,11 @@ func projectSupportLine(line string) map[string]any {
 			record["status"] = *audio.Status
 		}
 	case "API":
+		if reference := supportReferenceGrammar.FindStringSubmatch(m[3]); reference != nil {
+			status, _ := strconv.Atoi(reference[2])
+			record["event"], record["diagnosticToken"], record["status"] = "v2_error", reference[1], status
+			return record
+		}
 		catalog := supportCatalogGrammar.FindStringSubmatch(m[3])
 		if catalog == nil {
 			return nil

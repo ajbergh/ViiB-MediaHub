@@ -42,7 +42,7 @@ func New(apiHandler *api.API, frontendFS fs.FS) http.Handler {
 		AllowOriginFunc:  func(r *http.Request, origin string) bool { return IsTrustedOrigin(origin, r.Host) },
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "If-Match", "Last-Event-ID", "Range", "X-Request-ID"},
-		ExposedHeaders:   []string{"ETag", "X-Request-ID", "Content-Range", "Accept-Ranges", "Content-Length"},
+		ExposedHeaders:   []string{"ETag", "X-Request-ID", api.DiagnosticTokenHeader, "Content-Range", "Accept-Ranges", "Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
@@ -287,4 +287,3 @@ func respondTrustBoundaryError(w http.ResponseWriter, r *http.Request, code, mes
 		"error": message,
 	})
 }
-

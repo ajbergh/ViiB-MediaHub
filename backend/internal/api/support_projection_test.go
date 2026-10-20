@@ -117,3 +117,16 @@ func TestSupportLogTailBoundRejectsPartialLines(t *testing.T) {
 		t.Fatal("unterminated oversized tail was retained")
 	}
 }
+
+func TestSupportReferenceProjectionRejectsUnreviewedFields(t *testing.T) {
+	for _, message := range []string{
+		`support reference issued token="private-host-request" status=503`,
+		`support reference issued token="12345678-1234-4123-8123-123456789abc" status=503 requestId="private-request"`,
+		`support reference issued token="12345678-1234-4123-8123-123456789abc" status=200`,
+	} {
+		data, stats := projectSupportLog([]byte(supportFixtureLine("API", message)))
+		if len(data) != 0 || stats.Dropped != 1 {
+			t.Fatalf("unsafe reference record passed: %q", data)
+		}
+	}
+}

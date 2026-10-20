@@ -105,9 +105,9 @@ The current [preparation baseline](SPOTIFY_PREPARATION_PERFORMANCE.md) includes 
 | **P2.1** | Representative benchmark harness | **Planned** | The 105-track offline preparation experiment and library performance changes are useful baselines; no representative 1K/10K/100K percentile/resource reporting harness is established.| CI or scheduled reports provide p50/p95/p99 where applicable, memory/CPU/disk/artifact totals, environment and reproducible inputs |
 | **P2.2** | Bounded analysis and scanning | **Partial** | Atomic analysis claims, bounded scanner TagLib execution, timeout/retry ownership, and cancellation/restart tests are delivered in #123. Workload-level decode/concurrency/resource measurements remain open.| No unbounded worker/provider storms; warm runs avoid unnecessary decodes; measured improvements do not regress accuracy or provenance |
 | **P2.3** | Cache lifecycle | **Partial** | Binary three-band storage and bounded legacy compaction are delivered in #123. Global quotas, safe eviction, disk-budget enforcement, and WAL/restoration qualification remain open.| Predictable disk limits; cache eviction cannot destroy user data or invalidate retained provenance; reference workloads stay inside approved resource budgets |
-| **P2.4** | Browser end-to-end gates | **Partial; proposed implementation** | Five deterministic Chromium journeys (four browser-only plus synthetic Library Operations review/cancel/stage); config and CI retain failure screenshots/traces/report. Remaining: merged-head validation, backend/import/playback/recovery-integrity/provider flows and other browser profiles.| Critical flows reliably pass in CI; failures retain screenshots/traces/logs without secrets |
+| **P2.4** | Browser end-to-end gates | **Partial; proposed implementation** | Six deterministic Chromium journeys (four browser-only plus synthetic recovery review/cancel/stage and failure-reference display/copy); config and CI retain failure screenshots/traces/report. Remaining: merged-head validation, backend/import/playback/recovery-integrity/provider flows and other browser profiles.| Critical flows reliably pass in CI; failures retain screenshots/traces/logs without secrets |
 | **P2.5** | Native system qualification | **Partial** | Native builds and bounded Windows user-reported functional samples exist. Long-session/device/WebView coverage and macOS/Linux host execution remain open.| Tested platform/architecture matrix with explicit passes, failures and accepted exceptions |
-| **P2.6** | Troubleshooting evidence | **Partial** | Request IDs, job diagnostics and an opt-in bounded/redacted support archive with tests exist. Proposed schema-2 support export replaces raw log text with bounded allowlisted diagnostic records. Local logging privacy, safe end-to-end request correlation and full troubleshooting qualification remain open.| A user-visible failure can be traced to a sanitized diagnostic record; tokens, cookies, local-private data are excluded by default |
+| **P2.6** | Troubleshooting evidence | **Partial** | Request IDs, job diagnostics and an opt-in bounded/redacted support archive with tests exist. Proposed schema-2 support export replaces raw log text with bounded allowlisted diagnostic records. Structured v2 handler failures now have a server-generated reference propagated to Library Operations and allowlisted support records. Local logging privacy, legacy/middleware/provider correlation and full troubleshooting qualification remain open.| A user-visible failure can be traced to a sanitized diagnostic record; tokens, cookies, local-private data are excluded by default |
 
 **Progress & Evidence Log (Phase 2, October 15):**
 - [PR #123](https://github.com/ajbergh/ViiB-MediaHub/pull/123) (`79a04eb`) delivers the bounded analysis/scanner and binary waveform conversion described in [scan stability and storage](scan-stability-and-storage.md). Compaction reuses SQLite pages; it does not automatically shrink the database file. TagLib cannot be forcibly canceled; fully stuck slots require restart.
@@ -616,7 +616,7 @@ Documentation/JSON and whitespace checks passed; hosted checks pending. PR #145
 
 ### P3.2 global strict TypeScript gate (October 20)
 
-Global `strict: true` now passes, with `allowJs: false`, explicit TS/TSX inputs
+[PR #150](https://github.com/ajbergh/ViiB-MediaHub/pull/150): global `strict: true` now passes, with `allowJs: false`, explicit TS/TSX inputs
 and dependency/output/dist/build/worktree exclusions. Imported Wails declarations
 remain in scope. [Compiler inventory](evidence/global-strict-2026-10-20.json)
 records **26 → 0 strict diagnostics**, 495 non-declaration TS/TSX files, six
@@ -638,6 +638,41 @@ Existing explicit `any`, suppressions and
 `skipLibCheck` remain; zero compiler diagnostics is not proof that all types or
 JS bodies are fully validated. Bundle/startup measurements, native output and
 broader P3.2 acceptance remain open.
+
+### P2.6 safe maintenance-failure references (October 20)
+
+The central structured-v2 error helper generates a fresh opaque UUID-v4
+`diagnosticToken` per failure, independently of caller headers and legacy
+hostname-bearing request IDs. The body/response header expose the same token;
+CORS exposes the response header without adding it as a client request header.
+A fixed log event carries only the token and HTTP status. Projection version 2
+retains that event as `v2_error`; route/code/message/details/request ID never
+enter the record. Bundle schema remains 2.
+
+The typed client validates reference format, preserves existing request-ID
+semantics and uses the diagnostic header only for unstructured response fallback.
+Library Operations shows a separate selectable reference, copies only its value,
+clears it for new actions and guards clipboard completion on navigation/action
+change. Backend integration tests connect real failing maintenance routes to the
+actual support ZIP; browser fixtures separately exercise UI display/copy and
+private-detail omission. No arbitrary IDs are repurposed as references.
+
+Scope remains bounded: legacy responses, middleware/trust-boundary failures,
+provider-wide troubleshooting and local raw-log privacy remain open. Log-tail/
+projection limits may omit a reference record. Native clipboard/save/share and
+full real-host failure qualification remain open.
+
+Validation: full frontend `npm run check` passed **154 files / 747 tests**,
+strict/style gates and production build; **6/6 Chromium journeys passed**,
+including real browser clipboard copy. **14 focused client/UI tests passed**
+with clipboard-denial fallback. The full API/server suites and `go vet` passed;
+**8 focused reference/support/CORS cases passed under Windows race detection**.
+The strengthened real-route/archive test also rejects a valid-format incoming
+UUID as a server reference. OpenAPI YAML, documentation/JSON and whitespace
+checks passed. Browser fixtures are synthetic; backend route-to-ZIP evidence
+uses the actual exporter. Hosted checks remain pending.
+PR #148 (`363f2e1`) and #149 (`b17deef`) now each have **16 successful
+hosted checks**; #150 still has validation running without reported failures.
 
 ### Baseline evidence and implementation references
 

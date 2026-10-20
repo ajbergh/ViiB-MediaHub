@@ -95,7 +95,7 @@ func (a *API) CreateSupportBundle() ([]byte, string, error) {
 	if err := writeSupportEntry(archive, "logs/diagnostics.jsonl", logData); err != nil {
 		return nil, "", err
 	}
-	readme := "ViiB MediaHub support bundle\n\nThis archive contains version/platform diagnostics and bounded, allowlisted diagnostic records. Unknown log entries and free-form messages, media metadata, paths, resource IDs and stacks are omitted. Validated analysis-job UUIDs are retained for job correlation; raw HTTP request IDs are not included.\nIt does not contain the media database, media files, artwork, playlists, scan-folder lists, or credential values.\nReview the files before emailing the archive.\n"
+	readme := "ViiB MediaHub support bundle\n\nThis archive contains version/platform diagnostics and bounded, allowlisted diagnostic records. Unknown log entries and free-form messages, media metadata, paths, resource IDs and stacks are omitted. Validated analysis-job UUIDs are retained for job correlation; raw HTTP request IDs are not included. Server-generated support references for structured v2 handler failures are included.\nIt does not contain the media database, media files, artwork, playlists, scan-folder lists, or credential values.\nReview the files before emailing the archive.\n"
 	if err := writeSupportEntry(archive, "README.txt", []byte(readme)); err != nil {
 		return nil, "", err
 	}
