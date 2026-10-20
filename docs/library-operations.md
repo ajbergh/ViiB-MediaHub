@@ -71,6 +71,12 @@ Creating a backup:
 3. Validates the sanitized snapshot with SQLite integrity checking.
 4. Stores `library.db` and a SHA-256 manifest in a ZIP archive in the application data directory.
 
+Backup creation never overwrites an existing archive, including concurrent requests
+for the same name. Default names include subsecond precision. An API request with
+an existing normalized name returns `409 backup_exists`; choose a different name.
+A failed write removes the new incomplete archive. Existing recovery points and
+the active database remain unchanged.
+
 **Preview restore** validates the archive, manifest checksum, and SQLite database without changing the active library.
 
 **Stage restore** copies the validated database into the pending-restore area. Close ViiB, then run `viib-restore` to activate it. The helper keeps the previous `library.db` as a timestamped rollback database before replacement. Restore activation is offline so the application never replaces its live database while SQLite is open.

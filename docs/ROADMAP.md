@@ -86,7 +86,7 @@ Work packages use stable IDs (`P0.1` etc.) for GitHub issues, PR titles, and pro
 | **P1.3** | Playback state transitions | **Partial** | Spotify retirement/local-playback preservation and range/lifecycle regressions exist; the combined local → Plex → Spotify matrix, interruptions, crossfade, and device-change qualification remain open.| Repeatable tests cover local → Plex → Spotify and back, logout during playback, range seeking, network interruption, and no unrelated local-playback teardown |
 | **P1.4** | Spotify parity and resilience | **Partial** | Cookie sign-in/session renewal, browsing, Premium media gates, integrity retries, and reconnect flows are implemented. Native responsiveness/search, other-host execution, Recently Played/profile parity, broader markets/accounts, and compatibility review remain open.| Contract/fixture cases pass; at least one real provider flow per supported host passes where feasible; unverified account/market cases remain visibly marked; no fabricated metadata |
 | **P1.5** | Plex large-library and offline safety | **Partial** | Music-only synchronization, offline catalog retention, authenticated audio/artwork proxying, and tests exist. Real-PMS interrupted/large-library/auth-expiry/codec qualification and fallback policy remain open.| Interrupted sync never mass-deletes valid catalog rows; auth expiry/offline conditions recover; real-PMS smoke cases recorded; unsupported codecs clearly explained |
-| **P1.6** | Data and media recovery | **Partial** | Library Operations backup/staged restore, duplicate review, restart/idempotency and source-bound retention exist. Full RC5 upgrade and backup/restore continuity evidence remains open.| Restoring a tested backup preserves library/playlists/likes/history and consistent source links; unrecoverable changes are disclosed before destructive actions |
+| **P1.6** | Data and media recovery | **Partial** | Library Operations backup/staged restore, duplicate review, restart/idempotency and source-bound retention exist. Proposed no-clobber backup creation protects existing recovery points and rejects duplicate names. Full RC5 upgrade and backup/restore continuity evidence remains open.| Restoring a tested backup preserves library/playlists/likes/history and consistent source links; unrecoverable changes are disclosed before destructive actions |
 
 **Progress & Evidence Log (Phase 1):**
 - **2026-10-13 (`P1.1`, [PR #120](https://github.com/ajbergh/ViiB-MediaHub/pull/120), branch `codex/p1-1-media-capability-matrix`):** Added canonical per-format/per-source capability inventory and reusable `CapabilityError` types in [`backend/internal/audio/capabilities.go`](../backend/internal/audio/capabilities.go) and [`services/mediaCapabilities.ts`](../services/mediaCapabilities.ts), wired scanner extension allowlist to `audio.ScannerSupportedExtensions()`, exposed `GET /api/v2/capabilities/media`, attached structured capability metadata to `GET /api/dj/waveform/{id}` `422` responses, and added cross-format metadata/decoder alignment tests in [`backend/internal/audio/capabilities_test.go`](../backend/internal/audio/capabilities_test.go), [`backend/internal/api/media_capabilities_test.go`](../backend/internal/api/media_capabilities_test.go), and [`services/mediaCapabilities.test.ts`](../services/mediaCapabilities.test.ts). Merged to `main`; remaining acceptance evidence is tracked in the row above.
@@ -244,7 +244,7 @@ CI additionally runs `npm audit --omit=dev --audit-level=high`, binary `govulnch
 
 ### October 20 implementation and deferrals
 
-[PR #131](https://github.com/ajbergh/ViiB-MediaHub/pull/131), branch `codex/roadmap-easy-foundations` (proposed; not merged or Qualified). These are bounded implementation slices; work packages retain their remaining acceptance scope. [PR CI](https://github.com/ajbergh/ViiB-MediaHub/pull/131/checks): frontend and browser-e2e passed on `ffb79ea`; backend/packaging/release checks remain pending at this checkpoint. Merged-head qualification remains open.
+[PR #131](https://github.com/ajbergh/ViiB-MediaHub/pull/131), branch `codex/roadmap-easy-foundations` (proposed; not merged or Qualified). These are bounded implementation slices; work packages retain their remaining acceptance scope. [PR CI](https://github.com/ajbergh/ViiB-MediaHub/pull/131/checks): frontend, browser-e2e, backend and release validation passed on `ffb79ea`; Windows/Linux builds and most package jobs also passed. Remaining macOS jobs are queued at this checkpoint. Merged-head qualification remains open.
 
 - **P0.5:** pin Staticcheck `v0.8.1` and govulncheck `v1.6.0` in all six workflow installs. `npm sbom --package-lock-only --sbom-format cyclonedx` generated a valid CycloneDX 1.5 inventory of **287 npm components** locally; CI retains it for 14 days. Go/native inventories, licenses and security acceptance remain open.
 - **P2.4:** `npm run test:e2e` passed **3/3 Chromium tests**: fresh IndexedDB empty library to Add Music to Settings; legacy DJ redirect to workstation and reload; and create an IndexedDB playlist, reload, then open its detail with backend unavailable. Tests intercept all API/external requests, use no private data/accounts, and exercise the production preview. CI consumes the frontend artifact and retains synthetic failure evidence for seven days. Audio output, import, providers, native WebViews and recovery integrity remain unqualified. See [developer instructions](development.md#browser-smoke-gate).
@@ -293,6 +293,22 @@ flow reviews/cancels synthetic playlist deletion and reloads to check continuity
 production build; **4/4 Chromium tests** passed, including deletion cancellation.
 Documentation and whitespace checks also passed. This
 does not close native/screen-reader, backup/restore or source-repair qualification.
+
+### P1.6 backup preservation follow-up (October 20)
+
+Branch `codex/p1-6-preserve-backup-archives`, based on PR #134, prevents backup
+creation from truncating an existing archive. Exclusive creation protects even
+concurrent requests; duplicate names return `409 backup_exists`; generated names
+include subsecond precision. Failed writes clean up only the newly created
+archive, and successful archives are flushed before reporting creation.
+Focused checks cover API conflict/readable original archive/live-setting
+continuity, concurrent writers, failed-write cleanup and distinct default names,
+alongside the existing Spotify-credential-exclusion regression. **Five focused
+tests and the full API package suite passed**; the concurrent/failure writer
+tests also passed with **Windows race detection** using the installed MinGW
+compiler. `go vet ./internal/api`, OpenAPI YAML parsing, documentation and
+whitespace checks passed. RC5 upgrades and complete restore continuity
+on supported hosts remain open; no atomic/crash-complete publication is claimed.
 
 ### Baseline evidence and implementation references
 
