@@ -244,7 +244,7 @@ CI additionally runs `npm audit --omit=dev --audit-level=high`, binary `govulnch
 
 ### October 20 implementation and deferrals
 
-[PR #131](https://github.com/ajbergh/ViiB-MediaHub/pull/131), branch `codex/roadmap-easy-foundations` (proposed; not merged or Qualified). These are bounded implementation slices; work packages retain their remaining acceptance scope. [PR CI](https://github.com/ajbergh/ViiB-MediaHub/pull/131/checks) is pending at publication; merged-head qualification remains open.
+[PR #131](https://github.com/ajbergh/ViiB-MediaHub/pull/131), branch `codex/roadmap-easy-foundations` (proposed; not merged or Qualified). These are bounded implementation slices; work packages retain their remaining acceptance scope. [PR CI](https://github.com/ajbergh/ViiB-MediaHub/pull/131/checks): frontend and browser-e2e passed on `ffb79ea`; backend/packaging/release checks remain pending at this checkpoint. Merged-head qualification remains open.
 
 - **P0.5:** pin Staticcheck `v0.8.1` and govulncheck `v1.6.0` in all six workflow installs. `npm sbom --package-lock-only --sbom-format cyclonedx` generated a valid CycloneDX 1.5 inventory of **287 npm components** locally; CI retains it for 14 days. Go/native inventories, licenses and security acceptance remain open.
 - **P2.4:** `npm run test:e2e` passed **3/3 Chromium tests**: fresh IndexedDB empty library to Add Music to Settings; legacy DJ redirect to workstation and reload; and create an IndexedDB playlist, reload, then open its detail with backend unavailable. Tests intercept all API/external requests, use no private data/accounts, and exercise the production preview. CI consumes the frontend artifact and retains synthetic failure evidence for seven days. Audio output, import, providers, native WebViews and recovery integrity remain unqualified. See [developer instructions](development.md#browser-smoke-gate).
@@ -255,7 +255,7 @@ CI additionally runs `npm audit --omit=dev --audit-level=high`, binary `govulnch
 
 ### P3.4 accessibility planning follow-up (October 20)
 
-Branch `codex/p3-4-accessibility-qualification-plan`, based on PR #131, adds the
+[PR #132](https://github.com/ajbergh/ViiB-MediaHub/pull/132), branch `codex/p3-4-accessibility-qualification-plan`, based on PR #131, adds the
 [accessibility qualification plan and findings register](ACCESSIBILITY_QUALIFICATION.md).
 The plan defines host/input coverage, workflow checks, evidence/result rules,
 DJ alternative qualification tasks and initial source observations. It is a draft
