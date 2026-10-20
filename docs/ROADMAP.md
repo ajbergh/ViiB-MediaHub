@@ -374,7 +374,7 @@ remain external/complex follow-up. This is not a stable-signing implementation.
 
 ### P0.5 exact release input and assembly verification (October 20)
 
-Branch `codex/p0-5-exact-release-asset-validation`, based on PR #138, moves the
+[PR #139](https://github.com/ajbergh/ViiB-MediaHub/pull/139), branch `codex/p0-5-exact-release-asset-validation`, based on PR #138, moves the
 publish asset contract into a [shared verifier](release-asset-verification.md).
 The earlier publisher checked a fixed list but uploaded a wildcard; the new
 verifier rejects extras as well as missing/empty/non-regular inputs so files
