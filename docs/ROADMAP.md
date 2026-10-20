@@ -281,7 +281,7 @@ qualification is claimed. Those remaining scopes retain their existing gates.
 
 ### P3.4/P3.5 modal keyboard follow-up (October 20)
 
-Branch `codex/p3-4-direct-download-dialog`, based on PR #133, repairs Direct
+[PR #134](https://github.com/ajbergh/ViiB-MediaHub/pull/134), branch `codex/p3-4-direct-download-dialog`, based on PR #133, repairs Direct
 Download dialog semantics/field and close-control names, and adds focus trapping,
 Escape dismissal and focus restoration. Confirmation dialogs initially focus
 Cancel, trap Tab and keep busy actions protected. The shared focus hook now uses
