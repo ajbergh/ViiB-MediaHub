@@ -7,6 +7,8 @@ on:
     paths:
       - '.release-version'
       - '.github/workflows/release.yml'
+      - 'scripts/generate_go_module_inventory.py'
+      - 'scripts/test_go_module_inventory.py'
   push:
     branches: [main]
     paths:
@@ -78,6 +80,23 @@ jobs:
           npm run check
           npm audit --omit=dev --audit-level=high
           npm run build
+
+      - name: Generate release dependency inventories
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s scripts -p 'test_go_module_inventory.py'
+          mkdir -p dependency-inventories
+          npm sbom --package-lock-only --sbom-format cyclonedx > dependency-inventories/npm-sbom.cdx.json
+          python3 scripts/generate_go_module_inventory.py --output dependency-inventories/go-modules.json
+
+      - name: Upload release dependency inventories
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dependency-inventories
+          path: dependency-inventories/*.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Prepare backend embeds
         shell: bash
@@ -648,6 +667,8 @@ jobs:
         run: |
           set -euo pipefail
           expected=(
+            "npm-sbom.cdx.json"
+            "go-modules.json"
             "ViiB-MediaHub-${VERSION}-windows-x64-setup.exe"
             "ViiB-MediaHub-${VERSION}-macos-arm64.dmg"
             "ViiB-MediaHub-${VERSION}-macos-x64.dmg"
@@ -676,6 +697,11 @@ jobs:
           custom_notes="docs/releases/${TAG}.md"
           if [[ -f "$custom_notes" ]]; then
             cp "$custom_notes" release-notes.md
+            cat >> release-notes.md <<'EOF'
+
+          ### Dependency inventories
+          npm-sbom.cdx.json and go-modules.json record npm and Go dependencies and are covered by SHA256SUMS.txt. They do not establish signing, provenance, native-library coverage or license compliance.
+          EOF
             exit 0
           fi
           cat > release-notes.md <<EOF
@@ -691,7 +717,8 @@ jobs:
           ### Web/browser builds
           Download the \`web-\` ZIP matching your operating system and architecture (Windows x64/ARM64, macOS Intel/Apple Silicon, Linux x64/ARM64). Unzip and run the included executable. It serves the embedded frontend at a localhost address and opens your browser. The web build requires no separate frontend install. On Linux, the system tray requires Ayatana AppIndicator; pass \`-no-tray\` when unavailable.
 
-          SHA256SUMS.txt contains checksums for every downloadable binary.
+          SHA256SUMS.txt contains checksums for the packages and dependency inventories.
+          npm-sbom.cdx.json is the lockfile-based npm CycloneDX SBOM; go-modules.json records resolved Go modules, including versioned replacements. These inventories do not cover bundled native libraries, establish license compliance, or replace signature/provenance verification.
 
           ### Release-candidate notes
           - macOS packages are ad-hoc signed but not Apple-notarized in this RC, so Gatekeeper may require **Open Anyway** on first launch.

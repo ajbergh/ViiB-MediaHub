@@ -17,7 +17,7 @@ ViiB MediaHub is a local-first music hub: React 19 / TypeScript frontend, Go / S
 - Latest hosted release: [`v1.0.0-rc7`](https://github.com/ajbergh/ViiB-MediaHub/releases/tag/v1.0.0-rc7), published October 17 America/Chicago (October 18 UTC). Local tags include RC7. **Stable 1.0 is not declared complete.**
 - GitHub reports `main` unprotected and no repository rulesets on October 20. No open PRs existed before this branch. Suggested follow-up titles below are not a live issue inventory.
 - The repository contains extensive Go and frontend tests, native build workflows, analysis determinism checks, vulnerability scans, and developer documentation. Preserve those investments.
-- **Release-pipeline baseline (from [`release.yml`](../.github/workflows/release.yml)):** the workflow builds a Windows x64 installer, macOS arm64/x64 DMGs, a Linux amd64 `.deb`/tarball, and web builds for Windows/macOS/Linux on x64 and arm64; it publishes `SHA256SUMS.txt` and marks RC tags as pre-releases. macOS bundles are **ad-hoc signed and not notarized**; Windows Authenticode signing runs **only when repository secrets exist** and otherwise continues unsigned. The October 20 branch adds an npm CI SBOM; release-artifact SBOMs and provenance remain open.
+- **Release-pipeline baseline (from [`release.yml`](../.github/workflows/release.yml)):** the workflow builds a Windows x64 installer, macOS arm64/x64 DMGs, a Linux amd64 `.deb`/tarball, and web builds for Windows/macOS/Linux on x64 and arm64; it publishes `SHA256SUMS.txt` and marks RC tags as pre-releases. macOS bundles are **ad-hoc signed and not notarized**; Windows Authenticode signing runs **only when repository secrets exist** and otherwise continues unsigned. October 20 branches add an npm CI SBOM and proposed checksummed npm/Go release inventories. Per-target/native SBOMs, signing and provenance remain open.
 - **Proposed tooling update (October 20):** a deterministic Chromium browser-only suite/config and CI job are implemented on `codex/roadmap-easy-foundations`. Strict TypeScript coverage expands from four to twelve selected files. Local checks pass; PR/merged-head acceptance remains open.
 
 **Important continuity decision:** The owner previously deferred further local DSP estimator research from the Spotify metadata branch. PR #117 is merged; deferred work belongs in a **separate future scope** (Phase 5), not retroactively in that PR or as an undisclosed 1.0 dependency. Subsequent scan lifecycle/storage fixes (#123) and local semantic matching (#124) are delivered maintenance/product work; they do not close deferred estimator accuracy gates. See [Spotify scope](SPOTIFY_BRANCH_REMAINING_WORK.md), [closeout](SPOTIFY_BRANCH_CLOSEOUT_NEXT_STEPS.md), and [deferred local analysis](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
@@ -65,7 +65,7 @@ Work packages use stable IDs (`P0.1` etc.) for GitHub issues, PR titles, and pro
 | **P0.2** | Versioned credential key storage | **Baseline delivered; qualification open** ([PR #119](https://github.com/ajbergh/ViiB-MediaHub/pull/119)) | `enc:v2`, Windows DPAPI, non-Windows keywrap fallback, readable legacy migration and reauthentication handling merged. Remaining: supported-host install/relocation/upgrade/restart and rollback qualification | Install/relocate/upgrade/restart tests on supported OSes; readable old secrets migrate without disclosure or silent loss; unresolvable legacy secrets report a clear reauthentication path |
 | **P0.3** | Governance and required checks | **Planned** | Protect `main` via branch ruleset; require frontend, Go test/race/vet/staticcheck, vulnerability and packaging checks; document emergency bypass | Normal PR cannot merge without passing required checks; explicit reviewed emergency process exists |
 | **P0.4** | Release signing and provenance | **Planned** | Stable-release signing policy; macOS Developer ID + notarization, Windows Authenticode, checksums and verifiable build/source provenance | Production (non-RC) release workflow fails closed when mandatory signing/verification is unavailable (today Windows signing is skipped without secrets and macOS is ad-hoc signed only); install and signature-verification smoke tests pass |
-| **P0.5** | Supply-chain and licensing review | **Partial; proposed implementation** | Exact Staticcheck/govulncheck pins across workflows and npm CI CycloneDX inventory. Remaining: hosted validation, Go/release SBOMs, attribution/license review and shipped advisory acceptance | License obligations and security advisories are recorded; no unaccepted shipped critical/high vulnerability; reproducible dependency inputs |
+| **P0.5** | Supply-chain and licensing review | **Partial; proposed implementation** | Exact Staticcheck/govulncheck pins, npm CI CycloneDX inventory and proposed required/checksummed npm SBOM plus Go graph release assets. Remaining: hosted release-path validation, per-target/native SBOMs, attribution/license review and shipped advisory acceptance | License obligations and security advisories are recorded; no unaccepted shipped critical/high vulnerability; reproducible dependency inputs |
 
 **Progress & Evidence Log (Phase 0):**
 - **2026-10-13 (`P0.1`, [PR #118](https://github.com/ajbergh/ViiB-MediaHub/pull/118), branch `codex/p0-1-loopback-api-trust-boundary`):** Implemented centralized `loopbackTrustBoundary` middleware (`IsTrustedHost`, `IsTrustedOrigin`, and `Sec-Fetch-Site: cross-site` enforcement) in [`backend/internal/server/server.go`](../backend/internal/server/server.go), removed wildcard `Access-Control-Allow-Origin: *` overrides across all five legacy SSE handlers in [`backend/internal/api/api.go`](../backend/internal/api/api.go), and added negative/positive unit and handler tests. Merged to `main`; remaining acceptance evidence is tracked in the row above.
@@ -262,6 +262,22 @@ DJ alternative qualification tasks and initial source observations. It is a draf
 for review, not WCAG conformance or manual/assistive-technology acceptance.
 Validation: documentation links/evidence JSON and diff whitespace checks. No
 runtime changes or new host audit. Human execution/approval remain deferred.
+
+### P0.5 release dependency inventory follow-up (October 20)
+
+Branch `codex/p0-5-release-dependency-inventories`, based on PR #132, adds
+[required npm/Go inventory release assets](release-dependency-inventories.md).
+The release prepare job generates and uploads both files; publishing requires
+both and includes them in `SHA256SUMS.txt`. A normalized Go graph preserves
+versioned replacements, omits machine paths and rejects local replacements or
+incomplete graphs. Validation: **4 Python integrity/privacy tests passed**;
+actual read-only export recorded **302 Go modules** locally. Release-level npm
+SBOM generation produced **287 components**; both changed workflows parsed
+successfully; extracted shell syntax checks passed. A synthetic publish-gate
+experiment checksummed all **13 required assets** and rejected a missing Go
+inventory. Hosted packaging/publish-path validation remains open.
+No signing/provenance, native/target-specific SBOM, licensing or release
+qualification is claimed. Those remaining scopes retain their existing gates.
 
 ### Baseline evidence and implementation references
 
