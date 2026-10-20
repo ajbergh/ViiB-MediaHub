@@ -48,7 +48,9 @@ The npm inventory contains 287 components; the Go inventory contains 302 modules
 preserves its versioned replacement and excludes checkout/cache fields.
 
 Local asset tests passed six cases; Windows could not create the symlink fixture,
-so that case was skipped locally and is included in Linux CI. The seven channel
+so that case was skipped locally. The [Linux CI job](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39452605678/job/118731096338)
+executed all seven asset tests successfully, including both symlink boundaries,
+with no skips on verifier head `726a9d7`. The seven channel
 and four inventory tests also passed. Published-release verification, production
 signing/notarization, install/upgrade, per-target/native SBOMs, provenance and
 licensing acceptance remain separate open gates.

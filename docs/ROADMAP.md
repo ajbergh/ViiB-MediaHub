@@ -389,8 +389,9 @@ verified as **302 Go modules / 287 npm components**. These are PR-validation
 artifacts labelled RC7, **not the published RC7 assets**; no binaries were run.
 
 Local tests: **6 asset cases passed, 1 symlink case skipped on Windows** (creation
-privilege unavailable; Linux CI includes it), plus **7 channel and 4 inventory
-tests passed**. Both changed workflows parsed; documentation links and
+privilege unavailable); the [Linux CI job](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39452605678/job/118731096338)
+executed **all 7 asset tests with no skips** on `726a9d7`, including artifact and
+manifest symlinks. **7 channel and 4 inventory tests passed**. Both changed workflows parsed; documentation links and
 whitespace checks passed. Published-release identity, production signatures/notarization,
 installation, licensing, native SBOMs and provenance remain open.
 

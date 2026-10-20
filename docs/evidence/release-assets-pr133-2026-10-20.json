@@ -107,5 +107,18 @@
     "licensing",
     "per-target/native SBOM",
     "build provenance"
-  ]
+  ],
+  "validatorEvidence": {
+    "pullRequest": 139,
+    "headCommit": "726a9d73ff8b3cca56c84059c9b1f9a9aa4102fe",
+    "linuxJobUrl": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39452605678/job/118731096338",
+    "assetTestsExecuted": 7,
+    "skipped": 0,
+    "result": "success",
+    "localWindows": {
+      "passed": 6,
+      "skipped": 1,
+      "skipReason": "symlink creation privilege unavailable"
+    }
+  }
 }
