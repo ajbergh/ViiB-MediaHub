@@ -42,7 +42,7 @@ interface DJDeckInspectorProps {
   onTabChange: (tab: DJDeckInspectorTab) => void;
   onClose: () => void;
   /** Trigger element; focus returns here on close and clicks on it are not "outside". */
-  triggerRef: React.RefObject<HTMLElement>;
+  triggerRef: React.RefObject<HTMLElement | null>;
 }
 
 export const DJDeckInspector = React.memo(function DJDeckInspector({ deck, open, tab, onTabChange, onClose, triggerRef }: DJDeckInspectorProps) {

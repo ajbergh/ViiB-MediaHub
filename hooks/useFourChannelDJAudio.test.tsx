@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { deferred } from '../testUtils/deferred';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -20,15 +21,16 @@ afterEach(async () => { await act(async () => root.unmount()); });
 
 it('creates one engine for concurrent starts and disposes it on stop', async () => {
   const created = { dispose: vi.fn(async () => {}) };
-  let resolve: (value: unknown) => void;
-  mocks.create.mockReturnValue(new Promise(done => { resolve = done; }));
-  let first: Promise<unknown>;
+  const request = deferred<typeof created>();
+  mocks.create.mockReturnValue(request.promise);
+  let first: ReturnType<typeof audio.start> | undefined;
   await act(async () => {
     first = audio.start({ deviceId: 'mixtrack' });
     expect(audio.start()).toBe(first);
   });
+  if (!first) throw new Error('Missing start promise');
   expect(audio.starting).toBe(true);
-  await act(async () => { resolve(created); await first; });
+  await act(async () => { request.resolve(created); await first; });
   expect(mocks.create).toHaveBeenCalledTimes(1);
   expect(audio.engine).toBe(created);
   expect(audio.starting).toBe(false);
@@ -39,25 +41,28 @@ it('creates one engine for concurrent starts and disposes it on stop', async () 
 
 it('disposes a late initialization after stop instead of publishing it', async () => {
   const created = { dispose: vi.fn(async () => {}) };
-  let resolve: (value: unknown) => void;
-  mocks.create.mockReturnValue(new Promise(done => { resolve = done; }));
-  let operation: Promise<unknown>;
+  const request = deferred<typeof created>();
+  mocks.create.mockReturnValue(request.promise);
+  let operation: ReturnType<typeof audio.start> | undefined;
   await act(async () => { operation = audio.start(); });
+  if (!operation) throw new Error('Missing start promise');
   await act(async () => audio.stop());
   expect((mocks.create.mock.calls[0][1] as AbortSignal).aborted).toBe(true);
-  await act(async () => { resolve(created); expect(await operation).toBeNull(); });
+  await act(async () => { request.resolve(created); expect(await operation).toBeNull(); });
   expect(audio.engine).toBeNull();
   expect(created.dispose).toHaveBeenCalledOnce();
 });
 
 it('disposes a late initialization after unmount', async () => {
   const created = { dispose: vi.fn(async () => {}) };
-  let resolve: (value: unknown) => void;
-  mocks.create.mockReturnValue(new Promise(done => { resolve = done; }));
-  let operation: Promise<unknown>;
+  const request = deferred<typeof created>();
+  mocks.create.mockReturnValue(request.promise);
+  let operation: ReturnType<typeof audio.start> | undefined;
   await act(async () => { operation = audio.start(); });
+  if (!operation) throw new Error('Missing start promise');
   await act(async () => root.unmount());
-  resolve(created);
+  request.resolve(created);
+  if (!operation) throw new Error('Missing start promise');
   expect(await operation).toBeNull();
   expect(created.dispose).toHaveBeenCalledOnce();
 });
@@ -77,13 +82,14 @@ it('reports device errors and allows retrying with another device', async () => 
 it('does not let a cancelled start overwrite a replacement engine', async () => {
   const old = { dispose: vi.fn(async () => {}) };
   const replacement = { dispose: vi.fn(async () => {}) };
-  let resolve: (value: unknown) => void;
-  mocks.create.mockReturnValueOnce(new Promise(done => { resolve = done; })).mockResolvedValueOnce(replacement);
-  let previous: Promise<unknown>;
+  const request = deferred<typeof old>();
+  mocks.create.mockReturnValueOnce(request.promise).mockResolvedValueOnce(replacement);
+  let previous: ReturnType<typeof audio.start> | undefined;
   await act(async () => { previous = audio.start(); });
+  if (!previous) throw new Error('Missing start promise');
   await act(async () => audio.stop());
   await act(async () => { await audio.start({ deviceId: 'replacement' }); });
-  await act(async () => { resolve(old); await previous; });
+  await act(async () => { request.resolve(old); await previous; });
   expect(audio.engine).toBe(replacement);
   expect(old.dispose).toHaveBeenCalledOnce();
   expect(replacement.dispose).not.toHaveBeenCalled();

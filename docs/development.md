@@ -255,3 +255,17 @@ CI publishes an npm CycloneDX SBOM from `package-lock.json` for 14 days.
 Staticcheck `v0.8.1` and govulncheck `v1.6.0` are pinned across workflows;
 update all install sites together after compatibility validation. The npm SBOM
 is a dependency inventory, not a Go/native SBOM or license approval.
+
+## TypeScript contract gate
+
+`npm run typecheck` runs global strict TypeScript checking and the retained
+focused boundary check. The global program explicitly includes repository
+TS/TSX (including tests/configs) and excludes dependency, output, dist, build
+and worktree directories. Imported generated Wails declarations remain available.
+
+`allowJs: false` keeps JavaScript bodies out of this type gate; Vite still
+bundles those runtime modules. The scratch worklet and Tailwind config have
+concrete adjacent declarations rather than untyped module stubs. Their existing
+runtime tests/build remain necessary. Existing explicit `any`, suppression
+comments and `skipLibCheck` are not eliminated by enabling strict mode; migrate
+those contracts separately without adding new escapes.

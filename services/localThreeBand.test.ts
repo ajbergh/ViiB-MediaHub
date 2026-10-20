@@ -1,3 +1,5 @@
+import { deferred } from '../testUtils/deferred';
+type FixtureResponse = { status: number; ok: boolean; json?: () => Promise<unknown> };
 import { afterEach, expect, it, vi } from 'vitest';
 import { bandDisplay, loadLocalThreeBand } from './localThreeBand';
 afterEach(() => vi.unstubAllGlobals());
@@ -16,13 +18,13 @@ it('treats missing preparation as absent and rejects malformed bands', async () 
 });
 
 it('coalesces simultaneous overview and scrolling-lane requests by source fingerprint', async () => {
-  let resolve!: (value: unknown) => void;
-  const fetchMock = vi.fn(() => new Promise<{ status: number; ok: boolean; json?: () => Promise<unknown> }>(resolveRequest => { resolve = resolveRequest; }));
+  const request = deferred<FixtureResponse>();
+  const fetchMock = vi.fn(() => request.promise);
   vi.stubGlobal('fetch', fetchMock);
   const overview = loadLocalThreeBand('song', 'source-v1');
   const scrolling = loadLocalThreeBand('song', 'source-v1');
   expect(fetchMock).toHaveBeenCalledTimes(1);
-  resolve({
+  request.resolve({
     status: 200, ok: true,
     json: async () => ({
       songId: 'song', sourceFingerprint: 'source-v1', representation: 'local_three_band_estimate',
@@ -34,11 +36,11 @@ it('coalesces simultaneous overview and scrolling-lane requests by source finger
   expect(first).toBe(second);
   expect(first?.sourceFingerprint).toBe('source-v1');
 
-  let resolveNext!: (value: unknown) => void;
-  fetchMock.mockImplementationOnce(() => new Promise(resolveRequest => { resolveNext = resolveRequest; }));
+  const nextRequest = deferred<FixtureResponse>();
+  fetchMock.mockImplementationOnce(() => nextRequest.promise);
   const changedSource = loadLocalThreeBand('song', 'source-v2');
   expect(fetchMock).toHaveBeenCalledTimes(2);
-  resolveNext({
+  nextRequest.resolve({
     status: 200, ok: true,
     json: async () => ({
       songId: 'song', sourceFingerprint: 'source-v1', representation: 'local_three_band_estimate',

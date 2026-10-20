@@ -44,7 +44,7 @@ export class DJPadModeController {
       return;
     }
 
-    let release: (() => void) | void;
+    let release: (() => void) | void = undefined;
     switch (this.modes[deck]) {
       case 0:
         this.actions.hotCue(deck, control);

@@ -124,7 +124,7 @@ This phase should be **incremental and behavior-preserving**, not a rewrite. Lar
 | ID | Work package | Status | Current scope and deliverables | Definition of done |
 | --- | --- | --- | --- | --- |
 | **P3.1** | Domain boundaries | **Partial** | Dedicated source adapters, media-capability and semantic modules exist. Oversized Settings/API/DB/audio modules still need incremental decomposition and coupling verification.| Existing routes/storage schemas preserved or explicitly migrated; targeted regression suite green; coupling decreases without new circular dependencies |
-| **P3.2** | Stronger frontend contracts | **Partial** | Typed capability/service boundaries and library/Spotify surface performance work are delivered. Proposed strict coverage now has 27 entry paths (26 production TS/TSX plus the existing ambient declaration root) and a measured 76-file local closure, including two declaration files. Concrete nullable/metadata fixes add no suppressions or any types. Broader migration and measured code-splitting benefits remain open.| New code uses strict typing; targeted modules migrate with no `any` escape hatch proliferation; bundle/startup gain is measured |
+| **P3.2** | Stronger frontend contracts | **Partial; global strict gate proposed** | Typed capability/service boundaries and library/Spotify surface performance work are delivered. The proposed global TS-only strict gate passes with zero diagnostics; concrete nullable/ref/callback fixes and precise JS declarations complete the compiler migration. Existing explicit any/suppression cleanup, JS body verification and measured code-splitting benefits remain open.| New code uses strict typing; targeted modules migrate with no `any` escape hatch proliferation; bundle/startup gain is measured |
 | **P3.3** | First-run and library workflows | **Partial** | First-launch source setup, tabbed Settings, loading/empty/retry states, Spotify surface persistence and local preparation status exist. Proposed browser-only source-settings and playlist persistence E2E coverage is in #131. Assisted usability and end-to-end source-repair qualification remain open.| First-run and source-repair journeys pass assisted usability review and end-to-end tests |
 | **P3.4** | Design consistency and accessibility | **Partial** | Design tokens, shared UI components, responsive layouts and DJ keyboard/focus work are delivered. Proposed playlist-name accessible labeling is in #131; the modal follow-up adds named Direct Download controls and keyboard/focus-safe confirmations. A draft [WCAG 2.2 AA plan and findings register](ACCESSIBILITY_QUALIFICATION.md) now covers standard workflows and candidate DJ alternatives. Plan approval, full criterion ledger, host execution and accessible-alternative qualification remain open.| Standard app flows meet approved WCAG 2.2 AA test plan; specialized DJ controls have documented accessible alternatives where feasible |
 | **P3.5** | Diagnostics and data operations UX | **Partial** | Duplicate review, diagnostics/repair, backup/staged restore and support export UI exist. Proposed modal focus/cancellation, synthetic playlist deletion-cancel coverage and explicit repair/restore consequence disclosures improve destructive-action review. Full recovery continuity acceptance and storage-quota UX remain open.| Destructive actions are reviewable; recovery progress and outcome are explicit; tests protect catalog continuity |
@@ -587,12 +587,13 @@ successful checks**. PR #146's macOS analysis job `118808250710` never acquired
 a hosted runner; GitHub annotations report capacity constraints, with no test
 execution. The initial targeted rerun was rejected while the workflow was
 active. Once it completed, a failed-job rerun was accepted: run `39474912703`,
-attempt **2**, is queued. Other pending checks remain pending;
+attempt **2** completed successfully. PR #146 (`f09323b`) and #147 (`a08610a`)
+now each have **16 successful checks**. Other pending checks remain pending;
 this is not a code-regression failure or all-green claim.
 
 ### P3.2 application-surface strict contracts (October 20)
 
-The non-DJ application follow-up normalizes absent scroll parents to the
+[PR #149](https://github.com/ajbergh/ViiB-MediaHub/pull/149) normalizes absent scroll parents to the
 virtualized-list optional contract across five library pages, expresses the
 existing non-null Spotify release filter as a predicate, captures a known Plex
 image value before a store callback, and gives browser metadata locals concrete
@@ -605,14 +606,38 @@ existing `vite-env.d.ts` ambient root; closure includes two declaration files,
 so 76 does not mean 76 newly migrated implementation files. The gate also reaches
 the application store, player/library/Spotify/UI slices and shared components.
 Whole-frontend TS-only strict diagnostics fall **46 → 26** (19 production
-issues plus the fixture null check removed). Global strict mode remains off;
-DJ/WebGL, test callbacks, worklet/config declarations and generated-JS scope
-remain follow-ups. No bundle/startup benefit or DSP accuracy change is claimed.
+issues plus the fixture null check removed). Global strict mode remained off at that checkpoint; the follow-up below
+resolves DJ/WebGL, test callbacks, declarations and generated-output policy. No bundle/startup benefit or DSP accuracy change is claimed.
 
 Validation: full `npm run check` passed **153 files / 739 tests**, style/type
 gates and production build; **5/5 Chromium journeys passed** against that build.
 Documentation/JSON and whitespace checks passed; hosted checks pending. PR #145
 (`1b1f965`) now has **16 successful hosted checks**.
+
+### P3.2 global strict TypeScript gate (October 20)
+
+Global `strict: true` now passes, with `allowJs: false`, explicit TS/TSX inputs
+and dependency/output/dist/build/worktree exclusions. Imported Wails declarations
+remain in scope. [Compiler inventory](evidence/global-strict-2026-10-20.json)
+records **26 → 0 strict diagnostics**, 495 non-declaration TS/TSX files, six
+declarations and one imported JSON file; no JS bodies or generated output enter
+the program. The focused boundary check remains as a secondary gate.
+
+Fixes align nullable React refs, explicitly guard current candidates, normalize
+missing mix-in/texture values and initialize optional pad-release callbacks.
+Typed deferred fixtures replace uninitialized/mismatched test callbacks; an
+absent Spotify lookup resolves with the real `undefined` contract. Adjacent
+worklet/Tailwind declarations describe actual exports without blank/any module
+stubs. Both JavaScript implementations remain byte-unchanged from the base.
+No DSP estimator or audio algorithm was changed.
+
+Full `npm run check` passed **153 files / 739 tests**, style gates, both type
+checks and production build; **5/5 Chromium journeys passed** against that
+build. Documentation/JSON and whitespace checks passed; hosted checks pending.
+Existing explicit `any`, suppressions and
+`skipLibCheck` remain; zero compiler diagnostics is not proof that all types or
+JS bodies are fully validated. Bundle/startup measurements, native output and
+broader P3.2 acceptance remain open.
 
 ### Baseline evidence and implementation references
 

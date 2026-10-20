@@ -8,7 +8,7 @@ import { DirectDownloadDialog } from './DirectDownloadDialog';
 
 it('names the dialog and URL field, dismisses from its named close control or Escape, and restores the opener', async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  const visible = vi.spyOn(HTMLElement.prototype, 'offsetParent', 'get').mockImplementation(function () { return this.parentElement; });
+  const visible = vi.spyOn(HTMLElement.prototype, 'offsetParent', 'get').mockImplementation(function (this: HTMLElement) { return this.parentElement; });
   const opener = document.createElement('button');
   const container = document.createElement('div');
   document.body.append(opener, container); opener.focus();

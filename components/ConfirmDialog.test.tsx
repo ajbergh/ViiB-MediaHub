@@ -6,7 +6,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 
 it('starts on Cancel, traps destructive-action focus, blocks busy Escape and restores the trigger', async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  const visible = vi.spyOn(HTMLElement.prototype, 'offsetParent', 'get').mockImplementation(function () { return this.parentElement; });
+  const visible = vi.spyOn(HTMLElement.prototype, 'offsetParent', 'get').mockImplementation(function (this: HTMLElement) { return this.parentElement; });
   const opener = document.createElement('button');
   const container = document.createElement('div');
   document.body.append(opener, container); opener.focus();

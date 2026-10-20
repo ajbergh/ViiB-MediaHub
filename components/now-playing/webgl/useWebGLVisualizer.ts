@@ -35,7 +35,7 @@ interface UseWebGLVisualizerOptions extends WebGLVisualizerOptions {
 
 interface UseWebGLVisualizerResult {
     /** Ref to attach to canvas element */
-    canvasRef: React.RefObject<HTMLCanvasElement>;
+    canvasRef: React.RefObject<HTMLCanvasElement | null>;
     /** Whether WebGL is supported */
     isSupported: boolean;
     /** Any error that occurred during initialization */
