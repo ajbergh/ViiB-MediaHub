@@ -7,7 +7,7 @@
 
 ## 1. Baseline and scope
 
-**Current easy-first pass (October 20):** implementation slices from PRs #131–#152 are consolidated on `codex/roadmap-easy-pass-rollup` for a main-targeted review. Main protection is active with owner approval. Global strict TypeScript, seven browser journeys, recovery/diagnostic safeguards and release validation improvements are implemented on the review branches. No implementation PR has been merged or release published by this pass. See the [completed slices, integration route and per-item deferral audit](ROADMAP_EASY_PASS_2026-10-20.md). Phases 0–3 remain Partial/qualification-open; Phase 4 Planned; Phase 5 Deferred.
+**Current easy-first pass (October 20):** implementation slices from PRs #131–#152 are consolidated on [PR #153](https://github.com/ajbergh/ViiB-MediaHub/pull/153) (`codex/roadmap-easy-pass-rollup`) for a main-targeted review. Main protection is active with owner approval. Global strict TypeScript, seven browser journeys, recovery/diagnostic safeguards and release validation improvements are implemented on the review branches. No implementation PR has been merged or release published by this pass. See the [completed slices, integration route and per-item deferral audit](ROADMAP_EASY_PASS_2026-10-20.md). Phases 0–3 remain Partial/qualification-open; Phase 4 Planned; Phase 5 Deferred.
 
 ViiB MediaHub is a local-first music hub: React 19 / TypeScript frontend, Go / SQLite backend, Wails desktop builds, browser/server mode, a unified local/Plex music catalog, separate Spotify integration, AI-assisted library intelligence, and two-deck DJ functionality.
 

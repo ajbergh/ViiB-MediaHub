@@ -39,7 +39,7 @@ that workflow and the roadmap's signing, installer and real-host evidence.
 
 ## Consolidated integration route
 
-The main-targeted `codex/roadmap-easy-pass-rollup` branch includes all source
+The main-targeted [PR #153](https://github.com/ajbergh/ViiB-MediaHub/pull/153) (`codex/roadmap-easy-pass-rollup`) branch includes all source
 heads from PRs #131–#152. Review the combined diff and wait for all 16 required
 checks plus conditional release validation. Keep it current with main and use
 the normal protected PR process. After integration, inspect merged-head CI and

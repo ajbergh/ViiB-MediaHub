@@ -8,7 +8,7 @@ roadmap names it as a stable 1.0 gate.
 
 ## Integration and evidence
 
-The `codex/roadmap-easy-pass-rollup` branch targets `main` and includes every
+The [PR #153](https://github.com/ajbergh/ViiB-MediaHub/pull/153) (`codex/roadmap-easy-pass-rollup`) branch targets `main` and includes every
 source head from PRs #131–#152, followed by this documentation audit. The
 [snapshot](evidence/roadmap-easy-pass-2026-10-20.json) records exact heads,
 ancestry verification and selected hosted results. Main at the snapshot is
