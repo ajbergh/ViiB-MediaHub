@@ -412,6 +412,22 @@ destructive enforcement probe was performed. P0.3 remains short of full
 qualification until the stacked changes land and required checks run on the
 resulting main head.
 
+### CI queue-inspection isolation follow-up (October 20)
+
+PR #139 preflight run `39453599101` exposed a backend race-test cleanup failure:
+`TestConfiguredStemLibraryScanQueuesOnlyEnabledRootSnapshot` launched scheduler
+workers while only asserting a persisted job, allowing SQLite activity to race
+TempDir removal. The follow-up uses the existing queue-inspection pattern to
+suppress worker startup in that test and explicitly asserts queued status.
+The request still validates/snapshots enabled roots and persists the job.
+Validation: **50 race-detector repetitions passed** on Windows with MinGW;
+documentation links and whitespace checks passed. Hosted full-suite checks
+remain pending for this repair.
+
+Production scheduler shutdown remains a separate P2.2/P4.3 follow-up: `API.Close`
+does not currently stop/wait for its durable-job heartbeat and workers. This
+narrow test repair does not qualify shutdown, cancellation or crash recovery.
+
 ### Baseline evidence and implementation references
 
 - [Documentation index](index.md)
