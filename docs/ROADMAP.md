@@ -244,12 +244,12 @@ CI additionally runs `npm audit --omit=dev --audit-level=high`, binary `govulnch
 
 ### October 20 implementation and deferrals
 
-[PR #131](https://github.com/ajbergh/ViiB-MediaHub/pull/131), branch `codex/roadmap-easy-foundations` (proposed; not merged or Qualified). These are bounded implementation slices; work packages retain their remaining acceptance scope. [PR CI](https://github.com/ajbergh/ViiB-MediaHub/pull/131/checks): frontend, browser-e2e, backend and release validation passed on `ffb79ea`; Windows/Linux builds and most package jobs also passed. Remaining macOS jobs are queued at this checkpoint. Merged-head qualification remains open.
+[PR #131](https://github.com/ajbergh/ViiB-MediaHub/pull/131), branch `codex/roadmap-easy-foundations` (proposed; not merged or Qualified). These are bounded implementation slices; work packages retain their remaining acceptance scope. [PR CI](https://github.com/ajbergh/ViiB-MediaHub/pull/131/checks): **All 28 checks passed** on `ffb79ea`, including backend, browser, native builds and RC packaging. This is PR-head evidence, not merged-head or real-device qualification. Merged-head qualification remains open.
 
 - **P0.5:** pin Staticcheck `v0.8.1` and govulncheck `v1.6.0` in all six workflow installs. `npm sbom --package-lock-only --sbom-format cyclonedx` generated a valid CycloneDX 1.5 inventory of **287 npm components** locally; CI retains it for 14 days. Go/native inventories, licenses and security acceptance remain open.
 - **P2.4:** `npm run test:e2e` passed **3/3 Chromium tests**: fresh IndexedDB empty library to Add Music to Settings; legacy DJ redirect to workstation and reload; and create an IndexedDB playlist, reload, then open its detail with backend unavailable. Tests intercept all API/external requests, use no private data/accounts, and exercise the production preview. CI consumes the frontend artifact and retains synthetic failure evidence for seven days. Audio output, import, providers, native WebViews and recovery integrity remain unqualified. See [developer instructions](development.md#browser-smoke-gate).
 - **P3.2:** strict include list grows **4 to 12** modules, adding capabilities, imported catalog, jobs, recovery API, backend conversion, three-band data and DJ output services/hooks. No runtime changes or typing suppressions. `npm run check` passed palette/raw-color checks, TypeScript, **148 files / 725 Vitest tests**, and production build. Existing large-chunk warnings remain; no bundle/startup gain is claimed.
-- **P3.3/P3.4:** browser-only source-settings navigation and playlist creation/reload now have E2E coverage. The playlist-name textbox now has an explicit accessible name. Assisted first-run/source-repair review, full accessibility test plan/register and assistive-technology qualification remain open.
+- **P3.3/P3.4:** browser-only source-settings navigation and playlist creation/reload now have E2E coverage. The playlist-name textbox now has an explicit accessible name. The draft accessibility plan/register is in PR #132; plan approval, assisted first-run/source-repair review and assistive-technology qualification remain open.
 - **Deferred for complexity:** P2.1 representative 1K/10K/100K benchmark design, P2.3 cache quota/eviction policy, P3.1 major decomposition and Phase 5 research need dedicated scopes and evidence. P0.1/P0.2 and P1 target-host qualification remain open.
 - **Human/external follow-up:** review/enable main protection and emergency bypass policy (P0.3); signing/notarization credentials and signed-installer tests (P0.4); attribution/licensing acceptance (P0.5); authenticated providers, native hosts, assistive-technology review and stable-release signoff (P4). No release qualification is claimed.
 
@@ -261,7 +261,8 @@ The plan defines host/input coverage, workflow checks, evidence/result rules,
 DJ alternative qualification tasks and initial source observations. It is a draft
 for review, not WCAG conformance or manual/assistive-technology acceptance.
 Validation: documentation links/evidence JSON and diff whitespace checks. No
-runtime changes or new host audit. Human execution/approval remain deferred.
+runtime changes or new host audit. **All 16 hosted checks passed** on `ec72ff4`;
+manual accessibility execution/approval and merged-head qualification remain open.
 
 ### P0.5 release dependency inventory follow-up (October 20)
 
