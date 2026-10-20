@@ -126,7 +126,7 @@ This phase should be **incremental and behavior-preserving**, not a rewrite. Lar
 | **P3.1** | Domain boundaries | **Partial** | Dedicated source adapters, media-capability and semantic modules exist. Oversized Settings/API/DB/audio modules still need incremental decomposition and coupling verification.| Existing routes/storage schemas preserved or explicitly migrated; targeted regression suite green; coupling decreases without new circular dependencies |
 | **P3.2** | Stronger frontend contracts | **Partial** | Typed capability/service boundaries and library/Spotify surface performance work are delivered. Proposed strict coverage grows from four to twelve selected modules without source changes or new escape hatches; broader migration and measured code-splitting benefits remain open.| New code uses strict typing; targeted modules migrate with no `any` escape hatch proliferation; bundle/startup gain is measured |
 | **P3.3** | First-run and library workflows | **Partial** | First-launch source setup, tabbed Settings, loading/empty/retry states, Spotify surface persistence and local preparation status exist. Proposed browser-only source-settings and playlist persistence E2E coverage is in #131. Assisted usability and end-to-end source-repair qualification remain open.| First-run and source-repair journeys pass assisted usability review and end-to-end tests |
-| **P3.4** | Design consistency and accessibility | **Partial** | Design tokens, shared UI components, responsive layouts and DJ keyboard/focus work are delivered. Proposed playlist-name accessible labeling is in #131. A WCAG 2.2 AA test plan, findings register, and accessible-alternative qualification remain open.| Standard app flows meet approved WCAG 2.2 AA test plan; specialized DJ controls have documented accessible alternatives where feasible |
+| **P3.4** | Design consistency and accessibility | **Partial** | Design tokens, shared UI components, responsive layouts and DJ keyboard/focus work are delivered. Proposed playlist-name accessible labeling is in #131. A draft [WCAG 2.2 AA plan and findings register](ACCESSIBILITY_QUALIFICATION.md) now covers standard workflows and candidate DJ alternatives. Plan approval, full criterion ledger, host execution and accessible-alternative qualification remain open.| Standard app flows meet approved WCAG 2.2 AA test plan; specialized DJ controls have documented accessible alternatives where feasible |
 | **P3.5** | Diagnostics and data operations UX | **Partial** | Duplicate review, diagnostics/repair, backup/staged restore and support export UI exist. Full destructive-action/recovery continuity acceptance and storage-quota UX remain open.| Destructive actions are reviewable; recovery progress and outcome are explicit; tests protect catalog continuity |
 
 **Progress & Evidence Log (Phase 3, October 15):**
@@ -252,6 +252,16 @@ CI additionally runs `npm audit --omit=dev --audit-level=high`, binary `govulnch
 - **P3.3/P3.4:** browser-only source-settings navigation and playlist creation/reload now have E2E coverage. The playlist-name textbox now has an explicit accessible name. Assisted first-run/source-repair review, full accessibility test plan/register and assistive-technology qualification remain open.
 - **Deferred for complexity:** P2.1 representative 1K/10K/100K benchmark design, P2.3 cache quota/eviction policy, P3.1 major decomposition and Phase 5 research need dedicated scopes and evidence. P0.1/P0.2 and P1 target-host qualification remain open.
 - **Human/external follow-up:** review/enable main protection and emergency bypass policy (P0.3); signing/notarization credentials and signed-installer tests (P0.4); attribution/licensing acceptance (P0.5); authenticated providers, native hosts, assistive-technology review and stable-release signoff (P4). No release qualification is claimed.
+
+### P3.4 accessibility planning follow-up (October 20)
+
+Branch `codex/p3-4-accessibility-qualification-plan`, based on PR #131, adds the
+[accessibility qualification plan and findings register](ACCESSIBILITY_QUALIFICATION.md).
+The plan defines host/input coverage, workflow checks, evidence/result rules,
+DJ alternative qualification tasks and initial source observations. It is a draft
+for review, not WCAG conformance or manual/assistive-technology acceptance.
+Validation: documentation links/evidence JSON and diff whitespace checks. No
+runtime changes or new host audit. Human execution/approval remain deferred.
 
 ### Baseline evidence and implementation references
 
