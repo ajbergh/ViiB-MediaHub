@@ -1,0 +1,116 @@
+{
+  "name": "main-required-ci",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [
+    {
+      "actor_id": 53879585,
+      "actor_type": "User",
+      "bypass_mode": "pull_request"
+    }
+  ],
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "refs/heads/main"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "dismiss_stale_reviews_on_push": true,
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_approving_review_count": 0,
+        "required_review_thread_resolution": true,
+        "allowed_merge_methods": [
+          "merge",
+          "squash",
+          "rebase"
+        ]
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": true,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          {
+            "context": "frontend",
+            "integration_id": 15368
+          },
+          {
+            "context": "browser-e2e",
+            "integration_id": 15368
+          },
+          {
+            "context": "backend",
+            "integration_id": 15368
+          },
+          {
+            "context": "Track analysis (linux)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Track analysis (windows)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Track analysis (darwin)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Track analysis scalar determinism",
+            "integration_id": 15368
+          },
+          {
+            "context": "Semantic foundation (windows/amd64)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Semantic foundation (windows/arm64)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Semantic foundation (linux/amd64)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Semantic foundation (darwin/amd64)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Semantic foundation (darwin/arm64)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Desktop build (linux-amd64)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Desktop build (macos-arm64)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Desktop build (macos-amd64)",
+            "integration_id": 15368
+          },
+          {
+            "context": "windows-build",
+            "integration_id": 15368
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -63,7 +63,7 @@ Work packages use stable IDs (`P0.1` etc.) for GitHub issues, PR titles, and pro
 | --- | --- | --- | --- | --- |
 | **P0.1** | Loopback API trust boundary | **Baseline delivered; qualification open** ([PR #118](https://github.com/ajbergh/ViiB-MediaHub/pull/118)) | Centralized Host/Origin/CORS/SSE policy and negative/positive tests merged. Remaining: threat-model review, privileged-mutation/CSRF acceptance and target-client qualification | Negative tests for attacker-controlled origins/hosts (including DNS-rebinding-style `Host` values) and mutating requests, positive tests for approved desktop/browser clients, consistent SSE response headers; threat model reviewed |
 | **P0.2** | Versioned credential key storage | **Baseline delivered; qualification open** ([PR #119](https://github.com/ajbergh/ViiB-MediaHub/pull/119)) | `enc:v2`, Windows DPAPI, non-Windows keywrap fallback, readable legacy migration and reauthentication handling merged. Remaining: supported-host install/relocation/upgrade/restart and rollback qualification | Install/relocate/upgrade/restart tests on supported OSes; readable old secrets migrate without disclosure or silent loss; unresolvable legacy secrets report a clear reauthentication path |
-| **P0.3** | Governance and required checks | **Planned** | Protect `main` via branch ruleset; require frontend, Go test/race/vet/staticcheck, vulnerability and packaging checks; document emergency bypass | Normal PR cannot merge without passing required checks; explicit reviewed emergency process exists |
+| **P0.3** | Governance and required checks | **Partial; activation awaits owner approval** | [Versioned main-only ruleset and emergency process](repository-governance.md) prepared for 16 observed GitHub Actions checks. Hosted main remains unprotected; activation and effective-policy verification require explicit owner approval | Normal PR cannot merge without passing required checks; explicit reviewed emergency process exists |
 | **P0.4** | Release signing and provenance | **Planned** | Stable-release signing policy; macOS Developer ID + notarization, Windows Authenticode, checksums and verifiable build/source provenance | Production (non-RC) release workflow fails closed when mandatory signing/verification is unavailable (today Windows signing is skipped without secrets and macOS is ad-hoc signed only); install and signature-verification smoke tests pass |
 | **P0.5** | Supply-chain and licensing review | **Partial; proposed implementation** | Exact Staticcheck/govulncheck pins, npm CI CycloneDX inventory and proposed required/checksummed npm SBOM plus Go graph release assets. Remaining: hosted release-path validation, per-target/native SBOMs, attribution/license review and shipped advisory acceptance | License obligations and security advisories are recorded; no unaccepted shipped critical/high vulnerability; reproducible dependency inputs |
 
@@ -251,7 +251,7 @@ CI additionally runs `npm audit --omit=dev --audit-level=high`, binary `govulnch
 - **P3.2:** strict include list grows **4 to 12** modules, adding capabilities, imported catalog, jobs, recovery API, backend conversion, three-band data and DJ output services/hooks. No runtime changes or typing suppressions. `npm run check` passed palette/raw-color checks, TypeScript, **148 files / 725 Vitest tests**, and production build. Existing large-chunk warnings remain; no bundle/startup gain is claimed.
 - **P3.3/P3.4:** browser-only source-settings navigation and playlist creation/reload now have E2E coverage. The playlist-name textbox now has an explicit accessible name. The draft accessibility plan/register is in PR #132; plan approval, assisted first-run/source-repair review and assistive-technology qualification remain open.
 - **Deferred for complexity:** P2.1 representative 1K/10K/100K benchmark design, P2.3 cache quota/eviction policy, P3.1 major decomposition and Phase 5 research need dedicated scopes and evidence. P0.1/P0.2 and P1 target-host qualification remain open.
-- **Human/external follow-up:** review/enable main protection and emergency bypass policy (P0.3); signing/notarization credentials and signed-installer tests (P0.4); attribution/licensing acceptance (P0.5); authenticated providers, native hosts, assistive-technology review and stable-release signoff (P4). No release qualification is claimed.
+- **Human/external follow-up:** approve/activate the prepared main-protection policy and review its emergency process (P0.3); signing/notarization credentials and signed-installer tests (P0.4); attribution/licensing acceptance (P0.5); authenticated providers, native hosts, assistive-technology review and stable-release signoff (P4). No release qualification is claimed.
 
 ### P3.4 accessibility planning follow-up (October 20)
 
@@ -324,6 +324,24 @@ and approving restore stages only the selected archive. `npm run check` passed
 **152 files / 730 tests**, TypeScript/style gates and production build;
 documentation and whitespace checks also passed. Real-host restore continuity
 remains open.
+
+### P0.3 governance proposal (October 20)
+
+Branch `codex/p0-3-main-governance`, based on PR #136, adds a
+[main-only ruleset and governance runbook](repository-governance.md). The proposed
+policy requires PRs, current branches, resolved review threads and all **16
+always-on CI contexts**, bound to the observed GitHub Actions app (15368). It
+blocks main deletion/force-pushes and permits only owner `ajbergh` to use a
+PR-only emergency bypass. Formal approval count remains zero for the sole-owner
+workflow. Release-only contexts are excluded because they do not run on every PR.
+
+Validation: JSON parsed; all 16 contexts were observed successful from the
+configured app on PR #131; documentation links and whitespace checks passed.
+**No hosted configuration changed:** explicit owner approval is required before
+activation. Main remains unprotected. Effective main/feature-branch scope,
+required-check enforcement and the live bypass configuration must be read back
+after activation. The runbook includes stack integration and per-incident review;
+no emergency merge/bypass or release has been performed.
 
 ### Baseline evidence and implementation references
 
