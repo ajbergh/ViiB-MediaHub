@@ -196,3 +196,7 @@ A scrollable in-app event log containing events recorded by the frontend and bac
 - API errors
 
 Click **Clear** to remove entries from the in-app log, which is in memory. Backend `viib.log` and scanner/analysis `scan.log` are separate files in the application data directory and append across restarts; clearing the in-app view does not clear those files.
+
+Support exports use the [allowlisted support-bundle format](support-bundles.md);
+unknown log entries and free-form messages are omitted. Raw local/debug logs
+can still contain private details.

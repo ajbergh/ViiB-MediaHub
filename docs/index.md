@@ -54,6 +54,7 @@ The [October 15 documentation refresh](DOCUMENTATION_REVIEW_2026-10-15.md) recon
 | [Proposed release notes](releases/UNRELEASED.md) | Reviewed change candidates for a future release; not a published-release claim |
 | [Repository governance](repository-governance.md) | Main-only required CI ruleset, stacked-PR handling and reviewed emergency bypass process |
 | [Release signing policy](release-signing-policy.md) | Proposed fail-closed stable release guard and remaining signing/notarization qualification |
+| [Support bundles](support-bundles.md) | Allowlisted diagnostic export, retained fields, omission limits and privacy scope |
 | [Release provenance](release-provenance.md) | Proposed exact-payload attestation and identity verification gate; live OIDC qualification pending |
 | [Release asset verification](release-asset-verification.md) | Exact package/inventory checksum contract and real PR-candidate assembly evidence |
 | [OpenAPI v2](openapi-v2.yaml) | Machine-readable core API routes; additional analysis detail routes currently follow backend handler contracts |

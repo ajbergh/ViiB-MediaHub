@@ -1,9 +1,10 @@
-// Tests building support archives with bounded, redacted diagnostics and logs.
+// Tests building support archives with bounded, allowlisted diagnostic records.
 package api
 
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -28,11 +29,15 @@ func TestSupportBundleContainsSanitizedDiagnosticsOnly(t *testing.T) {
 	if err := database.SetSetting(spotifyCookieSetting, `{"provider":"webplayer","spDC":"stored-cookie"}`); err != nil {
 		t.Fatal(err)
 	}
-	logText := `request failed api_key=secret-value path=/Users/alice/Music/private/song.mp3?access_token=url-secret` + "\n" + `spDC=log-cookie sp_dc=snake-cookie {"spDC":"json-cookie"} Cookie: sp_dc=header-cookie; sp_key=key-cookie ?sp_dc=query-cookie&ok=1` + "\n"
+	privatePayload := supportFixtureLine("FE ERROR", `[DJEngine] Private fixture title | Data: {"id":"private-resource-id","error":{"message":"private-error-text","stack":"/arbitrary/private/tree"},"requestId":"private-host-request"}`)
+	logText := privatePayload + supportFixtureLine("FE WARN", `[AudioRead] Audio read failed | Data: {"operation":"local_bands","category":"http","status":503}`) + `request failed api_key=secret-value path=/Users/alice/Music/private/song.mp3?access_token=url-secret` + "\n" + `spDC=log-cookie sp_dc=snake-cookie {"spDC":"json-cookie"} Cookie: sp_dc=header-cookie; sp_key=key-cookie ?sp_dc=query-cookie&ok=1` + "\n"
 	if err := os.WriteFile(filepath.Join(dataDir, "viib.log"), []byte(logText), 0600); err != nil {
 		t.Fatal(err)
 	}
 
+	if err := os.WriteFile(filepath.Join(dataDir, "scan.log"), []byte("private-scan-decision"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	api := &API{db: database, dataDir: dataDir}
 	response := httptest.NewRecorder()
 	api.downloadSupportBundle(response, httptest.NewRequest(http.MethodGet, "/api/support-bundle", nil))
@@ -65,20 +70,35 @@ func TestSupportBundleContainsSanitizedDiagnosticsOnly(t *testing.T) {
 		entries[file.Name] = string(content)
 	}
 
-	for _, name := range []string{"manifest.json", "diagnostics.json", "logs/viib.log", "README.txt"} {
+	for _, name := range []string{"manifest.json", "diagnostics.json", "logs/diagnostics.jsonl", "README.txt"} {
 		if _, ok := entries[name]; !ok {
 			t.Errorf("missing ZIP entry %q", name)
 		}
 	}
-	for _, forbidden := range []string{"stored-cookie", "log-cookie", "snake-cookie", "json-cookie", "header-cookie", "key-cookie", "query-cookie", "stored-secret", "secret-value", "url-secret", "/Users/alice", "library.db"} {
+	for _, forbidden := range []string{"Private fixture title", "private-resource-id", "private-error-text", "/arbitrary/private/tree", "private-host-request", "private-scan-decision", "stored-cookie", "log-cookie", "snake-cookie", "json-cookie", "header-cookie", "key-cookie", "query-cookie", "stored-secret", "secret-value", "url-secret", "/Users/alice", "library.db"} {
 		for name, content := range entries {
 			if strings.Contains(content, forbidden) {
 				t.Errorf("entry %s contains forbidden value %q", name, forbidden)
 			}
 		}
 	}
-	if !strings.Contains(entries["logs/viib.log"], "<redacted>") || !strings.Contains(entries["logs/viib.log"], "<local-path>") {
-		t.Fatalf("sanitized log did not contain redaction markers: %q", entries["logs/viib.log"])
+	if len(entries) != 4 {
+		t.Fatalf("unexpected archive entries: %v", entries)
+	}
+	if !strings.Contains(entries["logs/diagnostics.jsonl"], `"event":"audio_read_failed"`) {
+		t.Fatal("safe diagnostic missing")
+	}
+	var manifest supportBundleManifest
+	if err := json.Unmarshal([]byte(entries["manifest.json"]), &manifest); err != nil || manifest.SchemaVersion != 2 {
+		t.Fatal("wrong bundle schema", err)
+	}
+	var diagnostics supportBundleDiagnostics
+	if err := json.Unmarshal([]byte(entries["diagnostics.json"]), &diagnostics); err != nil || diagnostics.Version != 1 || diagnostics.Included != 1 || diagnostics.Dropped != 3 {
+		t.Fatalf("projection metadata: %+v %v", diagnostics, err)
+	}
+	retained, err := os.ReadFile(filepath.Join(dataDir, "viib.log"))
+	if err != nil || string(retained) != logText {
+		t.Fatal("support export changed local logging", err)
 	}
 	if !strings.Contains(entries["diagnostics.json"], `"spotify": true`) {
 		t.Fatalf("diagnostics did not retain configured status: %s", entries["diagnostics.json"])

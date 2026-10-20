@@ -1,4 +1,4 @@
-// Builds support archives with bounded, redacted diagnostics and logs.
+// Builds support archives with bounded, allowlisted diagnostic records.
 package api
 
 import (
@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -20,15 +19,8 @@ import (
 )
 
 const (
-	supportBundleSchema = 1
+	supportBundleSchema = 2
 	maxSupportLogBytes  = 4 << 20
-)
-
-var (
-	supportSecretPattern = regexp.MustCompile(`(?i)((?:sp_?dc|sp_?key|spotify_webplayer_session|cookie|authorization|access_?token|refresh_?token|client_?secret|api_?key|password|shared_?secret|code_?verifier|oauth_?state)["']?\s*[:=]\s*["']?)(?:bearer\s+)?[^"'\s,;}\]]+`)
-	supportQueryPattern  = regexp.MustCompile(`(?i)([?&](?:sp_?dc|sp_?key|code|state|token|access_token|refresh_token|key|api_key|secret|password)=)[^&\s]+`)
-	supportWindowsPath   = regexp.MustCompile(`(?i)[a-z]:\\[^\r\n,;)}\]]+`)
-	supportUnixPath      = regexp.MustCompile(`/(?:Users|home|Volumes)/[^\r\n,;)}\]]+`)
 )
 
 type supportBundleManifest struct {
@@ -41,6 +33,7 @@ type supportBundleManifest struct {
 }
 
 type supportBundleDiagnostics struct {
+	supportProjection
 	DebugLogging      bool             `json:"debugLogging"`
 	Database          supportFileState `json:"database"`
 	Log               supportFileState `json:"log"`
@@ -74,12 +67,13 @@ func (a *API) CreateSupportBundle() ([]byte, string, error) {
 	if err != nil && !os.IsNotExist(err) {
 		return nil, "", fmt.Errorf("read support log: %w", err)
 	}
-	logData = sanitizeSupportLog(logData)
+	logData, projection := projectSupportLog(logData)
 
 	diagnostics := supportBundleDiagnostics{
-		DebugLogging: logger.IsDebug(),
-		Database:     supportFileInfo(databasePath),
-		Log:          supportFileInfo(logPath),
+		supportProjection: projection,
+		DebugLogging:      logger.IsDebug(),
+		Database:          supportFileInfo(databasePath),
+		Log:               supportFileInfo(logPath),
 		Integrations: map[string]bool{
 			"spotify":  configuredSetting(a, "spotify_credentials"),
 			"lastfm":   configuredSetting(a, "lastfm_settings"),
@@ -98,10 +92,10 @@ func (a *API) CreateSupportBundle() ([]byte, string, error) {
 	if err := writeSupportJSON(archive, "diagnostics.json", diagnostics); err != nil {
 		return nil, "", err
 	}
-	if err := writeSupportEntry(archive, "logs/viib.log", logData); err != nil {
+	if err := writeSupportEntry(archive, "logs/diagnostics.jsonl", logData); err != nil {
 		return nil, "", err
 	}
-	readme := "ViiB MediaHub support bundle\n\nThis archive contains version/platform diagnostics and a size-limited, sanitized application log.\nIt does not contain the media database, media files, artwork, playlists, scan-folder lists, or credential values.\nReview the files before emailing the archive.\n"
+	readme := "ViiB MediaHub support bundle\n\nThis archive contains version/platform diagnostics and bounded, allowlisted diagnostic records. Unknown log entries and free-form messages, media metadata, paths, resource IDs and stacks are omitted. Validated analysis-job UUIDs are retained for job correlation; raw HTTP request IDs are not included.\nIt does not contain the media database, media files, artwork, playlists, scan-folder lists, or credential values.\nReview the files before emailing the archive.\n"
 	if err := writeSupportEntry(archive, "README.txt", []byte(readme)); err != nil {
 		return nil, "", err
 	}
@@ -165,22 +159,11 @@ func readSupportLog(path string) ([]byte, bool, error) {
 	if limited {
 		if newline := bytes.IndexByte(data, '\n'); newline >= 0 {
 			data = data[newline+1:]
+		} else {
+			data = nil // The tail contains only an incomplete oversized line.
 		}
 	}
 	return data, limited, err
-}
-
-func sanitizeSupportLog(data []byte) []byte {
-	text := string(data)
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		text = strings.ReplaceAll(text, home, "<home>")
-		text = strings.ReplaceAll(text, filepath.ToSlash(home), "<home>")
-	}
-	text = supportSecretPattern.ReplaceAllString(text, "$1<redacted>")
-	text = supportQueryPattern.ReplaceAllString(text, "$1<redacted>")
-	text = supportWindowsPath.ReplaceAllString(text, "<local-path>")
-	text = supportUnixPath.ReplaceAllString(text, "<local-path>")
-	return []byte(text)
 }
 
 func writeSupportJSON(archive *zip.Writer, name string, value any) error {

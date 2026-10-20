@@ -107,11 +107,11 @@ The current [preparation baseline](SPOTIFY_PREPARATION_PERFORMANCE.md) includes 
 | **P2.3** | Cache lifecycle | **Partial** | Binary three-band storage and bounded legacy compaction are delivered in #123. Global quotas, safe eviction, disk-budget enforcement, and WAL/restoration qualification remain open.| Predictable disk limits; cache eviction cannot destroy user data or invalidate retained provenance; reference workloads stay inside approved resource budgets |
 | **P2.4** | Browser end-to-end gates | **Partial; proposed implementation** | Five deterministic Chromium journeys (four browser-only plus synthetic Library Operations review/cancel/stage); config and CI retain failure screenshots/traces/report. Remaining: merged-head validation, backend/import/playback/recovery-integrity/provider flows and other browser profiles.| Critical flows reliably pass in CI; failures retain screenshots/traces/logs without secrets |
 | **P2.5** | Native system qualification | **Partial** | Native builds and bounded Windows user-reported functional samples exist. Long-session/device/WebView coverage and macOS/Linux host execution remain open.| Tested platform/architecture matrix with explicit passes, failures and accepted exceptions |
-| **P2.6** | Troubleshooting evidence | **Partial** | Request IDs, job diagnostics and an opt-in bounded/redacted support archive with tests exist. Arbitrary frontend payloads can expose private metadata through support logs; an allowlisted diagnostic projection, end-to-end correlation and troubleshooting qualification remain open.| A user-visible failure can be traced to a sanitized diagnostic record; tokens, cookies, local-private data are excluded by default |
+| **P2.6** | Troubleshooting evidence | **Partial** | Request IDs, job diagnostics and an opt-in bounded/redacted support archive with tests exist. Proposed schema-2 support export replaces raw log text with bounded allowlisted diagnostic records. Local logging privacy, safe end-to-end request correlation and full troubleshooting qualification remain open.| A user-visible failure can be traced to a sanitized diagnostic record; tokens, cookies, local-private data are excluded by default |
 
 **Progress & Evidence Log (Phase 2, October 15):**
 - [PR #123](https://github.com/ajbergh/ViiB-MediaHub/pull/123) (`79a04eb`) delivers the bounded analysis/scanner and binary waveform conversion described in [scan stability and storage](scan-stability-and-storage.md). Compaction reuses SQLite pages; it does not automatically shrink the database file. TagLib cannot be forcibly canceled; fully stuck slots require restart.
-- The existing [support archive handler](../backend/internal/api/support_bundle.go), [redaction/bounds tests](../backend/internal/api/support_bundle_test.go), and **Settings → System & Logs → Create Support Bundle** implement a bounded export of diagnostics and sanitized logs. This is partial P2.6 delivery, not proof every failure is fully correlated or every sensitive log shape is covered.
+- The existing [support archive handler](../backend/internal/api/support_bundle.go), [redaction/bounds tests](../backend/internal/api/support_bundle_test.go), and **Settings → System & Logs → Create Support Bundle** implement a bounded export of diagnostics; the schema-2 follow-up below replaces regex-sanitized text with allowlisted records. This is partial P2.6 delivery, not proof every failure is fully correlated or every sensitive log shape is covered.
 
 **Performance budgets:** Freeze representative measurements first; then agree latency/error/CPU/memory thresholds per workload and enforce a regression budget. Do **not** manufacture arbitrary p95 guarantees before benchmark measurements exist.
 
@@ -526,7 +526,8 @@ and supported-host restore continuity remain unqualified.
 
 Reassessment deferrals: arbitrary frontend log payloads can contain private
 metadata that survives current support-export redaction (P2.6); a reviewed
-allowlisted diagnostic projection is needed, beyond adding regexes. The P1.6
+schema-2 projection below addresses the support-export boundary, while local
+logging/privacy and request correlation remain open. The P1.6
 follow-up below adds bounded synthetic relation continuity; real-host/crash
 qualification remains open.
 Durable-job shutdown needs cancellation/wait/recovery policy across heterogeneous
@@ -535,7 +536,8 @@ human/external and larger scopes.
 
 ### P1.6 synthetic backup-to-activation relation continuity (October 20)
 
-The [integration regression](../backend/internal/api/restore_continuity_test.go)
+[PR #147](https://github.com/ajbergh/ViiB-MediaHub/pull/147) adds the
+[integration regression](../backend/internal/api/restore_continuity_test.go)
 creates a recovery point through the real backup router, changes every checked
 relation, previews/stages that archive through the router, closes the database,
 activates the pending restore and reopens the database. Exact persisted-row
@@ -553,6 +555,38 @@ and whitespace checks passed; hosted checks pending. This is clean-shutdown,
 synthetic-fixture evidence, not real media playback, full-relation/schema proof,
 Plex/provider/source acceptance, RC5 upgrade, installer or crash-complete
 publication/activation qualification. Those gates remain open.
+
+### P2.6 fail-closed support diagnostic projection (October 20)
+
+The proposed [schema-2 support archive](support-bundles.md) replaces regex-only
+log sanitization with new JSONL objects from allowlisted audio-read, catalog and
+analysis lifecycle grammars. Unknown/free-form data never passes through. Raw
+HTTP request IDs are excluded (existing IDs may contain hostnames or arbitrary
+caller values); validated analysis-job UUIDs remain for grouping job reports.
+Browser/native exports share the same backend path. Settings and archive copy
+explain omission rather than claiming complete sanitized raw logs.
+
+Input is bounded to a 4 MiB tail, lines to 8 KiB, output to 2,000 records and
+256 KiB. Omission/version/size flags are explicit. Schema 1 compatibility is
+limited to existing archive files; schema 2 intentionally replaces `logs/viib.log`
+with `logs/diagnostics.jsonl`. Private raw logs remain on disk; complete logging
+privacy, safe request correlation, full troubleshooting coverage and native
+save/sharing qualification remain open. No raw-log opt-in was added.
+
+Validation: **5 support archive/projection tests passed with Windows race
+detection**, including archive-level private title/resource/error/path/request-ID
+omission, supported-record retention, unknown-field rejection, line/record/output
+caps, 4 MiB tail handling and unchanged local logs. The full API package suite,
+`go vet ./internal/api`, frontend typecheck, documentation/JSON and whitespace
+checks passed. Hosted validation remains pending; native save/share acceptance
+and end-to-end failure correlation are not claimed.
+
+Hosted checkpoint: PR #143 (`cda08d4`) and #144 (`3936307`) each have **16
+successful checks**. PR #146's macOS analysis job `118808250710` never acquired
+a hosted runner; GitHub annotations report capacity constraints, with no test
+execution. The CLI rejected a targeted rerun (`job cannot be rerun`); retry
+remains follow-up once the workflow permits it. Other pending checks remain pending;
+this is not a code-regression failure or all-green claim.
 
 ### Baseline evidence and implementation references
 
