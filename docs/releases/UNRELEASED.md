@@ -31,3 +31,10 @@ cross-platform recovery qualification.
 - Proposed [release inventories](../release-dependency-inventories.md) add an npm
   SBOM and Go module graph to future release assets and their checksum manifest.
   Signing, provenance, native-library inventories and licensing review remain open.
+
+## Release channel gate
+
+- Proposed workflows reject stable versions/tags until production signing,
+  notarization and verification are qualified. RC/prerelease packaging remains
+  available with existing signing limitations. Non-tag manual Windows builds
+  use development artifact versions; accepted tag drafts are marked prerelease.

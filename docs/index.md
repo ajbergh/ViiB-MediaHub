@@ -53,6 +53,7 @@ The [October 15 documentation refresh](DOCUMENTATION_REVIEW_2026-10-15.md) recon
 | [Release dependency inventories](release-dependency-inventories.md) | Proposed checksummed npm/Go release inventories, reproducibility and coverage limits |
 | [Proposed release notes](releases/UNRELEASED.md) | Reviewed change candidates for a future release; not a published-release claim |
 | [Repository governance](repository-governance.md) | Main-only required CI ruleset, stacked-PR handling and reviewed emergency bypass process |
+| [Release signing policy](release-signing-policy.md) | Proposed fail-closed stable release guard and remaining signing/notarization qualification |
 | [OpenAPI v2](openapi-v2.yaml) | Machine-readable core API routes; additional analysis detail routes currently follow backend handler contracts |
 | [Stem package v1](VIIB_STEM_PACKAGE_V1.md) | Current `.viibstems` interchange and validation contract |
 | [DJ professional analysis roadmap](DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md) | Delivered analysis engineering and remaining accuracy/calibration/release gates |

@@ -64,7 +64,7 @@ Work packages use stable IDs (`P0.1` etc.) for GitHub issues, PR titles, and pro
 | **P0.1** | Loopback API trust boundary | **Baseline delivered; qualification open** ([PR #118](https://github.com/ajbergh/ViiB-MediaHub/pull/118)) | Centralized Host/Origin/CORS/SSE policy and negative/positive tests merged. Remaining: threat-model review, privileged-mutation/CSRF acceptance and target-client qualification | Negative tests for attacker-controlled origins/hosts (including DNS-rebinding-style `Host` values) and mutating requests, positive tests for approved desktop/browser clients, consistent SSE response headers; threat model reviewed |
 | **P0.2** | Versioned credential key storage | **Baseline delivered; qualification open** ([PR #119](https://github.com/ajbergh/ViiB-MediaHub/pull/119)) | `enc:v2`, Windows DPAPI, non-Windows keywrap fallback, readable legacy migration and reauthentication handling merged. Remaining: supported-host install/relocation/upgrade/restart and rollback qualification | Install/relocate/upgrade/restart tests on supported OSes; readable old secrets migrate without disclosure or silent loss; unresolvable legacy secrets report a clear reauthentication path |
 | **P0.3** | Governance and required checks | **Partial; activation awaits owner approval** | [Versioned main-only ruleset and emergency process](repository-governance.md) prepared for 16 observed GitHub Actions checks. Hosted main remains unprotected; activation and effective-policy verification require explicit owner approval | Normal PR cannot merge without passing required checks; explicit reviewed emergency process exists |
-| **P0.4** | Release signing and provenance | **Planned** | Stable-release signing policy; macOS Developer ID + notarization, Windows Authenticode, checksums and verifiable build/source provenance | Production (non-RC) release workflow fails closed when mandatory signing/verification is unavailable (today Windows signing is skipped without secrets and macOS is ad-hoc signed only); install and signature-verification smoke tests pass |
+| **P0.4** | Release signing and provenance | **Partial; proposed stable-release guard** | [Shared prerelease-only guard and signing policy](release-signing-policy.md) block unqualified stable canonical/legacy Windows releases. Credentials, mandatory production signing/notarization/verification, real-host acceptance and provenance remain open | Production (non-RC) release workflow fails closed when mandatory signing/verification is unavailable (today Windows signing is skipped without secrets and macOS is ad-hoc signed only); install and signature-verification smoke tests pass |
 | **P0.5** | Supply-chain and licensing review | **Partial; proposed implementation** | Exact Staticcheck/govulncheck pins, npm CI CycloneDX inventory and proposed required/checksummed npm SBOM plus Go graph release assets. Remaining: hosted release-path validation, per-target/native SBOMs, attribution/license review and shipped advisory acceptance | License obligations and security advisories are recorded; no unaccepted shipped critical/high vulnerability; reproducible dependency inputs |
 
 **Progress & Evidence Log (Phase 0):**
@@ -342,6 +342,24 @@ activation. Main remains unprotected. Effective main/feature-branch scope,
 required-check enforcement and the live bypass configuration must be read back
 after activation. The runbook includes stack integration and per-incident review;
 no emergency merge/bypass or release has been performed.
+
+### P0.4 stable release boundary follow-up (October 20)
+
+Branch `codex/p0-4-stable-release-guard`, based on PR #137, adds a dependency-free
+[shared channel guard and signing policy](release-signing-policy.md). Canonical
+release preflight/publication and the independent Windows tag/archive path reject
+stable or malformed versions until production signing is qualified. Current RC7
+and valid prereleases remain allowed. Non-tag manual Windows builds use commit
+based development versions; tag drafts explicitly set prerelease.
+
+Validation: **7 channel/CLI tests passed**, plus the **4 inventory tests**. Local
+experiments executed the extracted Bash preflight/publication and PowerShell tag/
+archive-version steps: stable/malformed/mismatched tags failed; RC7 passed;
+main/feature branch builds emitted development versions. The PowerShell paths
+explicitly propagate native-command failures. All three workflow YAML files parsed; changed Bash syntax, documentation
+links and whitespace checks passed. No artifacts were built or released by
+these experiments; signing/notarization, credentials and host qualification
+remain external/complex follow-up. This is not a stable-signing implementation.
 
 ### Baseline evidence and implementation references
 

@@ -9,6 +9,9 @@ on:
       - '.github/workflows/release.yml'
       - 'scripts/generate_go_module_inventory.py'
       - 'scripts/test_go_module_inventory.py'
+      - 'scripts/release_channel_guard.py'
+      - 'scripts/test_release_channel_guard.py'
+      - '.github/workflows/build-windows.yml'
   push:
     branches: [main]
     paths:
@@ -36,6 +39,12 @@ jobs:
           fetch-depth: 0
           show-progress: false
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate release channel policy
+        run: python -m unittest discover -s scripts -p 'test_release_channel_guard.py'
+
       - name: Resolve release version
         id: version
         shell: bash
@@ -47,6 +56,7 @@ jobs:
             exit 1
           fi
           tag="v${version}"
+          python scripts/release_channel_guard.py --version "$version" --tag "$tag"
           # PRs validate packaging without publishing; an existing version is valid.
           # Publishing events must still reject a tag that already exists.
           if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]] && git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
@@ -654,6 +664,12 @@ jobs:
         with:
           fetch-depth: 0
           show-progress: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Enforce prerelease publication
+        run: python scripts/release_channel_guard.py --version "$VERSION" --tag "$TAG"
 
       - name: Download release assets
         uses: actions/download-artifact@v4
