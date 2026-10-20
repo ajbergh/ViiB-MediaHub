@@ -86,7 +86,7 @@ Work packages use stable IDs (`P0.1` etc.) for GitHub issues, PR titles, and pro
 | **P1.3** | Playback state transitions | **Partial** | Spotify retirement/local-playback preservation and range/lifecycle regressions exist; the combined local → Plex → Spotify matrix, interruptions, crossfade, and device-change qualification remain open.| Repeatable tests cover local → Plex → Spotify and back, logout during playback, range seeking, network interruption, and no unrelated local-playback teardown |
 | **P1.4** | Spotify parity and resilience | **Partial** | Cookie sign-in/session renewal, browsing, Premium media gates, integrity retries, and reconnect flows are implemented. Native responsiveness/search, other-host execution, Recently Played/profile parity, broader markets/accounts, and compatibility review remain open.| Contract/fixture cases pass; at least one real provider flow per supported host passes where feasible; unverified account/market cases remain visibly marked; no fabricated metadata |
 | **P1.5** | Plex large-library and offline safety | **Partial** | Music-only synchronization, offline catalog retention, authenticated audio/artwork proxying, and tests exist. Real-PMS interrupted/large-library/auth-expiry/codec qualification and fallback policy remain open.| Interrupted sync never mass-deletes valid catalog rows; auth expiry/offline conditions recover; real-PMS smoke cases recorded; unsupported codecs clearly explained |
-| **P1.6** | Data and media recovery | **Partial** | Library Operations backup/staged restore, duplicate review, restart/idempotency and source-bound retention exist. Proposed no-clobber backup creation protects existing recovery points and rejects duplicate names. Full RC5 upgrade and backup/restore continuity evidence remains open.| Restoring a tested backup preserves library/playlists/likes/history and consistent source links; unrecoverable changes are disclosed before destructive actions |
+| **P1.6** | Data and media recovery | **Partial** | Library Operations backup/staged restore, duplicate review, restart/idempotency and source-bound retention exist. Proposed no-clobber backup creation protects existing recovery points and rejects duplicate names. Synthetic API-to-offline restore now checks catalog, ordered playlists, song likes, detailed history, selected settings and rollback contents. RC5 upgrades, Plex/source-link and real-host/crash-continuity acceptance remain open.| Restoring a tested backup preserves library/playlists/likes/history and consistent source links; unrecoverable changes are disclosed before destructive actions |
 
 **Progress & Evidence Log (Phase 1):**
 - **2026-10-13 (`P1.1`, [PR #120](https://github.com/ajbergh/ViiB-MediaHub/pull/120), branch `codex/p1-1-media-capability-matrix`):** Added canonical per-format/per-source capability inventory and reusable `CapabilityError` types in [`backend/internal/audio/capabilities.go`](../backend/internal/audio/capabilities.go) and [`services/mediaCapabilities.ts`](../services/mediaCapabilities.ts), wired scanner extension allowlist to `audio.ScannerSupportedExtensions()`, exposed `GET /api/v2/capabilities/media`, attached structured capability metadata to `GET /api/dj/waveform/{id}` `422` responses, and added cross-format metadata/decoder alignment tests in [`backend/internal/audio/capabilities_test.go`](../backend/internal/audio/capabilities_test.go), [`backend/internal/api/media_capabilities_test.go`](../backend/internal/api/media_capabilities_test.go), and [`services/mediaCapabilities.test.ts`](../services/mediaCapabilities.test.ts). Merged to `main`; remaining acceptance evidence is tracked in the row above.
@@ -503,7 +503,7 @@ remain pending. No DSP estimator or accuracy qualification changes.
 
 ### P2.4/P3.3 Library Operations recovery-flow follow-up (October 20)
 
-The maintenance panel's initial backup-list cleanup was returned from an async
+[PR #146](https://github.com/ajbergh/ViiB-MediaHub/pull/146): the maintenance panel's initial backup-list cleanup was returned from an async
 loader and ignored. The repair makes its effect own a request scope, aborts
 client work on unmount, and checks the captured scope after each awaited
 request. Repair/backup completions after navigation cannot start follow-up reads
@@ -526,11 +526,33 @@ and supported-host restore continuity remain unqualified.
 
 Reassessment deferrals: arbitrary frontend log payloads can contain private
 metadata that survives current support-export redaction (P2.6); a reviewed
-allowlisted diagnostic projection is needed, beyond adding regexes. Full-relation
-backup/stage/offline-activation/rollback evidence remains a P1.6 follow-up.
+allowlisted diagnostic projection is needed, beyond adding regexes. The P1.6
+follow-up below adds bounded synthetic relation continuity; real-host/crash
+qualification remains open.
 Durable-job shutdown needs cancellation/wait/recovery policy across heterogeneous
 workers (P2.2/P4.3), so it remains deferred alongside the previously recorded
 human/external and larger scopes.
+
+### P1.6 synthetic backup-to-activation relation continuity (October 20)
+
+The [integration regression](../backend/internal/api/restore_continuity_test.go)
+creates a recovery point through the real backup router, changes every checked
+relation, previews/stages that archive through the router, closes the database,
+activates the pending restore and reopens the database. Exact persisted-row
+comparisons cover catalog metadata/local paths, playlist order/duplicates, song
+likes/timestamps, detailed listening events, genre preferences and two ordinary
+settings. The rollback database must contain the deliberately changed live
+state. Staging must leave live relations unchanged; restored/staged Spotify
+credential rows are absent, live/rollback credential rows remain; pending files
+are cleaned and original synthetic media bytes remain unchanged.
+
+Validation: the new integration test passed normally and **three repetitions
+with Windows race detection** (Go 1.26.7, Windows/amd64, MinGW). The related API/DB backup/restore families passed
+**12 tests with no failures/skips**. No production behavior changed. Documentation
+and whitespace checks passed; hosted checks pending. This is clean-shutdown,
+synthetic-fixture evidence, not real media playback, full-relation/schema proof,
+Plex/provider/source acceptance, RC5 upgrade, installer or crash-complete
+publication/activation qualification. Those gates remain open.
 
 ### Baseline evidence and implementation references
 

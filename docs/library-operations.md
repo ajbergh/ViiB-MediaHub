@@ -105,3 +105,18 @@ activation still requires closing ViiB and running the restore helper.
 - Track analysis only reads audio. It never rewrites a media file's tags or contents, and it never writes measured values back to Plex.
 - Removing or changing Plex configuration performs no destructive PMS operation.
 - A physical Windows release-candidate smoke test remains the final release gate for a real large library, output switching, continuous monitoring, backup, offline restore, long playback, Plex direct-play/seeking, and Spotify reconnection.
+
+## Automated recovery evidence
+
+The [synthetic continuity regression](../backend/internal/api/restore_continuity_test.go)
+connects backup creation and staging to clean-shutdown offline activation. It
+checks exact catalog/playlist/song-like/history rows, two ordinary settings,
+rollback contents, Spotify credential exclusion and unchanged fixture media.
+This is bounded database evidence; the supported-host/large-library gate above,
+Plex/source acceptance, upgrades and crash-complete activation remain open.
+
+From `backend`, run:
+
+```bash
+go test ./internal/api ./internal/db -run '(Backup|Restore)' -count=1
+```
