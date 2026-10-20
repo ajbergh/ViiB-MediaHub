@@ -1,7 +1,8 @@
 # Main-branch governance
 
-**Status: proposed; not activated.** Hosted main remains unprotected. Activation
-is pending explicit owner approval.
+**Status: active since October 20, 2026, with explicit owner approval.** Hosted
+main protection and feature-branch exclusion were read back successfully.
+Merged-head required-check qualification remains open.
 
 Roadmap P0.3. The [versioned ruleset](../.github/rulesets/main.json) targets only
 `refs/heads/main`. Its hosted activation and verification record is below; a JSON
@@ -51,7 +52,7 @@ Keep replacement checks running during the transition so PRs remain mergeable.
 
 ## Reviewed emergency bypass
 
-The proposed policy grants only repository owner `ajbergh` (user ID 53879585) a PR-only bypass. There is no always/exempt
+The active policy grants only repository owner `ajbergh` (user ID 53879585) a PR-only bypass. There is no always/exempt
 bypass, deploy-key bypass or direct-push emergency path in this configuration.
 Use it only for an urgent repair when ordinary required checks cannot complete.
 
@@ -96,10 +97,17 @@ and [required-check/source/strict behavior](https://docs.github.com/en/repositor
 
 ## Verification record
 
-2026-10-20: owner administration access, unprotected main and an empty ruleset
-inventory were verified before preparation. All 16 proposed contexts were
-observed passing from GitHub Actions on PR #131/#132. Hosted activation was not performed and requires owner approval; no live
-protection, merge or bypass test is claimed. The configuration was checked
-against observed successful check names/source and parsed as JSON.
-This document and its PR are the concrete activation proposal, not proof of
-hosted enforcement.
+2026-10-20: before activation, main was unprotected and the ruleset inventory
+was empty. Following explicit owner approval, ruleset
+[`25487842`](https://github.com/ajbergh/ViiB-MediaHub/rules/25487842) was activated.
+The [API evidence](evidence/main-governance-2026-10-20.json) records:
+
+- All versioned policy fields matched the hosted policy, including the 16
+  app-bound strict checks and sole-owner PR-only bypass.
+- Main reported `protected: true` and all four expected effective rule types.
+- A feature-branch scope probe returned no effective rules.
+
+All 16 contexts were previously observed passing from GitHub Actions on PR
+#131/#132. No merge, direct push, force push, deletion or bypass was attempted.
+The original proposal's CI was green; actual required-check behavior on a
+current merged main and the remaining stacked PRs still needs qualification.

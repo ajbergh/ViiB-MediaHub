@@ -1,0 +1,255 @@
+{
+  "verified_at": "2026-10-20",
+  "repository": "ajbergh/ViiB-MediaHub",
+  "approval": "Repository owner explicitly approved activation on 2026-10-20.",
+  "ruleset": {
+    "id": 25487842,
+    "name": "main-required-ci",
+    "target": "branch",
+    "source_type": "Repository",
+    "source": "ajbergh/ViiB-MediaHub",
+    "enforcement": "active",
+    "conditions": {
+      "ref_name": {
+        "exclude": [],
+        "include": [
+          "refs/heads/main"
+        ]
+      }
+    },
+    "rules": [
+      {
+        "type": "deletion"
+      },
+      {
+        "type": "non_fast_forward"
+      },
+      {
+        "type": "pull_request",
+        "parameters": {
+          "required_approving_review_count": 0,
+          "dismiss_stale_reviews_on_push": true,
+          "required_reviewers": [],
+          "require_code_owner_review": false,
+          "require_last_push_approval": false,
+          "required_review_thread_resolution": true,
+          "require_extra_approval_for_unattributed_changes": true,
+          "allowed_merge_methods": [
+            "merge",
+            "squash",
+            "rebase"
+          ]
+        }
+      },
+      {
+        "type": "required_status_checks",
+        "parameters": {
+          "strict_required_status_checks_policy": true,
+          "do_not_enforce_on_create": false,
+          "required_status_checks": [
+            {
+              "context": "frontend",
+              "integration_id": 15368
+            },
+            {
+              "context": "browser-e2e",
+              "integration_id": 15368
+            },
+            {
+              "context": "backend",
+              "integration_id": 15368
+            },
+            {
+              "context": "Track analysis (linux)",
+              "integration_id": 15368
+            },
+            {
+              "context": "Track analysis (windows)",
+              "integration_id": 15368
+            },
+            {
+              "context": "Track analysis (darwin)",
+              "integration_id": 15368
+            },
+            {
+              "context": "Track analysis scalar determinism",
+              "integration_id": 15368
+            },
+            {
+              "context": "Semantic foundation (windows/amd64)",
+              "integration_id": 15368
+            },
+            {
+              "context": "Semantic foundation (windows/arm64)",
+              "integration_id": 15368
+            },
+            {
+              "context": "Semantic foundation (linux/amd64)",
+              "integration_id": 15368
+            },
+            {
+              "context": "Semantic foundation (darwin/amd64)",
+              "integration_id": 15368
+            },
+            {
+              "context": "Semantic foundation (darwin/arm64)",
+              "integration_id": 15368
+            },
+            {
+              "context": "Desktop build (linux-amd64)",
+              "integration_id": 15368
+            },
+            {
+              "context": "Desktop build (macos-arm64)",
+              "integration_id": 15368
+            },
+            {
+              "context": "Desktop build (macos-amd64)",
+              "integration_id": 15368
+            },
+            {
+              "context": "windows-build",
+              "integration_id": 15368
+            }
+          ]
+        }
+      }
+    ],
+    "node_id": "RRS_lACqUmVwb3NpdG9yec5B0MkzzgGE6eI",
+    "created_at": "2026-10-20T11:05:52.799-05:00",
+    "updated_at": "2026-10-20T11:05:52.934-05:00",
+    "bypass_actors": [
+      {
+        "actor_id": 53879585,
+        "actor_type": "User",
+        "bypass_mode": "pull_request"
+      }
+    ],
+    "current_user_can_bypass": "pull_requests_only",
+    "_links": {
+      "self": {
+        "href": "https://api.github.com/repos/ajbergh/ViiB-MediaHub/rulesets/25487842"
+      },
+      "html": {
+        "href": "https://github.com/ajbergh/ViiB-MediaHub/rules/25487842"
+      }
+    }
+  },
+  "main_protected": true,
+  "main_commit_at_verification": "c50e2b440996783a315be7150fce379fdd830c9d",
+  "effective_main_rules": [
+    {
+      "type": "deletion",
+      "ruleset_source_type": "Repository",
+      "ruleset_source": "ajbergh/ViiB-MediaHub",
+      "ruleset_id": 25487842
+    },
+    {
+      "type": "non_fast_forward",
+      "ruleset_source_type": "Repository",
+      "ruleset_source": "ajbergh/ViiB-MediaHub",
+      "ruleset_id": 25487842
+    },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 0,
+        "dismiss_stale_reviews_on_push": true,
+        "required_reviewers": [],
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_review_thread_resolution": true,
+        "require_extra_approval_for_unattributed_changes": true,
+        "allowed_merge_methods": [
+          "merge",
+          "squash",
+          "rebase"
+        ]
+      },
+      "ruleset_source_type": "Repository",
+      "ruleset_source": "ajbergh/ViiB-MediaHub",
+      "ruleset_id": 25487842
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": true,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          {
+            "context": "frontend",
+            "integration_id": 15368
+          },
+          {
+            "context": "browser-e2e",
+            "integration_id": 15368
+          },
+          {
+            "context": "backend",
+            "integration_id": 15368
+          },
+          {
+            "context": "Track analysis (linux)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Track analysis (windows)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Track analysis (darwin)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Track analysis scalar determinism",
+            "integration_id": 15368
+          },
+          {
+            "context": "Semantic foundation (windows/amd64)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Semantic foundation (windows/arm64)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Semantic foundation (linux/amd64)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Semantic foundation (darwin/amd64)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Semantic foundation (darwin/arm64)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Desktop build (linux-amd64)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Desktop build (macos-arm64)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Desktop build (macos-amd64)",
+            "integration_id": 15368
+          },
+          {
+            "context": "windows-build",
+            "integration_id": 15368
+          }
+        ]
+      },
+      "ruleset_source_type": "Repository",
+      "ruleset_source": "ajbergh/ViiB-MediaHub",
+      "ruleset_id": 25487842
+    }
+  ],
+  "feature_scope_probe": {
+    "branch": "feature-scope-probe",
+    "effective_rules": []
+  },
+  "limits": "Read-only API verification; no merge, bypass, deletion, or force-push was attempted. Required-check behavior still needs merged-head qualification."
+}
