@@ -514,7 +514,7 @@ export class DJWebGLRenderer {
     const gl = this.gl;
     const prog = this.waveformProgram;
     if (state.threeBands) this.updateThreeBandData(state.deck, state.threeBands);
-    const texture = state.threeBands ? this.bandTextures[state.deck]
+    const texture = state.threeBands ? (this.bandTextures[state.deck] ?? null)
       : state.deck === 'A' ? this.waveformTextureA : this.waveformTextureB;
     const deckColor = state.deck === 'A' ? this.options.deckAColor : this.options.deckBColor;
     

@@ -1,0 +1,73 @@
+{
+  "date": "2026-10-20",
+  "before": {
+    "explicitRoots": 12,
+    "localClosure": 19,
+    "files": [
+      "hooks/useFourChannelDJAudio.ts",
+      "lib/djFourChannelAudio.ts",
+      "lib/djOutputRouting.ts",
+      "lib/playbackLifecycle.ts",
+      "services/api.ts",
+      "services/audioReadDiagnostics.ts",
+      "services/backendService.ts",
+      "services/db.ts",
+      "services/eventStreamURL.ts",
+      "services/httpClient.ts",
+      "services/importedCatalog.ts",
+      "services/jobsV2.ts",
+      "services/libraryOperationsV2.ts",
+      "services/libraryService.ts",
+      "services/localThreeBand.ts",
+      "services/loggerService.ts",
+      "services/mediaCapabilities.ts",
+      "services/trackAnalysisContracts.ts",
+      "types.ts"
+    ]
+  },
+  "after": {
+    "explicitRoots": 16,
+    "localClosure": 23,
+    "files": [
+      "hooks/useFourChannelDJAudio.ts",
+      "lib/analysisConfidence.ts",
+      "lib/analysisReadiness.ts",
+      "lib/djFourChannelAudio.ts",
+      "lib/djLibraryLUFS.ts",
+      "lib/djLibraryTruePeak.ts",
+      "lib/djOutputRouting.ts",
+      "lib/playbackLifecycle.ts",
+      "services/api.ts",
+      "services/audioReadDiagnostics.ts",
+      "services/backendService.ts",
+      "services/db.ts",
+      "services/eventStreamURL.ts",
+      "services/httpClient.ts",
+      "services/importedCatalog.ts",
+      "services/jobsV2.ts",
+      "services/libraryOperationsV2.ts",
+      "services/libraryService.ts",
+      "services/localThreeBand.ts",
+      "services/loggerService.ts",
+      "services/mediaCapabilities.ts",
+      "services/trackAnalysisContracts.ts",
+      "types.ts"
+    ]
+  },
+  "added": [
+    "lib/analysisConfidence.ts",
+    "lib/analysisReadiness.ts",
+    "lib/djLibraryLUFS.ts",
+    "lib/djLibraryTruePeak.ts"
+  ],
+  "method": "TypeScript parseJsonConfigFileContent + createProgram.getSourceFiles; deduplicated repository-local .ts/.tsx paths, excluding node_modules.",
+  "scope": "Explicit strict entry files and their import closure, not whole-frontend migration. No source or suppression changes.",
+  "checks": {
+    "targeted_tests": {
+      "files": 5,
+      "tests": 19,
+      "status": "passed"
+    },
+    "repository_typecheck": "passed: tsc --noEmit && tsc -p tsconfig.boundaries.json --noEmit"
+  }
+}

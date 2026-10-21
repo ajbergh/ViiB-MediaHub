@@ -1,0 +1,363 @@
+{
+  "snapshotUtc": "2026-10-20T23:03:34.134729+00:00",
+  "mainAtSnapshot": "c50e2b440996783a315be7150fce379fdd830c9d",
+  "implementationHead": "5b9a702293d977e6446be2a574e4d431ac47a233",
+  "allSourceHeadsAreAncestors": true,
+  "sourcePRs": [
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/roadmap-easy-foundations",
+      "headRefOid": "ffb79eacc8863c7f0443705f03d1627782d75a1d",
+      "number": 131,
+      "state": "OPEN",
+      "title": "Advance roadmap CI supply-chain, browser and frontend contract foundations",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/131"
+    },
+    {
+      "baseRefName": "codex/roadmap-easy-foundations",
+      "headRefName": "codex/p3-4-accessibility-qualification-plan",
+      "headRefOid": "ec72ff4dcbb41ad242eeaf304252a39d5cabc219",
+      "number": 132,
+      "state": "OPEN",
+      "title": "P3.4: define accessibility qualification plan and findings register",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/132"
+    },
+    {
+      "baseRefName": "codex/p3-4-accessibility-qualification-plan",
+      "headRefName": "codex/p0-5-release-dependency-inventories",
+      "headRefOid": "00260f3ac88cb573fb47f526c7f3f0d03d8f6471",
+      "number": 133,
+      "state": "OPEN",
+      "title": "P0.5: publish checksummed npm and Go release dependency inventories",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/133"
+    },
+    {
+      "baseRefName": "codex/p0-5-release-dependency-inventories",
+      "headRefName": "codex/p3-4-direct-download-dialog",
+      "headRefOid": "04dfbec0a393e05dde3ab9178e35a1f1686c53ce",
+      "number": 134,
+      "state": "OPEN",
+      "title": "P3.4/P3.5: contain modal keyboard focus and protect cancellation flows",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/134"
+    },
+    {
+      "baseRefName": "codex/p3-4-direct-download-dialog",
+      "headRefName": "codex/p1-6-preserve-backup-archives",
+      "headRefOid": "7fa711864abdc91345c602f33e079cd7f8b9380b",
+      "number": 135,
+      "state": "OPEN",
+      "title": "P1.6: preserve existing recovery archives on backup name collisions",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/135"
+    },
+    {
+      "baseRefName": "codex/p1-6-preserve-backup-archives",
+      "headRefName": "codex/p3-5-recovery-action-disclosures",
+      "headRefOid": "343c3b82d5d836d05adbe7da236c5ef996a57dc9",
+      "number": 136,
+      "state": "OPEN",
+      "title": "P3.5: explain repair and restore consequences before confirmation",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/136"
+    },
+    {
+      "baseRefName": "codex/p3-5-recovery-action-disclosures",
+      "headRefName": "codex/p0-3-main-governance",
+      "headRefOid": "385093de4be3a2c4bd54d3db3a0fdc380d05a639",
+      "number": 137,
+      "state": "OPEN",
+      "title": "P0.3: propose main required checks and emergency governance",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/137"
+    },
+    {
+      "baseRefName": "codex/p0-3-main-governance",
+      "headRefName": "codex/p0-4-stable-release-guard",
+      "headRefOid": "2d4d95765ccb0248b2ce87d15b827953194a6102",
+      "number": 138,
+      "state": "OPEN",
+      "title": "P0.4: reject stable releases until production signing is qualified",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/138"
+    },
+    {
+      "baseRefName": "codex/p0-4-stable-release-guard",
+      "headRefName": "codex/p0-5-exact-release-asset-validation",
+      "headRefOid": "ae2224c5826e0f49e3c103a605ea5b4863810820",
+      "number": 139,
+      "state": "OPEN",
+      "title": "P0.5: enforce exact release checksum coverage and verify real candidate assets",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/139"
+    },
+    {
+      "baseRefName": "codex/p0-5-exact-release-asset-validation",
+      "headRefName": "codex/p0-3-activation-evidence",
+      "headRefOid": "4f90dbd37a5a738a866eaa731cb463d27cee5fe4",
+      "number": 140,
+      "state": "OPEN",
+      "title": "docs: record approved main protection activation",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/140"
+    },
+    {
+      "baseRefName": "codex/p0-3-activation-evidence",
+      "headRefName": "codex/queue-scan-test-isolation",
+      "headRefOid": "4296d4d8192d19de0d306c5438d4c88ac851a4df",
+      "number": 141,
+      "state": "OPEN",
+      "title": "test: isolate queued stem scan inspection from workers",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/141"
+    },
+    {
+      "baseRefName": "codex/queue-scan-test-isolation",
+      "headRefName": "codex/p0-4-release-provenance",
+      "headRefOid": "2e05e145f61f67afe6edf1ca64afab79b0a5efbe",
+      "number": 142,
+      "state": "OPEN",
+      "title": "ci: attest and verify exact release payload provenance",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/142"
+    },
+    {
+      "baseRefName": "codex/p0-4-release-provenance",
+      "headRefName": "codex/direct-download-dialog-lifecycle",
+      "headRefOid": "cda08d406e43699a9296ba048054980b9ac8308f",
+      "number": 143,
+      "state": "OPEN",
+      "title": "fix: retire stale direct-download dialog completions",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/143"
+    },
+    {
+      "baseRefName": "codex/direct-download-dialog-lifecycle",
+      "headRefName": "codex/p3-2-strict-analysis-display",
+      "headRefOid": "3936307207069f891b75a8399f83e28a08dda8b4",
+      "number": 144,
+      "state": "OPEN",
+      "title": "ci: strictly check DJ library analysis display helpers",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/144"
+    },
+    {
+      "baseRefName": "codex/p3-2-strict-analysis-display",
+      "headRefName": "codex/p3-2-strict-grid-contracts",
+      "headRefOid": "1b1f965f8a832f2aedb62f2d760f033cf3072e24",
+      "number": 145,
+      "state": "OPEN",
+      "title": "refactor: narrow reviewed beat grids for strict mixer checks",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/145"
+    },
+    {
+      "baseRefName": "codex/p3-2-strict-grid-contracts",
+      "headRefName": "codex/library-operations-lifecycle",
+      "headRefOid": "f09323bcc2030c8c3f43c596e945561034889a2e",
+      "number": 146,
+      "state": "OPEN",
+      "title": "fix: scope maintenance requests and verify recovery journey",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/146"
+    },
+    {
+      "baseRefName": "codex/library-operations-lifecycle",
+      "headRefName": "codex/restore-relation-continuity",
+      "headRefOid": "a08610a31fc1e8f271cefe2a3b82220cdcee4679",
+      "number": 147,
+      "state": "OPEN",
+      "title": "test: verify backup restore relations and rollback continuity",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/147"
+    },
+    {
+      "baseRefName": "codex/restore-relation-continuity",
+      "headRefName": "codex/support-diagnostic-projection",
+      "headRefOid": "363f2e19583a7fd6107f6def9dab9cdafdbc87ee",
+      "number": 148,
+      "state": "OPEN",
+      "title": "fix: export only allowlisted support diagnostic records",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/148"
+    },
+    {
+      "baseRefName": "codex/support-diagnostic-projection",
+      "headRefName": "codex/p3-2-application-surface-contracts",
+      "headRefOid": "b17deef216eb3039aa70b74516978f281ce03e31",
+      "number": 149,
+      "state": "OPEN",
+      "title": "refactor: enforce strict application surface contracts",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/149"
+    },
+    {
+      "baseRefName": "codex/p3-2-application-surface-contracts",
+      "headRefName": "codex/p3-2-global-strict-typescript",
+      "headRefOid": "ddcecc434420e82da253f49eefe5a74a90212f55",
+      "number": 150,
+      "state": "OPEN",
+      "title": "ci: enable global strict TypeScript checking",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/150"
+    },
+    {
+      "baseRefName": "codex/p3-2-global-strict-typescript",
+      "headRefName": "codex/safe-maintenance-error-references",
+      "headRefOid": "5c77771c59ca8cbff44ad56a2d9eb18760603e4d",
+      "number": 151,
+      "state": "OPEN",
+      "title": "feat: correlate maintenance errors with safe support references",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/151"
+    },
+    {
+      "baseRefName": "codex/safe-maintenance-error-references",
+      "headRefName": "codex/browser-import-persistence-e2e",
+      "headRefOid": "5b9a702293d977e6446be2a574e4d431ac47a233",
+      "number": 152,
+      "state": "OPEN",
+      "title": "test: verify real browser import metadata persistence",
+      "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/152"
+    }
+  ],
+  "selectedHostedChecks": {
+    "139": {
+      "successful": 16,
+      "skipped": 5,
+      "pending": [],
+      "failed": [
+        {
+          "name": "Validate release candidate",
+          "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39453599101/job/118734543517",
+          "conclusion": "FAILURE"
+        }
+      ]
+    },
+    "142": {
+      "successful": 27,
+      "skipped": 1,
+      "pending": [],
+      "failed": []
+    },
+    "150": {
+      "successful": 16,
+      "skipped": 0,
+      "pending": [],
+      "failed": []
+    },
+    "151": {
+      "successful": 16,
+      "skipped": 0,
+      "pending": [],
+      "failed": []
+    },
+    "152": {
+      "successful": 11,
+      "skipped": 0,
+      "pending": [
+        {
+          "name": "backend",
+          "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512038819/job/118935178243"
+        }
+      ],
+      "failed": []
+    }
+  },
+  "scope": "Open implementation PR history; no merge or release performed. The roll-up adds documentation only to the implementation head. Qualification/deferred scope remains open.",
+  "implementationHeadMeaning": "Last source implementation head (PR #152); subsequent roll-up commits update documentation only.",
+  "rollupObservation": {
+    "observedAtUtc": "2026-10-20T23:28:00.975562+00:00",
+    "pr": 153,
+    "url": "https://github.com/ajbergh/ViiB-MediaHub/pull/153",
+    "ref": "codex/roadmap-easy-pass-rollup",
+    "head": "6acdd31b498ec2e156e0abdb483d7b9b57baf136",
+    "qualification": "Open PR-head evidence only; not merged-main, live signing or release qualification. Later documentation commits may follow this observed head.",
+    "checks": [
+      {
+        "name": "Validate release candidate",
+        "status": "IN_PROGRESS",
+        "conclusion": "",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910127/job/118938042620"
+      },
+      {
+        "name": "frontend",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938042664"
+      },
+      {
+        "name": "backend",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938042993"
+      },
+      {
+        "name": "Track analysis (linux)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938042886"
+      },
+      {
+        "name": "Track analysis (windows)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938042997"
+      },
+      {
+        "name": "Track analysis (darwin)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938043030"
+      },
+      {
+        "name": "Semantic foundation (windows/amd64)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938042868"
+      },
+      {
+        "name": "Semantic foundation (windows/arm64)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938043186"
+      },
+      {
+        "name": "Semantic foundation (linux/amd64)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938043237"
+      },
+      {
+        "name": "Semantic foundation (darwin/amd64)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938043064"
+      },
+      {
+        "name": "Semantic foundation (darwin/arm64)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938043413"
+      },
+      {
+        "name": "browser-e2e",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938561704"
+      },
+      {
+        "name": "Track analysis scalar determinism",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118938730523"
+      },
+      {
+        "name": "Desktop build (linux-amd64)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118943474759"
+      },
+      {
+        "name": "Desktop build (macos-arm64)",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118943474676"
+      },
+      {
+        "name": "Desktop build (macos-amd64)",
+        "status": "IN_PROGRESS",
+        "conclusion": "",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118943474837"
+      },
+      {
+        "name": "windows-build",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+        "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118943474658"
+      }
+    ]
+  }
+}

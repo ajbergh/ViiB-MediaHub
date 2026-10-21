@@ -228,3 +228,51 @@ The Plex implementation is covered with fake/`httptest` PMS behavior and does no
 
 ---
 
+## Browser smoke gate
+
+After `npm ci` and `npm run build`, install the locked Chromium revision with
+`npx playwright install chromium` (Linux CI uses `--with-deps`), then run
+`npm run test:e2e`. Playwright starts a production preview at `127.0.0.1:4173`.
+Keep this port free; CI always starts its own preview server.
+
+The initial suite exercises browser-only empty-library navigation and the legacy
+DJ redirect/reload, playlist creation/reload and deletion cancellation using fresh IndexedDB contexts and locally intercepted API
+failures. External requests are blocked. No backend, accounts, credentials or
+real music are needed. This does not qualify playback, native WebViews, import,
+source repair or provider sessions. The synthetic recovery journey separately
+fulfills only backup-list, diagnostics, validation and restore-stage endpoints.
+It checks the Library Operations redirect, consequence disclosures, cancellation
+without mutation and selected-archive staging/restart messaging. It does not
+activate a database or verify recovery integrity. Add fixture-backed journeys
+incrementally.
+The real-file import journey additionally follows the source-settings button
+through the standard directory-upload fallback, parses the four tagged fixtures
+with the bundled worker, then checks IndexedDB tags/artwork and reload behavior.
+Only optional picker availability is controlled; parser/store data are real.
+This does not exercise native picker handles or retained audio playback after
+reload: standard upload has no durable file handle and strips temporary media
+URLs. Context-level request interception also blocks external worker requests.
+
+CI uses the frontend production artifact. Failures retain screenshots, traces
+and an HTML report under `output/playwright/` for seven days. Use only synthetic
+fixtures: traces can include network bodies and browser storage. View a report
+with `npx playwright show-report output/playwright/report`.
+
+CI publishes an npm CycloneDX SBOM from `package-lock.json` for 14 days.
+Staticcheck `v0.8.1` and govulncheck `v1.6.0` are pinned across workflows;
+update all install sites together after compatibility validation. The npm SBOM
+is a dependency inventory, not a Go/native SBOM or license approval.
+
+## TypeScript contract gate
+
+`npm run typecheck` runs global strict TypeScript checking and the retained
+focused boundary check. The global program explicitly includes repository
+TS/TSX (including tests/configs) and excludes dependency, output, dist, build
+and worktree directories. Imported generated Wails declarations remain available.
+
+`allowJs: false` keeps JavaScript bodies out of this type gate; Vite still
+bundles those runtime modules. The scratch worklet and Tailwind config have
+concrete adjacent declarations rather than untyped module stubs. Their existing
+runtime tests/build remain necessary. Existing explicit `any`, suppression
+comments and `skipLibCheck` are not eliminated by enabling strict mode; migrate
+those contracts separately without adding new escapes.

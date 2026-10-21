@@ -1,0 +1,312 @@
+{
+  "date": "2026-10-20",
+  "typescriptVersion": "5.8.3",
+  "baseCommit": "363f2e1",
+  "method": "Compiler-program local closure excludes node_modules; full-program diagnostic comparison uses strict:true/allowJs:false",
+  "before": {
+    "explicitEntryPaths": 18,
+    "localClosure": 27,
+    "files": [
+      "hooks/useFourChannelDJAudio.ts",
+      "lib/analysisConfidence.ts",
+      "lib/analysisReadiness.ts",
+      "lib/beatGridConfidence.ts",
+      "lib/djFourChannelAudio.ts",
+      "lib/djLibraryLUFS.ts",
+      "lib/djLibraryTruePeak.ts",
+      "lib/djOutputRouting.ts",
+      "lib/hotCueEditor.ts",
+      "lib/playbackLifecycle.ts",
+      "lib/tempoEvidence.ts",
+      "services/api.ts",
+      "services/audioReadDiagnostics.ts",
+      "services/backendService.ts",
+      "services/db.ts",
+      "services/eventStreamURL.ts",
+      "services/httpClient.ts",
+      "services/importedCatalog.ts",
+      "services/jobsV2.ts",
+      "services/libraryOperationsV2.ts",
+      "services/libraryService.ts",
+      "services/localThreeBand.ts",
+      "services/loggerService.ts",
+      "services/mediaCapabilities.ts",
+      "services/trackAnalysisContracts.ts",
+      "slices/djMixerSlice.ts",
+      "types.ts"
+    ]
+  },
+  "after": {
+    "explicitEntryPaths": 27,
+    "localClosure": 76,
+    "files": [
+      "backend/cmd/wails/frontend/wailsjs/runtime/runtime.d.ts",
+      "components/AlbumLikeButton.tsx",
+      "components/EmptyState.tsx",
+      "components/LikeButton.tsx",
+      "components/Skeleton.tsx",
+      "components/SongColumnMenu.tsx",
+      "components/SpotifyAccountNotice.tsx",
+      "components/SpotifyArtistLinks.tsx",
+      "components/SpotifySessionConnect.tsx",
+      "components/ui/Button.tsx",
+      "components/ui/Card.tsx",
+      "components/ui/CardSizeSlider.tsx",
+      "components/ui/LibraryList.tsx",
+      "components/ui/Menu.tsx",
+      "components/ui/Page.tsx",
+      "components/ui/TextInput.tsx",
+      "components/ui/cn.ts",
+      "components/ui/tokens.ts",
+      "hooks/useFourChannelDJAudio.ts",
+      "lib/analysisConfidence.ts",
+      "lib/analysisReadiness.ts",
+      "lib/artistNames.ts",
+      "lib/artwork.ts",
+      "lib/beatGridConfidence.ts",
+      "lib/browserMetadata.ts",
+      "lib/camelotColors.ts",
+      "lib/deduplicatingPersistStorage.ts",
+      "lib/djFourChannelAudio.ts",
+      "lib/djLibraryLUFS.ts",
+      "lib/djLibraryTruePeak.ts",
+      "lib/djOutputRouting.ts",
+      "lib/emptyStateCopy.ts",
+      "lib/hotCueEditor.ts",
+      "lib/libraryIndex.ts",
+      "lib/playbackLifecycle.ts",
+      "lib/smartMix.ts",
+      "lib/songColumns.ts",
+      "lib/spotifyErrors.ts",
+      "lib/spotifyHelpers.ts",
+      "lib/tempoEvidence.ts",
+      "pages/AlbumDetail.tsx",
+      "pages/Albums.tsx",
+      "pages/Artists.tsx",
+      "pages/LikedAlbums.tsx",
+      "pages/Songs.tsx",
+      "pages/SpotifyArtistDetail.tsx",
+      "services/api.ts",
+      "services/audioReadDiagnostics.ts",
+      "services/backendService.ts",
+      "services/db.ts",
+      "services/eventStreamURL.ts",
+      "services/fullscreenService.ts",
+      "services/httpClient.ts",
+      "services/importedCatalog.ts",
+      "services/jobsV2.ts",
+      "services/libraryOperationsV2.ts",
+      "services/libraryService.ts",
+      "services/libraryV2.ts",
+      "services/localThreeBand.ts",
+      "services/loggerService.ts",
+      "services/mediaCapabilities.ts",
+      "services/spotifyArtist.ts",
+      "services/spotifyBackend.ts",
+      "services/spotifyService.ts",
+      "services/trackAnalysisContracts.ts",
+      "slices/aiDjSlice.ts",
+      "slices/djMixerSlice.ts",
+      "slices/librarySlice.ts",
+      "slices/playerSlice.ts",
+      "slices/spotifySlice.ts",
+      "slices/types.ts",
+      "slices/uiSlice.ts",
+      "store.ts",
+      "types.ts",
+      "utils.ts",
+      "vite-env.d.ts"
+    ]
+  },
+  "added": [
+    "backend/cmd/wails/frontend/wailsjs/runtime/runtime.d.ts",
+    "components/AlbumLikeButton.tsx",
+    "components/EmptyState.tsx",
+    "components/LikeButton.tsx",
+    "components/Skeleton.tsx",
+    "components/SongColumnMenu.tsx",
+    "components/SpotifyAccountNotice.tsx",
+    "components/SpotifyArtistLinks.tsx",
+    "components/SpotifySessionConnect.tsx",
+    "components/ui/Button.tsx",
+    "components/ui/Card.tsx",
+    "components/ui/CardSizeSlider.tsx",
+    "components/ui/LibraryList.tsx",
+    "components/ui/Menu.tsx",
+    "components/ui/Page.tsx",
+    "components/ui/TextInput.tsx",
+    "components/ui/cn.ts",
+    "components/ui/tokens.ts",
+    "lib/artistNames.ts",
+    "lib/artwork.ts",
+    "lib/browserMetadata.ts",
+    "lib/camelotColors.ts",
+    "lib/deduplicatingPersistStorage.ts",
+    "lib/emptyStateCopy.ts",
+    "lib/libraryIndex.ts",
+    "lib/smartMix.ts",
+    "lib/songColumns.ts",
+    "lib/spotifyErrors.ts",
+    "lib/spotifyHelpers.ts",
+    "pages/AlbumDetail.tsx",
+    "pages/Albums.tsx",
+    "pages/Artists.tsx",
+    "pages/LikedAlbums.tsx",
+    "pages/Songs.tsx",
+    "pages/SpotifyArtistDetail.tsx",
+    "services/fullscreenService.ts",
+    "services/libraryV2.ts",
+    "services/spotifyArtist.ts",
+    "services/spotifyBackend.ts",
+    "services/spotifyService.ts",
+    "slices/aiDjSlice.ts",
+    "slices/librarySlice.ts",
+    "slices/playerSlice.ts",
+    "slices/spotifySlice.ts",
+    "slices/types.ts",
+    "slices/uiSlice.ts",
+    "store.ts",
+    "utils.ts",
+    "vite-env.d.ts"
+  ],
+  "wholeFrontendStrictDiagnosticsBefore": 46,
+  "wholeFrontendStrictDiagnosticsAfter": 26,
+  "remainingDiagnostics": [
+    {
+      "file": "components/ConfirmDialog.test.tsx",
+      "code": 2683,
+      "message": "'this' implicitly has type 'any' because it does not have a type annotation."
+    },
+    {
+      "file": "components/ContextMenu.test.tsx",
+      "code": 2683,
+      "message": "'this' implicitly has type 'any' because it does not have a type annotation."
+    },
+    {
+      "file": "components/DirectDownloadDialog.test.tsx",
+      "code": 2683,
+      "message": "'this' implicitly has type 'any' because it does not have a type annotation."
+    },
+    {
+      "file": "components/dj/v2/DJDeckInspector.test.tsx",
+      "code": 2322,
+      "message": "Type 'null' is not assignable to type 'HTMLElement'."
+    },
+    {
+      "file": "components/dj/v2/DJDeckPanel.tsx",
+      "code": 2322,
+      "message": "Type 'RefObject<HTMLButtonElement | null>' is not assignable to type 'RefObject<HTMLElement>'.   Type 'HTMLButtonElement | null' is not assignable to type 'HTMLElement'.     Type 'null' is not assignable to type 'HTMLElement'."
+    },
+    {
+      "file": "components/dj/v2/DJEnergyInsights.tsx",
+      "code": 18048,
+      "message": "'candidateTrack' is possibly 'undefined'."
+    },
+    {
+      "file": "components/dj/v2/DJEnergyInsights.tsx",
+      "code": 18047,
+      "message": "'mixIn' is possibly 'null'."
+    },
+    {
+      "file": "components/dj/v2/DJEnergyInsights.tsx",
+      "code": 18047,
+      "message": "'mixIn' is possibly 'null'."
+    },
+    {
+      "file": "components/dj/v2/DJEnergyInsights.tsx",
+      "code": 2345,
+      "message": "Argument of type 'number | null' is not assignable to parameter of type 'number'.   Type 'null' is not assignable to type 'number'."
+    },
+    {
+      "file": "components/dj/v2/webgl/DJWebGLRenderer.ts",
+      "code": 2345,
+      "message": "Argument of type 'WebGLTexture | null | undefined' is not assignable to parameter of type 'WebGLTexture | null'.   Type 'undefined' is not assignable to type 'WebGLTexture | null'."
+    },
+    {
+      "file": "components/dj/v2/webgl/useDJWebGL.ts",
+      "code": 2322,
+      "message": "Type 'RefObject<HTMLCanvasElement | null>' is not assignable to type 'RefObject<HTMLCanvasElement>'.   Type 'HTMLCanvasElement | null' is not assignable to type 'HTMLCanvasElement'.     Type 'null' is not assignable to type 'HTMLCanvasElement'."
+    },
+    {
+      "file": "components/now-playing/webgl/useWebGLVisualizer.ts",
+      "code": 2322,
+      "message": "Type 'RefObject<HTMLCanvasElement | null>' is not assignable to type 'RefObject<HTMLCanvasElement>'.   Type 'HTMLCanvasElement | null' is not assignable to type 'HTMLCanvasElement'.     Type 'null' is not assignable to type 'HTMLCanvasElement'."
+    },
+    {
+      "file": "hooks/useFocusTrap.test.tsx",
+      "code": 2683,
+      "message": "'this' implicitly has type 'any' because it does not have a type annotation."
+    },
+    {
+      "file": "hooks/useFourChannelDJAudio.test.tsx",
+      "code": 2454,
+      "message": "Variable 'resolve' is used before being assigned."
+    },
+    {
+      "file": "hooks/useFourChannelDJAudio.test.tsx",
+      "code": 2454,
+      "message": "Variable 'operation' is used before being assigned."
+    },
+    {
+      "file": "lib/beatGridConfidence.test.ts",
+      "code": 2322,
+      "message": "Type 'number[] | null | undefined' is not assignable to type 'number[] | null'.   Type 'undefined' is not assignable to type 'number[] | null'."
+    },
+    {
+      "file": "lib/djFourChannelAudio.test.ts",
+      "code": 2416,
+      "message": "Property 'setSinkId' in type 'NoSinkContext' is not assignable to the same property in base type 'Context'.   Type 'undefined' is not assignable to type 'Mock<(_id: string) => Promise<void>>'."
+    },
+    {
+      "file": "lib/djFourChannelAudio.test.ts",
+      "code": 2454,
+      "message": "Variable 'resume' is used before being assigned."
+    },
+    {
+      "file": "lib/djPadModes.ts",
+      "code": 2454,
+      "message": "Variable 'release' is used before being assigned."
+    },
+    {
+      "file": "lib/djSampler.test.ts",
+      "code": 2454,
+      "message": "Variable 'finish' is used before being assigned."
+    },
+    {
+      "file": "lib/vinylMomentum.ts",
+      "code": 7016,
+      "message": "Could not find a declaration file for module './vinylScratch.worklet.js'. 'C:/Users/ajbergh/Documents/GitHub/ajbergh/ViiB-MediaHub/lib/vinylScratch.worklet.js' implicitly has an 'any' type."
+    },
+    {
+      "file": "lib/vinylScratch.test.ts",
+      "code": 7016,
+      "message": "Could not find a declaration file for module './vinylScratch.worklet.js'. 'C:/Users/ajbergh/Documents/GitHub/ajbergh/ViiB-MediaHub/lib/vinylScratch.worklet.js' implicitly has an 'any' type."
+    },
+    {
+      "file": "services/localThreeBand.test.ts",
+      "code": 2322,
+      "message": "Type '(value: { status: number; ok: boolean; json?: (() => Promise<unknown>) | undefined; } | PromiseLike<{ status: number; ok: boolean; json?: (() => Promise<unknown>) | undefined; }>) => void' is not assignable to type '(value: unknown) => void'.   Types of parameters 'value' and 'value' are incompatible.     Type 'unknown' is not assignable to type '{ status: number; ok: boolean; json?: (() => Promise<unknown>) | undefined; } | PromiseLike<{ status: number; ok: boolean; json?: (() => Promise<unknown>) | undefined; }>'."
+    },
+    {
+      "file": "services/localThreeBand.test.ts",
+      "code": 2322,
+      "message": "Type '(value: { status: number; ok: boolean; json?: (() => Promise<unknown>) | undefined; } | PromiseLike<{ status: number; ok: boolean; json?: (() => Promise<unknown>) | undefined; }>) => void' is not assignable to type '(value: unknown) => void'.   Types of parameters 'value' and 'value' are incompatible.     Type 'unknown' is not assignable to type '{ status: number; ok: boolean; json?: (() => Promise<unknown>) | undefined; } | PromiseLike<{ status: number; ok: boolean; json?: (() => Promise<unknown>) | undefined; }>'."
+    },
+    {
+      "file": "slices/playerSlice.test.ts",
+      "code": 2352,
+      "message": "Conversion of type '(value: Song | PromiseLike<Song | undefined> | undefined) => void' to type '(value: null) => void' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.   Types of parameters 'value' and 'value' are incompatible.     Type 'null' is not comparable to type 'Song | PromiseLike<Song | undefined> | undefined'."
+    },
+    {
+      "file": "vite.config.ts",
+      "code": 7016,
+      "message": "Could not find a declaration file for module './tailwind.config.js'. 'C:/Users/ajbergh/Documents/GitHub/ajbergh/ViiB-MediaHub/tailwind.config.js' implicitly has an 'any' type."
+    }
+  ],
+  "scope": "Explicit entries include the existing vite-env.d.ts ambient declarations. Global strict mode and JS/generated-code policy remain open.",
+  "checks": {
+    "repository_check": "passed: style/type gates, 153 test files / 739 tests, production build",
+    "chromium_journeys": "5 passed",
+    "documentation_and_whitespace": "passed"
+  }
+}

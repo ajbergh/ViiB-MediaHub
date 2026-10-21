@@ -7,7 +7,14 @@ export type BeatGridSource = 'unknown' | 'generated' | 'measured' | 'spotify' | 
 export function validBeatGrid(beats: number[] | null | undefined): boolean {
   return !!beats && beats.length >= 2 && beats.every((beat, i) => Number.isFinite(beat) && beat >= 0 && (i === 0 || beat > beats[i - 1]));
 }
-export function canSyncBeatGrid(deck: Pick<DeckState, 'beatGrid' | 'beatGridSource' | 'beatGridLocked'>): boolean {
+type BeatGridSyncCandidate = Pick<DeckState, 'beatGrid' | 'beatGridSource' | 'beatGridLocked'>;
+type ReviewedBeatGrid = BeatGridSyncCandidate & {
+  beatGrid: number[];
+  beatGridSource: 'manual';
+  beatGridLocked: true;
+};
+
+export function canSyncBeatGrid(deck: BeatGridSyncCandidate): deck is ReviewedBeatGrid {
   // No calibrated phase confidence is available yet. A lock is the DJ's explicit review.
   return deck.beatGridSource === 'manual' && deck.beatGridLocked && validBeatGrid(deck.beatGrid);
 }

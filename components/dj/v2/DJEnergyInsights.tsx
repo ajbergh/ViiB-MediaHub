@@ -278,7 +278,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
     filterEvidence: top.filterEvidence,
   } : null;
   const phaseGridState = candidateTrack && candidatePhaseGrid?.trackId === candidateTrack.id ? candidatePhaseGrid : undefined;
-  const phaseGrid = !phaseGridState || !phaseGridState.loaded ? undefined
+  const phaseGrid = !candidateTrack || !phaseGridState || !phaseGridState.loaded ? undefined
     : phaseGridState.grid?.songId === candidateTrack.id ? phaseGridState.grid : null;
   const phaseEvidenceStatus = !deck || phaseReferenceState.track?.id !== trackID
     ? 'Downbeat evidence unavailable: selected reference is not loaded on its deck.'
@@ -586,7 +586,7 @@ export function DJEnergyInsights({ trackID, deck }: DJEnergyInsightsProps) {
         return;
       }
       const mixOut = features.cueSuggestions.find(cue => cue.kind === 'mix-out')?.position;
-      const mixIn = candidateFeatures && normalizeTrackEnergyFeatures(candidateFeatures).cueSuggestions.find(cue => cue.kind === 'mix-in')?.position;
+      const mixIn = candidateFeatures ? normalizeTrackEnergyFeatures(candidateFeatures).cueSuggestions.find(cue => cue.kind === 'mix-in')?.position : undefined;
       if (mixOut === undefined || !Number.isFinite(mixOut) || mixOut < 0) {
         finishPreviewRef.current(session.token, 'Test Mix needs a valid recommended mix-out cue on the reference track.');
         return;

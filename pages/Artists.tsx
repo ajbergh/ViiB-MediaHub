@@ -179,7 +179,7 @@ export const Artists: React.FC = () => {
              <VirtuosoGrid
                 key={listView ? 'list' : 'tiles'}
                 useWindowScroll={false}
-                customScrollParent={scrollParent}
+                customScrollParent={scrollParent ?? undefined}
                 data={filteredArtists}
                 components={{
                     List: ListContainer,

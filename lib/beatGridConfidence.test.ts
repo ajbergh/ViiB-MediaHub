@@ -11,7 +11,7 @@ describe('beat-grid provenance', () => {
     expect(patch.beatGrid).toBeNull();
     expect(patch.beatGridSource).toBe('unknown');
     expect(patch.bpmConfidence).toBe(0.95);
-    expect(canSyncBeatGrid({ beatGrid: patch.beatGrid, beatGridSource: patch.beatGridSource!, beatGridLocked: false })).toBe(false);
+    expect(canSyncBeatGrid({ beatGrid: patch.beatGrid ?? null, beatGridSource: patch.beatGridSource!, beatGridLocked: false })).toBe(false);
   });
   it('preserves a manual grid even when scalar analysis is unavailable', () => {
     const patch = resolvedGridPatch(null, { songId: 'one', beats: [0.1, 0.6], downbeatIndices: [0], locked: true, algorithmVersion: 'v1', source: 'manual' }, 10);

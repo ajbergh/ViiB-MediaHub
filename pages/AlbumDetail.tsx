@@ -369,7 +369,7 @@ export const AlbumDetail: React.FC = () => {
         <div className="h-full relative">
              <Virtuoso
                 useWindowScroll={false}
-                customScrollParent={scrollParent}
+                customScrollParent={scrollParent ?? undefined}
                 data={virtualItems}
                 context={contextValue}
                 components={components}

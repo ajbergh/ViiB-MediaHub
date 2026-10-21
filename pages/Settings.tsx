@@ -2759,11 +2759,11 @@ export const Settings: React.FC = () => {
               <h2 className="text-lg font-bold text-text-main">Support Bundle</h2>
             </div>
             <p className="text-sm text-text-subtle mb-4">
-              Create a ZIP file to email to the developer when reporting an error. It contains version and platform diagnostics plus a size-limited, sanitized application log.
+              Create a ZIP file to email to the developer when reporting an error. It contains version and platform information plus bounded diagnostic records for supported operations.
             </p>
             <div className="rounded-lg bg-surface-1 border border-surface-border p-4 mb-4 text-xs text-text-subtle space-y-1">
               <p className="font-bold text-text-main">Privacy</p>
-              <p>The bundle excludes your media database, music, artwork, playlists, scan-folder list, and credential values. Logs are scrubbed for secrets and local paths; you can review the ZIP before sending it.</p>
+              <p>The bundle excludes your media database, music, artwork, playlists, scan-folder list, and credential values. Free-form log messages, track details, paths and stacks are omitted. Only recognized diagnostic fields are included; unrecognized entries are dropped. You can review the ZIP before sending it.</p>
             </div>
             <Button
               variant="primary"

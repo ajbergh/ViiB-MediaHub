@@ -201,7 +201,7 @@ export const Albums: React.FC = () => {
             <VirtuosoGrid
               key={listView ? 'list' : 'tiles'}
               useWindowScroll={false}
-              customScrollParent={scrollParent}
+              customScrollParent={scrollParent ?? undefined}
               data={filteredAlbums}
               components={{ List: ListContainer, Item: ItemContainer }}
               itemContent={(index, album) => {

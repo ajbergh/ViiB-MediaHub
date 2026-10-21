@@ -1,3 +1,4 @@
+import { deferred } from '../testUtils/deferred';
 import { beforeEach, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ initialize: vi.fn(), playing: vi.fn() }));
@@ -48,12 +49,12 @@ it('initializes and attaches the DJ context before triggering a retained sample'
 
 it('does not start a gated sample if released while the DJ context initializes', async () => {
   const { sampler, context, bus, source } = fixture();
-  let finish: () => void;
-  mocks.initialize.mockReturnValue(new Promise<void>(resolve => { finish = resolve; }));
+  const initialization = deferred<void>();
+  mocks.initialize.mockReturnValue(initialization.promise);
   const pending = sampler.triggerPad(0);
   sampler.stopPad(0);
   sampler.attachOutput(context, bus as unknown as AudioNode);
-  finish();
+  initialization.resolve();
   await pending;
   expect(source.start).not.toHaveBeenCalled();
 });

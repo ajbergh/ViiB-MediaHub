@@ -25,7 +25,24 @@ jobs:
         run: for script in scripts/*.sh; do bash -n "$script"; done
       - name: Validate documentation links and evidence JSON
         run: python3 scripts/check_documentation_links.py
+      - name: Validate release asset policy
+        run: python3 -m unittest discover -s scripts -p 'test_release_assets.py'
+      - name: Validate release provenance policy
+        run: python3 -m unittest discover -s scripts -p 'test_release_provenance.py'
+      - name: Validate release channel policy
+        run: python3 -m unittest discover -s scripts -p 'test_release_channel_guard.py'
+      - name: Validate release module inventory generator
+        run: python3 -m unittest discover -s scripts -p 'test_go_module_inventory.py'
       - run: npm ci
+      - name: Generate npm dependency SBOM
+        run: npm sbom --package-lock-only --sbom-format cyclonedx > npm-sbom.cdx.json
+      - name: Upload npm dependency SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-dependency-sbom
+          path: npm-sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Run frontend checks
         id: frontend_checks
         continue-on-error: true
@@ -52,6 +69,33 @@ jobs:
           path: dist
           if-no-files-found: error
           retention-days: 1
+
+  browser-e2e:
+    needs: frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          show-progress: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-frontend-dist
+          path: dist
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-e2e-failure-evidence
+          path: output/playwright/
+          retention-days: 7
 
   backend:
     runs-on: ubuntu-latest
@@ -87,11 +131,11 @@ jobs:
             go test ./...
             go test -race ./... -timeout 25m
             go vet ./...
-            GODEBUG=http2client=0 go install honnef.co/go/tools/cmd/staticcheck@latest
+            GODEBUG=http2client=0 go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
             staticcheck ./...
             go build -o .ci/viib-web ./cmd/viib
             go build -o .ci/viib-wails ./cmd/wails
-            GODEBUG=http2client=0 go install golang.org/x/vuln/cmd/govulncheck@latest
+            GODEBUG=http2client=0 go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
             govulncheck -mode binary .ci/viib-web
             govulncheck -mode binary .ci/viib-wails
           } > ../backend-validation.txt 2>&1
@@ -385,7 +429,7 @@ jobs:
       - name: Install Windows vulnerability scanner
         env:
           GODEBUG: http2client=0
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
       - name: Scan packaged Windows binary
         shell: pwsh
         run: ./scripts/check-windows-govuln.ps1 -BinaryPath 'backend/cmd/wails/build/bin/ViiB-MediaHub.exe'

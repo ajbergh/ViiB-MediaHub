@@ -49,6 +49,14 @@ The [October 15 documentation refresh](DOCUMENTATION_REVIEW_2026-10-15.md) recon
 | Reference | Purpose and status |
 |---|---|
 | [Product & Engineering Roadmap](ROADMAP.md) | Active overarching phases, priorities, release gates, dependencies and qualified-vs-planned status |
+| [Accessibility qualification](ACCESSIBILITY_QUALIFICATION.md) | Draft WCAG 2.2 AA workflow/host test plan, DJ alternative tasks and findings register; execution remains open |
+| [Release dependency inventories](release-dependency-inventories.md) | Proposed checksummed npm/Go release inventories, reproducibility and coverage limits |
+| [Proposed release notes](releases/UNRELEASED.md) | Reviewed change candidates for a future release; not a published-release claim |
+| [Repository governance](repository-governance.md) | Main-only required CI ruleset, stacked-PR handling and reviewed emergency bypass process |
+| [Release signing policy](release-signing-policy.md) | Proposed fail-closed stable release guard and remaining signing/notarization qualification |
+| [Support bundles](support-bundles.md) | Allowlisted diagnostic export, retained fields, omission limits and privacy scope |
+| [Release provenance](release-provenance.md) | Proposed exact-payload attestation and identity verification gate; live OIDC qualification pending |
+| [Release asset verification](release-asset-verification.md) | Exact package/inventory checksum contract and real PR-candidate assembly evidence |
 | [OpenAPI v2](openapi-v2.yaml) | Machine-readable core API routes; additional analysis detail routes currently follow backend handler contracts |
 | [Stem package v1](VIIB_STEM_PACKAGE_V1.md) | Current `.viibstems` interchange and validation contract |
 | [DJ professional analysis roadmap](DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md) | Delivered analysis engineering and remaining accuracy/calibration/release gates |

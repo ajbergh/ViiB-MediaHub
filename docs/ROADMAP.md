@@ -1,23 +1,26 @@
 # ViiB MediaHub — Product & Engineering Roadmap
 
 > **Status:** Active / living plan  
-> **Last reviewed:** 2026-10-15<br>
+> **Last reviewed:** 2026-10-20<br>
 > **Target:** Reliable, secure, supportable **ViiB MediaHub 1.0** followed by qualified professional-DJ improvements  
 > **Source of truth:** This file owns cross-project priorities and release gates. Domain-specific plans and dated evidence remain authoritative for the technical detail they cover.
 
 ## 1. Baseline and scope
 
+**Current easy-first pass (October 20):** implementation slices from PRs #131–#152 are consolidated on [PR #153](https://github.com/ajbergh/ViiB-MediaHub/pull/153) (`codex/roadmap-easy-pass-rollup`) for a main-targeted review. Main protection is active with owner approval. Global strict TypeScript, seven browser journeys, recovery/diagnostic safeguards and release validation improvements are implemented on the review branches. No implementation PR has been merged or release published by this pass. See the [completed slices, integration route and per-item deferral audit](ROADMAP_EASY_PASS_2026-10-20.md). Phases 0–3 remain Partial/qualification-open; Phase 4 Planned; Phase 5 Deferred.
+
 ViiB MediaHub is a local-first music hub: React 19 / TypeScript frontend, Go / SQLite backend, Wails desktop builds, browser/server mode, a unified local/Plex music catalog, separate Spotify integration, AI-assisted library intelligence, and two-deck DJ functionality.
 
-**Repository checkpoint (2026-10-15, local `main` at `08322ba`):**
+**Historical repository checkpoint (2026-10-15, local `main` at `08322ba`):**
 
 - Since the October 13 checkpoint, `main` includes API trust-boundary hardening ([#118](https://github.com/ajbergh/ViiB-MediaHub/pull/118)), versioned credential storage ([#119](https://github.com/ajbergh/ViiB-MediaHub/pull/119)), media capabilities ([#120](https://github.com/ajbergh/ViiB-MediaHub/pull/120)), FLAC/M4A import and unsupported-analysis handling ([#121](https://github.com/ajbergh/ViiB-MediaHub/pull/121)), UI/library-performance and Spotify surface work ([#122](https://github.com/ajbergh/ViiB-MediaHub/pull/122)), scan/analysis stability and storage work ([#123](https://github.com/ajbergh/ViiB-MediaHub/pull/123)), and managed local semantic matching plus Spotify account-plan gates ([#124](https://github.com/ajbergh/ViiB-MediaHub/pull/124)). The latest checkpoint commit is [`08322ba`](https://github.com/ajbergh/ViiB-MediaHub/commit/08322ba).
-- The previously recorded successful [CI run for `6a76cafd`](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/38343013399) is historical evidence. Hosted CI on the current head was not rechecked in this review. Passing CI alone does not establish real-device, provider, musical-accuracy, or production-release qualification.
-- The latest release recorded in the prior review is [`v1.0.0-rc5`](https://github.com/ajbergh/ViiB-MediaHub/releases/tag/v1.0.0-rc5), published October 5; local tags still end at RC5. Current hosted release/open-issue/PR state was not rechecked. **Stable 1.0 is not declared complete.**
-- Branch protection was reported disabled at the October 13 hosted checkpoint. Current branch rules require external verification; repository CI files do not prove enforcement. Proposed follow-up titles below are not a current GitHub issue inventory.
+- **October 20 refresh:** local/hosted `main` is now `c50e2b4`, including MIDI/recovery work ([#128](https://github.com/ajbergh/ViiB-MediaHub/pull/128)), experimental controller presets ([#129](https://github.com/ajbergh/ViiB-MediaHub/pull/129)), and four-channel routing ([#130](https://github.com/ajbergh/ViiB-MediaHub/pull/130)). Implementation does not qualify Phase 5 hardware/accuracy gates.
+- Hosted [CI for `c50e2b4`](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39435304421) passed; the preceding [CI for `41b9d4e`](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39435237378) also passed. Passing CI alone does not establish real-device, provider, musical-accuracy, or release qualification.
+- Latest hosted release: [`v1.0.0-rc7`](https://github.com/ajbergh/ViiB-MediaHub/releases/tag/v1.0.0-rc7), published October 17 America/Chicago (October 18 UTC). Local tags include RC7. **Stable 1.0 is not declared complete.**
+- **Initial October 20 observation (superseded):** main was unprotected and the ruleset inventory was empty before this work. The [owner-approved main-only ruleset](repository-governance.md) is now active. Suggested follow-up titles below are planning aids, not a live issue inventory.
 - The repository contains extensive Go and frontend tests, native build workflows, analysis determinism checks, vulnerability scans, and developer documentation. Preserve those investments.
-- **Release-pipeline baseline (from [`release.yml`](../.github/workflows/release.yml)):** the workflow builds a Windows x64 installer, macOS arm64/x64 DMGs, a Linux amd64 `.deb`/tarball, and web builds for Windows/macOS/Linux on x64 and arm64; it publishes `SHA256SUMS.txt` and marks RC tags as pre-releases. macOS bundles are **ad-hoc signed and not notarized**; Windows Authenticode signing runs **only when repository secrets exist** and otherwise continues unsigned. There is no SBOM or provenance attestation step.
-- **Test-tooling baseline:** `@playwright/test` is a dev dependency and several Playwright-driven audit scripts exist under `scripts/` (for example `djv2-audit.mjs`, `mobile-audit.mjs`), but there is no Playwright config or browser end-to-end job in CI. TypeScript `strict` currently applies to only four files, listed in `tsconfig.boundaries.json`.
+- **Release-pipeline baseline (from [`release.yml`](../.github/workflows/release.yml)):** the workflow builds a Windows x64 installer, macOS arm64/x64 DMGs, a Linux amd64 `.deb`/tarball, and web builds for Windows/macOS/Linux on x64 and arm64; it publishes `SHA256SUMS.txt` and marks RC tags as pre-releases. macOS bundles are **ad-hoc signed and not notarized**; Windows Authenticode signing runs **only when repository secrets exist** and otherwise continues unsigned. October 20 branches add an npm CI SBOM and proposed checksummed npm/Go release inventories. Per-target/native SBOMs, signing and provenance remain open.
+- **Current review-branch tooling (October 20):** deterministic Chromium CI now covers seven journeys, including real four-format upload/persistence. Global TypeScript strict checking passes; the initial four-to-twelve-file migration has been superseded. Merged-head acceptance and broader runtime qualification remain open.
 
 **Important continuity decision:** The owner previously deferred further local DSP estimator research from the Spotify metadata branch. PR #117 is merged; deferred work belongs in a **separate future scope** (Phase 5), not retroactively in that PR or as an undisclosed 1.0 dependency. Subsequent scan lifecycle/storage fixes (#123) and local semantic matching (#124) are delivered maintenance/product work; they do not close deferred estimator accuracy gates. See [Spotify scope](SPOTIFY_BRANCH_REMAINING_WORK.md), [closeout](SPOTIFY_BRANCH_CLOSEOUT_NEXT_STEPS.md), and [deferred local analysis](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
 
@@ -56,15 +59,15 @@ Work packages use stable IDs (`P0.1` etc.) for GitHub issues, PR titles, and pro
 
 ## 3. Phase 0 — Security and release foundations (P0)
 
-**Current position:** The privileged loopback service now has centralized Host/Origin/CORS/SSE checks and regression tests. Credential storage uses `enc:v2` with an installation key, Windows DPAPI protection, and a documented non-Windows keywrap fallback. The former wildcard SSE headers and executable-path-dependent encryption are legacy/migration concerns, not the current default implementation. Threat-model review, target-host migration/relocation evidence, governance enforcement, and production release signing remain open. The non-Windows fallback is not Keychain or Linux secret-service integration.
+**Current position:** The privileged loopback service now has centralized Host/Origin/CORS/SSE checks and regression tests. Credential storage uses `enc:v2` with an installation key, Windows DPAPI protection, and a documented non-Windows keywrap fallback. The former wildcard SSE headers and executable-path-dependent encryption are legacy/migration concerns, not the current default implementation. Threat-model review, target-host migration/relocation evidence, merged-head governance qualification, and production release signing remain open. The non-Windows fallback is not Keychain or Linux secret-service integration.
 
 | ID | Work package | Status | Deliverables | Definition of done |
 | --- | --- | --- | --- | --- |
 | **P0.1** | Loopback API trust boundary | **Baseline delivered; qualification open** ([PR #118](https://github.com/ajbergh/ViiB-MediaHub/pull/118)) | Centralized Host/Origin/CORS/SSE policy and negative/positive tests merged. Remaining: threat-model review, privileged-mutation/CSRF acceptance and target-client qualification | Negative tests for attacker-controlled origins/hosts (including DNS-rebinding-style `Host` values) and mutating requests, positive tests for approved desktop/browser clients, consistent SSE response headers; threat model reviewed |
 | **P0.2** | Versioned credential key storage | **Baseline delivered; qualification open** ([PR #119](https://github.com/ajbergh/ViiB-MediaHub/pull/119)) | `enc:v2`, Windows DPAPI, non-Windows keywrap fallback, readable legacy migration and reauthentication handling merged. Remaining: supported-host install/relocation/upgrade/restart and rollback qualification | Install/relocate/upgrade/restart tests on supported OSes; readable old secrets migrate without disclosure or silent loss; unresolvable legacy secrets report a clear reauthentication path |
-| **P0.3** | Governance and required checks | **Planned** | Protect `main` via branch ruleset; require frontend, Go test/race/vet/staticcheck, vulnerability and packaging checks; document emergency bypass | Normal PR cannot merge without passing required checks; explicit reviewed emergency process exists |
-| **P0.4** | Release signing and provenance | **Planned** | Stable-release signing policy; macOS Developer ID + notarization, Windows Authenticode, checksums and verifiable build/source provenance | Production (non-RC) release workflow fails closed when mandatory signing/verification is unavailable (today Windows signing is skipped without secrets and macOS is ad-hoc signed only); install and signature-verification smoke tests pass |
-| **P0.5** | Supply-chain and licensing review | **Planned** | Runtime/dev dependency inventory, pinned build tooling (CI currently installs `staticcheck` and `govulncheck` with `@latest`), SBOM/third-party notice review, especially bundled upstream code and Spotify-related dependencies | License obligations and security advisories are recorded; no unaccepted shipped critical/high vulnerability; reproducible dependency inputs |
+| **P0.3** | Governance and required checks | **Active; merged-head qualification open** | [Main-only ruleset and emergency process](repository-governance.md) activated with owner approval; 16 app-bound checks, PR requirement, deletion/force-push blocks and sole-owner PR-only bypass verified by API. Feature branches excluded; actual merged-head enforcement still needs qualification | Normal PR cannot merge without passing required checks; explicit reviewed emergency process exists |
+| **P0.4** | Release signing and provenance | **Partial; proposed stable guard and provenance gate** | [Shared prerelease-only guard and signing policy](release-signing-policy.md) block unqualified stable canonical/legacy Windows releases. [Exact-payload provenance gate](release-provenance.md) proposed; live OIDC/consumer verification, credentials, mandatory production signing/notarization/verification and real-host acceptance remain open | Production (non-RC) release workflow fails closed when mandatory signing/verification is unavailable (today Windows signing is skipped without secrets and macOS is ad-hoc signed only); install and signature-verification smoke tests pass |
+| **P0.5** | Supply-chain and licensing review | **Partial; proposed implementation** | Exact Staticcheck/govulncheck pins, npm CI CycloneDX inventory, required/checksummed npm/Go release assets and proposed exact-set verification with real candidate evidence. Remaining: published-asset verification, per-target/native SBOMs, attribution/license review and shipped advisory acceptance | License obligations and security advisories are recorded; no unaccepted shipped critical/high vulnerability; reproducible dependency inputs |
 
 **Progress & Evidence Log (Phase 0):**
 - **2026-10-13 (`P0.1`, [PR #118](https://github.com/ajbergh/ViiB-MediaHub/pull/118), branch `codex/p0-1-loopback-api-trust-boundary`):** Implemented centralized `loopbackTrustBoundary` middleware (`IsTrustedHost`, `IsTrustedOrigin`, and `Sec-Fetch-Site: cross-site` enforcement) in [`backend/internal/server/server.go`](../backend/internal/server/server.go), removed wildcard `Access-Control-Allow-Origin: *` overrides across all five legacy SSE handlers in [`backend/internal/api/api.go`](../backend/internal/api/api.go), and added negative/positive unit and handler tests. Merged to `main`; remaining acceptance evidence is tracked in the row above.
@@ -85,7 +88,7 @@ Work packages use stable IDs (`P0.1` etc.) for GitHub issues, PR titles, and pro
 | **P1.3** | Playback state transitions | **Partial** | Spotify retirement/local-playback preservation and range/lifecycle regressions exist; the combined local → Plex → Spotify matrix, interruptions, crossfade, and device-change qualification remain open.| Repeatable tests cover local → Plex → Spotify and back, logout during playback, range seeking, network interruption, and no unrelated local-playback teardown |
 | **P1.4** | Spotify parity and resilience | **Partial** | Cookie sign-in/session renewal, browsing, Premium media gates, integrity retries, and reconnect flows are implemented. Native responsiveness/search, other-host execution, Recently Played/profile parity, broader markets/accounts, and compatibility review remain open.| Contract/fixture cases pass; at least one real provider flow per supported host passes where feasible; unverified account/market cases remain visibly marked; no fabricated metadata |
 | **P1.5** | Plex large-library and offline safety | **Partial** | Music-only synchronization, offline catalog retention, authenticated audio/artwork proxying, and tests exist. Real-PMS interrupted/large-library/auth-expiry/codec qualification and fallback policy remain open.| Interrupted sync never mass-deletes valid catalog rows; auth expiry/offline conditions recover; real-PMS smoke cases recorded; unsupported codecs clearly explained |
-| **P1.6** | Data and media recovery | **Partial** | Library Operations backup/staged restore, duplicate review, restart/idempotency and source-bound retention exist. Full RC5 upgrade and backup/restore continuity evidence remains open.| Restoring a tested backup preserves library/playlists/likes/history and consistent source links; unrecoverable changes are disclosed before destructive actions |
+| **P1.6** | Data and media recovery | **Partial** | Library Operations backup/staged restore, duplicate review, restart/idempotency and source-bound retention exist. Proposed no-clobber backup creation protects existing recovery points and rejects duplicate names. Synthetic API-to-offline restore now checks catalog, ordered playlists, song likes, detailed history, selected settings and rollback contents. RC5 upgrades, Plex/source-link and real-host/crash-continuity acceptance remain open.| Restoring a tested backup preserves library/playlists/likes/history and consistent source links; unrecoverable changes are disclosed before destructive actions |
 
 **Progress & Evidence Log (Phase 1):**
 - **2026-10-13 (`P1.1`, [PR #120](https://github.com/ajbergh/ViiB-MediaHub/pull/120), branch `codex/p1-1-media-capability-matrix`):** Added canonical per-format/per-source capability inventory and reusable `CapabilityError` types in [`backend/internal/audio/capabilities.go`](../backend/internal/audio/capabilities.go) and [`services/mediaCapabilities.ts`](../services/mediaCapabilities.ts), wired scanner extension allowlist to `audio.ScannerSupportedExtensions()`, exposed `GET /api/v2/capabilities/media`, attached structured capability metadata to `GET /api/dj/waveform/{id}` `422` responses, and added cross-format metadata/decoder alignment tests in [`backend/internal/audio/capabilities_test.go`](../backend/internal/audio/capabilities_test.go), [`backend/internal/api/media_capabilities_test.go`](../backend/internal/api/media_capabilities_test.go), and [`services/mediaCapabilities.test.ts`](../services/mediaCapabilities.test.ts). Merged to `main`; remaining acceptance evidence is tracked in the row above.
@@ -104,13 +107,13 @@ The current [preparation baseline](SPOTIFY_PREPARATION_PERFORMANCE.md) includes 
 | **P2.1** | Representative benchmark harness | **Planned** | The 105-track offline preparation experiment and library performance changes are useful baselines; no representative 1K/10K/100K percentile/resource reporting harness is established.| CI or scheduled reports provide p50/p95/p99 where applicable, memory/CPU/disk/artifact totals, environment and reproducible inputs |
 | **P2.2** | Bounded analysis and scanning | **Partial** | Atomic analysis claims, bounded scanner TagLib execution, timeout/retry ownership, and cancellation/restart tests are delivered in #123. Workload-level decode/concurrency/resource measurements remain open.| No unbounded worker/provider storms; warm runs avoid unnecessary decodes; measured improvements do not regress accuracy or provenance |
 | **P2.3** | Cache lifecycle | **Partial** | Binary three-band storage and bounded legacy compaction are delivered in #123. Global quotas, safe eviction, disk-budget enforcement, and WAL/restoration qualification remain open.| Predictable disk limits; cache eviction cannot destroy user data or invalidate retained provenance; reference workloads stay inside approved resource budgets |
-| **P2.4** | Browser end-to-end gates | **Planned** | Playwright audit and screenshot scripts exist; deterministic critical-flow suite/configuration and a browser-E2E CI gate remain open.| Critical flows reliably pass in CI; failures retain screenshots/traces/logs without secrets |
+| **P2.4** | Browser end-to-end gates | **Partial; proposed implementation** | Seven deterministic Chromium journeys (four browser-only, two synthetic recovery/reference flows, and real four-format browser upload/persistence); config and CI retain failure screenshots/traces/report. Remaining: merged-head validation, backend/import/playback/recovery-integrity/provider flows and other browser profiles.| Critical flows reliably pass in CI; failures retain screenshots/traces/logs without secrets |
 | **P2.5** | Native system qualification | **Partial** | Native builds and bounded Windows user-reported functional samples exist. Long-session/device/WebView coverage and macOS/Linux host execution remain open.| Tested platform/architecture matrix with explicit passes, failures and accepted exceptions |
-| **P2.6** | Troubleshooting evidence | **Partial** | Request IDs, job diagnostics and an opt-in bounded/redacted support archive with tests exist. End-to-end failure correlation, broader log/privacy review, and troubleshooting qualification remain open.| A user-visible failure can be traced to a sanitized diagnostic record; tokens, cookies, local-private data are excluded by default |
+| **P2.6** | Troubleshooting evidence | **Partial** | Request IDs, job diagnostics and an opt-in bounded/redacted support archive with tests exist. Proposed schema-2 support export replaces raw log text with bounded allowlisted diagnostic records. Structured v2 handler failures now have a server-generated reference propagated to Library Operations and allowlisted support records. Local logging privacy, legacy/middleware/provider correlation and full troubleshooting qualification remain open.| A user-visible failure can be traced to a sanitized diagnostic record; tokens, cookies, local-private data are excluded by default |
 
 **Progress & Evidence Log (Phase 2, October 15):**
 - [PR #123](https://github.com/ajbergh/ViiB-MediaHub/pull/123) (`79a04eb`) delivers the bounded analysis/scanner and binary waveform conversion described in [scan stability and storage](scan-stability-and-storage.md). Compaction reuses SQLite pages; it does not automatically shrink the database file. TagLib cannot be forcibly canceled; fully stuck slots require restart.
-- The existing [support archive handler](../backend/internal/api/support_bundle.go), [redaction/bounds tests](../backend/internal/api/support_bundle_test.go), and **Settings → System & Logs → Create Support Bundle** implement a bounded export of diagnostics and sanitized logs. This is partial P2.6 delivery, not proof every failure is fully correlated or every sensitive log shape is covered.
+- The existing [support archive handler](../backend/internal/api/support_bundle.go), [redaction/bounds tests](../backend/internal/api/support_bundle_test.go), and **Settings → System & Logs → Create Support Bundle** implement a bounded export of diagnostics; the schema-2 follow-up below replaces regex-sanitized text with allowlisted records. This is partial P2.6 delivery, not proof every failure is fully correlated or every sensitive log shape is covered.
 
 **Performance budgets:** Freeze representative measurements first; then agree latency/error/CPU/memory thresholds per workload and enforce a regression budget. Do **not** manufacture arbitrary p95 guarantees before benchmark measurements exist.
 
@@ -123,10 +126,10 @@ This phase should be **incremental and behavior-preserving**, not a rewrite. Lar
 | ID | Work package | Status | Current scope and deliverables | Definition of done |
 | --- | --- | --- | --- | --- |
 | **P3.1** | Domain boundaries | **Partial** | Dedicated source adapters, media-capability and semantic modules exist. Oversized Settings/API/DB/audio modules still need incremental decomposition and coupling verification.| Existing routes/storage schemas preserved or explicitly migrated; targeted regression suite green; coupling decreases without new circular dependencies |
-| **P3.2** | Stronger frontend contracts | **Partial** | Typed capability/service boundaries and library/Spotify surface performance work are delivered. Strict mode still covers four files; broader strict migration and measured code-splitting benefits remain open.| New code uses strict typing; targeted modules migrate with no `any` escape hatch proliferation; bundle/startup gain is measured |
-| **P3.3** | First-run and library workflows | **Partial** | First-launch source setup, tabbed Settings, loading/empty/retry states, Spotify surface persistence and local preparation status exist. Assisted usability and end-to-end source-repair qualification remain open.| First-run and source-repair journeys pass assisted usability review and end-to-end tests |
-| **P3.4** | Design consistency and accessibility | **Partial** | Design tokens, shared UI components, responsive layouts and DJ keyboard/focus work are delivered. A WCAG 2.2 AA test plan, findings register, and accessible-alternative qualification remain open.| Standard app flows meet approved WCAG 2.2 AA test plan; specialized DJ controls have documented accessible alternatives where feasible |
-| **P3.5** | Diagnostics and data operations UX | **Partial** | Duplicate review, diagnostics/repair, backup/staged restore and support export UI exist. Full destructive-action/recovery continuity acceptance and storage-quota UX remain open.| Destructive actions are reviewable; recovery progress and outcome are explicit; tests protect catalog continuity |
+| **P3.2** | Stronger frontend contracts | **Partial; global strict gate proposed** | Typed capability/service boundaries and library/Spotify surface performance work are delivered. The proposed global TS-only strict gate passes with zero diagnostics; concrete nullable/ref/callback fixes and precise JS declarations complete the compiler migration. Existing explicit any/suppression cleanup, JS body verification and measured code-splitting benefits remain open.| New code uses strict typing; targeted modules migrate with no `any` escape hatch proliferation; bundle/startup gain is measured |
+| **P3.3** | First-run and library workflows | **Partial** | First-launch source setup, tabbed Settings, loading/empty/retry states, Spotify surface persistence and local preparation status exist. Proposed browser-only navigation/playlist coverage plus a real-file upload journey now test metadata/artwork persistence for four supported formats. Assisted usability and end-to-end source-repair qualification remain open.| First-run and source-repair journeys pass assisted usability review and end-to-end tests |
+| **P3.4** | Design consistency and accessibility | **Partial** | Design tokens, shared UI components, responsive layouts and DJ keyboard/focus work are delivered. Proposed playlist-name accessible labeling is in #131; the modal follow-up adds named Direct Download controls and keyboard/focus-safe confirmations. A draft [WCAG 2.2 AA plan and findings register](ACCESSIBILITY_QUALIFICATION.md) now covers standard workflows and candidate DJ alternatives. Plan approval, full criterion ledger, host execution and accessible-alternative qualification remain open.| Standard app flows meet approved WCAG 2.2 AA test plan; specialized DJ controls have documented accessible alternatives where feasible |
+| **P3.5** | Diagnostics and data operations UX | **Partial** | Duplicate review, diagnostics/repair, backup/staged restore and support export UI exist. Proposed modal focus/cancellation, synthetic playlist deletion-cancel coverage and explicit repair/restore consequence disclosures improve destructive-action review. Full recovery continuity acceptance and storage-quota UX remain open.| Destructive actions are reviewable; recovery progress and outcome are explicit; tests protect catalog continuity |
 
 **Progress & Evidence Log (Phase 3, October 15):**
 - [PR #122](https://github.com/ajbergh/ViiB-MediaHub/pull/122) (`4b86824`) delivers the shared visual refresh, library-performance changes and Spotify surface persistence, with targeted frontend tests. These changes do not establish representative workload percentiles or WCAG acceptance.
@@ -226,7 +229,7 @@ cd backend
 go test ./...
 go test -race ./... -timeout 25m
 go vet ./...
-go install honnef.co/go/tools/cmd/staticcheck@latest   # if not installed
+go install honnef.co/go/tools/cmd/staticcheck@v0.8.1   # match CI
 staticcheck ./...
 ```
 
@@ -241,6 +244,466 @@ CI additionally runs `npm audit --omit=dev --audit-level=high`, binary `govulnch
 - Rebaseline this document after releases or major integration changes; distinguish **verified on main** from **proposed** or **host-untested**.
 - Avoid publishing credentials, local-library paths, proprietary media, account identifiers or uncensored diagnostic artifacts in GitHub.
 
+### October 20 implementation and deferrals
+
+[PR #131](https://github.com/ajbergh/ViiB-MediaHub/pull/131), branch `codex/roadmap-easy-foundations` (proposed; not merged or Qualified). These are bounded implementation slices; work packages retain their remaining acceptance scope. [PR CI](https://github.com/ajbergh/ViiB-MediaHub/pull/131/checks): **27 validation checks passed** on `ffb79ea`, including backend, browser, native builds and RC packaging; release publication was intentionally skipped on the PR. This is PR-head evidence, not merged-head or real-device qualification. Merged-head qualification remains open.
+
+- **P0.5:** pin Staticcheck `v0.8.1` and govulncheck `v1.6.0` in all six workflow installs. `npm sbom --package-lock-only --sbom-format cyclonedx` generated a valid CycloneDX 1.5 inventory of **287 npm components** locally; CI retains it for 14 days. Go/native inventories, licenses and security acceptance remain open.
+- **P2.4:** `npm run test:e2e` passed **3/3 Chromium tests**: fresh IndexedDB empty library to Add Music to Settings; legacy DJ redirect to workstation and reload; and create an IndexedDB playlist, reload, then open its detail with backend unavailable. Tests intercept all API/external requests, use no private data/accounts, and exercise the production preview. CI consumes the frontend artifact and retains synthetic failure evidence for seven days. Audio output, import, providers, native WebViews and recovery integrity remain unqualified. See [developer instructions](development.md#browser-smoke-gate).
+- **P3.2:** strict include list grows **4 to 12** modules, adding capabilities, imported catalog, jobs, recovery API, backend conversion, three-band data and DJ output services/hooks. No runtime changes or typing suppressions. `npm run check` passed palette/raw-color checks, TypeScript, **148 files / 725 Vitest tests**, and production build. Existing large-chunk warnings remain; no bundle/startup gain is claimed.
+- **P3.3/P3.4:** browser-only source-settings navigation and playlist creation/reload now have E2E coverage. The playlist-name textbox now has an explicit accessible name. The draft accessibility plan/register is in PR #132; plan approval, assisted first-run/source-repair review and assistive-technology qualification remain open.
+- **Deferred for complexity:** P2.1 representative 1K/10K/100K benchmark design, P2.3 cache quota/eviction policy, P3.1 major decomposition and Phase 5 research need dedicated scopes and evidence. P0.1/P0.2 and P1 target-host qualification remain open.
+- **Human/external follow-up:** qualify required checks on merged main and review emergency incidents as they arise (P0.3); signing/notarization credentials and signed-installer tests (P0.4); attribution/licensing acceptance (P0.5); authenticated providers, native hosts, assistive-technology review and stable-release signoff (P4). No release qualification is claimed.
+
+### P3.4 accessibility planning follow-up (October 20)
+
+[PR #132](https://github.com/ajbergh/ViiB-MediaHub/pull/132), branch `codex/p3-4-accessibility-qualification-plan`, based on PR #131, adds the
+[accessibility qualification plan and findings register](ACCESSIBILITY_QUALIFICATION.md).
+The plan defines host/input coverage, workflow checks, evidence/result rules,
+DJ alternative qualification tasks and initial source observations. It is a draft
+for review, not WCAG conformance or manual/assistive-technology acceptance.
+Validation: documentation links/evidence JSON and diff whitespace checks. No
+runtime changes or new host audit. **All 16 hosted checks passed** on `ec72ff4`;
+manual accessibility execution/approval and merged-head qualification remain open.
+
+### P0.5 release dependency inventory follow-up (October 20)
+
+[PR #133](https://github.com/ajbergh/ViiB-MediaHub/pull/133), branch `codex/p0-5-release-dependency-inventories`, based on PR #132, adds
+[required npm/Go inventory release assets](release-dependency-inventories.md).
+The release prepare job generates and uploads both files; publishing requires
+both and includes them in `SHA256SUMS.txt`. A normalized Go graph preserves
+versioned replacements, omits machine paths and rejects local replacements or
+incomplete graphs. Validation: **4 Python integrity/privacy tests passed**;
+actual read-only export recorded **302 Go modules** locally. Release-level npm
+SBOM generation produced **287 components**; both changed workflows parsed
+successfully; extracted shell syntax checks passed. A synthetic publish-gate
+experiment checksummed all **13 required assets** and rejected a missing Go
+inventory. The [hosted release prepare artifact](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39441891481) was downloaded and verified: **302 Go modules / 287 npm components**, preserved versioned replacement, no cache/checkout fields. Full packaging/publish-path validation remains open.
+No signing/provenance, native/target-specific SBOM, licensing or release
+qualification is claimed. Those remaining scopes retain their existing gates.
+
+### P3.4/P3.5 modal keyboard follow-up (October 20)
+
+[PR #134](https://github.com/ajbergh/ViiB-MediaHub/pull/134), branch `codex/p3-4-direct-download-dialog`, based on PR #133, repairs Direct
+Download dialog semantics/field and close-control names, and adds focus trapping,
+Escape dismissal and focus restoration. Confirmation dialogs initially focus
+Cancel, trap Tab and keep busy actions protected. The shared focus hook now uses
+the latest Escape callback without resetting focus or recapturing its opener
+on callback updates. AX-004 tracks this concrete finding and remaining host review.
+Targeted regression checks cover both dialogs and the shared hook; a browser-only
+flow reviews/cancels synthetic playlist deletion and reloads to check continuity.
+`npm run check` passed **151 files / 728 tests**, TypeScript/style gates and
+production build; **4/4 Chromium tests** passed, including deletion cancellation.
+Documentation and whitespace checks also passed. This
+does not close native/screen-reader, backup/restore or source-repair qualification.
+
+### P1.6 backup preservation follow-up (October 20)
+
+[PR #135](https://github.com/ajbergh/ViiB-MediaHub/pull/135), branch `codex/p1-6-preserve-backup-archives`, based on PR #134, prevents backup
+creation from truncating an existing archive. Exclusive creation protects even
+concurrent requests; duplicate names return `409 backup_exists`; generated names
+include subsecond precision. Failed writes clean up only the newly created
+archive, and successful archives are flushed before reporting creation.
+Focused checks cover API conflict/readable original archive/live-setting
+continuity, concurrent writers, failed-write cleanup and distinct default names,
+alongside the existing Spotify-credential-exclusion regression. **Five focused
+tests and the full API package suite passed**; the concurrent/failure writer
+tests also passed with **Windows race detection** using the installed MinGW
+compiler. `go vet ./internal/api`, `staticcheck ./internal/api`, OpenAPI YAML parsing, documentation and
+whitespace checks passed. RC5 upgrades and complete restore continuity
+on supported hosts remain open; no atomic/crash-complete publication is claimed.
+
+### P3.5 maintenance-action disclosure follow-up (October 20)
+
+[PR #136](https://github.com/ajbergh/ViiB-MediaHub/pull/136), branch `codex/p3-5-recovery-action-disclosures`, based on PR #135, explains that
+removing missing catalog tracks also removes likes and playlist entries, and
+that restore activation replaces current catalog/playlists/likes/history/settings
+with the backup contents. Prompts recommend a current backup and clarify that
+audio files are unaffected. No destructive backend behavior changes.
+Two focused component regressions passed: declining sends no repair/stage call;
+approving repair sends only reviewed missing IDs (excluding unavailable media),
+and approving restore stages only the selected archive. `npm run check` passed
+**152 files / 730 tests**, TypeScript/style gates and production build;
+documentation and whitespace checks also passed. Real-host restore continuity
+remains open.
+
+### P0.3 governance proposal (October 20)
+
+[PR #137](https://github.com/ajbergh/ViiB-MediaHub/pull/137), branch `codex/p0-3-main-governance`, based on PR #136, adds a
+[main-only ruleset and governance runbook](repository-governance.md). The owner-approved active
+policy requires PRs, current branches, resolved review threads and all **16
+always-on CI contexts**, bound to the observed GitHub Actions app (15368). It
+blocks main deletion/force-pushes and permits only owner `ajbergh` to use a
+PR-only emergency bypass. Formal approval count remains zero for the sole-owner
+workflow. Release-only contexts are excluded because they do not run on every PR.
+
+Validation: JSON parsed; all 16 contexts were observed successful from the
+configured app on PR #131; documentation links and whitespace checks passed.
+**Activation completed after explicit owner approval:** ruleset `25487842` is
+active. Readback matched all versioned fields, main reports protected, four
+effective rule types apply to main and a feature-branch probe returned none.
+[API evidence](evidence/main-governance-2026-10-20.json) records the policy and
+scope. Actual merged-head required-check behavior still needs qualification. The runbook includes stack integration and per-incident review;
+no emergency merge/bypass or release has been performed.
+
+### P0.4 stable release boundary follow-up (October 20)
+
+[PR #138](https://github.com/ajbergh/ViiB-MediaHub/pull/138), branch `codex/p0-4-stable-release-guard`, based on PR #137, adds a dependency-free
+[shared channel guard and signing policy](release-signing-policy.md). Canonical
+release preflight/publication and the independent Windows tag/archive path reject
+stable or malformed versions until production signing is qualified. Current RC7
+and valid prereleases remain allowed. Non-tag manual Windows builds use commit
+based development versions; tag drafts explicitly set prerelease.
+
+Validation: **7 channel/CLI tests passed**, plus the **4 inventory tests**. Local
+experiments executed the extracted Bash preflight/publication and PowerShell tag/
+archive-version steps: stable/malformed/mismatched tags failed; RC7 passed;
+main/feature branch builds emitted development versions. The PowerShell paths
+explicitly propagate native-command failures. All three workflow YAML files parsed; changed Bash syntax, documentation
+links and whitespace checks passed. No artifacts were built or released by
+these experiments; signing/notarization, credentials and host qualification
+remain external/complex follow-up. This is not a stable-signing implementation.
+
+### Hosted PR checkpoint after the P0 proposals (October 20)
+
+- PR #133 (`00260f3`): **27 successful validation/packaging checks**; release
+  publication intentionally skipped. The actual release-inventory artifact was
+  already verified above. This is not published-release qualification.
+- PR #134 (`04dfbec`) and PR #135 (`7fa7118`): **16 successful checks each**,
+  including backend and native builds. Neither is merged or fully qualified.
+- PR #136 and #137: **16 successful checks each**. PR #138: **27 successful
+  validation/packaging checks**, release publication intentionally skipped. Main
+  remains at `c50e2b4`; owner-approved protection is now active (see below).
+- PR #139 (`ae2224c`): release preflight failed during backend race testing with
+  a temporary-directory cleanup race in the queued Stem Library scan test. The
+  asset tests passed on the previous head; this is not an all-green PR claim.
+  The test-isolation repair is published in PR #141; its 16 hosted checks now pass.
+
+### P0.5 exact release input and assembly verification (October 20)
+
+[PR #139](https://github.com/ajbergh/ViiB-MediaHub/pull/139), branch `codex/p0-5-exact-release-asset-validation`, based on PR #138, moves the
+publish asset contract into a [shared verifier](release-asset-verification.md).
+The earlier publisher checked a fixed list but uploaded a wildcard; the new
+verifier rejects extras as well as missing/empty/non-regular inputs so files
+cannot silently ship outside checksum coverage. The existing 13-file contract
+and SHA-256 manifest format are preserved. No application/storage changes.
+
+[Real candidate evidence](evidence/release-assets-pr133-2026-10-20.json): all
+**13 CI artifacts, 156,404,395 bytes**, from PR #133 (`00260f3`, run
+`39441891481`) were assembled and passed independent `sha256sum -c` verification.
+An extra-input probe failed and retained the prior manifest. Inventories were
+verified as **302 Go modules / 287 npm components**. These are PR-validation
+artifacts labelled RC7, **not the published RC7 assets**; no binaries were run.
+
+Local tests: **6 asset cases passed, 1 symlink case skipped on Windows** (creation
+privilege unavailable); the [Linux CI job](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39452605678/job/118731096338)
+executed **all 7 asset tests with no skips** on `726a9d7`, including artifact and
+manifest symlinks. **7 channel and 4 inventory tests passed**. Both changed workflows parsed; documentation links and
+whitespace checks passed. Published-release identity, production signatures/notarization,
+installation, licensing, native SBOMs and provenance remain open.
+
+### P0.3 approved activation evidence (October 20)
+
+[PR #140](https://github.com/ajbergh/ViiB-MediaHub/pull/140) records the activation.
+Owner approval was received and the exact PR #137 policy activated as
+[ruleset 25487842](https://github.com/ajbergh/ViiB-MediaHub/rules/25487842).
+[Recorded API readback](evidence/main-governance-2026-10-20.json) verified the
+16 strict required checks bound to GitHub Actions, PR requirement, deletion and
+force-push blocks, owner-only PR bypass and main-only scope. Main is protected;
+feature branches remain outside this ruleset. No PR was merged and no bypass or
+destructive enforcement probe was performed. P0.3 remains short of full
+qualification until the stacked changes land and required checks run on the
+resulting main head.
+
+### CI queue-inspection isolation follow-up (October 20)
+
+PR #139 preflight run `39453599101` exposed a backend race-test cleanup failure:
+`TestConfiguredStemLibraryScanQueuesOnlyEnabledRootSnapshot` launched scheduler
+workers while only asserting a persisted job, allowing SQLite activity to race
+TempDir removal. [PR #141](https://github.com/ajbergh/ViiB-MediaHub/pull/141) uses the existing queue-inspection pattern to
+suppress worker startup in that test and explicitly asserts queued status.
+The request still validates/snapshots enabled roots and persists the job.
+Validation: **50 race-detector repetitions passed** on Windows with MinGW;
+documentation links and whitespace checks passed. PR #141 (`4296d4d`) now has
+**16 successful hosted checks**, including backend and native builds.
+
+Production scheduler shutdown remains a separate P2.2/P4.3 follow-up: `API.Close`
+does not currently stop/wait for its durable-job heartbeat and workers. This
+narrow test repair does not qualify shutdown, cancellation or crash recovery.
+
+### P0.4 canonical artifact provenance proposal (October 20)
+
+[PR #142](https://github.com/ajbergh/ViiB-MediaHub/pull/142) proposes a
+[provenance gate](release-provenance.md) using a pinned GitHub attestation
+step for the exact 13 release payloads followed by fail-closed verification of
+each payload's repository, canonical workflow, source commit/ref, SLSA predicate
+and hosted-runner identity. OIDC/attestation permissions are publish-job-only;
+the bundle stays outside release assets and is retained for 14 days. Stable
+publication remains blocked by the signing guard. No release/tag/dispatch or
+live attestation was created. Live OIDC, consumer tamper/wrong-identity evidence,
+legacy Windows draft provenance and production platform signing remain open.
+
+Validation: **6 provenance policy tests**, **6 asset tests** (1 Windows symlink
+skip), **7 channel tests** and **4 inventory tests** passed. Both changed
+workflows parsed and publisher-only OIDC permissions/publication order were
+checked. The real GitHub CLI rejected a synthetic malformed bundle and the
+wrapper exited 1. This negative probe is not successful signature verification.
+Documentation links and whitespace checks passed; hosted checks pending.
+
+### P1.4/P3.3 direct-download dialog lifecycle follow-up (October 20)
+
+[PR #143](https://github.com/ajbergh/ViiB-MediaHub/pull/143) repairs a success timeout that could close a reopened dialog; a completed queue refresh
+could also replace the empty-state dialog while its submit handler was still
+awaiting the refresh. The repair owns/cancels the close timer and invalidates
+async completions when the dialog is hidden, closed or unmounted. Current
+submissions still refresh the queue after persistence and close two seconds
+after refresh; stale submissions cannot mutate the replacement/reopened dialog
+or refresh through an unmounted owner. Backend queue requests are not cancelled.
+
+Five mocked-provider lifecycle tests cover ordinary refresh/close timing,
+close/reopen, unmount-before-response, stale success/failure after reopening and
+empty-to-nonempty instance replacement. Four fail against the original component;
+all five plus existing dialog/focus-trap regressions pass with the repair.
+Full `npm run check` passed: **153 files / 735 tests**, TypeScript/style gates
+and production build. Documentation and whitespace checks passed; hosted checks
+remain pending.
+No authenticated provider or native-host qualification is claimed.
+
+### P3.2 strict DJ-library display helpers (October 20)
+
+[PR #144](https://github.com/ajbergh/ViiB-MediaHub/pull/144) adds confidence, readiness, LUFS and true-peak display/sorting helpers to the
+strict boundary configuration. [Compiler-program evidence](evidence/strict-analysis-display-2026-10-20.json)
+separates explicit entry files (**12 → 16**) from the actual repository-local
+import closure (**19 → 23**). Exactly the four intended helpers enter the
+closure; source, runtime behavior and suppression counts are unchanged.
+
+Existing helper and consuming DJ-library tests passed: **5 files / 19 tests**.
+Repository `npm run typecheck`, documentation links/JSON and whitespace checks
+passed. Hosted validation remains pending.
+At this checkpoint, mixer/UI candidates exposed ten beat-grid phase-sync
+nullability diagnostics in `djMixerSlice.ts`. The reviewed-grid predicate
+follow-up below resolves that blocker without assertions or weaker checking;
+broader UI migration remains open. This slice does not change DSP estimators, qualify analysis
+accuracy or demonstrate bundle/startup gains.
+
+### P3.2 reviewed-grid and cue contracts (October 20)
+
+[PR #145](https://github.com/ajbergh/ViiB-MediaHub/pull/145): `canSyncBeatGrid` now expresses its existing runtime validation as a type
+predicate: a valid grid with manual provenance and a lock. This lets guarded
+phase-sync code safely treat timing as present, resolving the ten strict
+nullability diagnostics without assertions, suppressions or runtime changes.
+Beat-grid confidence and hot-cue helpers enter the strict gate; their imported
+mixer slice and tempo-evidence helper also gain coverage. Explicit entry files
+increase **16 → 18**, while the [measured local closure](evidence/strict-grid-contracts-2026-10-20.json)
+increases **23 → 27**. This is not whole-frontend strict migration.
+
+Repository typecheck passed; **3 existing test files / 19 tests** passed,
+including rejecting estimated grids for phase alignment and accepting reviewed
+grids. The changed helper emits identical JavaScript before/after the type
+refinement. Documentation/JSON and whitespace checks passed; hosted checks
+remain pending. No DSP estimator or accuracy qualification changes.
+
+### P2.4/P3.3 Library Operations recovery-flow follow-up (October 20)
+
+[PR #146](https://github.com/ajbergh/ViiB-MediaHub/pull/146): the maintenance panel's initial backup-list cleanup was returned from an async
+loader and ignored. The repair makes its effect own a request scope, aborts
+client work on unmount, and checks the captured scope after each awaited
+request. Repair/backup completions after navigation cannot start follow-up reads
+or update a replacement view. A synchronous admission guard also prevents
+rapid clicks from overlapping maintenance requests. Aborting a client request
+does not undo work already accepted by the server; restore activation stays
+offline. Continuous Monitoring lifecycle remains separate from this panel.
+
+Six component tests cover disclosures/cancellation, initial-read cancellation,
+repair/backup completion after unmount and rapid-click serialization. A synthetic
+Chromium journey exercises the legacy recovery route into Settings, missing vs
+unavailable track review, validation of a selected archive, cancellation of both
+destructive prompts without mutation, then staging only that archive and the
+restart-required notice. **5/5 Chromium journeys passed** against the production
+preview, with no browser page errors in the recovery journey. Full `npm run check`
+passed **153 files / 739 tests**, TypeScript/style gates and production build.
+Documentation/JSON and whitespace checks passed; hosted checks pending.
+Browser/backend recovery integrity, crash-safe staging
+and supported-host restore continuity remain unqualified.
+
+Reassessment deferrals: arbitrary frontend log payloads can contain private
+metadata that survives current support-export redaction (P2.6); a reviewed
+schema-2 projection below addresses the support-export boundary, while local
+logging/privacy and request correlation remain open. The P1.6
+follow-up below adds bounded synthetic relation continuity; real-host/crash
+qualification remains open.
+Durable-job shutdown needs cancellation/wait/recovery policy across heterogeneous
+workers (P2.2/P4.3), so it remains deferred alongside the previously recorded
+human/external and larger scopes.
+
+### P1.6 synthetic backup-to-activation relation continuity (October 20)
+
+[PR #147](https://github.com/ajbergh/ViiB-MediaHub/pull/147) adds the
+[integration regression](../backend/internal/api/restore_continuity_test.go)
+creates a recovery point through the real backup router, changes every checked
+relation, previews/stages that archive through the router, closes the database,
+activates the pending restore and reopens the database. Exact persisted-row
+comparisons cover catalog metadata/local paths, playlist order/duplicates, song
+likes/timestamps, detailed listening events, genre preferences and two ordinary
+settings. The rollback database must contain the deliberately changed live
+state. Staging must leave live relations unchanged; restored/staged Spotify
+credential rows are absent, live/rollback credential rows remain; pending files
+are cleaned and original synthetic media bytes remain unchanged.
+
+Validation: the new integration test passed normally and **three repetitions
+with Windows race detection** (Go 1.26.7, Windows/amd64, MinGW). The related API/DB backup/restore families passed
+**12 tests with no failures/skips**. No production behavior changed. Documentation
+and whitespace checks passed; hosted checks pending. This is clean-shutdown,
+synthetic-fixture evidence, not real media playback, full-relation/schema proof,
+Plex/provider/source acceptance, RC5 upgrade, installer or crash-complete
+publication/activation qualification. Those gates remain open.
+
+### P2.6 fail-closed support diagnostic projection (October 20)
+
+[PR #148](https://github.com/ajbergh/ViiB-MediaHub/pull/148) proposes the
+[schema-2 support archive](support-bundles.md) replaces regex-only
+log sanitization with new JSONL objects from allowlisted audio-read, catalog and
+analysis lifecycle grammars. Unknown/free-form data never passes through. Raw
+HTTP request IDs are excluded (existing IDs may contain hostnames or arbitrary
+caller values); validated analysis-job UUIDs remain for grouping job reports.
+Browser/native exports share the same backend path. Settings and archive copy
+explain omission rather than claiming complete sanitized raw logs.
+
+Input is bounded to a 4 MiB tail, lines to 8 KiB, output to 2,000 records and
+256 KiB. Omission/version/size flags are explicit. Schema 1 compatibility is
+limited to existing archive files; schema 2 intentionally replaces `logs/viib.log`
+with `logs/diagnostics.jsonl`. Private raw logs remain on disk; complete logging
+privacy, safe request correlation, full troubleshooting coverage and native
+save/sharing qualification remain open. No raw-log opt-in was added.
+
+Validation: **5 support archive/projection tests passed with Windows race
+detection**, including archive-level private title/resource/error/path/request-ID
+omission, supported-record retention, unknown-field rejection, line/record/output
+caps, 4 MiB tail handling and unchanged local logs. The full API package suite,
+`go vet ./internal/api`, frontend typecheck, documentation/JSON and whitespace
+checks passed. Hosted validation remains pending; native save/share acceptance
+and end-to-end failure correlation are not claimed.
+
+Hosted checkpoint: PR #143 (`cda08d4`) and #144 (`3936307`) each have **16
+successful checks**. PR #146's macOS analysis job `118808250710` never acquired
+a hosted runner; GitHub annotations report capacity constraints, with no test
+execution. The initial targeted rerun was rejected while the workflow was
+active. Once it completed, a failed-job rerun was accepted: run `39474912703`,
+attempt **2** completed successfully. PR #146 (`f09323b`) and #147 (`a08610a`)
+now each have **16 successful checks**. Other pending checks remain pending;
+this is not a code-regression failure or all-green claim.
+
+### P3.2 application-surface strict contracts (October 20)
+
+[PR #149](https://github.com/ajbergh/ViiB-MediaHub/pull/149) normalizes absent scroll parents to the
+virtualized-list optional contract across five library pages, expresses the
+existing non-null Spotify release filter as a predicate, captures a known Plex
+image value before a store callback, and gives browser metadata locals concrete
+optional types. Existing metadata fixture checks now narrow artwork before
+reading its bytes. No casts, suppressions or new `any` declarations are added.
+
+[Compiler evidence](evidence/application-surface-strict-2026-10-20.json) records
+**18 → 27 entry paths / 27 → 76 local closure files**. Entries include the
+existing `vite-env.d.ts` ambient root; closure includes two declaration files,
+so 76 does not mean 76 newly migrated implementation files. The gate also reaches
+the application store, player/library/Spotify/UI slices and shared components.
+Whole-frontend TS-only strict diagnostics fall **46 → 26** (19 production
+issues plus the fixture null check removed). Global strict mode remained off at that checkpoint; the follow-up below
+resolves DJ/WebGL, test callbacks, declarations and generated-output policy. No bundle/startup benefit or DSP accuracy change is claimed.
+
+Validation: full `npm run check` passed **153 files / 739 tests**, style/type
+gates and production build; **5/5 Chromium journeys passed** against that build.
+Documentation/JSON and whitespace checks passed; hosted checks pending. PR #145
+(`1b1f965`) now has **16 successful hosted checks**.
+
+### P3.2 global strict TypeScript gate (October 20)
+
+[PR #150](https://github.com/ajbergh/ViiB-MediaHub/pull/150): global `strict: true` now passes, with `allowJs: false`, explicit TS/TSX inputs
+and dependency/output/dist/build/worktree exclusions. Imported Wails declarations
+remain in scope. [Compiler inventory](evidence/global-strict-2026-10-20.json)
+records **26 → 0 strict diagnostics**, 495 non-declaration TS/TSX files, six
+declarations and one imported JSON file; no JS bodies or generated output enter
+the program. The focused boundary check remains as a secondary gate.
+
+Fixes align nullable React refs, explicitly guard current candidates, normalize
+missing mix-in/texture values and initialize optional pad-release callbacks.
+Typed deferred fixtures replace uninitialized/mismatched test callbacks; an
+absent Spotify lookup resolves with the real `undefined` contract. Adjacent
+worklet/Tailwind declarations describe actual exports without blank/any module
+stubs. Both JavaScript implementations remain byte-unchanged from the base.
+No DSP estimator or audio algorithm was changed.
+
+Full `npm run check` passed **153 files / 739 tests**, style gates, both type
+checks and production build; **5/5 Chromium journeys passed** against that
+build. Documentation/JSON and whitespace checks passed; hosted checks pending.
+Existing explicit `any`, suppressions and
+`skipLibCheck` remain; zero compiler diagnostics is not proof that all types or
+JS bodies are fully validated. Bundle/startup measurements, native output and
+broader P3.2 acceptance remain open.
+
+### P2.6 safe maintenance-failure references (October 20)
+
+[PR #151](https://github.com/ajbergh/ViiB-MediaHub/pull/151): the central structured-v2 error helper generates a fresh opaque UUID-v4
+`diagnosticToken` per failure, independently of caller headers and legacy
+hostname-bearing request IDs. The body/response header expose the same token;
+CORS exposes the response header without adding it as a client request header.
+A fixed log event carries only the token and HTTP status. Projection version 2
+retains that event as `v2_error`; route/code/message/details/request ID never
+enter the record. Bundle schema remains 2.
+
+The typed client validates reference format, preserves existing request-ID
+semantics and uses the diagnostic header only for unstructured response fallback.
+Library Operations shows a separate selectable reference, copies only its value,
+clears it for new actions and guards clipboard completion on navigation/action
+change. Backend integration tests connect real failing maintenance routes to the
+actual support ZIP; browser fixtures separately exercise UI display/copy and
+private-detail omission. No arbitrary IDs are repurposed as references.
+
+Scope remains bounded: legacy responses, middleware/trust-boundary failures,
+provider-wide troubleshooting and local raw-log privacy remain open. Log-tail/
+projection limits may omit a reference record. Native clipboard/save/share and
+full real-host failure qualification remain open.
+
+Validation: full frontend `npm run check` passed **154 files / 747 tests**,
+strict/style gates and production build; **6/6 Chromium journeys passed**,
+including real browser clipboard copy. **14 focused client/UI tests passed**
+with clipboard-denial fallback. The full API/server suites and `go vet` passed;
+**8 focused reference/support/CORS cases passed under Windows race detection**.
+The strengthened real-route/archive test also rejects a valid-format incoming
+UUID as a server reference. OpenAPI YAML, documentation/JSON and whitespace
+checks passed. Browser fixtures are synthetic; backend route-to-ZIP evidence
+uses the actual exporter. Hosted checks remain pending.
+PR #148 (`363f2e1`) and #149 (`b17deef`) now each have **16 successful
+hosted checks**; #150 still has validation running without reported failures.
+
+### P2.4/P3.3 real-file browser import persistence (October 20)
+
+The new browser journey starts at the empty catalog, follows Add Music to
+Settings, and clicks Scan Local Directory. Its sole capability fixture removes
+the optional native directory-picker API, selecting the production standard
+upload fallback. A real directory selection supplies the four original tagged
+MP3/OGG/FLAC/M4A fixtures (and an ignored README). The real bundled worker/parser
+extracts tags and artwork; no store, parser or persistence result is injected.
+All API calls fail locally and external requests are blocked at browser-context
+level, including worker requests.
+
+Read-only IndexedDB checks verify all four songs' tags, duration, relative path,
+PNG signature and durable URL policy. Reload retains identical records and all
+four visible song rows; reconstructed Blob artwork URLs load successfully.
+The fallback deliberately stores no file handle or temporary media URL, so
+persistent audio playback, native FileSystemFileHandle permission behavior,
+backend scans/imports, output devices and live providers remain unqualified.
+
+Validation: **7/7 Chromium journeys passed** in 11.7 seconds against the
+production preview; the new import journey completed in 2.2 seconds. The optional
+picker capability fixture follows the app
+property-presence feature-detection contract. Repository typecheck and documentation/whitespace
+checks passed. No production source or unit-test changes; hosted checks were pending at this initial PR #152 checkpoint. Current integration evidence is linked in the roll-up audit.
+
+Historical hosted checkpoint (October 20): PR #150 (`ddcecc4`) and #151 (`5c77771`) each had
+**16 successful hosted checks**. These are PR-head results, not merged-main or
+real-host qualification.
+
 ### Baseline evidence and implementation references
 
 - [Documentation index](index.md)
@@ -254,4 +717,8 @@ CI additionally runs `npm audit --omit=dev --audit-level=high`, binary `govulnch
 
 ---
 
-*Last updated: 2026-10-15 against local main `08322ba`. This file establishes work priorities and acceptance criteria; it does not certify unfinished functionality or authorize merging, releasing, changing credentials, or expanding DJ research scope without the corresponding review.*
+*Last updated: 2026-10-20 against local/hosted main `c50e2b4` plus the proposed roadmap implementation branches. This file establishes work priorities and acceptance criteria; it does not certify unfinished functionality or authorize merging, releasing, changing credentials, or expanding DJ research scope without the corresponding review.*
+
+### October 20 easy-first pass audit and consolidation
+
+All 22 source PR heads (#131–#152) are ancestors of the main-targeted roll-up branch. The [dated audit](ROADMAP_EASY_PASS_2026-10-20.md) records delivered slices, the integration route, the historical PR #139 preflight failure repaired in #141, and explicit reasons/next actions for every remaining work package P0.1–P5.5. The [snapshot](evidence/roadmap-easy-pass-2026-10-20.json) preserves source heads and selected hosted results. Fresh roll-up CI is required before integration; no skipped publisher job is counted as release qualification. Remaining work needs larger design, representative measurement, host/provider access or human review and is deferred from this autonomous pass without removing stable 1.0 gates.

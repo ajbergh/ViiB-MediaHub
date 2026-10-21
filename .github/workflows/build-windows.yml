@@ -27,6 +27,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup release policy runtime
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Enforce prerelease tag policy
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python scripts/release_channel_guard.py --tag "$env:RELEASE_TAG"
+          exit $LASTEXITCODE
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -109,7 +123,7 @@ jobs:
           Write-Host "✅ Build successful: $exePath ($([math]::Round($size, 2)) MB)"
 
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
 
       - name: Scan release binary for reachable vulnerabilities
         shell: pwsh
@@ -152,10 +166,15 @@ jobs:
 
       - name: Determine version
         id: version
+        shell: pwsh
         run: |
-          $version = "${{ github.ref_name }}" -replace '^v', ''
-          if (-not $version -or $version -eq "main" -or $version -eq "master") {
-            $version = "dev-${{ github.sha }}".Substring(0, 15)
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_REF.StartsWith('refs/tags/')) {
+            python scripts/release_channel_guard.py --tag "$env:GITHUB_REF_NAME"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          } else {
+            $version = 'dev-' + $env:GITHUB_SHA.Substring(0, 11)
           }
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
           Write-Host "Version: $version"
@@ -181,6 +200,7 @@ jobs:
         with:
           files: ViiB-MediaHub-*.zip
           draft: true
+          prerelease: true
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

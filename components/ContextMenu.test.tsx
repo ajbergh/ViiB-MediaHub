@@ -20,7 +20,7 @@ afterEach(() => vi.restoreAllMocks());
 it('opens the existing playlist submenu within the viewport and adds the selected song', async () => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => { queueMicrotask(() => callback(0)); return 1; });
-  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     const submenu = this.hasAttribute('data-viib-submenu');
     return { x: 780, y: 700, left: 780, right: 1004, top: 700, bottom: 950, width: 224, height: submenu ? 250 : 40, toJSON() {} };
   });

@@ -106,7 +106,7 @@ export const SpotifyArtistDetail: React.FC = () => {
     const artist = current ? view.profile.data : undefined;
     const tracks = current ? view.top.data || [] : [];
     const releases = current
-        ? view.releases.data?.items.filter((item) => item?.id) || []
+        ? view.releases.data?.items.filter((item): item is NonNullable<typeof item> => Boolean(item?.id)) || []
         : [];
     const songs = useMemo(() => spotifyTracksToSongs(tracks), [tracks]);
     const play = (index = 0, shuffle = false) => {

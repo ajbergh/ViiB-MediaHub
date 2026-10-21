@@ -8,6 +8,30 @@
     "lib/playbackLifecycle.ts",
     "services/libraryService.ts",
     "services/db.ts",
-    "services/httpClient.ts"
-  ]
+    "services/httpClient.ts",
+    "services/mediaCapabilities.ts",
+    "services/importedCatalog.ts",
+    "services/jobsV2.ts",
+    "services/libraryOperationsV2.ts",
+    "lib/djOutputRouting.ts",
+    "hooks/useFourChannelDJAudio.ts",
+    "services/localThreeBand.ts",
+    "services/backendService.ts",
+    "lib/analysisConfidence.ts",
+    "lib/analysisReadiness.ts",
+    "lib/djLibraryLUFS.ts",
+    "lib/djLibraryTruePeak.ts",
+    "lib/beatGridConfidence.ts",
+    "lib/hotCueEditor.ts",
+    "lib/browserMetadata.ts",
+    "vite-env.d.ts",
+    "pages/AlbumDetail.tsx",
+    "pages/Albums.tsx",
+    "pages/Artists.tsx",
+    "pages/LikedAlbums.tsx",
+    "pages/Songs.tsx",
+    "pages/SpotifyArtistDetail.tsx",
+    "slices/librarySlice.ts"
+  ],
+  "compileOnSave": false
 }

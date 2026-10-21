@@ -667,7 +667,7 @@ paths:
             schema:
               type: object
               properties:
-                name: { type: string, description: Optional ZIP filename. Unsafe characters are normalized. }
+                name: { type: string, description: Optional ZIP filename. Unsafe characters are normalized. Existing names are rejected; backups are never overwritten. Omit to generate a timestamped name. }
       responses:
         '201':
           description: Validated SQLite backup archive created
@@ -675,6 +675,11 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/BackupInfo' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: A backup with the normalized name already exists (error code backup_exists); choose another name.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorEnvelope' }
         '500': { $ref: '#/components/responses/InternalError' }
   /operations/restore/preview:
     post:
@@ -1079,6 +1084,7 @@ components:
             message: { type: string }
             retryable: { type: boolean }
             requestId: { type: string }
+            diagnosticToken: { type: string, format: uuid, description: "Server-generated opaque support reference; independent of requestId" }
             details: { type: object, additionalProperties: true }
     BackupInfo:
       type: object

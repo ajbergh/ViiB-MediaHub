@@ -1,0 +1,83 @@
+{
+  "date": "2026-10-20",
+  "method": "TypeScript compiler-program local source closure; excludes node_modules",
+  "before": {
+    "explicitRoots": 16,
+    "localClosure": 23,
+    "files": [
+      "hooks/useFourChannelDJAudio.ts",
+      "lib/analysisConfidence.ts",
+      "lib/analysisReadiness.ts",
+      "lib/djFourChannelAudio.ts",
+      "lib/djLibraryLUFS.ts",
+      "lib/djLibraryTruePeak.ts",
+      "lib/djOutputRouting.ts",
+      "lib/playbackLifecycle.ts",
+      "services/api.ts",
+      "services/audioReadDiagnostics.ts",
+      "services/backendService.ts",
+      "services/db.ts",
+      "services/eventStreamURL.ts",
+      "services/httpClient.ts",
+      "services/importedCatalog.ts",
+      "services/jobsV2.ts",
+      "services/libraryOperationsV2.ts",
+      "services/libraryService.ts",
+      "services/localThreeBand.ts",
+      "services/loggerService.ts",
+      "services/mediaCapabilities.ts",
+      "services/trackAnalysisContracts.ts",
+      "types.ts"
+    ]
+  },
+  "after": {
+    "explicitRoots": 18,
+    "localClosure": 27,
+    "files": [
+      "hooks/useFourChannelDJAudio.ts",
+      "lib/analysisConfidence.ts",
+      "lib/analysisReadiness.ts",
+      "lib/beatGridConfidence.ts",
+      "lib/djFourChannelAudio.ts",
+      "lib/djLibraryLUFS.ts",
+      "lib/djLibraryTruePeak.ts",
+      "lib/djOutputRouting.ts",
+      "lib/hotCueEditor.ts",
+      "lib/playbackLifecycle.ts",
+      "lib/tempoEvidence.ts",
+      "services/api.ts",
+      "services/audioReadDiagnostics.ts",
+      "services/backendService.ts",
+      "services/db.ts",
+      "services/eventStreamURL.ts",
+      "services/httpClient.ts",
+      "services/importedCatalog.ts",
+      "services/jobsV2.ts",
+      "services/libraryOperationsV2.ts",
+      "services/libraryService.ts",
+      "services/localThreeBand.ts",
+      "services/loggerService.ts",
+      "services/mediaCapabilities.ts",
+      "services/trackAnalysisContracts.ts",
+      "slices/djMixerSlice.ts",
+      "types.ts"
+    ]
+  },
+  "added": [
+    "lib/beatGridConfidence.ts",
+    "lib/hotCueEditor.ts",
+    "lib/tempoEvidence.ts",
+    "slices/djMixerSlice.ts"
+  ],
+  "base_commit": "3936307",
+  "checks": {
+    "repository_typecheck": "passed",
+    "targeted_tests": {
+      "files": 3,
+      "tests": 19,
+      "status": "passed"
+    },
+    "javascript_emit": "TypeScript transpileModule ES2022/ESNext output identical to base for lib/beatGridConfidence.ts"
+  },
+  "scope": "Type refinement and expanded strict gate only; no runtime condition or DSP estimator changes. Whole-frontend strict migration remains open."
+}

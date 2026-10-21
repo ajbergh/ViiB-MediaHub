@@ -1,3 +1,4 @@
+import { deferred } from '../testUtils/deferred';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DJFourChannelAudio, type DJAudioSource } from './djFourChannelAudio';
 
@@ -46,7 +47,7 @@ class Context {
   nodes: Node[] = [];
   resume = vi.fn(async () => {});
   close = vi.fn(async () => { this.state = 'closed'; });
-  setSinkId = vi.fn(async (_id: string) => {});
+  setSinkId: ((id: string) => Promise<void>) | undefined = vi.fn(async (_id: string) => {});
   constructor() {
     this.destination.maxChannelCount = Context.capacity;
     Context.instances.push(this);
@@ -187,16 +188,16 @@ describe('single-device four-channel DJ audio', () => {
   });
 
   it('closes immediately on cancellation even if resume is still pending', async () => {
-    let resume: () => void;
+    const resumeRequest = deferred<void>();
     class PendingResumeContext extends Context {
-      resume = vi.fn(() => new Promise<void>(resolve => { resume = resolve; }));
+      resume = vi.fn(() => resumeRequest.promise);
     }
     vi.stubGlobal('AudioContext', PendingResumeContext);
     const controller = new AbortController();
     const pending = DJFourChannelAudio.create({}, controller.signal);
     controller.abort();
     expect(Context.instances[0].close).toHaveBeenCalledOnce();
-    resume();
+    resumeRequest.resolve();
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
     expect(Context.instances[0].destination.incoming).toHaveLength(0);
   });

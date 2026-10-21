@@ -128,7 +128,7 @@ func (a *API) backupsDir() string { return filepath.Join(a.dataDir, "backups") }
 func safeBackupName(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return "viib-backup-" + time.Now().Format("20060102-150405") + ".zip"
+		return "viib-backup-" + time.Now().Format("20060102-150405.000000000") + ".zip"
 	}
 	name = filepath.Base(name)
 	name = strings.Map(func(r rune) rune {
@@ -205,10 +205,18 @@ func (a *API) createBackupV2(w http.ResponseWriter, r *http.Request) {
 	name := safeBackupName(request.Name)
 	archivePath := filepath.Join(a.backupsDir(), name)
 	if err := writeBackupArchive(archivePath, databaseCopy, manifest); err != nil {
+		if os.IsExist(err) {
+			respondV2Error(w, r, http.StatusConflict, "backup_exists", "A backup with this name already exists; choose a different name", false, nil)
+			return
+		}
 		respondV2Error(w, r, http.StatusInternalServerError, "backup_archive_failed", err.Error(), true, nil)
 		return
 	}
-	info, _ := os.Stat(archivePath)
+	info, err := os.Stat(archivePath)
+	if err != nil {
+		respondV2Error(w, r, http.StatusInternalServerError, "backup_result_unavailable", "Backup was created but its metadata is unavailable", false, nil)
+		return
+	}
 	respondV2JSON(w, http.StatusCreated, backupInfo{Name: name, Size: info.Size(), CreatedAt: info.ModTime().UnixMilli()})
 }
 
@@ -330,48 +338,58 @@ func copyFile(source, destination string) error {
 	}
 	return output.Close()
 }
+
+// writeBackupArchive never replaces an existing recovery point, including when
+// concurrent requests choose the same name. Failed writes remove only the new
+// archive owned by this call; an existing file is never opened for writing.
 func writeBackupArchive(path, databasePath string, manifest backupManifest) error {
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
+	complete := false
+	defer func() {
+		_ = file.Close()
+		if !complete {
+			_ = os.Remove(path)
+		}
+	}()
 	writer := zip.NewWriter(file)
+	defer writer.Close()
 	dbEntry, err := writer.Create("library.db")
 	if err != nil {
-		writer.Close()
-		file.Close()
 		return err
 	}
 	dbFile, err := os.Open(databasePath)
 	if err != nil {
-		writer.Close()
-		file.Close()
 		return err
 	}
-	_, err = io.Copy(dbEntry, dbFile)
-	dbFile.Close()
-	if err != nil {
-		writer.Close()
-		file.Close()
+	defer dbFile.Close()
+	if _, err := io.Copy(dbEntry, dbFile); err != nil {
 		return err
 	}
 	manifestEntry, err := writer.Create("manifest.json")
 	if err != nil {
-		writer.Close()
-		file.Close()
 		return err
 	}
-	payload, _ := json.MarshalIndent(manifest, "", "  ")
+	payload, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return err
+	}
 	if _, err := manifestEntry.Write(payload); err != nil {
-		writer.Close()
-		file.Close()
 		return err
 	}
 	if err := writer.Close(); err != nil {
-		file.Close()
 		return err
 	}
-	return file.Close()
+	if err := file.Sync(); err != nil {
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	complete = true
+	return nil
 }
 func extractAndValidateBackup(archivePath, destination string) (backupManifest, string, error) {
 	reader, err := zip.OpenReader(archivePath)

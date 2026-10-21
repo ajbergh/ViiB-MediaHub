@@ -71,6 +71,12 @@ Creating a backup:
 3. Validates the sanitized snapshot with SQLite integrity checking.
 4. Stores `library.db` and a SHA-256 manifest in a ZIP archive in the application data directory.
 
+Backup creation never overwrites an existing archive, including concurrent requests
+for the same name. Default names include subsecond precision. An API request with
+an existing normalized name returns `409 backup_exists`; choose a different name.
+A failed write removes the new incomplete archive. Existing recovery points and
+the active database remain unchanged.
+
 **Preview restore** validates the archive, manifest checksum, and SQLite database without changing the active library.
 
 **Stage restore** copies the validated database into the pending-restore area. Close ViiB, then run `viib-restore` to activate it. The helper keeps the previous `library.db` as a timestamped rollback database before replacement. Restore activation is offline so the application never replaces its live database while SQLite is open.
@@ -85,8 +91,42 @@ The watcher status reports whether monitoring is running, its interval, check co
 
 ## Safety notes
 
+Before removing missing tracks, review the listed entries and create a backup if
+you may need their likes or playlist entries: those details are removed with the
+catalog entries. The confirmation discloses this; canceling sends no repair call.
+Before staging a restore, the confirmation explains that activation replaces the
+current catalog, playlists, likes, listening history and settings with the backup
+contents. Changes after that backup will not appear in the restored library.
+Create a current backup first. Staging alone does not replace the active library;
+activation still requires closing ViiB and running the restore helper.
+
 - New backups exclude Spotify cookie sessions and OAuth credentials. Sign in to Spotify again after restoring one. Other encrypted integration credentials may remain in the database, and older archives may contain Spotify credentials; store archives with the same care as the application data directory.
 - Repair and restore act only on the ViiB SQLite database. They do not delete or rewrite local audio files or Plex-hosted media.
 - Track analysis only reads audio. It never rewrites a media file's tags or contents, and it never writes measured values back to Plex.
 - Removing or changing Plex configuration performs no destructive PMS operation.
 - A physical Windows release-candidate smoke test remains the final release gate for a real large library, output switching, continuous monitoring, backup, offline restore, long playback, Plex direct-play/seeking, and Spotify reconnection.
+
+## Automated recovery evidence
+
+The [synthetic continuity regression](../backend/internal/api/restore_continuity_test.go)
+connects backup creation and staging to clean-shutdown offline activation. It
+checks exact catalog/playlist/song-like/history rows, two ordinary settings,
+rollback contents, Spotify credential exclusion and unchanged fixture media.
+This is bounded database evidence; the supported-host/large-library gate above,
+Plex/source acceptance, upgrades and crash-complete activation remain open.
+
+From `backend`, run:
+
+```bash
+go test ./internal/api ./internal/db -run '(Backup|Restore)' -count=1
+```
+
+## Failure references
+
+When a structured maintenance failure includes a support reference, use **Copy
+reference** and share it with a freshly created support bundle. The reference
+matches a minimal `v2_error` diagnostic record and contains no song/path/error
+text. It is separate from legacy HTTP request IDs. Clipboard access can be
+unavailable; the reference field also supports selecting and copying manually.
+Not every error path has a reference, and support-log retention limits can omit
+older records. See [support-bundle scope](support-bundles.md).

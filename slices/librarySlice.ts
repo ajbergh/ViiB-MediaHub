@@ -510,13 +510,14 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       try {
           const cached = await api.getArtistMetadata(artistName);
           if (cached?.plexImageUrl) {
+              const imageUrl = cached.plexImageUrl;
               set((s) => ({
                   artistMetadata: {
                       ...s.artistMetadata,
                       [artistName]: {
                           spotifyId: cached.spotifyId,
                           name: cached.artistName,
-                          imageUrl: cached.plexImageUrl,
+                          imageUrl,
                           url: cached.spotifyUrl || '',
                           fetchedAt: cached.fetchedAt || Date.now()
                       }

@@ -301,7 +301,7 @@ export const Songs: React.FC = () => {
     <div className="h-full min-w-0 animate-fade-in" style={gridStyle}>
         <Virtuoso
             useWindowScroll={false}
-            customScrollParent={scrollParent}
+            customScrollParent={scrollParent ?? undefined}
             data={sortedAndFilteredSongs}
             context={{ filter, setFilter, sortBy, setSortBy, showSortMenu, setShowSortMenu, columns, setColumns }}
             components={components}

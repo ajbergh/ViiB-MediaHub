@@ -1,3 +1,4 @@
+import { deferred } from '../testUtils/deferred';
 /** Tests playback, queue navigation, source resolution, and Spotify session isolation. */
 
 import { resetEventStreamURLCacheForTests } from '../services/eventStreamURL';
@@ -154,12 +155,11 @@ describe('Spotify playback retirement', () => {
  });
  it('prevents an in-flight Spotify selection from committing after disconnect', async () => {
   const state = setup();
-  let resolve!: (value: null) => void;
-  vi.spyOn(libraryService, 'getSongBySpotifyId').mockImplementation(() =>
-   new Promise(resolveLookup => {resolve = resolveLookup as typeof resolve;}));
+  const lookup = deferred<Awaited<ReturnType<typeof libraryService.getSongBySpotifyId>>>();
+  vi.spyOn(libraryService, 'getSongBySpotifyId').mockImplementation(() => lookup.promise);
   const pending = state.playSong({...stream('remote'), url: ''});
   state.logoutSpotify();
-  resolve(null);
+  lookup.resolve(undefined);
   await pending;
   expect(state.currentSong).toBeNull();
   expect(state.queue).toEqual([]);

@@ -339,14 +339,17 @@ func TestConfiguredStemLibraryScanQueuesOnlyEnabledRootSnapshot(t *testing.T) {
 	if err := database.SetStemLocations([]db.StemLocation{{ID: "enabled", Path: library, Enabled: true}, {ID: "disabled", Path: filepath.Join(root, "Disabled"), Enabled: false}}); err != nil {
 		t.Fatal(err)
 	}
-	router := (&API{db: database}).V2StemRoutes()
+	// This test inspects admission and the persisted snapshot, not execution.
+	// Keep background workers from racing database/TempDir cleanup.
+	api := &API{db: database, jobWake: make(chan struct{}, 2), jobSchedulerOn: true}
+	router := api.V2StemRoutes()
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/scan", nil))
 	if recorder.Code != http.StatusAccepted {
 		t.Fatalf("configured scan status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 	jobs, err := database.ListJobs(10, "")
-	if err != nil || len(jobs) != 1 || jobs[0].Type != "stem_library_scan" {
+	if err != nil || len(jobs) != 1 || jobs[0].Type != "stem_library_scan" || jobs[0].Status != db.JobStatusQueued {
 		t.Fatalf("configured scan job missing: jobs=%+v err=%v", jobs, err)
 	}
 	var parameters struct {
