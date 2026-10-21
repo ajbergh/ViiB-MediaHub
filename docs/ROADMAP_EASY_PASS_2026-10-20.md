@@ -1,6 +1,6 @@
 # Roadmap easy-first implementation pass — October 20, 2026
 
-**Status: implementation prepared for review; release qualification remains open.**
+**Status: implementation squash merged in #153; release qualification remains open.**
 The [roadmap](ROADMAP.md) remains the source of truth. This audit records the
 completed implementation slices and why remaining acceptance work is deferred
 from this autonomous pass. Deferred work below is still required wherever the
@@ -8,23 +8,22 @@ roadmap names it as a stable 1.0 gate.
 
 ## Integration and evidence
 
-The [PR #153](https://github.com/ajbergh/ViiB-MediaHub/pull/153) (`codex/roadmap-easy-pass-rollup`) branch targets `main` and includes every
-source head from PRs #131–#152, followed by this documentation audit. The
-[snapshot](evidence/roadmap-easy-pass-2026-10-20.json) records exact heads,
-ancestry verification and selected hosted results. `implementationHead` identifies
-the last source head (#152); `rollupObservation` separately identifies the
-observed #153 head, check states and observation time. Later documentation
-commits can follow that observation; consult the live PR for current-head CI.
-Main at the snapshot is
-`c50e2b440996783a315be7150fce379fdd830c9d`; no implementation PR has been merged
-and no release has been published by this pass.
+[PR #153](https://github.com/ajbergh/ViiB-MediaHub/pull/153) was squash merged
+on October 20 America/Chicago (October 21 UTC) as
+`3400c0df720d36b421718a562ff1a0e364518910`. All 27 PR checks passed, including
+the 16 required contexts; publication skipped. The squash tree exactly matches
+reviewed head `26e002fe2ceced54d38417bb54ae8ce7104d3993`. All 22 unchanged
+source heads were verified as ancestors of that reviewed head before closing
+PRs #131–#152 as superseded. Their branches and review history are preserved.
 
-Review the combined diff and fresh roll-up checks before integration through the
-[normal protected PR process](repository-governance.md). The 16 required CI
-contexts and conditional release validation must pass. A skipped publication
-job on a PR is expected and supplies no live signing or OIDC evidence. Source
-PRs remain open as detailed review history; after integration they can be
-closed as superseded without merging their changes again.
+The [evidence record](evidence/roadmap-easy-pass-2026-10-20.json) retains the
+original pre-merge snapshot, source heads and historical checks; its separate
+`integrationRecord` records the merge and closure results. Main at the original
+snapshot was `c50e2b4`. [Post-merge CI](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39530977041)
+was running when the integration record was written. Use the
+[normal protected PR process](repository-governance.md) for subsequent work.
+No release was published, and a skipped publisher job supplies no live signing
+or OIDC evidence. Do not merge the closed source PRs again.
 
 Historical exception: PR #139's latest release preflight failed in the queued
 scan test's cleanup race. PR #141 fixes that test isolation and is included in
@@ -36,7 +35,7 @@ not be presented as green. Fresh roll-up validation covers the combined code.
 | Area | Review history | Result and evidence boundary |
 | --- | --- | --- |
 | CI and supply chain | [#131](https://github.com/ajbergh/ViiB-MediaHub/pull/131), [#133](https://github.com/ajbergh/ViiB-MediaHub/pull/133), [#139](https://github.com/ajbergh/ViiB-MediaHub/pull/139), [#141](https://github.com/ajbergh/ViiB-MediaHub/pull/141) | Pinned analysis tools, npm CycloneDX and normalized Go inventories, exact 13-payload checksum validation and isolated queued-scan fixture. Real candidate assets were assembled and verified; published RC7 was not changed. |
-| Governance and release safeguards | [#137](https://github.com/ajbergh/ViiB-MediaHub/pull/137), [#138](https://github.com/ajbergh/ViiB-MediaHub/pull/138), [#140](https://github.com/ajbergh/ViiB-MediaHub/pull/140), [#142](https://github.com/ajbergh/ViiB-MediaHub/pull/142) | Owner-approved main-only protection is active. Stable publishing is guarded; exact-payload provenance generation/verification is proposed in workflows. Production credentials, live attestation and consumer verification remain open. |
+| Governance and release safeguards | [#137](https://github.com/ajbergh/ViiB-MediaHub/pull/137), [#138](https://github.com/ajbergh/ViiB-MediaHub/pull/138), [#140](https://github.com/ajbergh/ViiB-MediaHub/pull/140), [#142](https://github.com/ajbergh/ViiB-MediaHub/pull/142) | Owner-approved main-only protection is active. Stable publishing is guarded; exact-payload provenance generation/verification is merged in workflows. Production credentials, live attestation and consumer verification remain open. |
 | Accessibility and lifecycle | [#132](https://github.com/ajbergh/ViiB-MediaHub/pull/132), [#134](https://github.com/ajbergh/ViiB-MediaHub/pull/134), [#136](https://github.com/ajbergh/ViiB-MediaHub/pull/136), [#143](https://github.com/ajbergh/ViiB-MediaHub/pull/143), [#146](https://github.com/ajbergh/ViiB-MediaHub/pull/146) | Draft accessibility plan, named controls, confirmation focus/cancellation, consequence disclosures and dialog/maintenance async ownership. Browser and component regression coverage does not qualify assistive technology or supported hosts. |
 | Recovery | [#135](https://github.com/ajbergh/ViiB-MediaHub/pull/135), [#147](https://github.com/ajbergh/ViiB-MediaHub/pull/147) | Backup creation preserves existing archives; synthetic API-to-offline restore checks catalog, ordered playlists, likes, detailed history, selected settings, credential exclusion and rollback. RC5, source ownership and real-host/crash acceptance remain open. |
 | Support diagnostics | [#148](https://github.com/ajbergh/ViiB-MediaHub/pull/148), [#151](https://github.com/ajbergh/ViiB-MediaHub/pull/151) | Bounded allowlisted support records replace raw-log export. Server-generated v2 failure references reach Library Operations and support archives. Local raw logs and other error/provider boundaries still need review. |
@@ -46,8 +45,8 @@ not be presented as green. Fresh roll-up validation covers the combined code.
 Local validation includes 747 frontend unit tests, global strict checking and
 production build, seven browser journeys, focused Go race checks and recovery/
 support integration tests. Detailed commands and scope are recorded in the
-roadmap progress log and source PRs. These results concern the implementation
-branches, not a qualified merged main or stable release.
+roadmap progress log and source PRs. These results cover the implementation now merged through #153; they do not
+qualify the outstanding real-host/provider or stable-release acceptance gates.
 
 ## Remaining work and deferral reasons
 
