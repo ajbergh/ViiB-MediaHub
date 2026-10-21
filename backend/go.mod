@@ -2,7 +2,7 @@
 
 module github.com/ajbergh/viib-mediahub
 
-go 1.26.9
+go 1.26.10
 
 require (
 	github.com/agentplexus/omnillm v0.9.0
