@@ -37,29 +37,22 @@ Release workflow contexts are conditional on version/workflow changes and are
 not unconditional branch requirements. Release qualification still requires
 that workflow and the roadmap's signing, installer and real-host evidence.
 
-## Consolidated integration route
+## Roadmap integration record
 
-The main-targeted [PR #153](https://github.com/ajbergh/ViiB-MediaHub/pull/153) (`codex/roadmap-easy-pass-rollup`) branch includes all source
-heads from PRs #131–#152. Review the combined diff and wait for all 16 required
-checks plus conditional release validation. Keep it current with main and use
-the normal protected PR process. After integration, inspect merged-head CI and
-qualification evidence; source PRs can then be closed as superseded without
-merging duplicate changes. See the [dated audit](ROADMAP_EASY_PASS_2026-10-20.md)
-for exact scope and deferrals. Do not use emergency bypass for ordinary CI delay.
+[PR #153](https://github.com/ajbergh/ViiB-MediaHub/pull/153) was squash merged
+as `3400c0df720d36b421718a562ff1a0e364518910` with explicit owner authorization
+after all 16 required contexts and 11 release-validation/package jobs passed.
+The normal protected PR process was used; no emergency bypass was requested.
+The merged tree equals reviewed head `26e002f`. Source PRs #131–#152 were
+closed as superseded after verifying their unchanged heads were included.
+Their branches and history remain available; do not merge duplicate changes.
+See the [dated audit](ROADMAP_EASY_PASS_2026-10-20.md) and
+[integration evidence](evidence/roadmap-easy-pass-2026-10-20.json).
 
-## Original PR stack (alternative)
-
-The consolidated route is the primary review path. If integrating source PRs
-individually, first account for PR #139's historical preflight failure: its queued
-scan fixture repair is in #141, so that repair must accompany earlier integration
-before the failing preflight can pass.
-
-The roadmap PRs are stacked. Merge an ancestor first, retarget its next child to
-main, bring that child current and wait for fresh required checks. Merge commits
-preserve the stack's original ancestry. If using squash/rebase instead, rebuild
-the next child on the merged main while preserving only its own changes; review
-the resulting diff before updating its remote branch. Do not use emergency
-bypass merely to avoid stack maintenance or queued checks.
+[Post-merge CI](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39530977041)
+was running at the documentation checkpoint. Keep later changes in fresh PRs
+from current main and wait for their required checks. Never use emergency
+bypass for ordinary CI delay.
 
 When renaming checks, first introduce/observe the new context, update the hosted
 ruleset and this file together, and retire the old context only after cutover.
@@ -122,7 +115,7 @@ The [API evidence](evidence/main-governance-2026-10-20.json) records:
 - Main reported `protected: true` and all four expected effective rule types.
 - A feature-branch scope probe returned no effective rules.
 
-All 16 contexts were previously observed passing from GitHub Actions on PR
-#131/#132. No merge, direct push, force push, deletion or bypass was attempted.
-The original proposal's CI was green; actual required-check behavior on a
-current merged main and the remaining stacked PRs still needs qualification.
+At activation, all 16 contexts had been observed passing on PR #131/#132.
+No merge or bypass was attempted as part of that activation check. The later
+owner-authorized #153 merge and source-PR cleanup are recorded above; inspect
+the linked post-merge CI for merged-head validation.

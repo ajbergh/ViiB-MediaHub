@@ -246,7 +246,7 @@
       "failed": []
     }
   },
-  "scope": "Open implementation PR history; no merge or release performed. The roll-up adds documentation only to the implementation head. Qualification/deferred scope remains open.",
+  "scope": "The original snapshot and selectedHostedChecks are historical pre-merge observations. integrationRecord records the owner-authorized squash merge and redundant PR closure. Release/host/provider qualification and documented deferrals remain open.",
   "implementationHeadMeaning": "Last source implementation head (PR #152); subsequent roll-up commits update documentation only.",
   "rollupObservation": {
     "observedAtUtc": "2026-10-20T23:28:00.975562+00:00",
@@ -359,5 +359,135 @@
         "url": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39512910129/job/118943474658"
       }
     ]
+  },
+  "integrationRecord": {
+    "observedAtUtc": "2026-10-21T02:06:57.954831+00:00",
+    "mergedAtUtc": "2026-10-21T02:04:36Z",
+    "mergedDateAmericaChicago": "2026-10-20",
+    "rollupPR": 153,
+    "reviewedHead": "26e002fe2ceced54d38417bb54ae8ce7104d3993",
+    "squashCommit": "3400c0df720d36b421718a562ff1a0e364518910",
+    "squashTreeEqualsReviewedHead": true,
+    "successfulPRChecks": 27,
+    "skippedPRChecks": [
+      "Publish GitHub release"
+    ],
+    "requiredContextsPassed": 16,
+    "supersededPRs": [
+      {
+        "number": 131,
+        "state": "CLOSED",
+        "head": "ffb79eacc8863c7f0443705f03d1627782d75a1d"
+      },
+      {
+        "number": 132,
+        "state": "CLOSED",
+        "head": "ec72ff4dcbb41ad242eeaf304252a39d5cabc219"
+      },
+      {
+        "number": 133,
+        "state": "CLOSED",
+        "head": "00260f3ac88cb573fb47f526c7f3f0d03d8f6471"
+      },
+      {
+        "number": 134,
+        "state": "CLOSED",
+        "head": "04dfbec0a393e05dde3ab9178e35a1f1686c53ce"
+      },
+      {
+        "number": 135,
+        "state": "CLOSED",
+        "head": "7fa711864abdc91345c602f33e079cd7f8b9380b"
+      },
+      {
+        "number": 136,
+        "state": "CLOSED",
+        "head": "343c3b82d5d836d05adbe7da236c5ef996a57dc9"
+      },
+      {
+        "number": 137,
+        "state": "CLOSED",
+        "head": "385093de4be3a2c4bd54d3db3a0fdc380d05a639"
+      },
+      {
+        "number": 138,
+        "state": "CLOSED",
+        "head": "2d4d95765ccb0248b2ce87d15b827953194a6102"
+      },
+      {
+        "number": 139,
+        "state": "CLOSED",
+        "head": "ae2224c5826e0f49e3c103a605ea5b4863810820"
+      },
+      {
+        "number": 140,
+        "state": "CLOSED",
+        "head": "4f90dbd37a5a738a866eaa731cb463d27cee5fe4"
+      },
+      {
+        "number": 141,
+        "state": "CLOSED",
+        "head": "4296d4d8192d19de0d306c5438d4c88ac851a4df"
+      },
+      {
+        "number": 142,
+        "state": "CLOSED",
+        "head": "2e05e145f61f67afe6edf1ca64afab79b0a5efbe"
+      },
+      {
+        "number": 143,
+        "state": "CLOSED",
+        "head": "cda08d406e43699a9296ba048054980b9ac8308f"
+      },
+      {
+        "number": 144,
+        "state": "CLOSED",
+        "head": "3936307207069f891b75a8399f83e28a08dda8b4"
+      },
+      {
+        "number": 145,
+        "state": "CLOSED",
+        "head": "1b1f965f8a832f2aedb62f2d760f033cf3072e24"
+      },
+      {
+        "number": 146,
+        "state": "CLOSED",
+        "head": "f09323bcc2030c8c3f43c596e945561034889a2e"
+      },
+      {
+        "number": 147,
+        "state": "CLOSED",
+        "head": "a08610a31fc1e8f271cefe2a3b82220cdcee4679"
+      },
+      {
+        "number": 148,
+        "state": "CLOSED",
+        "head": "363f2e19583a7fd6107f6def9dab9cdafdbc87ee"
+      },
+      {
+        "number": 149,
+        "state": "CLOSED",
+        "head": "b17deef216eb3039aa70b74516978f281ce03e31"
+      },
+      {
+        "number": 150,
+        "state": "CLOSED",
+        "head": "ddcecc434420e82da253f49eefe5a74a90212f55"
+      },
+      {
+        "number": 151,
+        "state": "CLOSED",
+        "head": "5c77771c59ca8cbff44ad56a2d9eb18760603e4d"
+      },
+      {
+        "number": 152,
+        "state": "CLOSED",
+        "head": "5b9a702293d977e6446be2a574e4d431ac47a233"
+      }
+    ],
+    "sourceBranchesPreserved": true,
+    "mergedHeadCI": "https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39530977041",
+    "mergedHeadCIStatusAtObservation": "in_progress",
+    "releasePublished": false
   }
 }
