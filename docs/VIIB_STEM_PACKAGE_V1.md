@@ -140,40 +140,6 @@ Readers that do not understand this capability reject them rather than attemptin
 - MediaHub decodes compressed stems directly to floating-point frames for the DJ worklet, with bounded preroll on MP3 seeks. It saves no decoded WAV in the stem package. Preview serves the encoded artifact using `audio/mpeg` or `audio/ogg`; browser Vorbis preview support can vary, while DJ playback uses the backend decoder.
 - FLAC, AAC and other codecs remain unsupported.
 
+## Shared compressed fixtures
 
-## 12. Conformance fixtures
-
-```text
-fixtures/
-    package-v1-valid.viibstems/
-    package-v1-bad-checksum.viibstems/
-    package-v1-missing-stem.viibstems/
-    package-v1-bad-geometry.viibstems/
-    package-v1-path-traversal.viibstems/
-    package-v1-stale-source.viibstems/
-    package-v0-legacy.viibstems/      # StemLab 0.1.0 manifest, input for `package upgrade`
-    source/fixture-source.bin
-```
-
-Expected outcomes are documented in [../fixtures/README.md](../fixtures/README.md). StemLab validates these fixtures in normal CI, and MediaHub's independent Go validator accepts `package-v1-valid`.
-
-## 13. Implementation evidence
-
-- 2026-09-24: StemLab package construction, hashing, path safety, geometry validation, overwrite rollback and conformance tests pass on Windows, macOS and Linux CI. A real Demucs 4.0.1 / `htdemucs_6s` run generated a valid six-stem package (see [PHASE2_DEMUCS_SMOKE.md](PHASE2_DEMUCS_SMOKE.md)).
-- 2026-09-25: StemLab manifests were found not to match the MediaHub contract, and all StemLab 0.1.0 packages were rejected by MediaHub. StemLab now writes the contract fields. MediaHub's validator accepts a freshly built StemLab package, the `package-v1-valid` fixture, and real 0.1.0 packages after `package upgrade`.
-
-## 14. Upgrading StemLab 0.1.0 packages
-
-```text
-viib-stemlab package upgrade <package-or-library-dir> [--dry-run] [--no-hashes] [--verbose]
-```
-
-For each `.viibstems` directory found (recursively), the command:
-
-1. skips packages that are already v1;
-2. reads each stem's WAV header for geometry and encoding, which 0.1.0 did not record;
-3. keeps the original manifest as `manifest.v0.json` (never overwritten once present);
-4. writes the v1 manifest atomically, carrying over all hashes, sizes and paths, with `stemLayout` from the stem keys, `source.duration` from `audio.durationSeconds`, and zero `timing`;
-5. re-validates the package, including stem SHA-256 unless `--no-hashes` is given, and restores the original manifest if validation fails.
-
-After upgrading, run a Stem Library scan in MediaHub to attach the packages to their tracks.
+The [codec interoperability fixtures](../fixtures/stems/README.md) are shared with StemLab and exercise mono/stereo files, gapless frame counts, impulse alignment, seeking, corruption, and cancellation.
