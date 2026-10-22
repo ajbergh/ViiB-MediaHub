@@ -1,0 +1,461 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ajbergh/ViiB-StemLab/blob/main/docs/viib-stem-package-v1.schema.json",
+  "title": "ViiB Stem Package v1 Manifest",
+  "description": "Matches the ViiB MediaHub v1 consumer contract (MediaHub docs/VIIB_STEM_PACKAGE_V1.md, backend/internal/stems/manifest.go). packageId, createdAt, source.sizeBytes, model.engine and model.device are optional StemLab extensions.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "source",
+    "stemLayout",
+    "generator",
+    "model",
+    "audio",
+    "timing",
+    "stems"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "requiredFeatures": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "packageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "filename",
+        "sha256",
+        "duration"
+      ],
+      "properties": {
+        "filename": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^/\\\\]+$"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "audioSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "duration": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "stemLayout": {
+      "enum": [
+        "four",
+        "six"
+      ]
+    },
+    "generator": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "model": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "engine": {
+          "type": "string",
+          "minLength": 1
+        },
+        "device": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "audio": {
+      "type": "object",
+      "required": [
+        "sampleRate",
+        "channels",
+        "frames"
+      ],
+      "properties": {
+        "sampleRate": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "channels": {
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "frames": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "timing": {
+      "type": "object",
+      "required": [
+        "decoderDelayFrames",
+        "startTrimFrames"
+      ],
+      "properties": {
+        "decoderDelayFrames": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "startTrimFrames": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true
+    },
+    "stems": {
+      "type": "object",
+      "properties": {
+        "vocals": {
+          "$ref": "#/$defs/stem"
+        },
+        "drums": {
+          "$ref": "#/$defs/stem"
+        },
+        "bass": {
+          "$ref": "#/$defs/stem"
+        },
+        "guitar": {
+          "$ref": "#/$defs/stem"
+        },
+        "piano": {
+          "$ref": "#/$defs/stem"
+        },
+        "other": {
+          "$ref": "#/$defs/stem"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "stemLayout": {
+            "const": "six"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "stems": {
+            "required": [
+              "vocals",
+              "drums",
+              "bass",
+              "guitar",
+              "piano",
+              "other"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stemLayout": {
+            "const": "four"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "stems": {
+            "required": [
+              "vocals",
+              "drums",
+              "bass",
+              "other"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "guitar"
+                  ]
+                },
+                {
+                  "required": [
+                    "piano"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stems": {
+            "additionalProperties": {
+              "properties": {
+                "encoding": {
+                  "enum": [
+                    "pcm_s16le",
+                    "float32le"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "required": [
+          "requiredFeatures"
+        ],
+        "properties": {
+          "requiredFeatures": {
+            "contains": {
+              "const": "compressed-stems-v1"
+            }
+          }
+        }
+      }
+    },
+    {
+      "anyOf": [
+        {
+          "properties": {
+            "stems": {
+              "additionalProperties": {
+                "properties": {
+                  "encoding": {
+                    "const": "pcm_s16le"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "stems": {
+              "additionalProperties": {
+                "properties": {
+                  "encoding": {
+                    "const": "float32le"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "stems": {
+              "additionalProperties": {
+                "properties": {
+                  "encoding": {
+                    "const": "mp3"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "stems": {
+              "additionalProperties": {
+                "properties": {
+                  "encoding": {
+                    "const": "vorbis"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{64}$"
+    },
+    "stem": {
+      "type": "object",
+      "required": [
+        "path",
+        "sha256",
+        "sizeBytes",
+        "sampleRate",
+        "channels",
+        "frames",
+        "encoding"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^\\\\]+\\.(wav|wave|mp3|ogg)$"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sampleRate": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "channels": {
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "frames": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "encoding": {
+          "enum": [
+            "pcm_s16le",
+            "float32le",
+            "mp3",
+            "vorbis"
+          ]
+        }
+      },
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "encoding": {
+                "const": "mp3"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "path": {
+                "pattern": "\\.(mp3)$"
+              },
+              "sampleRate": {
+                "enum": [
+                  16000,
+                  22050,
+                  24000,
+                  32000,
+                  44100,
+                  48000
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "encoding": {
+                "const": "vorbis"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "path": {
+                "pattern": "\\.(ogg)$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "encoding": {
+                "const": "pcm_s16le"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "path": {
+                "pattern": "\\.(wav|wave)$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "encoding": {
+                "const": "float32le"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "path": {
+                "pattern": "\\.(wav|wave)$"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "additionalProperties": true
+}

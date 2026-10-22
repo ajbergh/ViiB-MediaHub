@@ -3,6 +3,7 @@
 package stems
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -13,9 +14,16 @@ import (
 
 // ReadPCMFrames returns normalized interleaved float32 samples for one
 // contiguous range. The package validator checks the full-file checksum on
-// cache miss; this function checks the current WAV geometry and stable file
+// cache miss; this function checks the decoded geometry and stable file
 // identity on the same open handle used to read the requested frames.
 func ReadPCMFrames(path string, artifact Artifact, startFrame, frameCount int64) ([]float32, error) {
+	return ReadPCMFramesContext(context.Background(), path, artifact, startFrame, frameCount)
+}
+
+func ReadPCMFramesContext(ctx context.Context, path string, artifact Artifact, startFrame, frameCount int64) ([]float32, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if startFrame < 0 || frameCount <= 0 || startFrame > artifact.Frames || frameCount > artifact.Frames-startFrame {
 		return nil, errors.New("requested frame range is outside the artifact")
 	}
@@ -45,6 +53,16 @@ func ReadPCMFrames(path string, artifact Artifact, startFrame, frameCount int64)
 		return nil, errors.New("stem artifact path changed before open")
 	}
 
+	if artifact.Encoding == "mp3" || artifact.Encoding == "vorbis" {
+		samples, err := readCompressedFrames(ctx, f, artifact, startFrame, frameCount)
+		if err != nil {
+			return nil, err
+		}
+		if err = verifyStableArtifact(f, path, before); err != nil {
+			return nil, err
+		}
+		return samples, nil
+	}
 	dataOffset, dataBytes, geometry, encoding, err := wavDataRange(f)
 	if err != nil {
 		return nil, err
@@ -76,16 +94,8 @@ func ReadPCMFrames(path string, artifact Artifact, startFrame, frameCount int64)
 	if _, err = io.ReadFull(f, data); err != nil {
 		return nil, fmt.Errorf("read stem frames: %w", err)
 	}
-	after, err := f.Stat()
-	if err != nil {
+	if err = verifyStableArtifact(f, path, before); err != nil {
 		return nil, err
-	}
-	if after.Size() != before.Size() || !after.ModTime().Equal(before.ModTime()) {
-		return nil, errors.New("stem artifact changed while reading frames")
-	}
-	pathAfter, err := os.Lstat(path)
-	if err != nil || pathAfter.Mode()&os.ModeSymlink != 0 || !os.SameFile(after, pathAfter) {
-		return nil, errors.New("stem artifact path changed while reading frames")
 	}
 
 	samples := make([]float32, int(frameCount)*artifact.Channels)
@@ -103,6 +113,22 @@ func ReadPCMFrames(path string, artifact Artifact, startFrame, frameCount int64)
 		}
 	}
 	return samples, nil
+}
+
+func verifyStableArtifact(f *os.File, path string, before os.FileInfo) error {
+	after, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if after.Size() != before.Size() || !after.ModTime().Equal(before.ModTime()) {
+		return errors.New("stem artifact changed while reading frames")
+	}
+	pathAfter, err := os.Lstat(path)
+	if err != nil || pathAfter.Mode()&os.ModeSymlink != 0 || !os.SameFile(after, pathAfter) {
+		return errors.New("stem artifact path changed while reading frames")
+	}
+
+	return nil
 }
 
 func wavDataRange(f *os.File) (int64, uint64, AudioGeometry, string, error) {

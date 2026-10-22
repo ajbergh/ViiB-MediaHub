@@ -203,7 +203,7 @@ func requireFields(object string, values map[string]json.RawMessage, fields ...s
 }
 
 // ValidatePackage validates the manifest, contained paths, file hashes/sizes,
-// and WAV PCM geometry. It follows symlinks only when their resolved target is
+// and decoded audio geometry. It follows symlinks only when their resolved target is
 // still inside the package directory; callers should retain the returned paths
 // and avoid re-resolving untrusted manifest values when serving audio.
 func ValidatePackage(packageDir string) (Validation, error) {
@@ -271,12 +271,12 @@ func ValidatePackageContext(ctx context.Context, packageDir string) (Validation,
 		if !strings.EqualFold(gotHash, artifact.SHA256) {
 			return Validation{}, fmt.Errorf("stem %q checksum mismatch", name)
 		}
-		geometry, encoding, err := inspectWAV(full)
+		geometry, encoding, err := inspectAudio(ctx, full, artifact.Encoding)
 		if err != nil {
-			return Validation{}, fmt.Errorf("stem %q WAV validation: %w", name, err)
+			return Validation{}, fmt.Errorf("stem %q audio validation: %w", name, err)
 		}
 		if encoding != artifact.Encoding || geometry.SampleRate != artifact.SampleRate || geometry.Channels != artifact.Channels || geometry.Frames != artifact.Frames {
-			return Validation{}, fmt.Errorf("stem %q WAV geometry does not match manifest", name)
+			return Validation{}, fmt.Errorf("stem %q audio geometry does not match manifest", name)
 		}
 		if geometry != m.Audio {
 			return Validation{}, fmt.Errorf("stem %q geometry differs from package audio geometry", name)
@@ -330,7 +330,9 @@ func ValidateManifest(m Manifest) error {
 		return fmt.Errorf("unsupported stem package schemaVersion %d", m.SchemaVersion)
 	}
 	for _, feature := range m.RequiredFeatures {
-		return fmt.Errorf("unsupported required stem package feature %q", feature)
+		if feature != CompressedStemsFeature {
+			return fmt.Errorf("unsupported required stem package feature %q", feature)
+		}
 	}
 	if m.Source.Filename == "" || strings.ContainsAny(m.Source.Filename, "\\/\x00") || filepath.Base(m.Source.Filename) != m.Source.Filename {
 		return errors.New("source.filename must be a plain filename")
@@ -360,10 +362,27 @@ func ValidateManifest(m Manifest) error {
 	if len(m.Stems) != len(required) {
 		return fmt.Errorf("stemLayout %q requires exactly %d stems", m.StemLayout, len(required))
 	}
+	commonEncoding := ""
 	for _, name := range required {
 		a, ok := m.Stems[name]
 		if !ok {
 			return fmt.Errorf("required stem %q is missing", name)
+		}
+		if commonEncoding == "" {
+			commonEncoding = a.Encoding
+		} else if commonEncoding != a.Encoding {
+			return errors.New("all stems must have the same encoding")
+		}
+		if a.Encoding == "mp3" || a.Encoding == "vorbis" {
+			supported := false
+			for _, feature := range m.RequiredFeatures {
+				if feature == CompressedStemsFeature {
+					supported = true
+				}
+			}
+			if !supported {
+				return errors.New("compressed stems require compressed-stems-v1")
+			}
 		}
 		if err := validateArtifact(name, a, m.Audio); err != nil {
 			return err
@@ -386,14 +405,14 @@ func validateArtifact(name StemName, a Artifact, audio AudioGeometry) error {
 			return fmt.Errorf("stem %q path contains an unsafe component", name)
 		}
 	}
-	if ext := strings.ToLower(filepath.Ext(a.Path)); ext != ".wav" && ext != ".wave" {
-		return fmt.Errorf("stem %q uses unsupported encoding extension %q; v1 currently accepts WAV only", name, ext)
+	if !artifactCodecMatches(a) {
+		return fmt.Errorf("stem %q extension and encoding disagree; supported formats are WAV only for PCM16/float32, OGG Vorbis, and MP3", name)
 	}
 	if !validSHA256(a.SHA256) || a.SizeBytes <= 0 {
 		return fmt.Errorf("stem %q requires a SHA-256 checksum and positive sizeBytes", name)
 	}
-	if a.Encoding != "pcm_s16le" && a.Encoding != "float32le" {
-		return fmt.Errorf("stem %q encoding %q is not supported; use pcm_s16le or float32le WAV", name, a.Encoding)
+	if a.Encoding == "mp3" && a.SampleRate != 16000 && a.SampleRate != 22050 && a.SampleRate != 24000 && a.SampleRate != 32000 && a.SampleRate != 44100 && a.SampleRate != 48000 {
+		return errors.New("unsupported MP3 stem sample rate")
 	}
 	if a.SampleRate != audio.SampleRate || a.Channels != audio.Channels || a.Frames != audio.Frames {
 		return fmt.Errorf("stem %q declared geometry differs from package audio geometry", name)

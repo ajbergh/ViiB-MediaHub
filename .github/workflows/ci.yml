@@ -87,6 +87,12 @@ jobs:
         with:
           name: desktop-frontend-dist
           path: dist
+      - name: Use the official Ubuntu HTTPS mirror
+        run: |
+          if [[ -f /etc/apt/apt-mirrors.txt ]]; then
+            printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          fi
+          printf '%s\n' 'Acquire::Retries "3";' 'Acquire::http::Timeout "30";' 'Acquire::https::Timeout "30";' 'Acquire::Languages "none";' | sudo tee /etc/apt/apt.conf.d/99-ci-downloads >/dev/null
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - name: Upload browser failure evidence
@@ -112,6 +118,10 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Install native tray dependencies
         run: |
+          if [[ -f /etc/apt/apt-mirrors.txt ]]; then
+            printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          fi
+          printf '%s\n' 'Acquire::Retries "3";' 'Acquire::http::Timeout "30";' 'Acquire::https::Timeout "30";' 'Acquire::Languages "none";' | sudo tee /etc/apt/apt.conf.d/99-ci-downloads >/dev/null
           sudo apt-get update
           sudo apt-get install -y libayatana-appindicator3-dev
       - name: Prepare embedded build fixtures
@@ -294,6 +304,10 @@ jobs:
       - name: Install Linux desktop dependencies
         if: startsWith(matrix.target, 'linux-')
         run: |
+          if [[ -f /etc/apt/apt-mirrors.txt ]]; then
+            printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          fi
+          printf '%s\n' 'Acquire::Retries "3";' 'Acquire::http::Timeout "30";' 'Acquire::https::Timeout "30";' 'Acquire::Languages "none";' | sudo tee /etc/apt/apt.conf.d/99-ci-downloads >/dev/null
           sudo apt-get update
           sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
       # Hosted runners intermittently receive HTTP/2 stream resets from Go's
