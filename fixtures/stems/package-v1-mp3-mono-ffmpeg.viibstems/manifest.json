@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "requiredFeatures": [
+    "compressed-stems-v1"
+  ],
+  "source": {
+    "filename": "codec-source-mono.wav",
+    "sha256": "a60d5594b969f17c6906983ef91412dc85e95427a484de8bfe85f3a435ce16c3",
+    "duration": 2.0007709750566893,
+    "sizeBytes": 88278
+  },
+  "stemLayout": "six",
+  "generator": {
+    "name": "ViiB-StemLab",
+    "version": "0.2.0"
+  },
+  "model": {
+    "name": "impulses",
+    "version": "1",
+    "engine": "synthetic",
+    "device": "cpu"
+  },
+  "audio": {
+    "sampleRate": 22050,
+    "channels": 1,
+    "frames": 44117
+  },
+  "timing": {
+    "decoderDelayFrames": 0,
+    "startTrimFrames": 0
+  },
+  "stems": {
+    "vocals": {
+      "path": "vocals.mp3",
+      "sha256": "8258ee3facb9b1b2b60b8e968e85f7ba017f0c7da913e30ebfe9a6f32ab6e3fe",
+      "sizeBytes": 4420,
+      "sampleRate": 22050,
+      "channels": 1,
+      "frames": 44117,
+      "encoding": "mp3"
+    },
+    "drums": {
+      "path": "drums.mp3",
+      "sha256": "8258ee3facb9b1b2b60b8e968e85f7ba017f0c7da913e30ebfe9a6f32ab6e3fe",
+      "sizeBytes": 4420,
+      "sampleRate": 22050,
+      "channels": 1,
+      "frames": 44117,
+      "encoding": "mp3"
+    },
+    "bass": {
+      "path": "bass.mp3",
+      "sha256": "8258ee3facb9b1b2b60b8e968e85f7ba017f0c7da913e30ebfe9a6f32ab6e3fe",
+      "sizeBytes": 4420,
+      "sampleRate": 22050,
+      "channels": 1,
+      "frames": 44117,
+      "encoding": "mp3"
+    },
+    "guitar": {
+      "path": "guitar.mp3",
+      "sha256": "8258ee3facb9b1b2b60b8e968e85f7ba017f0c7da913e30ebfe9a6f32ab6e3fe",
+      "sizeBytes": 4420,
+      "sampleRate": 22050,
+      "channels": 1,
+      "frames": 44117,
+      "encoding": "mp3"
+    },
+    "piano": {
+      "path": "piano.mp3",
+      "sha256": "8258ee3facb9b1b2b60b8e968e85f7ba017f0c7da913e30ebfe9a6f32ab6e3fe",
+      "sizeBytes": 4420,
+      "sampleRate": 22050,
+      "channels": 1,
+      "frames": 44117,
+      "encoding": "mp3"
+    },
+    "other": {
+      "path": "other.mp3",
+      "sha256": "8258ee3facb9b1b2b60b8e968e85f7ba017f0c7da913e30ebfe9a6f32ab6e3fe",
+      "sizeBytes": 4420,
+      "sampleRate": 22050,
+      "channels": 1,
+      "frames": 44117,
+      "encoding": "mp3"
+    }
+  }
+}

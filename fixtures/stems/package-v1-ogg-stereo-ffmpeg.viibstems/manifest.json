@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "requiredFeatures": [
+    "compressed-stems-v1"
+  ],
+  "source": {
+    "filename": "codec-source-stereo.wav",
+    "sha256": "c6b497c806355439fb51c54783b662cddb63d64e1a5b183d4ecfd374a87815d4",
+    "duration": 1.0003854875283447,
+    "sizeBytes": 176512
+  },
+  "stemLayout": "six",
+  "generator": {
+    "name": "ViiB-StemLab",
+    "version": "0.2.0"
+  },
+  "model": {
+    "name": "impulses",
+    "version": "1",
+    "engine": "synthetic",
+    "device": "cpu"
+  },
+  "audio": {
+    "sampleRate": 44100,
+    "channels": 2,
+    "frames": 44117
+  },
+  "timing": {
+    "decoderDelayFrames": 0,
+    "startTrimFrames": 0
+  },
+  "stems": {
+    "vocals": {
+      "path": "vocals.ogg",
+      "sha256": "39b58fab30e094ed23a337c14899ab333453d1574ff6a3ba08422de95a76d31b",
+      "sizeBytes": 5040,
+      "sampleRate": 44100,
+      "channels": 2,
+      "frames": 44117,
+      "encoding": "vorbis"
+    },
+    "drums": {
+      "path": "drums.ogg",
+      "sha256": "8f6493e172d7d5c8df394c941c5aa928eee970770870043bf15b78d4967e198e",
+      "sizeBytes": 5040,
+      "sampleRate": 44100,
+      "channels": 2,
+      "frames": 44117,
+      "encoding": "vorbis"
+    },
+    "bass": {
+      "path": "bass.ogg",
+      "sha256": "78b65854e238d11e28c4656b54ffbab44cd6437925b8739996ae7c514599315f",
+      "sizeBytes": 5040,
+      "sampleRate": 44100,
+      "channels": 2,
+      "frames": 44117,
+      "encoding": "vorbis"
+    },
+    "guitar": {
+      "path": "guitar.ogg",
+      "sha256": "4f2c6c71ab51ac2adec06cab379f94459a3427272e46bbdd052a2d4e48ba7f4c",
+      "sizeBytes": 5040,
+      "sampleRate": 44100,
+      "channels": 2,
+      "frames": 44117,
+      "encoding": "vorbis"
+    },
+    "piano": {
+      "path": "piano.ogg",
+      "sha256": "4cfa5a5ab381d38ffb5666cbff5a19ae8536b37352ade23936c5fc18dedf970e",
+      "sizeBytes": 5040,
+      "sampleRate": 44100,
+      "channels": 2,
+      "frames": 44117,
+      "encoding": "vorbis"
+    },
+    "other": {
+      "path": "other.ogg",
+      "sha256": "eb58abad8202a5bfea98f96c0559a3d8f641cab4addcb86610738336017c1bce",
+      "sizeBytes": 5040,
+      "sampleRate": 44100,
+      "channels": 2,
+      "frames": 44117,
+      "encoding": "vorbis"
+    }
+  }
+}

@@ -4,6 +4,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -35,12 +36,18 @@ const maxStemValidationCacheEntries = 64
 // artifact: a replacement can preserve both and otherwise reuse stale package
 // validation.
 func validatedStemPackage(packagePath string) (stems.Validation, error) {
+	return validatedStemPackageContext(context.Background(), packagePath)
+}
+func validatedStemPackageContext(ctx context.Context, packagePath string) (stems.Validation, error) {
+	if err := ctx.Err(); err != nil {
+		return stems.Validation{}, err
+	}
 	root, err := filepath.Abs(packagePath)
 	if err != nil {
 		return stems.Validation{}, err
 	}
 	root = filepath.Clean(root)
-	before, manifest, err := stemPackageSignature(root)
+	before, manifest, err := stemPackageSignatureContext(ctx, root)
 	if err != nil {
 		return stems.Validation{}, err
 	}
@@ -51,14 +58,14 @@ func validatedStemPackage(packagePath string) (stems.Validation, error) {
 	if ok && cached.signature == before {
 		return cached.validation, nil
 	}
-	validation, err := stems.ValidatePackage(root)
+	validation, err := stems.ValidatePackageContext(ctx, root)
 	if err != nil {
 		return stems.Validation{}, err
 	}
 	if !reflect.DeepEqual(validation.Manifest, manifest) {
 		return stems.Validation{}, fmt.Errorf("stem manifest changed during validation")
 	}
-	after, _, err := stemPackageSignature(root)
+	after, _, err := stemPackageSignatureContext(ctx, root)
 	if err != nil {
 		return stems.Validation{}, err
 	}
@@ -78,6 +85,9 @@ func validatedStemPackage(packagePath string) (stems.Validation, error) {
 }
 
 func stemPackageSignature(root string) (string, stems.Manifest, error) {
+	return stemPackageSignatureContext(context.Background(), root)
+}
+func stemPackageSignatureContext(ctx context.Context, root string) (string, stems.Manifest, error) {
 	var zero stems.Manifest
 	if err := rejectSymlinkPath(root); err != nil {
 		return "", zero, err
@@ -124,7 +134,7 @@ func stemPackageSignature(root string) (string, stems.Manifest, error) {
 		if !stat.Mode().IsRegular() {
 			return "", zero, fmt.Errorf("stem artifact is not a regular file")
 		}
-		actualHash, hashErr := stemArtifactSHA256(path)
+		actualHash, hashErr := stemArtifactSHA256Context(ctx, path)
 		if hashErr != nil {
 			return "", zero, hashErr
 		}
@@ -137,14 +147,30 @@ func stemPackageSignature(root string) (string, stems.Manifest, error) {
 }
 
 func stemArtifactSHA256(path string) (string, error) {
+	return stemArtifactSHA256Context(context.Background(), path)
+}
+func stemArtifactSHA256Context(ctx context.Context, path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
 	h := sha256.New()
-	if _, err = io.Copy(h, f); err != nil {
+	if _, err = io.Copy(h, stemContextReader{ctx: ctx, reader: f}); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// Avoid io.ReaderFrom shortcuts so cancellation is observed between copy blocks.
+type stemContextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r stemContextReader) Read(buffer []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(buffer)
 }

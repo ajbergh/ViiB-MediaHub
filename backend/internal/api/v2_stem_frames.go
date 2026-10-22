@@ -108,7 +108,7 @@ func (a *API) getStemFramesV2(w http.ResponseWriter, r *http.Request) {
 		stemError(w, r, http.StatusConflict, "stem_package_unsafe", "Stem package path is unsafe", false)
 		return
 	}
-	validated, err := validatedStemPackage(root)
+	validated, err := validatedStemPackageContext(r.Context(), root)
 	if err != nil {
 		stemError(w, r, http.StatusConflict, "stem_package_changed", "Stem package failed current validation", false)
 		return
@@ -117,7 +117,7 @@ func (a *API) getStemFramesV2(w http.ResponseWriter, r *http.Request) {
 		stemError(w, r, http.StatusConflict, "stem_package_changed", "Stem package identity differs from the registered package", false)
 		return
 	}
-	if !stemSourceMatches(song, validated.Manifest) {
+	if sourceMatches, matchErr := stemSourceMatchesContext(r.Context(), song, validated.Manifest, ""); matchErr != nil || !sourceMatches {
 		stemError(w, r, http.StatusConflict, "stem_source_stale", "Stem package no longer matches the local source audio", false)
 		return
 	}
@@ -135,7 +135,7 @@ func (a *API) getStemFramesV2(w http.ResponseWriter, r *http.Request) {
 	pcm := make(map[stems.StemName][]float32, len(validated.Manifest.Stems))
 	for _, name := range order {
 		artifact := validated.Manifest.Stems[name]
-		samples, readErr := stems.ReadPCMFrames(validated.Files[name], artifact, start, count)
+		samples, readErr := stems.ReadPCMFramesContext(r.Context(), validated.Files[name], artifact, start, count)
 		if readErr != nil {
 			stemError(w, r, http.StatusConflict, "stem_package_changed", "Stem artifact changed or could not be read", false)
 			return
@@ -147,7 +147,7 @@ func (a *API) getStemFramesV2(w http.ResponseWriter, r *http.Request) {
 		stemError(w, r, http.StatusConflict, "stem_frames_unavailable", "Unable to pack aligned stem frames", false)
 		return
 	}
-	current, err := validatedStemPackage(root)
+	current, err := validatedStemPackageContext(r.Context(), root)
 	if err != nil || !registeredPackageMatches(*set, current.Manifest) {
 		stemError(w, r, http.StatusConflict, "stem_package_changed", "Stem package changed before frame publication", false)
 		return

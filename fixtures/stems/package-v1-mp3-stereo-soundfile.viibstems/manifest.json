@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "requiredFeatures": [
+    "compressed-stems-v1"
+  ],
+  "source": {
+    "filename": "codec-source-stereo.wav",
+    "sha256": "c6b497c806355439fb51c54783b662cddb63d64e1a5b183d4ecfd374a87815d4",
+    "duration": 1.0003854875283447,
+    "sizeBytes": 176512
+  },
+  "stemLayout": "six",
+  "generator": {
+    "name": "ViiB-StemLab",
+    "version": "0.2.0"
+  },
+  "model": {
+    "name": "impulses",
+    "version": "1",
+    "engine": "synthetic",
+    "device": "cpu"
+  },
+  "audio": {
+    "sampleRate": 44100,
+    "channels": 2,
+    "frames": 44117
+  },
+  "timing": {
+    "decoderDelayFrames": 0,
+    "startTrimFrames": 0
+  },
+  "stems": {
+    "vocals": {
+      "path": "vocals.mp3",
+      "sha256": "e889cd9baedbee5c9f04e799854b7f24c078ba9460efab2ea8ebd225d15a0185",
+      "sizeBytes": 7136,
+      "sampleRate": 44100,
+      "channels": 2,
+      "frames": 44117,
+      "encoding": "mp3"
+    },
+    "drums": {
+      "path": "drums.mp3",
+      "sha256": "e889cd9baedbee5c9f04e799854b7f24c078ba9460efab2ea8ebd225d15a0185",
+      "sizeBytes": 7136,
+      "sampleRate": 44100,
+      "channels": 2,
+      "frames": 44117,
+      "encoding": "mp3"
+    },
+    "bass": {
+      "path": "bass.mp3",
+      "sha256": "e889cd9baedbee5c9f04e799854b7f24c078ba9460efab2ea8ebd225d15a0185",
+      "sizeBytes": 7136,
+      "sampleRate": 44100,
+      "channels": 2,
+      "frames": 44117,
+      "encoding": "mp3"
+    },
+    "guitar": {
+      "path": "guitar.mp3",
+      "sha256": "e889cd9baedbee5c9f04e799854b7f24c078ba9460efab2ea8ebd225d15a0185",
+      "sizeBytes": 7136,
+      "sampleRate": 44100,
+      "channels": 2,
+      "frames": 44117,
+      "encoding": "mp3"
+    },
+    "piano": {
+      "path": "piano.mp3",
+      "sha256": "e889cd9baedbee5c9f04e799854b7f24c078ba9460efab2ea8ebd225d15a0185",
+      "sizeBytes": 7136,
+      "sampleRate": 44100,
+      "channels": 2,
+      "frames": 44117,
+      "encoding": "mp3"
+    },
+    "other": {
+      "path": "other.mp3",
+      "sha256": "e889cd9baedbee5c9f04e799854b7f24c078ba9460efab2ea8ebd225d15a0185",
+      "sizeBytes": 7136,
+      "sampleRate": 44100,
+      "channels": 2,
+      "frames": 44117,
+      "encoding": "mp3"
+    }
+  }
+}
