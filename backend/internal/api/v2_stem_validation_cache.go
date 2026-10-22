@@ -84,9 +84,6 @@ func validatedStemPackageContext(ctx context.Context, packagePath string) (stems
 	return validation, nil
 }
 
-func stemPackageSignature(root string) (string, stems.Manifest, error) {
-	return stemPackageSignatureContext(context.Background(), root)
-}
 func stemPackageSignatureContext(ctx context.Context, root string) (string, stems.Manifest, error) {
 	var zero stems.Manifest
 	if err := rejectSymlinkPath(root); err != nil {
@@ -146,9 +143,6 @@ func stemPackageSignatureContext(ctx context.Context, root string) (string, stem
 	return hex.EncodeToString(h.Sum(nil)), manifest, nil
 }
 
-func stemArtifactSHA256(path string) (string, error) {
-	return stemArtifactSHA256Context(context.Background(), path)
-}
 func stemArtifactSHA256Context(ctx context.Context, path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
