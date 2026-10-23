@@ -352,9 +352,24 @@ func (a *API) refreshStemRegistryWithDiscoveryContext(ctx context.Context, songI
 		}
 	}
 	existingByPath := map[string]db.StemSet{}
+	retained := existing[:0]
 	for _, s := range existing {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		// Forget deleted packages, including explicit links and old unavailable
+		// records. Keep other filesystem failures diagnosable; a broken symlink
+		// still exists and must continue through package validation.
+		if _, statErr := os.Lstat(s.PackagePath); os.IsNotExist(statErr) {
+			if err := a.db.DeleteStemSet(songID, s.ID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+			continue
+		}
+		retained = append(retained, s)
 		existingByPath[strings.ToLower(filepath.Clean(s.PackagePath))] = s
 	}
+	existing = retained
 	seen := map[string]bool{}
 	storeCandidate := func(candidate stems.PackageCandidate) error {
 		if err := ctx.Err(); err != nil {

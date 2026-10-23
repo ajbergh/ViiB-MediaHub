@@ -5,6 +5,7 @@ package api
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -90,6 +91,96 @@ func TestStemLibraryScanRefreshesOnlyHashMatchingNestedPackages(t *testing.T) {
 	}
 	if len(songs) != 1 || songs[0].ID != "local-track" {
 		t.Fatalf("stem scan changed the music catalog: %+v", songs)
+	}
+}
+
+func TestStemLibraryRescanRemovesDeletedPackages(t *testing.T) {
+	for _, mode := range []string{"library", "adjacent", "explicit", "unavailable"} {
+		t.Run(mode, func(t *testing.T) {
+			root := t.TempDir()
+			database, err := db.New(filepath.Join(root, "library.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer database.Close()
+			sourceBytes := []byte("source audio bytes")
+			source := filepath.Join(root, "track.ogg")
+			if err := os.WriteFile(source, sourceBytes, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := database.SaveSong(&db.Song{ID: "song", Title: "Track", FilePath: source, AddedAt: 1}); err != nil {
+				t.Fatal(err)
+			}
+			library := filepath.Join(root, "Stem Library")
+			if err := os.MkdirAll(library, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := database.SetStemLocations([]db.StemLocation{{ID: "stem-root", Path: library, Enabled: true}}); err != nil {
+				t.Fatal(err)
+			}
+			packagePath := filepath.Join(library, "track.viibstems")
+			if mode == "adjacent" || mode == "explicit" {
+				packagePath = filepath.Join(root, "track.viibstems")
+			}
+			writeStemLibraryTestPackage(t, packagePath, sourceBytes)
+			validation, err := stems.ValidatePackage(packagePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			set := stemSetFromValidation("song", packagePath, mode, validation.Manifest, validation.Files, mode == "explicit", "ready", "")
+			if mode == "unavailable" {
+				set.Status = "unavailable" // Also repair records left by earlier scans.
+			}
+			if err := database.UpsertStemSet(set); err != nil {
+				t.Fatal(err)
+			}
+			if err := database.EnsureLibrarySyncSchema(); err != nil {
+				t.Fatal(err)
+			}
+			before, err := database.LibraryRevision()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.RemoveAll(packagePath); err != nil {
+				t.Fatal(err)
+			}
+			parameters, _ := json.Marshal(map[string][]string{"locations": {library}})
+			api := &API{db: database}
+			api.runStemLibraryScanJob(db.Job{ID: "rescan", Type: "stem_library_scan", Parameters: parameters, Priority: 10})
+			sets, err := database.ListStemSets("song")
+			if err != nil || len(sets) != 0 {
+				t.Fatalf("deleted package still registered: sets=%+v err=%v", sets, err)
+			}
+			registry, err := sql.Open("sqlite", filepath.Join(root, "library.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer registry.Close()
+			var artifactCount int
+			if err := registry.QueryRow("SELECT COUNT(*) FROM track_stems").Scan(&artifactCount); err != nil {
+				t.Fatal(err)
+			}
+			if artifactCount != 0 {
+				t.Fatalf("deleted package left %d orphaned stem artifacts", artifactCount)
+			}
+			statuses, err := database.ListStemStatuses([]string{"song"})
+			if err != nil || statuses["song"] != "none" {
+				t.Fatalf("library status=%v err=%v, want none", statuses, err)
+			}
+			changes, err := database.GetLibraryChanges(before, 10)
+			if err != nil || len(changes.Changes) != 1 || changes.Changes[0].SongID != "song" {
+				t.Fatalf("expected library refresh for removed stems: changes=%+v err=%v", changes, err)
+			}
+			recorder := httptest.NewRecorder()
+			api.V2StemRoutes().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/song", nil))
+			var status stemStatusResponse
+			if err := json.Unmarshal(recorder.Body.Bytes(), &status); err != nil {
+				t.Fatal(err)
+			}
+			if recorder.Code != http.StatusOK || status.Status != "none" || len(status.StemSets) != 0 {
+				t.Fatalf("unexpected status after deletion: %d %s", recorder.Code, recorder.Body.String())
+			}
+		})
 	}
 }
 
