@@ -61,6 +61,7 @@ export interface OperationJob {
   status: JobStatus;
   progressCurrent: number;
   progressTotal: number;
+  priority?: number;
   message?: string;
   parameters?: Record<string, unknown>;
   result?: Record<string, unknown>;

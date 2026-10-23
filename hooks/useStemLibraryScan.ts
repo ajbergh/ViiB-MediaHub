@@ -14,6 +14,7 @@ export function useStemLibraryScan(backendAvailable: boolean) {
   const admitting = useRef(false);
   const jobID = job?.id;
   const active = Boolean(job && !terminal(job));
+  const canPromote = Boolean(job && ['queued', 'running'].includes(job.status) && job.priority !== undefined && job.priority < 50);
 
   useEffect(() => () => action.current?.abort(), []);
 
@@ -52,19 +53,20 @@ export function useStemLibraryScan(backendAvailable: boolean) {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
-      let finished = false;
       try {
         const next = await jobsV2.get(jobID, controller.signal);
         if (controller.signal.aborted) return;
-        setJob(previous => previous?.id === jobID && next.updatedAt >= previous.updatedAt ? next : previous);
+        setJob(previous => previous?.id === jobID && next.updatedAt >= previous.updatedAt ?
+          { ...next, priority: Math.max(next.priority ?? 0, previous.priority ?? 0) } : previous);
         setProgressError('');
-        finished = terminal(next);
       } catch {
         if (!controller.signal.aborted) {
           setProgressError('Unable to refresh scan progress. Retrying automatically; the scan may still be running.');
         }
       }
-      if (!controller.signal.aborted && !finished) timer = setTimeout(() => void poll(), 1200);
+      // The effect stops polling once an accepted terminal snapshot renders.
+      // A stale terminal response must not strand the newer active snapshot.
+      if (!controller.signal.aborted) timer = setTimeout(() => void poll(), 1200);
     };
     void poll();
     return () => {
@@ -86,7 +88,8 @@ export function useStemLibraryScan(backendAvailable: boolean) {
       const accepted = await api.scanStemLibraries(controller.signal);
       if (controller.signal.aborted) return;
       // Keep the accepted ID even if the first status request fails.
-      setJob({ id: accepted.jobId, type: 'stem_library_scan', status: 'queued',
+      setJob(previous => previous?.id === accepted.jobId ? { ...previous, priority: 50 } :
+        { id: accepted.jobId, type: 'stem_library_scan', status: 'queued', priority: 50,
         progressCurrent: 0, progressTotal: 0, message: 'Queued Stem Library scan',
         attempts: 0, createdAt: Date.now(), updatedAt: 0 });
     } catch (cause) {
@@ -114,5 +117,5 @@ export function useStemLibraryScan(backendAvailable: boolean) {
     }
   };
 
-  return { job, active, starting, canceling, error, progressError, start, cancel };
+  return { job, active, canPromote, starting, canceling, error, progressError, start, cancel };
 }

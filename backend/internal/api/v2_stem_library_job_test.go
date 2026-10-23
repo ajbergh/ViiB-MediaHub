@@ -402,17 +402,22 @@ func TestExplicitLinkJobRejectsSymlinkPackageRoot(t *testing.T) {
 	}
 }
 
-func TestStemLibraryScanRequiresASeparateConfiguredRoot(t *testing.T) {
+func TestStemLibraryScanSupportsAdjacentPackagesWithoutConfiguredRoots(t *testing.T) {
 	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	router := (&API{db: database}).V2StemRoutes()
+	api := &API{db: database, jobSchedulerOn: true, jobWake: make(chan struct{}, 2)}
+	router := api.V2StemRoutes()
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/scan", nil))
-	if recorder.Code != http.StatusConflict || !strings.Contains(recorder.Body.String(), "Stem Library location") {
+	if recorder.Code != http.StatusAccepted {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	jobs, err := database.ListJobs(10, "")
+	if err != nil || len(jobs) != 1 || string(jobs[0].Parameters) != `{"locations":[]}` {
+		t.Fatalf("adjacent-only scan not queued: %+v err=%v", jobs, err)
 	}
 }
 

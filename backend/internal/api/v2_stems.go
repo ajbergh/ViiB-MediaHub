@@ -150,10 +150,6 @@ func (a *API) scanStemLibrariesV2(w http.ResponseWriter, r *http.Request) {
 			roots = append(roots, location.Path)
 		}
 	}
-	if len(roots) == 0 {
-		stemError(w, r, http.StatusConflict, "stem_library_empty", "Add a Stem Library location before scanning", false)
-		return
-	}
 	roots, err = a.validateStemLibraryScanRoots(roots)
 	if err != nil {
 		stemError(w, r, http.StatusConflict, "stem_library_configuration_changed", err.Error(), false)

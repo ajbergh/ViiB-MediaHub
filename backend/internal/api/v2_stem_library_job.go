@@ -174,13 +174,20 @@ func (a *API) runStemLibraryScanJob(job db.Job) {
 	if !a.updateStemScanProgress(job.ID, 0, 0, "Discovering packages in Stem Libraries") {
 		return
 	}
+	progressFailed := false
 	rootDiscovery, err := stems.DiscoverLibraryPackagesWithProgressContext(ctx, locations, func(path string, checked int) error {
 		if !a.updateStemScanProgress(job.ID, 0, 0, fmt.Sprintf("Validating stem package %d: %s", checked+1, filepath.Base(path))) {
+			progressFailed = true
 			return fmt.Errorf("unable to save discovery progress")
 		}
 		return nil
 	})
 	if err != nil {
+		if progressFailed {
+			// updateStemScanProgress already settled this failure with its
+			// specific diagnostic; do not replace it with a discovery error.
+			return
+		}
 		if ctx.Err() != nil {
 			a.cancelStemLibraryJob(job.ID, "Stem Library scan canceled during package discovery")
 			return
@@ -424,6 +431,11 @@ func (a *API) runStemLibraryScanJob(job db.Job) {
 	message := fmt.Sprintf("Stem Library scan complete: %d tracks checked, %d failed, %d packages, %d discovery issues", refreshed, failed, len(rootDiscovery.Candidates), len(rootDiscovery.Rejected))
 	if geometryLimitReached {
 		message += fmt.Sprintf(". PCM32 fallback skipped %d additional package audio geometries; retagged tracks that match only those layouts may remain unmatched", uncheckedGeometryCount)
+	}
+	// Include failed/skipped tracks in the completed count even when they
+	// continued before the periodic per-track progress update.
+	if !a.updateStemScanProgress(job.ID, int64(len(localSongs)), int64(len(localSongs)), message) {
+		return
 	}
 	completed, completeErr := a.db.CompleteJobIfRunning(job.ID, result, message)
 	if completeErr == nil && !completed && a.jobCancellationRequested(job.ID) {

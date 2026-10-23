@@ -248,4 +248,40 @@ describe('Settings Add Folder browser', () => {
     expect(mocks.getJob).toHaveBeenCalledWith('late-startup', expect.any(AbortSignal));
     expect(mocks.scanStemLibraries).not.toHaveBeenCalled();
   });
+
+  it.each(['queued', 'running', 'adjacent-only'])('promotes a %s background scan without losing progress', async scenario => {
+    vi.useFakeTimers();
+    const status = scenario === 'adjacent-only' ? 'queued' : scenario;
+    const background = { id: 'startup', type: 'stem_library_scan', status, priority: 10,
+      progressCurrent: 3, progressTotal: 10, message: 'Checking stems', attempts: 1, createdAt: 1, updatedAt: 1 };
+    mocks.getStemLibraryLocations.mockResolvedValue(scenario === 'adjacent-only' ? [] : [{ id: 'root', path: 'C:\\Stems', enabled: true }]);
+    mocks.listJobs.mockResolvedValue({ jobs: [background] });
+    mocks.getJob.mockResolvedValue(background);
+    mocks.scanStemLibraries.mockResolvedValue({ jobId: 'startup', status: 'accepted' });
+    await act(async () => root.render(React.createElement(Settings)));
+    expect(buttonNamed('Run scan now').disabled).toBe(false);
+    await click(buttonNamed('Run scan now'));
+    expect(mocks.scanStemLibraries).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('Checking stems (3/10)');
+    expect(buttonNamed('Scan Stem Libraries').disabled).toBe(true);
+    // An older in-flight snapshot must not undo the manual promotion.
+    await act(async () => { await vi.advanceTimersByTimeAsync(1200); });
+    expect(buttonNamed('Scan Stem Libraries').disabled).toBe(true);
+    expect(container.textContent).not.toContain('Run scan now');
+  });
+
+  it('continues polling when an older terminal response is ignored', async () => {
+    vi.useFakeTimers();
+    const running = { id: 'startup', type: 'stem_library_scan', status: 'running', priority: 50,
+      progressCurrent: 3, progressTotal: 10, message: 'Checking stems', attempts: 1, createdAt: 1, updatedAt: 10 };
+    mocks.listJobs.mockResolvedValue({ jobs: [running] });
+    mocks.getJob.mockResolvedValueOnce({ ...running, status: 'succeeded', updatedAt: 9 })
+      .mockResolvedValue({ ...running, status: 'succeeded', message: 'Scan complete', updatedAt: 11 });
+    await act(async () => root.render(React.createElement(Settings)));
+    expect(container.textContent).toContain('Checking stems');
+    await act(async () => { await vi.advanceTimersByTimeAsync(1200); });
+    expect(mocks.getJob).toHaveBeenCalledTimes(2);
+    expect(container.textContent).toContain('Scan complete');
+    expect(buttonNamed('Scan Stem Libraries').disabled).toBe(false);
+  });
 });

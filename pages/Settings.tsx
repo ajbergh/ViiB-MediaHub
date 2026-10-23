@@ -1131,7 +1131,7 @@ export const Settings: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-3 flex-wrap">
                         <Button variant="secondary" onClick={openStemFolderBrowser} disabled={savingStemLocations} leftIcon={<Plus size={18} />} className="font-bold">Add Stem Library</Button>
-                        <Button variant="primary" accent="brand" onClick={() => void stemScan.start()} disabled={stemLibraryLocations.length === 0 || savingStemLocations || stemScan.starting || stemScan.active} leftIcon={stemScan.starting || (stemScanJob?.status === 'running' && !stemScan.progressError) ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />} className="font-bold">{stemScan.starting ? 'Starting scan…' : 'Scan Stem Libraries'}</Button>
+                        <Button variant="primary" accent="brand" onClick={() => void stemScan.start()} disabled={savingStemLocations || stemScan.starting || (stemScan.active && !stemScan.canPromote)} leftIcon={stemScan.starting || (stemScanJob?.status === 'running' && !stemScan.progressError) ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />} className="font-bold">{stemScan.starting ? 'Starting scan…' : stemScan.canPromote ? 'Run scan now' : 'Scan Stem Libraries'}</Button>
                         {stemScan.active && <Button variant="secondary" onClick={() => void stemScan.cancel()} disabled={stemScan.canceling || stemScanJob?.status === 'canceling'}>Cancel scan</Button>}
                     </div>
                     {stemLibraryError && <p role="alert" className="text-sm text-error mt-3">{stemLibraryError}</p>}
