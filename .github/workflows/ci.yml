@@ -421,6 +421,9 @@ jobs:
           if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
           New-Item -ItemType Directory -Path "backend\cmd\wails\frontend" -Force | Out-Null
           Copy-Item -Recurse "dist" $dest
+      - name: Prepare Windows icons
+        shell: pwsh
+        run: ./scripts/prepare-windows-icons.ps1
       - name: Build Wails application
         id: wails_build
         continue-on-error: true

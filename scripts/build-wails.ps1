@@ -192,6 +192,8 @@ Write-Host "  ✓ Frontend copied to $distDest" -ForegroundColor Green
 
 Write-Host "`n🔨 [3/3] Building Wails application..." -ForegroundColor Yellow
 
+& (Join-Path $PSScriptRoot 'prepare-windows-icons.ps1')
+
 Push-Location $wailsDir
 try {
     # Set CGO environment

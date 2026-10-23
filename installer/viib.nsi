@@ -39,8 +39,8 @@ VIAddVersionKey "LegalCopyright" "Copyright ${PRODUCT_PUBLISHER}"
 ; Interface Settings
 
 !define MUI_ABORTWARNING
-!define MUI_ICON "..\backend\cmd\wails\build\appicon.ico"
-!define MUI_UNICON "..\backend\cmd\wails\build\appicon.ico"
+!define MUI_ICON "..\backend\cmd\wails\appicon.ico"
+!define MUI_UNICON "..\backend\cmd\wails\appicon.ico"
 
 ; Welcome page
 !define MUI_WELCOMEPAGE_TITLE "Welcome to ${PRODUCT_NAME} Setup"
