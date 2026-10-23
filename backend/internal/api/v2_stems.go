@@ -150,10 +150,6 @@ func (a *API) scanStemLibrariesV2(w http.ResponseWriter, r *http.Request) {
 			roots = append(roots, location.Path)
 		}
 	}
-	if len(roots) == 0 {
-		stemError(w, r, http.StatusConflict, "stem_library_empty", "Add a Stem Library location before scanning", false)
-		return
-	}
 	roots, err = a.validateStemLibraryScanRoots(roots)
 	if err != nil {
 		stemError(w, r, http.StatusConflict, "stem_library_configuration_changed", err.Error(), false)
@@ -164,13 +160,14 @@ func (a *API) scanStemLibrariesV2(w http.ResponseWriter, r *http.Request) {
 		stemError(w, r, http.StatusInternalServerError, "stem_job_create_failed", "Unable to prepare Stem Library scan", true)
 		return
 	}
-	job := db.Job{ID: uuid.NewString(), Type: "stem_library_scan", Parameters: raw, Priority: 10, Message: "Queued Stem Library scan"}
-	if err = a.db.CreateJob(job); err != nil {
+	job := db.Job{ID: uuid.NewString(), Type: "stem_library_scan", Parameters: raw, Priority: analysisForegroundPriority, Message: "Queued Stem Library scan"}
+	jobID, err := a.db.QueueStemLibraryScan(job)
+	if err != nil {
 		stemError(w, r, http.StatusInternalServerError, "stem_job_create_failed", "Unable to queue Stem Library scan", true)
 		return
 	}
 	a.wakeJobScheduler()
-	respondV2JSON(w, http.StatusAccepted, map[string]string{"jobId": job.ID, "status": "accepted"})
+	respondV2JSON(w, http.StatusAccepted, map[string]string{"jobId": jobID, "status": "accepted"})
 }
 
 func (a *API) getStemStatusV2(w http.ResponseWriter, r *http.Request) {
@@ -337,10 +334,6 @@ func (a *API) refreshStemRegistryWithDiscoveryContext(ctx context.Context, songI
 		}
 		return nil
 	}
-	hash, hashErr := stemSourceHashes.SHA256Context(ctx, song.FilePath)
-	if hashErr != nil {
-		return hashErr
-	}
 	var discovery stems.DiscoveryResult
 	if knownDiscovery != nil {
 		discovery = *knownDiscovery
@@ -352,8 +345,40 @@ func (a *API) refreshStemRegistryWithDiscoveryContext(ctx context.Context, songI
 		}
 	}
 	existingByPath := map[string]db.StemSet{}
+	retained := existing[:0]
 	for _, s := range existing {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		// Forget deleted packages, including explicit links and old unavailable
+		// records. Keep other filesystem failures diagnosable; a broken symlink
+		// still exists and must continue through package validation.
+		if _, statErr := os.Lstat(s.PackagePath); os.IsNotExist(statErr) {
+			if err := a.db.DeleteStemSet(songID, s.ID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+			continue
+		}
+		retained = append(retained, s)
 		existingByPath[strings.ToLower(filepath.Clean(s.PackagePath))] = s
+	}
+	existing = retained
+	// Cleanup-only refreshes need no source hashing. A startup scan with no
+	// packages should not read the entire music collection just to remove rows.
+	needsHash := false
+	for _, candidate := range discovery.Candidates {
+		needsHash = needsHash || !candidate.SourceIdentityChecked
+	}
+	for _, old := range existing {
+		needsHash = needsHash || old.ExplicitlyLinked
+	}
+	var hash string
+	if needsHash {
+		var hashErr error
+		hash, hashErr = stemSourceHashes.SHA256Context(ctx, song.FilePath)
+		if hashErr != nil {
+			return hashErr
+		}
 	}
 	seen := map[string]bool{}
 	storeCandidate := func(candidate stems.PackageCandidate) error {

@@ -13,6 +13,8 @@ This document is the v1 interchange contract. A package is a directory ending in
 - A v1 producer must write all fields shown below, including zero-valued timing compensation fields.
 - Stem map keys and layout membership are canonical. A `four` package contains exactly `vocals`, `drums`, `bass`, and `other`; a `six` package contains exactly `vocals`, `drums`, `bass`, `guitar`, `piano`, and `other`.
 
+StemLab now defaults to `htdemucs_ft` and writes the `four` layout. MediaHub accepts both layouts without a schema version change. Its standard DJ controls are VOCAL, DRUMS, BASS, and MUSIC: `other` feeds MUSIC for four-stem packages; `guitar + piano + other` feeds MUSIC for legacy six-stem packages. Guitar and piano files are not required for a four-stem package.
+
 ## Manifest
 
 Example six-stem manifest (all example digests are placeholders):

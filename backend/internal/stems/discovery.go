@@ -142,8 +142,15 @@ func DiscoverLibraryPackages(libraryDirs []string) DiscoveryResult {
 // DiscoverLibraryPackagesContext walks and validates packages while observing
 // cancellation between directory entries and artifact reads.
 func DiscoverLibraryPackagesContext(ctx context.Context, libraryDirs []string) (DiscoveryResult, error) {
+	return DiscoverLibraryPackagesWithProgressContext(ctx, libraryDirs, nil)
+}
+
+// DiscoverLibraryPackagesWithProgressContext reports each package before its
+// potentially expensive validation so callers can display useful progress.
+func DiscoverLibraryPackagesWithProgressContext(ctx context.Context, libraryDirs []string, progress func(path string, checked int) error) (DiscoveryResult, error) {
 	result := DiscoveryResult{}
 	seen := make(map[string]bool)
+	var progressErr error
 	appendCandidate := func(path string) error {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -159,6 +166,12 @@ func DiscoverLibraryPackagesContext(ctx context.Context, libraryDirs []string) (
 			return nil
 		}
 		seen[key] = true
+		if progress != nil {
+			if err := progress(abs, len(seen)-1); err != nil {
+				progressErr = err
+				return err
+			}
+		}
 		validation, err := ValidatePlayablePackageContext(ctx, abs)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -230,6 +243,9 @@ func DiscoverLibraryPackagesContext(ctx context.Context, libraryDirs []string) (
 			return nil
 		})
 		if err != nil {
+			if progressErr != nil {
+				return result, progressErr
+			}
 			if ctx.Err() != nil {
 				return result, ctx.Err()
 			}

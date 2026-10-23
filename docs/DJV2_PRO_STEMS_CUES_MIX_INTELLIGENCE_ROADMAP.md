@@ -755,8 +755,8 @@ Derived DJ groups do not need separate files initially.
 
 `stem_layout` should support at least:
 
-- `six` (vocals, drums, bass, guitar, piano, other), as produced by `htdemucs_6s`;
-- `four` (vocals, drums, bass, other), as produced by four-source models such as `htdemucs` / `htdemucs_ft` and by most third-party generators.
+- `four` (vocals, drums, bass, other), the StemLab default produced by `htdemucs_ft`;
+- `six` (vocals, drums, bass, guitar, piano, other), retained for compatibility with existing `htdemucs_6s` packages.
 
 The four-button DJ mapping is:
 
@@ -995,16 +995,16 @@ Its primary responsibilities:
 
 MediaHub never requires ViiB-StemLab to remain running during DJ playback.
 
-### 8.2 Initial model candidate
+### 8.2 Default generation model
 
-Use Demucs `htdemucs_6s` as the first production candidate for ViiB-StemLab because it provides:
+ViiB-StemLab defaults to Demucs `htdemucs_ft`, which provides:
 
 - vocals;
 - drums;
 - bass;
-- guitar;
-- piano;
 - other.
+
+Existing six-stem `htdemucs_6s` packages remain supported. New generation does not require separate guitar or piano stems.
 
 StemLab should auto-select:
 
@@ -1029,11 +1029,9 @@ Recommended directory shape:
         vocals.flac
         drums.flac
         bass.flac
-        guitar.flac
-        piano.flac
         other.flac
 
-The package may use WAV during early development, but FLAC should be evaluated as the default cache format because six uncompressed PCM files have substantial disk cost (six stereo 16-bit 44.1 kHz stems use about 60 MB per minute of audio; float32 doubles that).
+The package may use WAV during early development, but FLAC should be evaluated as the default cache format because four uncompressed PCM files have substantial disk cost (four stereo 16-bit 44.1 kHz stems use about 40 MB per minute of audio; float32 doubles that).
 
 FLAC packages depend on adding a backend FLAC decoder first (section 2.1.1). v1 validation must declare the allowed stem encodings explicitly, for example PCM16/float32 WAV now and FLAC once decodable, and reject everything else as **invalid** rather than failing at playback time.
 
@@ -1047,13 +1045,13 @@ Minimum manifest information:
         "audioSha256": "...",
         "duration": 355.21
       },
-      "stemLayout": "six",
+      "stemLayout": "four",
       "generator": {
         "name": "ViiB-StemLab",
         "version": "..."
       },
       "model": {
-        "name": "htdemucs_6s",
+        "name": "htdemucs_ft",
         "version": "..."
       },
       "audio": {
@@ -1065,8 +1063,6 @@ Minimum manifest information:
         "vocals": "vocals.flac",
         "drums": "drums.flac",
         "bass": "bass.flac",
-        "guitar": "guitar.flac",
-        "piano": "piano.flac",
         "other": "other.flac"
       }
     }
@@ -2194,7 +2190,7 @@ B6. DeckSource refactor
 B7. Stem transport worklet
 B8. Four-button DJ stem UI
 B9. Scratch/loop/sync/key-lock parity
-B10. ViiB-StemLab: generator UI/CLI, htdemucs_6s, batch queue and package writer
+B10. ViiB-StemLab: generator UI/CLI, htdemucs_ft four-stem default, batch queue and package writer
 
 ### Workstream C — Mix intelligence
 
@@ -2294,7 +2290,7 @@ Deliver:
 
 Exit criteria:
 
-- valid six-stem packages are indexed without any generator runtime;
+- valid four-stem and legacy six-stem packages are indexed without any generator runtime;
 - corrupt/incomplete packages never become ready;
 - packages become stale when the source audio hash changes;
 - duplicate candidate packages resolve deterministically.
@@ -2307,7 +2303,7 @@ Initial StemLab deliverables should include:
 
 - desktop preparation UI;
 - CLI for automation/integration;
-- htdemucs_6s generation;
+- htdemucs_ft four-stem generation;
 - CPU/CUDA/MPS device selection;
 - batch queue;
 - progress/cancellation/retry;
@@ -2956,7 +2952,7 @@ MediaHub stem functionality is release-ready only when:
 - user-facing package errors are actionable;
 - normal DJ mode remains unchanged when no stems are available.
 
-First-party generation readiness is defined separately in the ViiB-StemLab repository and should include complete six-stem generation, device transparency, reliable cancellation, atomic package finalization and storage controls.
+First-party generation readiness is defined separately in the ViiB-StemLab repository and should include complete four-stem generation using `htdemucs_ft`, device transparency, reliable cancellation, atomic package finalization and storage controls.
 
 ---
 
