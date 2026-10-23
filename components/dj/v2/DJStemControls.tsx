@@ -220,7 +220,7 @@ export function DJStemControls({ deck, compact = false }: { deck: DeckId; compac
           <button type="button" className="dj-btn" data-deck-accent={deck} aria-pressed={!stemMode} onClick={() => void chooseMode('full')}
             disabled={changingMode} title="Play the original full track">FULL</button>
           <button type="button" className="dj-btn" data-deck-accent={deck} aria-pressed={stemMode} onClick={() => void chooseMode('stems')}
-            disabled={changingMode || !status.available} title={status.available ? 'Play the four prepared stems' : 'No valid stem package is available for this track'}>STEMS</button>
+            disabled={changingMode || !status.available} title={status.available ? 'Play the prepared stem mix' : 'No valid stem package is available for this track'}>STEMS</button>
         </div>
         <details className="dj-stems-popover">
           <summary className="dj-btn" aria-label={`Stem mix controls for Deck ${deck}`} title={statusLabel}>
@@ -282,7 +282,7 @@ export function DJStemControls({ deck, compact = false }: { deck: DeckId; compac
           aria-pressed={stemMode}
           onClick={() => void chooseMode('stems')}
           disabled={changingMode || !status.available}
-          title={status.available ? 'Play the four prepared stems' : 'No valid stem package is available for this track'}
+          title={status.available ? 'Play the prepared stem mix' : 'No valid stem package is available for this track'}
         >STEMS</button>
       </div>
 
