@@ -70,6 +70,39 @@ func TestValidatePackageDeterministicWAVFixture(t *testing.T) {
 	}
 }
 
+func TestValidateHTDemucsFTFourStemPackage(t *testing.T) {
+	dir := t.TempDir()
+	manifest := fixtureManifest(t, dir, LayoutFour)
+	manifest.Model = Provenance{Name: "htdemucs_ft", Version: "4.0.1"}
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ManifestFilename), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	validated, err := ValidatePackage(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if validated.Manifest.StemLayout != LayoutFour || len(validated.Files) != 4 {
+		t.Fatalf("unexpected four-stem package: %+v", validated)
+	}
+	for _, name := range []StemName{StemVocals, StemDrums, StemBass, StemOther} {
+		if _, ok := validated.Manifest.Stems[name]; !ok {
+			t.Fatalf("missing stem %s", name)
+		}
+	}
+	for _, name := range []StemName{StemGuitar, StemPiano} {
+		if _, ok := validated.Manifest.Stems[name]; ok {
+			t.Fatalf("unexpected stem %s", name)
+		}
+		if _, err := os.Stat(filepath.Join(dir, string(name)+".wav")); !os.IsNotExist(err) {
+			t.Fatalf("four-stem package should not require %s: %v", name, err)
+		}
+	}
+}
+
 func TestValidatePlayablePackageRejectsSymlinkedManifest(t *testing.T) {
 	dir := t.TempDir()
 	manifest := fixtureManifest(t, dir, LayoutFour)

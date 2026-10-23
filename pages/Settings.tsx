@@ -41,7 +41,7 @@ import { AudioOutputSettings } from '../components/AudioOutputSettings';
 import { HomeLayoutVariant, VisualizerMode, Song } from '../types';
 import { parseSong } from '../metadata';
 import { api } from '../services/api';
-import { jobsV2, type OperationJob } from '../services/jobsV2';
+import { useStemLibraryScan } from '../hooks/useStemLibraryScan';
 import { Button } from '../components/ui/Button';
 import { Page } from '../components/ui/Page';
 import { TextInput } from '../components/ui/TextInput';
@@ -108,7 +108,8 @@ export const Settings: React.FC = () => {
   const [browserPath, setBrowserPath] = useState('');
   const [stemLibraryLocations, setStemLibraryLocations] = useState<import('../services/api').StemLibraryLocation[]>([]);
   const [stemLibraryError, setStemLibraryError] = useState('');
-  const [stemScanJob, setStemScanJob] = useState<OperationJob | null>(null);
+  const stemScan = useStemLibraryScan(backendAvailable);
+  const stemScanJob = stemScan.job;
   const [savingStemLocations, setSavingStemLocations] = useState(false);
   
   // Enrichment State
@@ -402,16 +403,6 @@ export const Settings: React.FC = () => {
       }
   }, [backendAvailable]);
 
-  useEffect(() => {
-      if (!stemScanJob || ['succeeded', 'failed', 'canceled', 'interrupted'].includes(stemScanJob.status)) return;
-      const timer = window.setInterval(() => {
-          void jobsV2.get(stemScanJob.id).then(setStemScanJob).catch(error => {
-              console.error('Failed to refresh Stem Library scan progress', error);
-          });
-      }, 1200);
-      return () => window.clearInterval(timer);
-  }, [stemScanJob?.id, stemScanJob?.status]);
-
   // Load Spotify download and conversion settings
   useEffect(() => {
       const loadDownloadSettings = async () => {
@@ -629,16 +620,6 @@ export const Settings: React.FC = () => {
           setStemLibraryError('Unable to remove this Stem Library location.');
       } finally {
           setSavingStemLocations(false);
-      }
-  };
-
-  const startStemLibraryScan = async () => {
-      try {
-          const accepted = await api.scanStemLibraries();
-          setStemScanJob(await jobsV2.get(accepted.jobId));
-      } catch (error) {
-          console.error('Unable to start Stem Library scan', error);
-          setStemLibraryError(error instanceof Error ? error.message : 'Unable to start Stem Library scan.');
       }
   };
 
@@ -1150,10 +1131,13 @@ export const Settings: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-3 flex-wrap">
                         <Button variant="secondary" onClick={openStemFolderBrowser} disabled={savingStemLocations} leftIcon={<Plus size={18} />} className="font-bold">Add Stem Library</Button>
-                        <Button variant="primary" accent="brand" onClick={() => void startStemLibraryScan()} disabled={stemLibraryLocations.length === 0 || savingStemLocations || Boolean(stemScanJob && !['succeeded', 'failed', 'canceled', 'interrupted'].includes(stemScanJob.status))} leftIcon={stemScanJob && ['queued', 'running'].includes(stemScanJob.status) ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />} className="font-bold">Scan Stem Libraries</Button>
+                        <Button variant="primary" accent="brand" onClick={() => void stemScan.start()} disabled={savingStemLocations || stemScan.starting || (stemScan.active && !stemScan.canPromote)} leftIcon={stemScan.starting || (stemScanJob?.status === 'running' && !stemScan.progressError) ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />} className="font-bold">{stemScan.starting ? 'Starting scan…' : stemScan.canPromote ? 'Run scan now' : 'Scan Stem Libraries'}</Button>
+                        {stemScan.active && <Button variant="secondary" onClick={() => void stemScan.cancel()} disabled={stemScan.canceling || stemScanJob?.status === 'canceling'}>Cancel scan</Button>}
                     </div>
                     {stemLibraryError && <p role="alert" className="text-sm text-error mt-3">{stemLibraryError}</p>}
-                    {stemScanJob && <p role="status" className="text-sm text-brand font-mono mt-3">{stemScanJob.message}{stemScanJob.progressTotal > 0 ? ` (${stemScanJob.progressCurrent}/${stemScanJob.progressTotal})` : ''}</p>}
+                    {(stemScan.error || stemScan.progressError) && <p role="alert" className="text-sm text-error mt-3">{stemScan.error || stemScan.progressError}</p>}
+                    <p className="text-xs text-text-subtle mt-3">Stems are checked in the background at startup. New packages are found and deleted packages are removed automatically.</p>
+                    {stemScanJob && <p role="status" className="text-sm text-brand font-mono mt-3">{stemScanJob.status === 'paused' ? 'Stem Library scan paused in the background queue.' : stemScanJob.errorMessage || stemScanJob.message || stemScanJob.status}{stemScanJob.progressTotal > 0 ? ` (${stemScanJob.progressCurrent}/${stemScanJob.progressTotal})` : ''}</p>}
                 </div>
             )}
           </section>

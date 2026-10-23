@@ -37,6 +37,42 @@ func nullableJSON(value json.RawMessage) any {
 	return string(value)
 }
 
+// QueueStemLibraryScan coalesces startup and manual requests atomically. An
+// explicit request also releases the playback backoff of background work.
+func (d *DB) QueueStemLibraryScan(job Job) (string, error) {
+	if err := d.EnsureJobSchema(); err != nil {
+		return "", err
+	}
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+	now := time.Now().UnixMilli()
+	_, err = tx.Exec(`INSERT INTO operation_jobs
+		(id,type,status,priority,message,parameters,created_at,updated_at)
+		SELECT ?, 'stem_library_scan', 'queued', ?, ?, ?, ?, ?
+		WHERE NOT EXISTS (SELECT 1 FROM operation_jobs WHERE type='stem_library_scan'
+		AND status IN ('queued','running','paused') AND parameters=?)`,
+		job.ID, job.Priority, job.Message, string(job.Parameters), now, now, string(job.Parameters))
+	if err != nil {
+		return "", err
+	}
+	var id string
+	err = tx.QueryRow(`SELECT id FROM operation_jobs WHERE type='stem_library_scan'
+		AND status IN ('queued','running','paused') AND parameters=?
+		ORDER BY created_at DESC LIMIT 1`, string(job.Parameters)).Scan(&id)
+	if err != nil {
+		return "", err
+	}
+	_, err = tx.Exec(`UPDATE operation_jobs SET priority=MAX(priority,?),
+		available_at=CASE WHEN ? >= 50 THEN 0 ELSE available_at END WHERE id=?`, job.Priority, job.Priority, id)
+	if err != nil {
+		return "", err
+	}
+	return id, tx.Commit()
+}
+
 // StartJob atomically claims a queued, failed, or interrupted job for execution.
 func (d *DB) StartJob(id, message string) error {
 	now := time.Now().UnixMilli()
@@ -46,8 +82,8 @@ func (d *DB) StartJob(id, message string) error {
 		    started_at = ?, completed_at = NULL, error_code = NULL,
 		    error_message = NULL, updated_at = ?
 		WHERE id = ? AND status IN (?, ?, ?)
-          AND (type != 'analyze_tracks' OR NOT EXISTS (
-              SELECT 1 FROM operation_jobs active WHERE active.type='analyze_tracks'
+          AND (type NOT IN ('analyze_tracks','stem_library_scan') OR NOT EXISTS (
+              SELECT 1 FROM operation_jobs active WHERE active.type=operation_jobs.type
               AND active.status IN ('running','canceling')))
 	`, JobStatusRunning, message, now, now, id,
 		JobStatusQueued, JobStatusFailed, JobStatusInterrupted)
@@ -78,8 +114,8 @@ func (d *DB) ClaimNextQueuedJob(message string) (Job, error) {
 		UPDATE operation_jobs SET status = ?, message = ?, attempts = attempts + 1,
 		started_at = ?, completed_at = NULL, error_code = NULL, error_message = NULL, updated_at = ?
 		WHERE id = (SELECT id FROM operation_jobs q WHERE status = ? AND available_at <= ?
-                      AND (q.type != 'analyze_tracks' OR NOT EXISTS (
-                          SELECT 1 FROM operation_jobs active WHERE active.type='analyze_tracks'
+                      AND (q.type NOT IN ('analyze_tracks','stem_library_scan') OR NOT EXISTS (
+                          SELECT 1 FROM operation_jobs active WHERE active.type=q.type
                           AND active.status IN ('running','canceling')))
 		            ORDER BY priority DESC, created_at ASC LIMIT 1)
 		  AND status = ?
@@ -212,8 +248,8 @@ func (d *DB) RequestJobCancellation(id string) (bool, error) {
 	// reject a newly canceling job and leave it stuck forever.
 	result, err := d.conn.Exec(`
 		UPDATE operation_jobs SET status = ?, message = 'Canceled before start',
-		completed_at = ?, updated_at = ? WHERE id = ? AND status = ?
-	`, JobStatusCanceled, now, now, id, JobStatusQueued)
+		completed_at = ?, updated_at = ? WHERE id = ? AND status IN (?, ?)
+	`, JobStatusCanceled, now, now, id, JobStatusQueued, JobStatusPaused)
 	if err != nil {
 		return false, err
 	}

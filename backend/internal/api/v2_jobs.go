@@ -207,7 +207,26 @@ func (a *API) retryJobV2(w http.ResponseWriter, r *http.Request) {
 		ID: uuid.NewString(), Type: original.Type, Status: db.JobStatusQueued,
 		Parameters: original.Parameters, Priority: original.Priority, Message: "Queued as retry of " + original.ID,
 	}
-	if err := a.db.CreateJob(retry); err != nil {
+	if retry.Type == "stem_library_scan" {
+		var params struct {
+			Locations []string `json:"locations"`
+		}
+		if err := json.Unmarshal(retry.Parameters, &params); err != nil {
+			respondV2Error(w, r, http.StatusConflict, "invalid_stem_library_scan", "The original Stem Library scan parameters are invalid", false, nil)
+			return
+		}
+		if _, err := a.validateStemLibraryScanRoots(params.Locations); err != nil {
+			respondV2Error(w, r, http.StatusConflict, "stem_library_configuration_changed", err.Error(), false, nil)
+			return
+		}
+		// Retrying is an explicit request. Reuse pending stem work and release
+		// background playback backoff just like the dedicated scan endpoint.
+		retry.Priority = analysisForegroundPriority
+		retry.ID, err = a.db.QueueStemLibraryScan(retry)
+	} else {
+		err = a.db.CreateJob(retry)
+	}
+	if err != nil {
 		respondV2Error(w, r, http.StatusInternalServerError, "job_retry_failed", "Unable to create retry job", true, nil)
 		return
 	}

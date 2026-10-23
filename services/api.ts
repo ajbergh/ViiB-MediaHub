@@ -48,6 +48,7 @@ export interface SpotifyDownloadOrigin {
  */
 
 import { AudioSettings } from '../types';
+import { requestJSON } from './httpClient';
 import { getEventStreamURL } from './eventStreamURL';
 
 export interface SpotifySessionStatus {
@@ -482,9 +483,8 @@ export const api = {
     return payload.locations;
   },
 
-  async scanStemLibraries(): Promise<{ jobId: string; status: string }> {
-    const response = await fetch(`${API_BASE}/v2/stems/scan`, { method: 'POST' });
-    return handleResponse(response);
+  async scanStemLibraries(signal?: AbortSignal): Promise<{ jobId: string; status: string }> {
+    return requestJSON(`${API_BASE}/v2/stems/scan`, { method: 'POST', signal, retry: false });
   },
 
   // Library integrity

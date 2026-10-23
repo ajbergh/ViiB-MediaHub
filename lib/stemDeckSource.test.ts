@@ -44,8 +44,8 @@ function response(status: boolean, start: number, count: number, sampleRate = 10
 }
 
 function fixture(frameRequestOk = true, statusAvailable = true,
-  options: { sampleRate?: number; frames?: number; chunkFrames?: number } = {}) {
-  const { sampleRate = 1000, frames = 4000, chunkFrames = 1024 } = options;
+  options: { sampleRate?: number; frames?: number; chunkFrames?: number; stemLayout?: 'four' | 'six' } = {}) {
+  const { sampleRate = 1000, frames = 4000, chunkFrames = 1024, stemLayout = 'four' } = options;
   let currentFrameRequestOk = frameRequestOk;
   const gains: GainNode[] = [];
   const context = { currentTime: 0, createGain: vi.fn(() => { const node = fakeGain(); gains.push(node); return node; }) } as unknown as AudioContext;
@@ -54,7 +54,7 @@ function fixture(frameRequestOk = true, statusAvailable = true,
   const fetcher = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.endsWith('/song')) return new Response(JSON.stringify(statusAvailable
-      ? { activeSetId: 'set-1', stemSets: [{ id: 'set-1', status: 'ready', stemLayout: 'four', sampleRate, channels: 1, frames, durationSeconds: frames / sampleRate }] }
+      ? { activeSetId: 'set-1', stemSets: [{ id: 'set-1', status: 'ready', stemLayout, sampleRate, channels: 1, frames, durationSeconds: frames / sampleRate }] }
       : { status: 'none', stemSets: [] }), { status: 200 });
     const query = new URL(url, 'http://local').searchParams;
     const start = Number(query.get('startFrame'));
@@ -73,6 +73,29 @@ function fixture(frameRequestOk = true, statusAvailable = true,
 
 describe('StemDeckSource', () => {
   afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it.each(['four', 'six'] as const)('loads a %s-stem package through the four DJ buses', async stemLayout => {
+    const { source, fetcher, fallback, worklet } = fixture(true, true, { stemLayout });
+    try {
+      await source.load({ id: 'song', title: 'Song' } as never);
+      expect(source.getStemStatus()).toMatchObject({ mode: 'stems', available: true });
+      expect(source.getStemState()).toEqual({
+        vocals: { gain: 1, muted: false, solo: false },
+        drums: { gain: 1, muted: false, solo: false },
+        bass: { gain: 1, muted: false, solo: false },
+        music: { gain: 1, muted: false, solo: false },
+      });
+      const frameRequests = vi.mocked(fetcher).mock.calls.filter(([url]) => String(url).includes('/frames?'));
+      expect(frameRequests.length).toBeGreaterThan(0);
+      for (const [url] of frameRequests) {
+        expect(new URL(String(url), 'http://local').searchParams.get('layout')).toBe('dj4');
+      }
+      expect(worklet.node.connect.mock.calls.map(call => call[1])).toEqual([0, 1, 2, 3]);
+      await source.play();
+      expect(fallback.play).not.toHaveBeenCalled();
+      expect(worklet.port.postMessage).toHaveBeenCalledWith({ type: 'play', rate: 1 });
+    } finally { source.dispose(); }
+  });
 
   it.each([96000, 192000])('waits for a tempo-adjusted startup buffer at %s Hz with slow frame delivery', async sampleRate => {
     vi.useFakeTimers();

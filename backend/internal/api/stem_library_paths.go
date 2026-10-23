@@ -103,7 +103,7 @@ func (a *API) validateStemLibraryScanRoots(requested []string) ([]string, error)
 	if err = validateStemLibraryRootsAgainstMusic(musicFolders, configuredPaths); err != nil {
 		return nil, err
 	}
-	if len(requested) == 0 || len(requested) != len(enabled) {
+	if len(requested) != len(enabled) {
 		return nil, fmt.Errorf("stem library scan roots must exactly match the currently enabled locations")
 	}
 	requestedKeys := make(map[string]bool, len(requested))

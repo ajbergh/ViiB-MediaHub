@@ -1081,6 +1081,14 @@ func (a *API) libraryEventsSSE(w http.ResponseWriter, r *http.Request) {
 // then processes any changes in the background. Falls back to full scan
 // if quick startup detects many changes or is unavailable.
 func (a *API) scanOnStartup() {
+	// Reconcile stems after a successful music startup check. A failed scan
+	// may leave a partial catalog; no Music Folders is a valid cleanup case.
+	catalogReady := false
+	defer func() {
+		if catalogReady {
+			a.queueStartupStemScan()
+		}
+	}()
 	folders, err := a.db.GetScanFolders()
 	if err != nil {
 		logger.API("Error getting scan folders for startup scan: %v", err)
@@ -1088,6 +1096,7 @@ func (a *API) scanOnStartup() {
 	}
 
 	if len(folders) == 0 {
+		catalogReady = true
 		logger.API("No folders configured, skipping startup scan")
 		return
 	}
@@ -1122,6 +1131,7 @@ func (a *API) scanOnStartup() {
 		}
 		logger.API("Full startup scan complete: %d files, %d new, %d updated (%s)",
 			result.TotalFiles, result.NewSongs, result.UpdatedSongs, result.Duration)
+		catalogReady = true
 		a.queueAutoAnalysis("the startup scan")
 		return
 	}
@@ -1138,6 +1148,7 @@ func (a *API) scanOnStartup() {
 	a.scanner.SetProgress("Updating media library")
 	a.scanner.EmitEvent(scanner.LibraryEvent{Type: "scan_progress", Message: "Updating media library"})
 	deletedFiles, err := a.scanner.DetectDeletedFiles()
+	deletionCheckSucceeded := err == nil
 	if err != nil {
 		logger.API("Error detecting deleted files: %v", err)
 	} else {
@@ -1180,6 +1191,7 @@ func (a *API) scanOnStartup() {
 				Type: "library_updated",
 			})
 			a.queueAutoAnalysis("the startup scan")
+			catalogReady = deletionCheckSucceeded
 			return
 		}
 	}
@@ -1200,6 +1212,7 @@ func (a *API) scanOnStartup() {
 		}
 		logger.API("Fallback scan complete: %d files, %d new, %d updated (%s)",
 			result.TotalFiles, result.NewSongs, result.UpdatedSongs, result.Duration)
+		catalogReady = true
 		a.queueAutoAnalysis("the startup scan")
 		// ScanAll emits its own scan_complete event
 		return
@@ -1215,6 +1228,7 @@ func (a *API) scanOnStartup() {
 	if startupProcessingSuccessful {
 		a.queueAutoAnalysis("the startup scan")
 	}
+	catalogReady = startupProcessingSuccessful && deletionCheckSucceeded
 }
 
 func (a *API) serveAudio(w http.ResponseWriter, r *http.Request) {
