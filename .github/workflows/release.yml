@@ -404,9 +404,7 @@ jobs:
 
       - name: Prepare Wails assets
         shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Path 'backend\cmd\wails\build' -Force | Out-Null
-          Copy-Item 'assets\icons\appicon.png' 'backend\cmd\wails\build\appicon.png' -Force
+        run: ./scripts/prepare-windows-icons.ps1
 
       - name: Build Windows application
         working-directory: backend/cmd/wails

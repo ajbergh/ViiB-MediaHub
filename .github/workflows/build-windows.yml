@@ -102,6 +102,9 @@ jobs:
         working-directory: backend
         run: go test ./...
 
+      - name: Prepare Windows icons
+        run: ./scripts/prepare-windows-icons.ps1
+
       - name: Build Wails application
         working-directory: backend/cmd/wails
         run: |
