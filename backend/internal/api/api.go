@@ -1081,6 +1081,9 @@ func (a *API) libraryEventsSSE(w http.ResponseWriter, r *http.Request) {
 // then processes any changes in the background. Falls back to full scan
 // if quick startup detects many changes or is unavailable.
 func (a *API) scanOnStartup() {
+	// Run after the music catalog settles, including when no Music Folders
+	// are configured (adjacent and previously linked stems still need cleanup).
+	defer a.queueStartupStemScan()
 	folders, err := a.db.GetScanFolders()
 	if err != nil {
 		logger.API("Error getting scan folders for startup scan: %v", err)

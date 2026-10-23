@@ -164,13 +164,14 @@ func (a *API) scanStemLibrariesV2(w http.ResponseWriter, r *http.Request) {
 		stemError(w, r, http.StatusInternalServerError, "stem_job_create_failed", "Unable to prepare Stem Library scan", true)
 		return
 	}
-	job := db.Job{ID: uuid.NewString(), Type: "stem_library_scan", Parameters: raw, Priority: 10, Message: "Queued Stem Library scan"}
-	if err = a.db.CreateJob(job); err != nil {
+	job := db.Job{ID: uuid.NewString(), Type: "stem_library_scan", Parameters: raw, Priority: analysisForegroundPriority, Message: "Queued Stem Library scan"}
+	jobID, err := a.db.QueueStemLibraryScan(job)
+	if err != nil {
 		stemError(w, r, http.StatusInternalServerError, "stem_job_create_failed", "Unable to queue Stem Library scan", true)
 		return
 	}
 	a.wakeJobScheduler()
-	respondV2JSON(w, http.StatusAccepted, map[string]string{"jobId": job.ID, "status": "accepted"})
+	respondV2JSON(w, http.StatusAccepted, map[string]string{"jobId": jobID, "status": "accepted"})
 }
 
 func (a *API) getStemStatusV2(w http.ResponseWriter, r *http.Request) {
@@ -337,10 +338,6 @@ func (a *API) refreshStemRegistryWithDiscoveryContext(ctx context.Context, songI
 		}
 		return nil
 	}
-	hash, hashErr := stemSourceHashes.SHA256Context(ctx, song.FilePath)
-	if hashErr != nil {
-		return hashErr
-	}
 	var discovery stems.DiscoveryResult
 	if knownDiscovery != nil {
 		discovery = *knownDiscovery
@@ -370,6 +367,23 @@ func (a *API) refreshStemRegistryWithDiscoveryContext(ctx context.Context, songI
 		existingByPath[strings.ToLower(filepath.Clean(s.PackagePath))] = s
 	}
 	existing = retained
+	// Cleanup-only refreshes need no source hashing. A startup scan with no
+	// packages should not read the entire music collection just to remove rows.
+	needsHash := false
+	for _, candidate := range discovery.Candidates {
+		needsHash = needsHash || !candidate.SourceIdentityChecked
+	}
+	for _, old := range existing {
+		needsHash = needsHash || old.ExplicitlyLinked
+	}
+	var hash string
+	if needsHash {
+		var hashErr error
+		hash, hashErr = stemSourceHashes.SHA256Context(ctx, song.FilePath)
+		if hashErr != nil {
+			return hashErr
+		}
+	}
 	seen := map[string]bool{}
 	storeCandidate := func(candidate stems.PackageCandidate) error {
 		if err := ctx.Err(); err != nil {

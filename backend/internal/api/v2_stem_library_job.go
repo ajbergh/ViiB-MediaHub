@@ -14,13 +14,57 @@ import (
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	"github.com/ajbergh/viib-mediahub/internal/db"
+	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/stems"
+	"github.com/google/uuid"
 )
 
 // PCM32 fallback is evaluated once per source/layout, not once per package.
 // Bound the layouts a configured root can trigger; exact full-file hashes are
 // indexed and checked for every validated candidate regardless of this cap.
 const maxStemLibraryIdentityGeometries = 16
+
+func (a *API) queueStartupStemScan() {
+	locations, err := a.db.ListStemLocations()
+	if err != nil {
+		logger.API("Unable to load startup Stem Libraries: %v", err)
+		return
+	}
+	roots := make([]string, 0, len(locations))
+	for _, location := range locations {
+		if location.Enabled {
+			roots = append(roots, location.Path)
+		}
+	}
+	// Validation happens in the worker so startup never waits on stem I/O.
+	raw, _ := json.Marshal(map[string][]string{"locations": roots})
+	_, err = a.db.QueueStemLibraryScan(db.Job{ID: uuid.NewString(), Parameters: raw, Priority: 10, Message: "Queued startup Stem Library scan"})
+	if err != nil {
+		logger.API("Unable to queue startup Stem Library scan: %v", err)
+		return
+	}
+	a.wakeJobScheduler()
+}
+
+func (a *API) updateStemScanProgress(jobID string, current, total int64, message string) bool {
+	if err := a.db.UpdateJobProgress(jobID, current, total, message); err != nil {
+		logger.API("Stem Library scan %s progress failed: %v", jobID, err)
+		_ = a.db.FailJob(jobID, "stem_library_progress_failed", "Unable to save Stem Library scan progress. Please retry the scan.")
+		return false
+	}
+	return true
+}
+
+func (a *API) stemScanThrottled(job db.Job) bool {
+	if !a.analysisThrottled(job.Priority) {
+		return false
+	}
+	// A manual request can promote an already running startup scan.
+	if current, err := a.db.GetJob(job.ID); err == nil && current.Priority >= analysisForegroundPriority {
+		return false
+	}
+	return true
+}
 
 type stemAudioGeometry struct {
 	sampleRate int
@@ -94,10 +138,20 @@ func annotateStemCandidateIdentities(ctx context.Context, sourcePath, sourceHash
 }
 
 func (a *API) runStemLibraryScanJob(job db.Job) {
+	// Every exit must settle or requeue the job, including unexpected persistence
+	// errors. Otherwise Settings would keep displaying a running job forever.
+	defer func() {
+		current, err := a.db.GetJob(job.ID)
+		if err == nil && current.Status == db.JobStatusRunning {
+			_ = a.db.FailJob(job.ID, "stem_library_scan_incomplete", "Stem Library scan stopped before completion. Please retry.")
+		} else if err == nil && current.Status == db.JobStatusCanceling {
+			a.cancelStemLibraryJob(job.ID, "Stem Library scan canceled")
+		}
+	}()
 	var params struct {
 		Locations []string `json:"locations"`
 	}
-	if err := json.Unmarshal(job.Parameters, &params); err != nil || len(params.Locations) == 0 {
+	if err := json.Unmarshal(job.Parameters, &params); err != nil {
 		_ = a.db.FailJob(job.ID, "invalid_stem_library_scan", "Stem Library scan locations are missing")
 		return
 	}
@@ -112,13 +166,20 @@ func (a *API) runStemLibraryScanJob(job db.Job) {
 		a.cancelStemLibraryJob(job.ID, "Stem Library scan canceled before package discovery")
 		return
 	}
-	if a.analysisThrottled(job.Priority) {
+	if a.stemScanThrottled(job) {
 		a.deferStemLibraryScan(job.ID)
 		return
 	}
 
-	_ = a.db.UpdateJobProgress(job.ID, 0, 0, "Discovering packages in Stem Libraries")
-	rootDiscovery, err := stems.DiscoverLibraryPackagesContext(ctx, locations)
+	if !a.updateStemScanProgress(job.ID, 0, 0, "Discovering packages in Stem Libraries") {
+		return
+	}
+	rootDiscovery, err := stems.DiscoverLibraryPackagesWithProgressContext(ctx, locations, func(path string, checked int) error {
+		if !a.updateStemScanProgress(job.ID, 0, 0, fmt.Sprintf("Validating stem package %d: %s", checked+1, filepath.Base(path))) {
+			return fmt.Errorf("unable to save discovery progress")
+		}
+		return nil
+	})
 	if err != nil {
 		if ctx.Err() != nil {
 			a.cancelStemLibraryJob(job.ID, "Stem Library scan canceled during package discovery")
@@ -175,7 +236,9 @@ func (a *API) runStemLibraryScanJob(job db.Job) {
 		}
 	}
 
-	_ = a.db.UpdateJobProgress(job.ID, 0, int64(len(localSongs)), fmt.Sprintf("Validating packages for %d local tracks", len(localSongs)))
+	if !a.updateStemScanProgress(job.ID, 0, int64(len(localSongs)), fmt.Sprintf("Matching stems for %d local tracks", len(localSongs))) {
+		return
+	}
 	var refreshed, failed int
 	lastProgress := time.Now()
 	for index, song := range localSongs {
@@ -183,12 +246,38 @@ func (a *API) runStemLibraryScanJob(job db.Job) {
 			_ = a.db.CancelJob(job.ID, fmt.Sprintf("Canceled after %d of %d local tracks", index, len(localSongs)))
 			return
 		}
-		if a.analysisThrottled(job.Priority) {
+		if a.stemScanThrottled(job) {
 			a.deferStemLibraryScan(job.ID)
 			return
 		}
+		if time.Since(lastProgress) >= 300*time.Millisecond || index == 0 {
+			if !a.updateStemScanProgress(job.ID, int64(index), int64(len(localSongs)), fmt.Sprintf("Checking track %d of %d: %s", index+1, len(localSongs), song.Title)) {
+				return
+			}
+			lastProgress = time.Now()
+		}
 
-		sourceHash, hashErr := stemSourceHashes.SHA256Context(ctx, song.FilePath)
+		existingSets, listErr := a.db.ListStemSets(song.ID)
+		if listErr != nil {
+			failed++
+			continue
+		}
+		adjacent, adjacentErr := stems.DiscoverPackagesContext(ctx, song.FilePath, nil)
+		if adjacentErr != nil {
+			if ctx.Err() != nil {
+				a.cancelStemLibraryJob(job.ID, fmt.Sprintf("Stem Library scan canceled while validating track %d of %d", index+1, len(localSongs)))
+				return
+			}
+			failed++
+			continue
+		}
+		// No discovered packages means there is nothing to match. Registry
+		// refresh still validates explicit links and removes deleted packages.
+		var sourceHash string
+		var hashErr error
+		if len(rootDiscovery.Candidates) > 0 || len(adjacent.Candidates) > 0 {
+			sourceHash, hashErr = stemSourceHashes.SHA256Context(ctx, song.FilePath)
+		}
 		if hashErr != nil {
 			if ctx.Err() != nil {
 				a.cancelStemLibraryJob(job.ID, fmt.Sprintf("Stem Library scan canceled while hashing track %d of %d", index+1, len(localSongs)))
@@ -197,7 +286,9 @@ func (a *API) runStemLibraryScanJob(job db.Job) {
 			failed++
 			if time.Since(lastProgress) >= 300*time.Millisecond || index+1 == len(localSongs) {
 				message := fmt.Sprintf("Scanned Stem Libraries for %d of %d tracks", index+1, len(localSongs))
-				_ = a.db.UpdateJobProgress(job.ID, int64(index+1), int64(len(localSongs)), message)
+				if !a.updateStemScanProgress(job.ID, int64(index+1), int64(len(localSongs)), message) {
+					return
+				}
 				lastProgress = time.Now()
 			}
 			continue
@@ -208,11 +299,6 @@ func (a *API) runStemLibraryScanJob(job db.Job) {
 			candidate.SourceIdentityMatches = true
 			matches = append(matches, candidate)
 		}
-		existingSets, listErr := a.db.ListStemSets(song.ID)
-		if listErr != nil {
-			failed++
-			continue
-		}
 		registeredPaths := make(map[string]bool, len(existingSets))
 		for _, existing := range existingSets {
 			registeredPaths[pathKeyForOS(existing.PackagePath)] = true
@@ -221,15 +307,6 @@ func (a *API) runStemLibraryScanJob(job db.Job) {
 		// Adjacent packages retain priority and are checked once for their
 		// corresponding track. The shared matcher preserves the retagged-source
 		// PCM32 fallback only for matching decoder geometry.
-		adjacent, adjacentErr := stems.DiscoverPackagesContext(ctx, song.FilePath, nil)
-		if adjacentErr != nil {
-			if ctx.Err() != nil {
-				a.cancelStemLibraryJob(job.ID, fmt.Sprintf("Stem Library scan canceled while validating track %d of %d", index+1, len(localSongs)))
-				return
-			}
-			failed++
-			continue
-		}
 		for _, candidate := range adjacent.Candidates {
 			matched, matchErr := stemSourceMatchesContext(ctx, &song, candidate.Validation.Manifest, sourceHash)
 			if ctx.Err() != nil {
@@ -329,7 +406,7 @@ func (a *API) runStemLibraryScanJob(job db.Job) {
 		}
 		if time.Since(lastProgress) >= 300*time.Millisecond || index+1 == len(localSongs) {
 			message := fmt.Sprintf("Scanned Stem Libraries for %d of %d tracks", index+1, len(localSongs))
-			if err := a.db.UpdateJobProgress(job.ID, int64(index+1), int64(len(localSongs)), message); err != nil {
+			if !a.updateStemScanProgress(job.ID, int64(index+1), int64(len(localSongs)), message) {
 				return
 			}
 			lastProgress = time.Now()

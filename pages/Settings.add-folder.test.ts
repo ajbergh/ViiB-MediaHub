@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   setStemLibraryLocations: vi.fn(),
   scanStemLibraries: vi.fn(),
   getJob: vi.fn(),
+  listJobs: vi.fn(),
+  cancelJob: vi.fn(),
   getLLMSettings: vi.fn(),
   updateLLMSettings: vi.fn(),
   updateSemanticSettings: vi.fn(),
@@ -47,7 +49,7 @@ vi.mock('../services/api', () => ({
   },
 }));
 
-vi.mock('../services/jobsV2', () => ({ jobsV2: { get: mocks.getJob } }));
+vi.mock('../services/jobsV2', () => ({ jobsV2: { get: mocks.getJob, list: mocks.listJobs, cancel: mocks.cancelJob } }));
 
 vi.mock('react-router', () => ({ useLocation: () => ({ state: null }) }));
 vi.mock('../components/PlexMusicSourceSettings', () => ({ PlexMusicSourceSettings: () => null }));
@@ -71,6 +73,8 @@ describe('Settings Add Folder browser', () => {
     mocks.getStemLibraryLocations.mockReset().mockResolvedValue([]);
     mocks.setStemLibraryLocations.mockReset().mockImplementation(async (paths: string[]) => paths.map((path, index) => ({ id: `stem-${index}`, path, enabled: true, createdAt: 1 })));
     mocks.scanStemLibraries.mockReset().mockResolvedValue({ jobId: 'stem-scan-job', status: 'accepted' });
+    mocks.listJobs.mockReset().mockResolvedValue({ jobs: [] });
+    mocks.cancelJob.mockReset();
     mocks.getJob.mockReset().mockResolvedValue({ id: 'stem-scan-job', type: 'stem_library_scan', status: 'queued', progressCurrent: 0, progressTotal: 0, message: 'Queued Stem Library scan', attempts: 1, createdAt: 1, updatedAt: 1 });
     mocks.browseFolder.mockImplementation(async (path?: string) => {
       if (path === 'C:\\') {
@@ -92,6 +96,7 @@ describe('Settings Add Folder browser', () => {
 
   afterEach(async () => {
     await act(async () => root.unmount());
+    vi.useRealTimers();
     container.remove();
   });
 
@@ -192,7 +197,55 @@ describe('Settings Add Folder browser', () => {
 
     await click(buttonNamed('Scan Stem Libraries'));
     expect(mocks.scanStemLibraries).toHaveBeenCalledTimes(1);
-    expect(mocks.getJob).toHaveBeenCalledWith('stem-scan-job');
+    expect(mocks.getJob).toHaveBeenCalledWith('stem-scan-job', expect.any(AbortSignal));
     expect(mocks.addScanFolder).not.toHaveBeenCalled();
+  });
+
+  it('restores a startup scan, serializes polling, and recovers after a status failure', async () => {
+    vi.useFakeTimers();
+    const running = { id: 'startup', type: 'stem_library_scan', status: 'running', progressCurrent: 0, progressTotal: 2, message: 'Checking stems', attempts: 1, createdAt: 1, updatedAt: 1 };
+    mocks.getStemLibraryLocations.mockResolvedValue([{ id: 'root', path: 'C:\\Stems', enabled: true }]);
+    mocks.listJobs.mockResolvedValue({ jobs: [running] });
+    let rejectStatus!: (error: Error) => void;
+    mocks.getJob.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectStatus = reject; }));
+    await act(async () => root.render(React.createElement(Settings)));
+    expect(buttonNamed('Scan Stem Libraries').disabled).toBe(true);
+    expect(container.textContent).toContain('Checking stems');
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(mocks.getJob).toHaveBeenCalledTimes(1);
+    await act(async () => rejectStatus(new Error('network failed')));
+    expect(container.textContent).toContain('Unable to refresh scan progress');
+    mocks.getJob.mockResolvedValue({ ...running, status: 'succeeded', message: 'Scan complete', updatedAt: 2 });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1200); });
+    expect(container.textContent).toContain('Scan complete');
+    expect(container.textContent).not.toContain('Unable to refresh scan progress');
+    expect(buttonNamed('Scan Stem Libraries').disabled).toBe(false);
+    expect(mocks.scanStemLibraries).not.toHaveBeenCalled();
+  });
+
+  it('retains an accepted scan after its first status request fails and permits cancellation', async () => {
+    mocks.getStemLibraryLocations.mockResolvedValue([{ id: 'root', path: 'C:\\Stems', enabled: true }]);
+    mocks.getJob.mockRejectedValue(new Error('network failed'));
+    mocks.cancelJob.mockResolvedValue({ id: 'stem-scan-job', type: 'stem_library_scan', status: 'canceled', message: 'Canceled before start', updatedAt: 2 });
+    await act(async () => root.render(React.createElement(Settings)));
+    await click(buttonNamed('Scan Stem Libraries'));
+    expect(container.textContent).toContain('Unable to refresh scan progress');
+    await click(buttonNamed('Cancel scan'));
+    expect(mocks.cancelJob).toHaveBeenCalledWith('stem-scan-job', expect.any(AbortSignal));
+    expect(container.textContent).toContain('Canceled before start');
+    expect(buttonNamed('Scan Stem Libraries').disabled).toBe(false);
+  });
+
+  it('discovers startup work queued after Settings has opened', async () => {
+    vi.useFakeTimers();
+    await act(async () => root.render(React.createElement(Settings)));
+    expect(container.textContent).not.toContain('Queued startup scan');
+    const queued = { id: 'late-startup', type: 'stem_library_scan', status: 'queued', progressCurrent: 0, progressTotal: 0, message: 'Queued startup scan', attempts: 0, createdAt: 1, updatedAt: 1 };
+    mocks.listJobs.mockResolvedValue({ jobs: [queued] });
+    mocks.getJob.mockResolvedValue(queued);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(container.textContent).toContain('Queued startup scan');
+    expect(mocks.getJob).toHaveBeenCalledWith('late-startup', expect.any(AbortSignal));
+    expect(mocks.scanStemLibraries).not.toHaveBeenCalled();
   });
 });
