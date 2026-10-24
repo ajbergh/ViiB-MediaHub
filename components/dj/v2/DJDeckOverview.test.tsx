@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { expect, it, vi } from 'vitest';
+import { beforeEach, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ load: vi.fn(), metadata: vi.fn(), seek: vi.fn(), state: { djDeckA: { track: { id: 'a' }, duration: 10 } } }));
 vi.mock('../../../store', () => ({ useStore: Object.assign((select: any) => select(mocks.state), { getState: () => mocks.state }) }));
 vi.mock('../../../hooks/useDJAudioEngine', () => ({ useDJAudioEngineActions: () => ({ seek: mocks.seek }) }));
 vi.mock('../../../services/api', () => ({ api: { getTrackAnalysisFeature: mocks.metadata } }));
 vi.mock('../../../services/trackThreeBand', () => ({ loadTrackThreeBand: mocks.load }));
 import { DJDeckOverview, setDeckWaveformView } from './DJDeckOverview';
+beforeEach(() => vi.clearAllMocks());
 it('shows current Spotify bands first and falls back to amplitude for mismatched or unavailable bands', async () => {
  (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
  vi.spyOn(HTMLCanvasElement.prototype,'getContext').mockReturnValue(null);

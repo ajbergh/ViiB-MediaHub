@@ -5,7 +5,7 @@
 #
 # Prerequisites:
 #   - Go 1.26.9+ with CGO_ENABLED=1
-#   - Node.js 20+ and npm
+#   - Node.js 22.22.2+ (Node 22) or 24.15.0+ and npm
 #   - Wails CLI (go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0)
 #   - MSYS2 mingw-w64-x86_64-gcc (for native CGO dependencies)
 #
@@ -142,12 +142,11 @@ if (-not $SkipFrontend) {
     
     Push-Location $projectRoot
     try {
-        # Install dependencies if needed
-        if (-not (Test-Path "node_modules")) {
-            Write-Host "  Installing npm dependencies..." -ForegroundColor Gray
-            npm ci
-            if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
-        }
+        # Restore the lockfile's dependency tree, including build tools. An
+        # existing node_modules directory may be stale or missing executable shims.
+        Write-Host "  Installing npm dependencies from lockfile..." -ForegroundColor Gray
+        npm ci --include=dev
+        if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
         
         # Build frontend
         npm run build

@@ -8,7 +8,7 @@ Setup, architecture, API entry points, data handling, and validation for contrib
 
 | Requirement | Minimum | Notes |
 |---|---|---|
-| Node.js | 20+ | Frontend tooling; CI uses Node 24 |
+| Node.js | 22.22.2+ on Node 22, or 24.15.0+ | Frontend tooling and jsdom tests; Node 24 recommended and used by CI |
 | Go | **1.26.9+** | Current security-patched Go 1.26 baseline |
 | GCC / Clang | — | Required for native Wails builds and packages that opt into CGO |
 | Wails CLI | v2 | Desktop builds |

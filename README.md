@@ -96,7 +96,7 @@ Desktop releases use Wails; browser releases serve the same interface from a loc
 
 ### Run from source
 
-Use **Node.js 20+** and **Go 1.26.9+**. From the repository root:
+Use **Node.js 24.15.0+** (recommended; CI uses Node 24) or **Node.js 22.22.2+**, and **Go 1.26.9+**. From the repository root:
 
 ```bash
 npm ci
