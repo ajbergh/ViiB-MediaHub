@@ -67,7 +67,7 @@ jobs:
         run: gcc --version
 
       - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
 
       - name: Verify Wails installation
         run: wails version

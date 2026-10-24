@@ -6,7 +6,7 @@
 **Scope:** DJv2 / professional DJ workflow only
 **Research snapshot:** 2026-09-06
 **Repository verification snapshot:** commit `3359371`, branch `main`
-**Toolchain baseline:** Go 1.26.9, Wails v2.11.0, `modernc.org/sqlite` (pure-Go SQLite, no CGO)
+**Toolchain baseline:** Go 1.26.10, Wails v2.17.0, `modernc.org/sqlite` (pure-Go SQLite, no CGO)
 **Target architecture:** Go/Wails, local-first, cross-platform, predominantly pure Go, no CGO unless explicitly justified
 **Repository:** `ajbergh/ViiB-MediaHub`
 

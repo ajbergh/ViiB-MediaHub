@@ -6,7 +6,7 @@
 # Prerequisites:
 #   - Go 1.26.9+ with CGO_ENABLED=1
 #   - Node.js 20+ and npm
-#   - Wails CLI (go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0)
+#   - Wails CLI (go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0)
 #   - MSYS2 mingw-w64-x86_64-gcc (for native CGO dependencies)
 #
 # Usage:
@@ -71,7 +71,7 @@ if ((Test-Path $goBin) -and (($env:Path -split ';') -notcontains $goBin)) {
 
 # Check Wails
 if (-not (Get-Command wails -ErrorAction SilentlyContinue)) {
-    Write-Error "❌ Wails not found. Install with: go install github.com/wailsapp/wails/v2/cmd/wails@latest"
+    Write-Error "❌ Wails not found. Install with: go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0"
     exit 1
 }
 $wailsVersion = (wails version 2>&1 | Select-String -Pattern "v\d+\.\d+\.\d+").Matches.Value

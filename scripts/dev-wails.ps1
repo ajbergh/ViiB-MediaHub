@@ -6,7 +6,7 @@
 # Prerequisites:
 #   - Go 1.26.9+ with CGO_ENABLED=1
 #   - Node.js 20+ and npm
-#   - Wails CLI (go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0)
+#   - Wails CLI (go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0)
 #   - MSYS2 mingw-w64-x86_64-gcc (for native CGO dependencies)
 #
 # Usage:
@@ -28,7 +28,7 @@ if (-not (Get-Command wails -ErrorAction SilentlyContinue)) {
 ❌ Wails CLI not found.
 
 Install Wails with:
-  go install github.com/wailsapp/wails/v2/cmd/wails@latest
+  go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
 
 Then verify with:
   wails doctor

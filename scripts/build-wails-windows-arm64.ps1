@@ -6,7 +6,7 @@
 # Prerequisites:
 #   - Go 1.26.9+ with CGO_ENABLED=1
 #   - Node.js 20+ and npm
-#   - Wails CLI: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+#   - Wails CLI: go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
 #   - LLVM/Clang cross-compiler for arm64 Windows:
 #       Option A: llvm-mingw (https://github.com/mstorsjo/llvm-mingw/releases)
 #                 Add llvm-mingw/bin to PATH, use aarch64-w64-mingw32-gcc
@@ -60,7 +60,7 @@ Write-Host "  ✓ $(go version)" -ForegroundColor Green
 if (-not (Get-Command wails -ErrorAction SilentlyContinue)) {
     Write-Error @"
 ❌ Wails CLI not found.
-Install with: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+Install with: go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
 "@
     exit 1
 }

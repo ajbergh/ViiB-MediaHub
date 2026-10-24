@@ -316,7 +316,7 @@ jobs:
       - name: Install Wails build tool
         env:
           GODEBUG: http2client=0
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
       - name: Download validated frontend bundle
         uses: actions/download-artifact@v4
         with:
@@ -414,7 +414,7 @@ jobs:
       - name: Install Wails build tool
         env:
           GODEBUG: http2client=0
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
       - shell: pwsh
         run: |
           $dest = "backend\cmd\wails\frontend\dist"
