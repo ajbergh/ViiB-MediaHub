@@ -2,7 +2,8 @@
 """Emit benchmark-only Essentia RhythmExtractor2013 BPM and beat ticks.
 
 Run this only in an isolated development environment. Essentia is an AGPL
-reference process and is never imported, linked, or shipped by ViiB.
+reference process imported only by this benchmark harness, not imported, linked
+or shipped by the ViiB application runtime.
 """
 
 from __future__ import annotations

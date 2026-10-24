@@ -209,8 +209,9 @@ func (iv *IntegrityVerifier) LastResult() *IntegrityResult {
 // of files from the library. It checks each file for existence, size/mtime
 // consistency, and optionally readability.
 //
-// This method is idempotent and can be called periodically from a background
-// goroutine. It will return an error if a verification is already in progress.
+// This method can be called periodically from a background goroutine. Each run
+// draws a new random sample and replaces the stored result; concurrent runs are
+// rejected with an error.
 //
 // The results are stored internally and can be retrieved via LastResult().
 func (iv *IntegrityVerifier) RunSampleVerification() (*IntegrityResult, error) {

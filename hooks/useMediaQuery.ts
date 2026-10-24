@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 
 /**
  * Subscribe to a CSS media query and return whether it currently matches.
- * SSR-safe: returns `false` until the first effect runs in the browser.
+ * Returns false during SSR or without matchMedia; in the browser, initializes
+ * from matchMedia immediately and subscribes to later changes.
  */
 export function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(() => {

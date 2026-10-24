@@ -131,7 +131,7 @@ func New(database *db.DB, dataDir string) *API {
 	}
 
 	logger.API("Creating download manager...")
-	// Create download manager - it will get access token from database when needed
+	// Share the auth runtime with the download manager for purpose-scoped playback tokens.
 	runtime := newSpotifyAuthRuntime(database, spotifyauth.WebPlayerOptions{})
 	dm := NewDownloadManager(database, downloadDir, runtime)
 
@@ -476,9 +476,9 @@ func (a *API) recordPlay(w http.ResponseWriter, r *http.Request) {
 // }
 // Event type is automatically determined:
 //   - play_complete: playDuration >= 90% of songDuration
-//   - skip_early: playDuration < 10s
-//   - skip_mid: playDuration 10-30s
-//   - skip_late: playDuration > 30s but < 90%
+//   - skip_early: playDuration < 10s, unless already classified complete
+//   - skip_mid: 10s <= playDuration < 30s, unless already classified complete
+//   - skip_late: playDuration >= 30s and less than 90% complete
 func (a *API) recordListeningEvent(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -489,7 +489,7 @@ func (a *API) recordListeningEvent(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		PlayDuration float64 `json:"playDuration"`
 		SongDuration float64 `json:"songDuration"`
-		Context      string  `json:"context"` // 'ai_dj', 'album', 'playlist', 'queue', 'search'
+		Context      string  `json:"context"` // 'ai_dj', 'album', 'playlist', 'queue', 'search', 'spotify'
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		respondError(w, http.StatusBadRequest, "Invalid request body")

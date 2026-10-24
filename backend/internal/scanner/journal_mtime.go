@@ -36,10 +36,11 @@ func (m *MtimeChangeDetector) IsAvailable() bool {
 	return true
 }
 
-// GetChangesSince returns all filesystem changes since the given timestamp
+// GetChangesSince compares watched files against the stored metadata cache.
+// The since argument is ignored; missing cached files are reported as deletions.
 func (m *MtimeChangeDetector) GetChangesSince(since time.Time, watchPaths []string) ([]FileChange, error) {
 	var changes []FileChange
-	_ = since // Used for logging, actual comparison uses metadata cache
+	_ = since // Comparison uses the metadata cache rather than a timestamp cutoff
 
 	// Load metadata cache for comparison
 	metadataCache, err := m.scanner.db.GetFileMetadataCacheMap()

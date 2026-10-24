@@ -3,18 +3,19 @@
 // Schema includes tables for:
 //   - songs: Audio file metadata with paths, usage stats, and AI analysis fields
 //   - playlists: User-created playlists with song references
-//   - plays: Play history with timestamps for tracking listening patterns
+//   - listening_events: Detailed play/skip/timing events for preference learning
 //   - scan_folders: Configured directories to scan for music
 //   - settings: Key-value store for application configuration (with encryption for secrets)
 //   - spotify_downloads: Download queue with status tracking
 //   - album_metadata: Cached Spotify album metadata
 //   - artist_metadata: Cached Spotify artist metadata
-//   - indexed_genres: Pre-computed genre lists for fast lookup
+//   - genre_stats: Pre-computed genre aggregates for fast lookup
 //   - External recording links, optional reference observations, and refresh status
 //     are maintained by the additive external analysis schema.
 //
 // AI DJ Support:
-//   - Mood/energy/tempo/BPM catalog fields from configured AI and metadata enrichment
+//   - Mood/energy/tempo descriptors from enrichment; source-bound BPM/key analysis
+//     and manual/provider observations are maintained by the analysis schemas
 //   - Play history queries for discovery mode and recently played filtering
 //   - Artist preference tracking based on cumulative play counts
 //   - Genre indexing for fast local matching without API calls
@@ -825,7 +826,7 @@ func (d *DB) migrateUnencryptedSettings() error {
 
 // Song operations
 
-// GetAllSongs returns all songs currently persisted in the library.
+// GetAllSongs returns all non-ignored songs currently visible in the library.
 func (d *DB) GetAllSongs() ([]Song, error) {
 	rows, err := d.conn.Query(`
 		SELECT id, title, artist, album, album_artist, track_number, disc_number,
@@ -1361,15 +1362,15 @@ type ListeningEvent struct {
 	Genre        string  `json:"genre,omitempty"`
 	Mood         string  `json:"mood,omitempty"`
 	Energy       string  `json:"energy,omitempty"`
-	Context      string  `json:"context,omitempty"` // 'ai_dj', 'album', 'playlist', 'queue', 'search'
+	Context      string  `json:"context,omitempty"` // 'ai_dj', 'album', 'playlist', 'queue', 'search', 'spotify'
 }
 
 // RecordListeningEvent records a listening event for preference learning.
-// Event types:
-//   - 'play_complete': Song played to completion
-//   - 'skip_early': Skipped within first 10 seconds
-//   - 'skip_mid': Skipped between 10-30 seconds
-//   - 'skip_late': Skipped after 30 seconds
+// The API classifies these event types; this method stores the supplied type:
+//   - 'play_complete': At least 90% of the song played
+//   - 'skip_early': Less than 10 seconds played and not classified complete
+//   - 'skip_mid': At least 10 but less than 30 seconds played, not complete
+//   - 'skip_late': At least 30 seconds played and less than 90% complete
 //
 // This data is used to build genre preferences and improve AI DJ recommendations.
 func (d *DB) RecordListeningEvent(event ListeningEvent) error {
@@ -2299,8 +2300,9 @@ func (d *DB) GetDownload(id string) (*SpotifyDownload, error) {
 	return &dl, nil
 }
 
-// GetAllDownloads returns all Spotify downloads (completed, queued, failed).
-// GetAllDownloads returns all Spotify downloads stored in the DB.
+// GetAllDownloads returns a page of stored Spotify downloads across all statuses,
+// ordered newest first by added time and ID. Invalid limits default to 250;
+// negative offsets are treated as zero.
 func (d *DB) GetAllDownloads(limit, offset int) ([]SpotifyDownload, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 250

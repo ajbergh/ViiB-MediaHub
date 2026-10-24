@@ -5,7 +5,7 @@
 // This file provides REST endpoints for:
 //   - Settings management (GET/POST /api/lastfm/settings)
 //   - Connection testing (POST /api/lastfm/test)
-//   - Mobile authentication for scrobbling (POST /api/lastfm/authenticate)
+//   - Mobile authentication and session persistence (POST /api/lastfm/authenticate)
 //   - Integration status (GET /api/lastfm/status)
 //   - Song enrichment triggers (POST /api/lastfm/enrich/songs)
 //   - Artist enrichment triggers (POST /api/lastfm/enrich/artists)
@@ -162,7 +162,8 @@ func (a *API) handleTestLastFMConnection(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-// handleLastFMAuthenticate performs Last.FM authentication for scrobbling.
+// handleLastFMAuthenticate authenticates with Last.FM and persists the session
+// key and username. It does not submit listening events as scrobbles.
 func (a *API) handleLastFMAuthenticate(w http.ResponseWriter, r *http.Request) {
 	if a.lastfmClient == nil {
 		respondError(w, http.StatusBadRequest, "Last.FM not configured")

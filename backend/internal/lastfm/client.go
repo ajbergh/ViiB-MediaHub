@@ -6,14 +6,15 @@
 //   - Rate limiting (5 requests/second in the client limiter)
 //   - Bounded TTL caching with oldest-entry eviction (default TTL 24h)
 //   - Tag mapping to mood/energy/tempo values
-//   - Mobile authentication for scrobbling support
+//   - Mobile authentication and session state for integration/status reporting
 //
 // Usage:
 //
 //	client := lastfm.NewClient(apiKey, sharedSecret)
 //	info, err := client.GetTrackInfo(ctx, "Artist", "Track")
 //
-// All API methods respect rate limits and check cache before making requests.
+// Read-only metadata lookups are rate-limited and cached. Connection tests and
+// authentication are rate-limited but bypass the response cache; tag mapping is local.
 package lastfm
 
 import (

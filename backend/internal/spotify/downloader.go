@@ -54,11 +54,8 @@ type DownloadMetadata struct {
 //   - Progress callbacks for real-time updates
 //   - Automatic directory creation (organized by artist/album or playlist)
 //   - Filename sanitization (removes invalid characters)
-//   - Duplicate detection (skips if file already exists)
+//   - Duplicate detection (reuses existing files only after Ogg integrity/tag validation)
 //   - Atomic writes (temp file renamed on completion)
-//
-// Downloader handles downloading tracks from Spotify using librespot.
-// It streams audio from Spotify servers and writes OGG files to disk.
 type Downloader struct {
 	sessionManager *SessionManager // Session for Spotify authentication
 	downloadDir    string          // Root directory for downloads
@@ -72,10 +69,6 @@ type Downloader struct {
 //
 // Returns:
 //   - Ready-to-use Downloader instance
-//
-// NewDownloader constructs a Downloader which uses the provided
-// SessionManager for Spotify authentication and writes files to
-// the specified download directory.
 func NewDownloader(sessionManager *SessionManager, downloadDir string) *Downloader {
 	return &Downloader{
 		sessionManager: sessionManager,
@@ -129,11 +122,12 @@ func lockDestination(ctx context.Context, path string) (func(), error) {
 // isValidDownloadedFileContext checks if an existing file is a valid complete download.
 // Returns true if the file:
 // 1. Exists
-// 2. Is larger than MinValidFileSize (1 MB)
-// 3. Has valid OGG headers
+// 2. Is at least MinValidFileSize (4 KiB)
+// 3. Passes complete Ogg page validation
 // 4. Has metadata tags written (artist, title)
 //
-// If any check fails, the file should be re-downloaded.
+// Cancellation or a failed check returns false; callers must check cancellation
+// before replacing an existing file.
 func isValidDownloadedFileContext(ctx context.Context, filePath string) bool {
 	return validateDownloadedFileContext(ctx, filePath) == nil
 }
@@ -190,11 +184,11 @@ type ActivityCallback func(phase DownloadPhase)
 
 // DownloadTrack downloads a single Spotify track and saves as OGG Vorbis.
 //
-// File Organization (per DOWNLOAD_RULES.md):
+// File organization:
 //
-// For album tracks (when metadata.PlaylistName is empty):
+// For album tracks (metadata has AlbumArtist, album is nonempty, no PlaylistName):
 //   - Directory: {downloadDir}/{AlbumArtist}/{Album}/
-//   - Filename: {TrackNumber}-{AlbumArtist}-{Title}.ogg
+//   - Filename: {TrackNumber}-{AlbumArtist}-{Title}.ogg (D{DiscNumber}- prefix for discs > 1)
 //   - Example: /Pink Floyd/The Dark Side of the Moon/01-Pink Floyd-Speak to Me.ogg
 //
 // For playlist tracks (when metadata.PlaylistName is set):
@@ -202,7 +196,8 @@ type ActivityCallback func(phase DownloadPhase)
 //   - Filename: {PlaylistOrder}-{Artist}-{Title}.ogg
 //   - Example: /My Favorites/001-The Beatles-Come Together.ogg
 //
-// Fallback (when no metadata is provided):
+// Without playlist/album-artist organization, a nonempty album adds an Album
+// directory under Artist. When album is empty, the fallback is:
 //   - Directory: {downloadDir}/{Artist}/
 //   - Filename: {Artist} - {Title}.ogg
 //
@@ -212,7 +207,7 @@ type ActivityCallback func(phase DownloadPhase)
 //  3. Pin track on Spotify (prepare for streaming)
 //  4. Create asset reader for streaming
 //  5. Stream to temporary file with progress callbacks
-//  6. Rename temp file to final name (atomic operation)
+//  6. Write tags, validate the complete temporary file, then rename it into place
 //
 // Parameters:
 //   - ctx: Context for cancellation
@@ -221,15 +216,12 @@ type ActivityCallback func(phase DownloadPhase)
 //   - title: Track title for filename
 //   - album: Album name (used for album directory structure)
 //   - metadata: Optional metadata for file organization (can be nil)
-//   - progressCallback: Optional callback for progress updates (can be nil)
+//   - progressCallback: Optional callback for byte-progress updates (can be nil)
+//   - activityCallback: Optional callback for preparation/stream/finalization activity (can be nil)
 //
 // Returns:
 //   - string: Full path to downloaded file
 //   - error: If any step fails
-//
-// DownloadTrack downloads a single Spotify track to an OGG file using the
-// provided metadata to organize file location. The function returns the
-// full path to the saved file or an error if the download failed.
 func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist string, title string, album string, metadata *DownloadMetadata, progressCallback ProgressCallback, activityCallback ActivityCallback) (string, error) {
 	reportActivity := func(phase DownloadPhase) {
 		if activityCallback != nil {
@@ -511,7 +503,7 @@ func isOggFile(path string) bool {
 // writeOggMetadata validates the target file is an Ogg container and writes Vorbis tags.
 // It implements retry logic to handle Windows file locks.
 //
-// Tags written per DOWNLOAD_RULES.md:
+// Base tags and optional metadata fields:
 //   - ARTIST: Track artist
 //   - TITLE: Track title
 //   - ALBUM: Album name
@@ -520,6 +512,10 @@ func isOggFile(path string) bool {
 //   - DISCNUMBER: Disc number (from metadata)
 //   - DATE: Release date (from metadata)
 //   - GENRE: Genre (from metadata, if available)
+//   - BPM and INITIALKEY: Positive BPM and nonempty key, when supplied
+//
+// Playlist metadata overrides ALBUM/ALBUMARTIST with the playlist name,
+// TRACKNUMBER with a positive playlist order, and DISCNUMBER with 1.
 func (d *Downloader) writeOggMetadata(filePath, artist, title, album string, metadata *DownloadMetadata) error {
 	if !isOggFile(filePath) {
 		info, _ := os.Stat(filePath)

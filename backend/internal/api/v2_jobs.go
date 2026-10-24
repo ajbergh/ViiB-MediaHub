@@ -37,8 +37,9 @@ func schedulerWorkerCount(cpuCount int) int {
 	return workers
 }
 
-// supportedJobTypes is the create allowlist. The dispatch switch in
-// runClaimedJob must stay in step with it.
+// supportedJobTypes is the generic create endpoint allowlist. runClaimedJob must
+// handle every allowed type; it also handles stem_library_scan jobs queued through
+// the dedicated Stem Library scan route or startup reconciliation.
 var supportedJobTypes = map[string]bool{
 	"full_scan":             true,
 	"quick_scan":            true,

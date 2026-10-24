@@ -9,8 +9,8 @@ import { useStore } from '../store';
  * 
  * Shortcuts:
  * - Space: Play/Pause
- * - Arrow Left: Seek backward 5s (Shift: Previous track)
- * - Arrow Right: Seek forward 5s (Shift: Next track)
+ * - Shift+Arrow Left: Previous track
+ * - Shift+Arrow Right: Next track
  * - Arrow Up: Volume up 5%
  * - Arrow Down: Volume down 5%
  * - M: Toggle mute

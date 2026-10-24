@@ -31,7 +31,8 @@ import (
 //   - Web API calls (search, metadata, user profile)
 //   - librespot authentication for downloads and streaming
 //
-// The access token is refreshed by the frontend when it expires.
+// The backend refreshes and persists these credentials for the legacy OAuth path.
+// Cookie-mode requests instead obtain purpose-scoped tokens from the auth runtime.
 type SpotifyCredentials struct {
 	ClientId     string `json:"clientId"`     // OAuth public client ID
 	ClientSecret string `json:"clientSecret"` // Legacy field; never returned to the renderer
@@ -185,9 +186,8 @@ func (a *API) spotifySearch(w http.ResponseWriter, r *http.Request) {
 }
 
 // spotifySearchPlaylists provides a fallback playlist search using web scraping.
-// The Spotify Web API does not return "First Party" playlists (Made For You,
-// Discover Weekly, etc.) in search results. This endpoint scrapes the actual
-// Spotify search page to find all playlists including first-party ones.
+// It returns playlists rendered on the Spotify search page, potentially
+// including first-party entries. It does not establish exhaustive coverage.
 //
 // Query Parameters:
 //   - q: Search query string (required)
@@ -943,7 +943,8 @@ func (a *API) downloadPlaylistByIDPaginated(w http.ResponseWriter, ctx context.C
 	})
 }
 
-// downloadAlbumByID fetches album metadata and all tracks, then queues downloads
+// downloadAlbumByID queues tracks embedded in one legacy album response.
+// It does not follow track pagination; active catalog routes use separate helpers.
 func (a *API) downloadAlbumByID(w http.ResponseWriter, accessToken, spotifyID string) {
 	// Fetch album metadata from Spotify
 	req, _ := http.NewRequest("GET", fmt.Sprintf("https://api.spotify.com/v1/albums/%s", spotifyID), nil)
@@ -1041,7 +1042,8 @@ func (a *API) downloadAlbumByID(w http.ResponseWriter, accessToken, spotifyID st
 	})
 }
 
-// downloadPlaylistByID fetches playlist metadata and all tracks, then queues downloads.
+// downloadPlaylistByID queues tracks embedded in one legacy playlist response.
+// It does not follow track pagination.
 // For first-party playlists (e.g., "Made For You", "Daily Mix") that return 404/403 from
 // the Web API, this function falls back to scraping the public embed page.
 func (a *API) downloadPlaylistByID(w http.ResponseWriter, accessToken, spotifyID string) {

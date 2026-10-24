@@ -2,7 +2,8 @@
  * ViiB MediaHub - Liked Albums Page
  * 
  * Displays all albums that the user has liked (favorited).
- * Albums are sorted by when they were liked (newest first) by default.
+ * The default recent sort uses the most recent library addedAt timestamp among
+ * each album's songs, not the time the album was liked.
  * 
  * @module LikedAlbums
  */

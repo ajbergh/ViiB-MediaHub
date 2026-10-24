@@ -7,8 +7,9 @@
 //   - Popularity metrics (listeners, play counts)
 //   - MusicBrainz cross-references
 //
-// The package supports both read-only API access (API key only) and
-// authenticated access (for scrobbling and personalized tags).
+// The package supports read-only API access with an API key and authenticated
+// session state for integration/status reporting. It does not submit scrobbles
+// or retrieve personalized tags.
 package lastfm
 
 import "time"

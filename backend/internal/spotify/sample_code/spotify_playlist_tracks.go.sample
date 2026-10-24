@@ -66,14 +66,6 @@ import (
 	"strings"
 )
 
-// extractPlaylistName attempts to find the playlist's display name from the
-// embed page. It prefers parsing the JSON payload inside the
-// <script id="__NEXT_DATA__" type="application/json"> tag, and falls back to
-// a couple of regular-expression searches (searching e.g. the "entity" JSON
-// object or the Open Graph <meta> tag) if the JSON parse fails.
-//
-// Returns the playlist name as a string, or an empty string if no name could
-// be located.
 // extractPlaylistName returns the playlist display name found in the page's
 // HTML content. It prefers the structured JSON found in the `<script
 // id="__NEXT_DATA__"` payload and falls back to regex searches for a JSON
@@ -134,10 +126,6 @@ func extractPlaylistName(body string) string {
 	return ""
 }
 
-// extractPlaylistArtwork attempts to locate the playlist's artwork URL in the
-// embed page. It prefers the `visualIdentity.image` array inside the JSON
-// payload (the Pickasso CDN image), then falls back to `entity.coverArt` and
-// lastly to a regex search for Pickasso or i.scdn.co URLs in the HTML.
 // extractPlaylistArtwork returns a public artwork image URL for the playlist
 // if available. Priority order is:
 //  1. `visualIdentity.image[0].url` inside the `__NEXT_DATA__` JSON
@@ -203,8 +191,6 @@ func extractPlaylistArtwork(body string) string {
 	return ""
 }
 
-// extractTrackIDs returns the unique Spotify track IDs found in an embed
-// page's HTML. The returned slice preserves the order of first occurrence.
 // extractTrackIDs parses the page HTML and returns a deduplicated (by
 // first-seen order) slice of Spotify track IDs discovered on the page.
 //
@@ -246,15 +232,6 @@ func extractTrackIDs(body string) []string {
 // Note: This function performs no validation of the returned ID format other
 // than returning the path segment; consumers should validate the ID if they
 // require a specific format or length.
-// extractPlaylistID parses the playlist ID from a given Spotify playlist
-// URL. Known supported forms include:
-//   - https://open.spotify.com/playlist/<id>
-//   - https://open.spotify.com/embed/playlist/<id>
-//   - https://open.spotify.com/user/<user>/playlist/<id>
-//
-// The function looks for the `playlist` path segment and returns the
-// next segment as the ID. As a fallback it returns the last path segment.
-// It returns an empty string when the input cannot be parsed.
 func extractPlaylistID(rawURL string) string {
 	u, err := url.Parse(rawURL)
 	if err != nil {

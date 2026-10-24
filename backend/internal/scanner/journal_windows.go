@@ -221,7 +221,8 @@ func (u *WindowsUSNDetector) queryJournal(handle windows.Handle, volumePath stri
 	return &journalData, nil
 }
 
-// GetChangesSince returns all filesystem changes since the given timestamp
+// GetChangesSince reads watched-volume USN changes from the saved journal cursor.
+// When no cursor is available it starts at FirstUsn; since is not a time filter.
 func (u *WindowsUSNDetector) GetChangesSince(since time.Time, watchPaths []string) ([]FileChange, error) {
 	var allChanges []FileChange
 

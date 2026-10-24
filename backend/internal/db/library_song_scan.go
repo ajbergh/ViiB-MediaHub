@@ -97,8 +97,8 @@ func scanLibrarySong(row libraryRowScanner) (Song, error) {
 	if tempo.Valid {
 		song.Tempo = tempo.String
 	}
-	// songs.bpm is retained for database compatibility only. It contains legacy
-	// AI estimates and must never be surfaced as track tempo.
+	// Read legacy songs.bpm for column alignment, but do not copy it into this
+	// Song result. Consumers should resolve tempo from source-bound analysis.
 	song.Instrumental = instrumental.Valid && instrumental.Int64 == 1
 	if moodAnalyzedAt.Valid {
 		song.MoodAnalyzedAt = moodAnalyzedAt.Int64
