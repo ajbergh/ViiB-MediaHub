@@ -5,9 +5,9 @@
  * Does not render any UI - only manages download count in global state.
  * 
  * Features:
- * - Fetches initial download list from backend on mount
+ * - Fetches the active queued/downloading/converting count on mount
  * - Maintains SSE connection for real-time progress updates
- * - Polling fallback when SSE connection fails
+ * - Periodic count reconciliation alongside SSE updates
  * - Updates global download count for sidebar badge
  * 
  * The actual download progress UI is displayed on the Downloads page.

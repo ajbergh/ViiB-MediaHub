@@ -4,7 +4,7 @@
 # Output: build/ViiB-MediaHub.exe
 #
 # Prerequisites:
-#   - Go 1.26.9+ with CGO_ENABLED=1
+#   - Go 1.26.10+ with CGO_ENABLED=1
 #   - Node.js 22.22.2+ (Node 22) or 24.15.0+ and npm
 #   - Wails CLI (go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0)
 #   - MSYS2 mingw-w64-x86_64-gcc (for native CGO dependencies)

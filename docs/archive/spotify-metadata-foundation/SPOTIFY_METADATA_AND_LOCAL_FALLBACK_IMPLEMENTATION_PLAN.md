@@ -1,6 +1,6 @@
 # Spotify metadata, waveforms, and local fallback implementation plan
 
-> Archived on 2026-10-12. This is a historical checkpoint, not the current merge checklist. Further local scanning/DSP improvements and quality qualification are deferred to a future branch. See [current branch scope](../../SPOTIFY_BRANCH_REMAINING_WORK.md) and [deferred work](../../LOCAL_ANALYSIS_FUTURE_BRANCH.md). Original results and unchecked gates below remain historical evidence.
+> Archived on 2026-10-12. This is a historical checkpoint, not the current merge checklist. Further local scanning/DSP improvements and quality qualification are deferred to a future branch. See [Spotify behavior and limitations](../../spotify.md) and [deferred work](../../LOCAL_ANALYSIS_FUTURE_BRANCH.md). Original results and unchecked gates below remain historical evidence.
 
 **Status:** Implementation active on `feature/spotify-metadata-foundation`; closeout evidence is recorded through Milestone 242 (milestones are not phase completion). All nine phases remain tracked; full acceptance is not yet achieved. The broad acceptance tally remains 2/12 checked and 10/12 partial.
 

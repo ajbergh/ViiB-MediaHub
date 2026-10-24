@@ -3,7 +3,7 @@
  * 
  * Displays 8 hot cue buttons for instant position jumps.
  * - Click: Jump to hot cue position
- * - Shift+Click (or right-click): Set hot cue at current position
+ * - Right-click: Set hot cue at current position
  * - Long press: Delete hot cue
  * 
  * @module components/dj/DJHotCues
@@ -60,7 +60,7 @@ export const DJHotCues: React.FC<DJHotCuesProps> = ({ deck }) => {
     }
   }, [deck, track, hotCues, seek, triggerHotCue]);
 
-  // Handle setting a new hot cue (right-click or shift+click)
+  // Handle setting a new hot cue (right-click)
   const handleSetHotCue = useCallback((slot: number, e: React.MouseEvent) => {
     e.preventDefault();
     // Get current position directly from store to avoid stale closures and unnecessary re-renders

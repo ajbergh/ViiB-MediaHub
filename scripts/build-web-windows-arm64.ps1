@@ -2,11 +2,11 @@
 #
 # Builds the web-embedded binary that serves a local HTTP server and opens
 # the default browser. Does NOT require Wails.
-# Output: build\ViiB-MediaHub.exe
+# Output: build\ViiB-MediaHub-arm64.exe
 #
 # Prerequisites:
-#   - Go 1.26.9+ with CGO_ENABLED=1
-#   - Node.js 20+ and npm
+#   - Go 1.26.10+ with CGO_ENABLED=1
+#   - Node.js 22.22.2+ (22.x), 24.15.0+ (24.x), or 26+ and npm
 #   - ARM64 cross-compiler (when building on amd64 host):
 #       Option A: llvm-mingw (https://github.com/mstorsjo/llvm-mingw/releases)
 #                 Use aarch64-w64-mingw32-gcc

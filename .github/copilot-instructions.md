@@ -1,7 +1,7 @@
 # ViiB MediaHub AI Instructions
 
 ## Project Overview
-ViiB MediaHub is a local media player application with a React frontend and Go backend. It compiles to a single native desktop executable using Wails v2 with WebView2, providing a native Windows experience with system tray integration.
+ViiB MediaHub is a local media player application with a React frontend and Go backend. It ships as a Wails v2.17.0 desktop application on Windows, macOS and Linux, or as a local browser/server executable. Windows uses WebView2; macOS uses WKWebView. Tray behavior depends on platform and build mode.
 
 ## Architecture
 
@@ -10,7 +10,7 @@ ViiB MediaHub is a local media player application with a React frontend and Go b
 - **State Management**: Zustand with persistent slices (`store.ts`, `slices/`)
   - `playerSlice.ts`: Playback, queue, audio settings, streaming state
   - `librarySlice.ts`: Songs, playlists, metadata, scanning, likes
-  - `spotifySlice.ts`: OAuth tokens, user profile, streaming settings
+  - `spotifySlice.ts`: Session status, legacy OAuth compatibility fields, user profile and streaming settings; active cookie/bearer credentials belong to the backend
   - `uiSlice.ts`: Context menus, dialogs, logs, toasts
 - **Data Persistence**:
   - Backend uses SQLite for all persistent data
@@ -21,8 +21,8 @@ ViiB MediaHub is a local media player application with a React frontend and Go b
 - **Virtual Scrolling**: `react-virtuoso` for large lists
 
 ### Backend (Go)
-- **Runtime**: Go 1.26.9+ (the backend uses pure-Go `modernc.org/sqlite`; native Wails builds may still enable CGO for other dependencies)
-- **Desktop Framework**: Wails v2 with WebView2 (embedded frontend)
+- **Runtime**: Go 1.26.10+ (the backend uses pure-Go `modernc.org/sqlite`; native Wails builds may still enable CGO for other dependencies)
+- **Desktop Framework**: Wails v2.17.0 with the platform WebView (embedded frontend)
 - **Router**: `chi/v5` for HTTP API
 - **Database**: SQLite (`modernc.org/sqlite`) with WAL mode
 - **Entry Points**:
@@ -54,7 +54,7 @@ Run `scripts/build-wails.ps1`:
 - Produces single executable with system tray support
 
 ### Environment Requirements
-- Go requires `CGO_ENABLED=1` (for SQLite/TagLib)
+- SQLite and TagLib use pure-Go/WASM implementations; backend-only builds can run without CGO. Native Wails packaging requires the platform toolchain and may enable CGO.
 - Windows: MSYS2 with GCC for CGO
 - Wails CLI installed globally
 
@@ -220,7 +220,7 @@ backend/
 1. User clicks play on song
 2. `playerSlice.playSong()` called
 3. Queue updated with context (album/playlist)
-4. Audio element loads file via `/api/stream/{id}`
+4. Audio element loads file via `/api/audio/{id}`
 5. Media Session API updated for OS integration
 6. Play recorded in database
 
@@ -232,7 +232,7 @@ backend/
 - SSE events logged with 📥/📡 emojis
 
 ### Common Issues
-- **CGO errors**: Ensure GCC installed and `CGO_ENABLED=1`
-- **Port conflicts**: Backend uses dynamic port allocation
+- **CGO errors**: Native Wails packaging and race builds need the platform compiler/toolchain. The pure-Go SQLite backend does not itself require CGO; use the build mode and scripts described in `docs/development.md`.
+- **Port conflicts**: Web/server mode supports dynamic port allocation. Check desktop/OAuth callback configuration separately rather than assuming every port is dynamic.
 - **SSE disconnects**: Frontend has reconnection + polling fallback
 - **Scan stuck**: Check `viib.log` for scanner errors

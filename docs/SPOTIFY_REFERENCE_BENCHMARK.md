@@ -1,6 +1,6 @@
 # Frozen Spotify reference comparisons
 
-> Scope update — 2026-10-12: This remains the provider-reference comparison contract. Further local-scanning/DSP improvements and independent accuracy qualification are deferred to a future branch. Provider observations are not independent accuracy labels. See [current branch scope](SPOTIFY_BRANCH_REMAINING_WORK.md) and [future local-analysis work](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
+> Scope update — 2026-10-12: This remains the provider-reference comparison contract. Further local-scanning/DSP improvements and independent accuracy qualification are deferred to a future branch. Provider observations are not independent accuracy labels. See [Spotify behavior and limitations](spotify.md) and [future local-analysis work](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
 
 **Updated:** 2026-10-04. Implementation checkpoint: `8187104`.
 

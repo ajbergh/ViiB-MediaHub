@@ -7,12 +7,12 @@ import (
 )
 
 // JournalChangeDetector is the interface for platform-specific filesystem journal implementations.
-// Each platform (Windows/macOS/Linux) provides its own implementation that can detect
-// file changes since a given timestamp using the most efficient method available.
+// Implementations use platform journal cursors or compare filesystem metadata
+// against the stored cache; the supplied timestamp is not a universal replay boundary.
 type JournalChangeDetector interface {
-	// GetChangesSince returns all filesystem changes since the given timestamp
-	// that are relevant to audio files. The paths returned should be filtered
-	// to only include files within the monitored directories.
+	// GetChangesSince reports audio-file changes within watchPaths relative to the
+	// detector's cursor/cache, using since when supported by that implementation.
+	// This is change detection, not an exhaustive timestamp-based event history.
 	GetChangesSince(since time.Time, watchPaths []string) ([]FileChange, error)
 
 	// IsAvailable returns true if this journal method is available on the current system.

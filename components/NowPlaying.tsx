@@ -1,66 +1,12 @@
 /**
- * ViiB MediaHub - Now Playing View Component
- * 
- * Full-screen immersive view for the currently playing track with comprehensive controls and visualizations.
- * 
- * Architecture:
- * - Fixed full-screen overlay (z-index 100) with animated entrance
- * - Dynamic gradient background generated from album artwork colors
- * - Album art container with audio-reactive visualizer overlay
- * - Bottom control panel with player controls and metadata
- * 
- * Features:
- * 
- * Visual Elements:
- * - Large square album artwork (60vh) with aspect ratio preservation
- * - Dynamic gradient background blurred and faded from album colors
- * - Audio-reactive visualizer overlay with 12 modes (see AlbumArtVisualizer)
- * - Visualizer cycle button with active state indication
- * - Album art download functionality with progress indication
- * 
- * Playback Controls:
- * - Play/Pause toggle with icon transition
- * - Previous/Next track navigation
- * - Shuffle toggle (saved in player state)
- * - Repeat mode toggle (off → all → one)
- * - Seek bar with draggable progress indicator
- * - Volume slider with icon indication
- * 
- * Visualizer System:
- * - 12 visualization modes: OFF, WAVE, SPECTRUM, FLAME_SPECTRUM, STARDUST_HALO,
- *   AURORA_RIBBON, ELECTRIC_ARC, GRASS_OSCILLOSCOPE, FIREFLY_FIELD,
- *   TUNNEL_WAVEFORM, WIND_FIELD, and MILKDROP
- * - MILKDROP mode uses WebGL Butterchurn library for classic Winamp-style visualizations
- * - Cycle through modes via Activity button (bottom-left controls)
- * - Real-time audio analysis via Web Audio API
- * - Smooth fade transitions between modes
- * 
- * Additional Views:
- * - Lyrics View: Shows synchronized lyrics (when available)
- * - Queue View: Mini queue list showing upcoming tracks
- * - Both views accessible via bottom-right buttons
- * 
- * Interaction:
- * - Activated by clicking album art in the main player bar
- * - Close via X button (top-right) or Escape key
- * - Seek by clicking/dragging on progress bar
- * - Download album art via download button (saves to filesystem)
- * 
- * State Management:
- * - Uses Zustand store for player state (isPlaying, volume, shuffle, repeat)
- * - Local state for view toggles (lyrics, queue, download status)
- * - Album cover URLs fetched via useAlbumCovers hook
- * 
- * Performance:
- * - Visualizer paused when view is closed
- * - Album art lazy-loaded with fallback
- * - Gradient memoized per album
- * - Smooth animations via Tailwind CSS classes
- * 
- * @module NowPlaying
- * @requires AlbumArtVisualizer - Audio-reactive visualization renderer
- * @requires LyricsView - Synchronized lyrics display component
- * @requires QueueList - Mini queue preview component
+ * ViiB MediaHub - Now Playing View
+ *
+ * Full-screen track view with playback controls, lyrics, queue and visualizers.
+ * The background uses cover artwork when available, otherwise a deterministic
+ * album-name gradient. Artwork is capped at 500px normally; party mode uses a
+ * 70vh width capped at 80vw. The Spotify download button queues the streaming
+ * track for offline download; it does not save artwork. Player state comes from
+ * Zustand and cover URLs from the current song or useAlbumCovers.
  */
 
 import React, { useState, useEffect, useCallback } from 'react';

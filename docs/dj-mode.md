@@ -1,5 +1,7 @@
 # DJ Mode
 
+For setup details, see [MIDI pad modes](DJ_MIDI_PAD_MODES.md), [experimental controller presets](EXPERIMENTAL_DJ_CONTROLLERS.md) and [four-channel audio routing](FOUR_CHANNEL_DJ_AUDIO.md). [Stem buffering](STEM_PLAYBACK_BUFFERING.md) documents recovery behavior; [native automatic cues](DJ_AUTO_CUE_IMPLEMENTATION.md) explains generation and preservation rules.
+
 ![DJ Mode](../assets/screenshots/dj-mode.png)
 
 DJ Mode is ViiB MediaHub's two-deck mixing interface. Its library browser works from the ViiB catalog, so synchronized Plex music can be discoverable alongside local filesystem tracks where the active DJ/audio pipeline can load and decode the track through ViiB's normal media route.

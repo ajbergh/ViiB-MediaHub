@@ -8,7 +8,7 @@
  * - Durable tempo, key, beatgrid, and energy analysis
  * - Last.fm Community Enrichment
  * 
- * Provides quick actions to trigger enrichment or filter tracks missing metadata.
+ * Links to enrichment settings; it does not start enrichment or expose missing-tag filters.
  * 
  * @module MetadataHealthWidget
  */

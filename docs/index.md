@@ -42,7 +42,7 @@ Spotify remains a separate integration: Free/unknown-plan sessions can browse, w
 
 ## Maintainer and reference documentation
 
-Branch scope and references reviewed on 2026-10-12. Further local scanning/DSP improvements are deferred to a future branch. Implementation status and dated validation evidence are distinct: an implemented adapter or displayed analysis result does not close a parity or professional-quality gate.
+References reviewed against `main` at `818cf94` on 2026-10-23; see the [full documentation review](DOCUMENTATION_REVIEW_2026-10-23.md). Further local scanning/DSP improvements are deferred to a future branch. Implementation status and dated validation evidence are distinct: an implemented adapter or displayed analysis result does not close a parity or professional-quality gate.
 
 The [October 15 documentation refresh](DOCUMENTATION_REVIEW_2026-10-15.md) reconciles current user-facing behavior and screenshots; it does not change those qualification gates.
 
@@ -50,15 +50,23 @@ The [October 15 documentation refresh](DOCUMENTATION_REVIEW_2026-10-15.md) recon
 |---|---|
 | [Product & Engineering Roadmap](ROADMAP.md) | Active overarching phases, priorities, release gates, dependencies and qualified-vs-planned status |
 | [Accessibility qualification](ACCESSIBILITY_QUALIFICATION.md) | Draft WCAG 2.2 AA workflow/host test plan, DJ alternative tasks and findings register; execution remains open |
-| [Wails v2.17 upgrade plan](WAILS_V2_17_UPGRADE_PLAN.md) | Proposed v2.11.0 → v2.17.0 framework upgrade, verification gates and v2-only follow-ups; v3 deferred |
-| [Release dependency inventories](release-dependency-inventories.md) | Proposed checksummed npm/Go release inventories, reproducibility and coverage limits |
-| [Proposed release notes](releases/UNRELEASED.md) | Reviewed change candidates for a future release; not a published-release claim |
+| [Wails v2.17 upgrade plan](WAILS_V2_17_UPGRADE_PLAN.md) | Implemented v2.11.0 → v2.17.0 framework upgrade, verification gates and v2-only follow-ups; v3 deferred |
+| [Release dependency inventories](release-dependency-inventories.md) | Implemented checksummed npm/Go release inventories, reproducibility and coverage limits |
+| [Unreleased changes](releases/UNRELEASED.md) | Merged changes since the RC8 tag; publication and native qualification are separate |
 | [Repository governance](repository-governance.md) | Main-only required CI ruleset, stacked-PR handling and reviewed emergency bypass process |
-| [Release signing policy](release-signing-policy.md) | Proposed fail-closed stable release guard and remaining signing/notarization qualification |
+| [Release signing policy](release-signing-policy.md) | Implemented fail-closed stable release guard and remaining signing/notarization qualification |
 | [Support bundles](support-bundles.md) | Allowlisted diagnostic export, retained fields, omission limits and privacy scope |
-| [Release provenance](release-provenance.md) | Proposed exact-payload attestation and identity verification gate; live OIDC qualification pending |
+| [Release provenance](release-provenance.md) | Implemented exact-payload attestation and identity verification gate; independent consumer qualification remains open |
 | [Release asset verification](release-asset-verification.md) | Exact package/inventory checksum contract and real PR-candidate assembly evidence |
 | [OpenAPI v2](openapi-v2.yaml) | Machine-readable core API routes; additional analysis detail routes currently follow backend handler contracts |
+| [DJ MIDI pad modes](DJ_MIDI_PAD_MODES.md) | MixTrack Go pad banks, modes and mappings |
+| [Experimental DJ controllers](EXPERIMENTAL_DJ_CONTROLLERS.md) | Input-only presets and hardware qualification limits |
+| [Four-channel DJ audio](FOUR_CHANNEL_DJ_AUDIO.md) | Shared-device main/headphone routing and recovery |
+| [Stem playback buffering](STEM_PLAYBACK_BUFFERING.md) | Startup/seek watermarks and underrun recovery limits |
+| [Native DJ cues](DJ_AUTO_CUE_IMPLEMENTATION.md) | Event extraction, cue preservation and migration |
+| [Real-audio cue validation](DJ_CUE_REAL_AUDIO_VALIDATION.md) | Dated decoder/artifact checks and remaining annotation gates |
+| [Spotify Free media probe](SPOTIFY_FREE_ACCOUNT_PROBE.md) | Observed Premium requirement of the current media transport |
+| [Network output research](NETWORK_AUDIO_OUTPUT_RESEARCH.md) | AirPlay/Chromecast proposal; no implemented or hardware-qualified network output |
 | [Stem package v1](VIIB_STEM_PACKAGE_V1.md) | Current `.viibstems` interchange and validation contract |
 | [DJ professional analysis roadmap](DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md) | Delivered analysis engineering and remaining accuracy/calibration/release gates |
 | [DJ analysis context](DJV2_TRACK_ANALYSIS_CONCISE_CONTEXT.md) | Current scope freeze and links to preserved measurement evidence |
@@ -71,13 +79,17 @@ The [October 15 documentation refresh](DOCUMENTATION_REVIEW_2026-10-15.md) recon
 | [Spotify macOS auth validation](SPOTIFY_MACOS_AUTH_VALIDATION.md) | Platform-specific fixtures and remaining live-host validation |
 | [Spotify BPM/key import](SPOTIFY_BPM_KEY_IMPORT.md) | Current download tags, recording links, scalar provenance, and local artifact fallback |
 | [Spotify reference benchmark](SPOTIFY_REFERENCE_BENCHMARK.md) | Frozen reference export/comparison contract; real-audio qualification remains open |
-| [Spotify branch scope](SPOTIFY_BRANCH_REMAINING_WORK.md) | Included behavior, disclosed limitations and new PR boundary |
-| [Spotify PR closeout](SPOTIFY_BRANCH_CLOSEOUT_NEXT_STEPS.md) | Final bug review, verification and publication state |
 | [Future local scanning/analysis](LOCAL_ANALYSIS_FUTURE_BRANCH.md) | Deferred estimator, scan/backfill, corpus and quality work |
 | [Connected resource inventory](SPOTIFY_CONNECTED_RESOURCE_INVENTORY.md) | Provider contract/fixture/live evidence and limits |
 | [Preparation performance](SPOTIFY_PREPARATION_PERFORMANCE.md) | Reproducible existing offline measurements, not full qualification |
 | [Documentation review](DOCUMENTATION_REVIEW_2026-10-12.md) | Scope reconciliation, archive and documentation validation |
 | [Spotify catalog adapter sources](../backend/internal/spotify/catalog/SOURCES.md) | Implementation source/protocol provenance |
+
+## Release records
+
+- [RC8](releases/v1.0.0-rc8.md): tagged prerelease baseline.
+- [RC7](releases/v1.0.0-rc7.md) and [RC6](releases/v1.0.0-rc6.md): earlier release notes.
+- [Unreleased](releases/UNRELEASED.md): changes after the RC8 tag.
 
 ## Historical records
 
@@ -142,7 +154,7 @@ Plex does not add duplicate Plex-only Songs, Albums, Artists, Search, or Now Pla
 ## Architecture Summary
 
 - **Frontend:** React 19 + TypeScript + Vite, Zustand state, Tailwind CSS
-- **Backend:** Go **1.26.9+**, chi HTTP router, SQLite/WAL, Wails v2
+- **Backend:** Go **1.26.10+**, chi HTTP router, SQLite/WAL, Wails v2
 - **Catalog:** SQLite `songs` is the canonical catalog for local and synchronized Plex tracks
 - **Local media:** filesystem scanner, platform-aware change detection, metadata extraction, local cover handling
 - **Plex media:** backend GDM discovery, manual PMS configuration, JWT/PIN authentication, metadata sync, authenticated audio/artwork proxying

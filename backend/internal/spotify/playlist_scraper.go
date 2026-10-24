@@ -57,7 +57,7 @@ type ScrapedImage struct {
 	URL string `json:"url"`
 }
 
-// ScrapedPlaylistDetail represents full playlist data with track details
+// ScrapedPlaylistDetail holds playlist and track details exposed by one embed page.
 type ScrapedPlaylistDetail struct {
 	ID          string               `json:"id"`
 	Name        string               `json:"name"`
@@ -157,7 +157,8 @@ func scrapePlaylist(ctx context.Context, playlistID string, client *http.Client)
 	}, nil
 }
 
-// ScrapePlaylistDetail fetches full playlist data including track details from the embed page.
+// ScrapePlaylistDetail fetches playlist and track details from one public embed page.
+// It does not paginate or guarantee that every playlist track is exposed.
 // This provides detailed track information for display in the UI.
 func ScrapePlaylistDetail(playlistID string) (*ScrapedPlaylistDetail, error) {
 	psLog("Scraping playlist detail for ID: %s", playlistID)
@@ -198,7 +199,7 @@ func ScrapePlaylistDetail(playlistID string) (*ScrapedPlaylistDetail, error) {
 	return extractPlaylistDetail(playlistID, bodyStr)
 }
 
-// extractPlaylistDetail parses the __NEXT_DATA__ JSON to extract full track details
+// extractPlaylistDetail parses track details exposed by the embed page __NEXT_DATA__ JSON.
 func extractPlaylistDetail(playlistID, body string) (*ScrapedPlaylistDetail, error) {
 	result := &ScrapedPlaylistDetail{
 		ID: playlistID,

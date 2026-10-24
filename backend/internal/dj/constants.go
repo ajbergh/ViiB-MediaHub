@@ -131,7 +131,7 @@ const (
 
 // One-per-artist constraints.
 const (
-	OnePerArtistStrict = 1.0 // Never repeat artists
+	OnePerArtistStrict = 1.0 // Maximum repeat-artist penalty; repeats remain eligible
 	OnePerArtistLoose  = 0.5 // Allow some repeats
 	OnePerArtistNone   = 0.0 // No constraint
 )

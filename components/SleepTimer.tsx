@@ -4,7 +4,7 @@
  * Floating dialog for setting a sleep timer with volume fade.
  * 
  * Features:
- * - Preset time options (15, 30, 45, 60 minutes)
+ * - Preset time options (15, 30, 45, 60, 90, 120 minutes)
  * - Custom time input
  * - "End of current song" option
  * - "After X songs" option

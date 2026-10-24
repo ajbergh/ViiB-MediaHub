@@ -1,6 +1,6 @@
 # Beat This Hugging Face evaluation — 2026-10-12
 
-> Archived on 2026-10-12. This is a historical checkpoint, not the current merge checklist. Further local scanning/DSP improvements and quality qualification are deferred to a future branch. See [current branch scope](../../SPOTIFY_BRANCH_REMAINING_WORK.md) and [deferred work](../../LOCAL_ANALYSIS_FUTURE_BRANCH.md). Original results and unchecked gates below remain historical evidence.
+> Archived on 2026-10-12. This is a historical checkpoint, not the current merge checklist. Further local scanning/DSP improvements and quality qualification are deferred to a future branch. See [Spotify behavior and limitations](../../spotify.md) and [deferred work](../../LOCAL_ANALYSIS_FUTURE_BRANCH.md). Original results and unchecked gates below remain historical evidence.
 
 Branch acceptance work is paused at the user's request. This evaluation changes no product code, live credentials, analysis defaults, or acceptance status.
 

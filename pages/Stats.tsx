@@ -1,25 +1,11 @@
 /**
  * ViiB MediaHub - Listening Stats Page
- * 
- * Comprehensive listening statistics and insights dashboard.
- * Shows personalized data based on listening history with empty state for new users.
- * 
- * Features:
- * - Total listening time (all-time, monthly, weekly)
- * - Top artists by play count
- * - Top albums by play count
- * - Top genres by play count
- * - Listening activity calendar/heatmap
- * - Recently played history
- * - Fun statistics (most played song, longest listening session, etc.)
- * - Empty state when no listening history using centralized copy
- * 
- * Design System Usage:
- * - EmptyState component with copy from lib/emptyStateCopy.ts
- * - Page/PageHeader components for consistent layout
- * - StatCard internal component for consistent stat display
- * 
- * @module Stats
+ *
+ * Displays catalog-derived play totals, estimated all-time listening duration,
+ * unique played songs, top track/artists/albums/genres and library counts.
+ * The weekly card sums lifetime play counts for songs last played within seven
+ * days; it is not an event-level weekly listening-time calculation. Shows an
+ * empty state when the library has no recorded plays.
  */
 
 import { Page, PageHeader } from '../components/ui/Page';

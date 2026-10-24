@@ -72,14 +72,14 @@ const (
 
 // DownloadManager manages the Spotify download queue and processing.
 // It maintains a persistent queue in SQLite and processes downloads concurrently.
-// The manager uses librespot-go to authenticate with Spotify using OAuth tokens
+// The manager uses librespot-go with bearer tokens from the configured auth provider
 // and streams tracks directly from Spotify servers.
 //
 // Architecture:
 //   - Downloads are queued in the spotify_downloads table
 //   - A worker pool processes downloads concurrently (configurable 1-10 workers)
 //   - Real-time progress updates are sent via SSE (Server-Sent Events)
-//   - OAuth access tokens are retrieved from database before each download
+//   - Purpose-scoped playback tokens come from the auth runtime (Web Player or legacy OAuth)
 //   - Downloaded files are saved as Ogg/Vorbis and can be converted to MP3.
 //
 // Reliability Features:
@@ -401,21 +401,13 @@ func (dm *DownloadManager) GetDownloadDir() string {
 	return dm.downloadDir
 }
 
-// ensureSession ensures the Spotify session is initialized with current access token.
-// This method retrieves OAuth credentials from the database and initializes the
-// librespot session if needed. It's called before each download to ensure fresh
-// authentication.
-//
-// The method performs the following steps:
-//  1. Retrieves spotify_credentials from database settings
-//  2. Parses the JSON to extract the access token
-//  3. Checks for token expiry and refreshes if needed
-//  4. Updates the SessionManager with the current token
-//  5. Initializes the librespot session (if not already initialized)
-//
-// Returns:
-//   - error if credentials are missing, invalid, or session initialization fails
+// ensureSession prepares the librespot session using the manager context.
 func (dm *DownloadManager) ensureSession() error { return dm.ensureSessionContext(dm.ctx) }
+
+// ensureSessionContext obtains a playback token from the configured token source,
+// falling back to the legacy OAuth manager only when no source was supplied.
+// Token acquisition/renewal belongs to that source; session initialization is
+// serialized, and authentication failures update the reconnect-required state.
 func (dm *DownloadManager) ensureSessionContext(ctx context.Context) error {
 	source := dm.tokenSource
 	if source == nil {
@@ -664,7 +656,7 @@ func (dm *DownloadManager) GetDownload(id string) (*db.SpotifyDownload, error) {
 	return dm.db.GetDownload(id)
 }
 
-// GetAllDownloads retrieves all downloads
+// GetAllDownloads returns a limit/offset page of stored downloads across all statuses.
 func (dm *DownloadManager) GetAllDownloads(limit, offset int) ([]db.SpotifyDownload, error) {
 	return dm.db.GetAllDownloads(limit, offset)
 }
@@ -1075,7 +1067,7 @@ func (dm *DownloadManager) downloadWorker(workerID int) {
 
 // processDownload handles a single download in a worker goroutine.
 // This method:
-//  1. Ensures Spotify session is authenticated with current OAuth token
+//  1. Ensures the Spotify session is authenticated with a current provider bearer token
 //  2. Downloads the track using librespot-go
 //  3. Updates database with completion status
 //  4. Sends progress updates via SSE channel

@@ -348,7 +348,8 @@ func (w *PersonaWeights) CalculateBPMPenalty(bpmDiff int) float64 {
 }
 
 // CalculateArtistPenalty calculates the penalty for repeating an artist.
-// Returns 1.0 if artist should be blocked, 0.0 if no penalty.
+// Unseen artists receive no penalty; seen artists receive the configured
+// strictness factor. The scoring layer scales this factor without blocking selection.
 func (w *PersonaWeights) CalculateArtistPenalty(artistSeen bool) float64 {
 	if !artistSeen {
 		return 0.0

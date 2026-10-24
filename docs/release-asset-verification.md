@@ -1,6 +1,6 @@
 # Release asset verification
 
-Roadmap P0.5 / P4.6. The proposed
+Roadmap P0.5 / P4.6. The implemented
 [verifier](../scripts/verify_release_assets.py) requires the exact release input
 set before writing `SHA256SUMS.txt`. The publisher uploads the whole directory,
 so an unexpected file must fail validation rather than ship outside the checksum
@@ -29,7 +29,7 @@ binaries or publish a release. Channel eligibility is enforced separately by the
 publisher identity, signature, license approval or successful installation.
 
 The canonical publish job invokes this same verifier before release creation.
-The proposed [provenance gate](release-provenance.md) consumes the manifest and
+The implemented [provenance gate](release-provenance.md) consumes the manifest and
 verifies every payload identity before publication.
 CI and release preparation run its standard-library unit tests. A failed verifier
 step prevents the later wildcard upload from executing.

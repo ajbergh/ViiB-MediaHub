@@ -1,5 +1,7 @@
 # DJ panel performance review
 
+> Historical review: findings and measurements below describe the original review checkpoint. Current behavior and remaining qualification are documented in the [current reference](dj-mode.md). The 2026-10-23 documentation review preserves these results without claiming a new native or performance test.
+
 Reviewed October 17, 2026 against the running `/dj` page and current branch.
 
 ## Findings and fixes

@@ -1,6 +1,6 @@
 # Spotify BPM/key import
 
-> Scope update — 2026-10-12: Provider import/provenance and existing local fallback remain in this branch. Further local scanning/DSP improvements and accuracy qualification are deferred to a future branch. Unknown BPM/key values remain valid outcomes. See [current branch scope](SPOTIFY_BRANCH_REMAINING_WORK.md) and [future local-analysis work](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
+> Scope reviewed — 2026-10-23: Provider import/provenance and existing local fallback are merged in `main`. Further local scanning/DSP improvements and accuracy qualification are deferred to a future branch. Unknown BPM/key values remain valid outcomes. See [Spotify behavior and limitations](spotify.md) and [future local-analysis work](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
 
 Spotify downloads and library preparation request native `audio_attributes_v2` (Web Player extension 222) directly by recording ID through the connected session. Fresh V2 BPM/key take precedence over legacy scalars, while `audio_features` and `audio_analysis` retain other metadata, detailed artifacts and existing fallback behavior. Missing V2 fields do not become zero or invented values. The existing refresh service provides independent endpoint caching, coalescing, timeouts and rate-limit cooldowns. Missing credentials or unavailable provider data does not fail the audio download. See [V2 diagnostic and rollout](SPOTIFY_BPM_DIAGNOSTIC.md).
 

@@ -23,11 +23,11 @@ func sLog(format string, v ...interface{}) {
 	logger.SpotifySession(format, v...)
 }
 
-// SessionManager manages Spotify librespot sessions for downloading.
-// It handles OAuth authentication using access tokens from the Spotify Web API.
+// SessionManager manages Spotify librespot sessions for playback and downloading.
+// It authenticates with bearer tokens supplied by the backend auth provider.
 //
 // The SessionManager provides:
-//   - OAuth token-based authentication (no username/password needed)
+//   - Bearer token-based authentication (no username/password needed)
 //   - Session lifecycle management (initialization, login, cleanup)
 //   - Integration with amp.SDK task context for proper resource management
 //   - Session state tracking to prevent duplicate initializations
@@ -43,7 +43,7 @@ func sLog(format string, v ...interface{}) {
 //	defer sm.Close()
 type SessionManager struct {
 	session       respot.Session // Active librespot session
-	accessToken   string         // OAuth access token from Spotify Web API
+	accessToken   string         // Bearer token from the configured auth provider
 	lastTokenUsed string         // Track which token was used to init session
 	cacheDir      string         // Directory for librespot cache files
 	taskCtx       task.Context   // amp.SDK task context for resource management
@@ -60,7 +60,7 @@ type SessionManager struct {
 // authenticate with Spotify.
 //
 // Parameters:
-//   - accessToken: OAuth access token from Spotify Web API (can be empty, set later with UpdateAccessToken)
+//   - accessToken: Bearer token from the configured auth provider (can be empty, set later with UpdateAccessToken)
 //   - cacheDir: Directory for storing librespot cache files
 //
 // Returns:
@@ -74,19 +74,19 @@ func NewSessionManager(accessToken, cacheDir string) *SessionManager {
 }
 
 // UpdateAccessToken updates the access token for the session.
-// This should be called if the OAuth token is refreshed or changed.
-// Note: If the token has changed since last initialization, the session
-// will be re-initialized with the new token.
+// This should be called when the provider bearer token is refreshed or changed.
+// This setter does not reconnect immediately. The next Initialize call replaces
+// the session if the token differs from the one used for the current session.
 //
 // Parameters:
-//   - accessToken: New OAuth access token from Spotify Web API
+//   - accessToken: New bearer token from the configured auth provider
 func (sm *SessionManager) UpdateAccessToken(accessToken string) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	sm.accessToken = accessToken
 }
 
-// Initialize creates and authenticates a Spotify session using OAuth.
+// Initialize creates and authenticates a Spotify session using the supplied bearer token.
 // If the session is already initialized with a different token, it will
 // be re-initialized with the new token.
 //
@@ -94,7 +94,7 @@ func (sm *SessionManager) UpdateAccessToken(accessToken string) {
 //  1. Creates cache directory if it doesn't exist
 //  2. Starts an amp.SDK task context for resource management
 //  3. Validates the access token is present
-//  4. Creates a respot.SessionContext with OAuth token
+//  4. Creates a respot.SessionContext with the bearer token
 //  5. Starts a new librespot session
 //  6. Performs login authentication
 //

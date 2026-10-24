@@ -1,7 +1,8 @@
 # Release artifact provenance
 
-Roadmap P0.4 / P0.5. **Proposed workflow gate; live attestation qualification is
-pending.** No existing release gains an attestation from this source change.
+Roadmap P0.4 / P0.5. **Implemented workflow gate.** The RC8 release notes describe this pipeline.
+A source change does not retrofit attestations onto older releases; independent
+download/identity/tamper verification remains a qualification requirement.
 
 ## Publication boundary
 
@@ -38,7 +39,7 @@ continues to reject stable releases.
 
 ## Consumer verification
 
-After downloading a future attested payload, independently choose the expected
+After downloading an attested payload, independently choose the expected
 source commit and ref from the reviewed release workflow run. Do not derive trust
 policy from an unverified bundle or a filename. Replace the example values:
 
@@ -64,7 +65,11 @@ The publisher attests payloads assembled from jobs in the same workflow; it is
 not an independent per-target build audit. The legacy Windows draft path has
 no attestation gate and remains a separate qualification gap.
 
-## Validation and remaining evidence
+## Implementation validation and remaining consumer evidence
+
+The checks below record validation performed when the gate was introduced.
+[RC8 notes](releases/v1.0.0-rc8.md) document the release pipeline; this documentation
+pass did not independently fetch or verify its published payloads or attestations.
 
 Six standard-library tests use synthetic files and a mocked CLI to check all
 13 subjects and mandatory policy arguments, stop-on-failure behavior, invalid
@@ -76,7 +81,7 @@ were checked. The real installed GitHub CLI rejected a synthetic malformed
 bundle and the wrapper exited 1. That negative probe does not qualify successful
 signature verification.
 
-Full qualification requires a separately authorized prerelease publication run:
+Full consumer qualification requires evidence from a prerelease publication run:
 inspect the attestation's source/subject claims, verify every downloaded payload
 with the trusted identity, reject tampered bytes/wrong commit/ref/workflow,
 record the run and attestation IDs, and retain consumer-verification evidence.

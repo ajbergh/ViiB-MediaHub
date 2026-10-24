@@ -1,5 +1,7 @@
 # macOS build review
 
+> Historical review: findings and measurements below describe the original review checkpoint. Current behavior and remaining qualification are documented in the [current reference](WAILS_V2_17_UPGRADE_PLAN.md). The 2026-10-23 documentation review preserves these results without claiming a new native or performance test.
+
 Reviewed 2026-10-17: Wails/Darwin configuration, Intel and Apple Silicon packaging,
 native window behavior, and the DJ renderer/worker/audio changes.
 

@@ -2,8 +2,8 @@
 """Emit benchmark-only Beat This BPM and beat ticks.
 
 Run this only in an isolated development environment. Beat This and its model
-remain external reference evidence and are never imported, linked, or shipped
-by ViiB.
+remain external reference evidence. This isolated benchmark harness imports
+Beat This; the ViiB application runtime does not import, link or ship it.
 """
 
 from __future__ import annotations

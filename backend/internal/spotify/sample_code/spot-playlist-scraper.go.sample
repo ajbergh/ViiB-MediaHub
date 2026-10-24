@@ -115,10 +115,6 @@ func usage() {
 // user-supplied URL or a simple search term. If `input` already looks like
 // a valid URL with a scheme, it is returned unchanged. Otherwise the
 // function returns `https://open.spotify.com/search/<path-escaped-input>/playlists`.
-// buildSearchURL returns a full Spotify search URL from either a
-// user-supplied URL or a simple search term. If `input` already looks like
-// a valid URL with a scheme, it is returned unchanged. Otherwise the
-// function returns `https://open.spotify.com/search/<path-escaped-input>/playlists`.
 //
 // The function also accepts the short form `open.spotify.com/...` without
 // a scheme and will prepend `https://` in that case.
@@ -169,7 +165,6 @@ func buildSearchURL(input string) (string, error) {
 //     output (array of playlist objects). If `-json=false` the tool prints
 //     a single canonical playlist URL per line (optionally `spotify:playlist` with
 //     `-spotify` set).
-//     print spotify:playlist:<ID> URIs instead.
 //
 // Error handling and exit codes:
 //   - Exits with 1 on usage errors (see usage()).

@@ -7,7 +7,7 @@
 /* ═══════════════════════════════════════════════════════
    DJ Mode V2 — Design tokens
    Values follow the approved mock-up (assets/djv2-ui-target.png) and
-   docs/DJV2_UI_REFACTOR_ENGINEERING_PLAN.md §10A.2. Waveform render colors
+   docs/archive/completed/DJV2_UI_REFACTOR_ENGINEERING_PLAN.md §10A.2. Waveform render colors
    live in components/dj/v2/waveform/waveformPalette.ts.
    ═══════════════════════════════════════════════════════ */
 :root {

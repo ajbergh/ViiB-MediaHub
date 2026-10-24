@@ -1,6 +1,8 @@
 # Wails v2.17 upgrade plan
 
-Research date: 2026-10-23. Base: `main` at `0d6b04a`. Status: implemented in this worktree; validation results and remaining release gates are recorded below.
+> Current checkpoint — 2026-10-23, `main` at `818cf94`: Wails v2.17.0 is implemented. Follow-up #160 repairs dependency restoration and resolves the npm audit findings below. The original base commit and executed-check results remain dated upgrade evidence; the eight development advisories were an earlier checkpoint, not the current dependency status. Native qualification gates remain open.
+
+Research date: 2026-10-23. Base: `main` at `0d6b04a`. Status: merged into `main` in #159; validation results and remaining release gates are recorded below.
 
 ## Decision
 

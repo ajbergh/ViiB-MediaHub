@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Create a reproducible exact-metadata training-overlap report.
 
-Input annotations must be a flattened JSON array/object or CSV containing
-artist and title fields. The report calls records "clear" only when the caller
+Input annotations may be a JSON array, an object wrapping an array under
+tracks/annotations/data, or CSV. Artist/title field names are configurable
+(defaulting to artist and title). The report calls records "clear" only when the caller
 explicitly attests that the supplied annotation set is a complete coverage of
 the stated model training data.
 """
