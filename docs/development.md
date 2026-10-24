@@ -16,7 +16,7 @@ Setup, architecture, API entry points, data handling, and validation for contrib
 Install Wails:
 
 ```bash
-go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
 ```
 
 Platform-native build dependencies are documented by Wails. The backend uses the pure-Go `modernc.org/sqlite` driver and can build without CGO; native Wails packaging still uses the repository's platform toolchain and may enable CGO for other native dependencies.

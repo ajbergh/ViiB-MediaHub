@@ -1,6 +1,6 @@
 # Wails v2.17 upgrade plan
 
-Research date: 2026-10-23. Base: `main` at `0d6b04a`. Status: proposed; no dependency change implemented.
+Research date: 2026-10-23. Base: `main` at `0d6b04a`. Status: implemented in this worktree; validation results and remaining release gates are recorded below.
 
 ## Decision
 
@@ -35,23 +35,23 @@ Compared at the source level between the two tags:
 - **Webview origins:** unchanged. macOS/Linux still use `wails://wails/` and Windows still uses `http://wails.localhost/`, so the trust boundary in [`server.go`](../backend/internal/server/server.go) and native detection in [`utils.ts`](../utils.ts) and [`externalNavigation.ts`](../services/externalNavigation.ts) need no change.
 - **Go version:** the Wails module's `go` directive rises from 1.22.0 to 1.25.0. ViiB's 1.26.10 already satisfies it.
 - **WebView2 binding:** `github.com/wailsapp/go-webview2` stays at v1.0.22.
-- **Module graph:** expect `wailsapp/mimetype` to be replaced by `gabriel-vasile/mimetype`. Expect `git.sr.ht/~jackmordaunt/go-toast/v2` (Windows toasts) to be added, and `labstack/echo`/`gommon` (dev server) to be bumped. ViiB already requires newer `golang.org/x/{crypto,sys,text,net}` than Wails does, so those should not move. Confirm with `go mod graph` and the release Go-module inventory rather than assuming.
-- **Generated runtime wrapper:** the v2.17 `wailsjs/runtime` adds only notification functions and types. ViiB's committed [`runtime.js`](../backend/cmd/wails/frontend/wailsjs/runtime/runtime.js)/`.d.ts` are consumed by the Vite build, while CI and release build with `-skipbindings`. Regenerate and commit them so the committed wrapper matches the module version. `App.js`/`App.d.ts` should not change.
+- **Module graph:** `wailsapp/mimetype` is replaced by `gabriel-vasile/mimetype`. Resolved changes: `git.sr.ht/~jackmordaunt/go-toast/v2` v2.0.3 and `gabriel-vasile/mimetype` v1.4.16 are added; `labstack/echo/v4` rises to v4.15.3, `labstack/gommon` to v0.5.0, and `golang.org/x/time` to v0.15.0. ViiB already requires newer `golang.org/x/{crypto,sys,text,net}` than Wails does; those versions remain unchanged in the resolved graph and inventory.
+- **Generated runtime wrapper:** the v2.17 `wailsjs/runtime` adds only notification functions and types. ViiB's committed [`runtime.js`](../backend/cmd/wails/frontend/wailsjs/runtime/runtime.js)/`.d.ts` are consumed by the Vite build, while Unix CI and release build with `-skipbindings`; Windows CI also exercises regeneration. Regenerate to verify the committed wrapper matches the module version. The current committed wrappers already include these notification additions, so no runtime diff is expected. `App.js`/`App.d.ts` should not change.
 - **Close and quit semantics:** unchanged for the current configuration. In v2.17 the Windows frontend's `Quit()` calls `OnBeforeClose` and aborts the quit if it returns true. ViiB does not set `OnBeforeClose` today, so this matters only for the close-preference follow-up below.
 
 ## Implementation (one PR)
 
-- [ ] In `backend/`, run `go get github.com/wailsapp/wails/v2@v2.17.0` and `go mod tidy`. Review the `go.mod`/`go.sum` diff against the module-graph expectations above.
-- [ ] Update every CLI pin from v2.11.0 to v2.17.0:
+- [x] In `backend/`, run `go get github.com/wailsapp/wails/v2@v2.17.0` and `go mod tidy`. Review the `go.mod`/`go.sum` diff against the module-graph expectations above.
+- [x] Update every CLI pin from v2.11.0 to v2.17.0:
   - `.github/workflows/release.yml` (`WAILS_VERSION`)
   - `.github/workflows/ci.yml` (two `go install` steps)
   - `.github/workflows/build-windows.yml`
   - prerequisite comments in `scripts/build-wails.ps1`, `scripts/build-wails-windows-arm64.ps1`, `scripts/build-wails-macos.sh`, `scripts/build-wails-linux.sh`, and `scripts/dev-wails.ps1`
   - [`docs/development.md`](development.md) install command
-- [ ] In `backend/cmd/wails`, regenerate the bindings with the v2.17.0 CLI (`wails generate module`) and commit the result. Expected diff: notification additions in `wailsjs/runtime/` only.
-- [ ] Update the toolchain baseline line in [`DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md`](DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md). Leave dated reviews and archived evidence that cite v2.11.0 unchanged, because they record what was tested.
-- [ ] Add a candidate entry to [`releases/UNRELEASED.md`](releases/UNRELEASED.md): the Wails v2.17.0 upgrade and the user-visible fixes (macOS 26 WebView crash, Linux bound-method panic, WebView2 bootstrapper error dialog).
-- [ ] Run `govulncheck` (CI's `check-windows-govuln.ps1` covers the Windows binary) and review license/inventory output for the new modules.
+- [x] In `backend/cmd/wails`, regenerate the bindings with the v2.17.0 CLI (`wails generate module`) and commit the result. Expected result: no diff, because the committed runtime already contains the notification additions.
+- [x] Update the toolchain baseline line in [`DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md`](DJV2_PROFESSIONAL_TRACK_ANALYSIS_ROADMAP.md). Leave dated reviews and archived evidence that cite v2.11.0 unchanged, because they record what was tested.
+- [x] Add a candidate entry to [`releases/UNRELEASED.md`](releases/UNRELEASED.md): the Wails v2.17.0 upgrade and the user-visible fixes (macOS 26 WebView crash, Linux bound-method panic, WebView2 bootstrapper error dialog).
+- [x] Run `govulncheck` (CI's `check-windows-govuln.ps1` covers the Windows binary) and review license/inventory output for the new modules.
 
 Out of scope for this PR: any change to `main.go` options, the close hook, single-instance handling, version injection, or Linux packaging.
 
@@ -86,4 +86,54 @@ These were listed in the v3 assessment as reasons to migrate. All are achievable
 
 ## Planning uncertainties
 
-This plan is based on release notes, the changelog, and a source diff of the two tags. It does not claim an executed v2.17 build, native qualification, or a measured fix for the macOS 26 crash. The module-graph changes are expectations until `go mod tidy` runs. The second-launch defect comes from code reading and needs a reproduction before follow-up 2 is scheduled.
+The original plan was based on release notes, the changelog, and a source diff of the two tags. Implementation evidence is recorded below. Windows compilation and a basic launch test do not establish full native qualification or a measured fix for the macOS 26 crash. The second-launch defect comes from code reading and needs a reproduction before follow-up 2 is scheduled.
+
+## Implementation review (2026-10-23)
+
+The dependency/tooling upgrade is implemented without changing application options
+or the separate behavior follow-ups. Installation hints now pin v2.17.0 instead
+of `@latest`. Windows CI retains binding generation; release and Unix CI retain
+`-skipbindings`.
+
+- `go get` and `go mod tidy` resolved the changes listed above. WebView2 remains
+  v1.0.22 and x/crypto, x/sys, x/text and x/net remain at their existing versions.
+- The pinned v2.17.0 CLI regenerated all five committed binding/runtime files
+  with no content changes (only local line-ending normalization).
+- The release inventory script successfully exported 303 resolved modules to
+  the local validation artifact `.tmp/wails-v2.17-go-modules.json`.
+- License files in the downloaded module sources were reviewed: go-toast
+  v2.0.3 offers `Unlicense OR MIT`; mimetype v1.4.16, Echo v4.15.3 and Gommon
+  v0.5.0 use MIT; x/time v0.15.0 uses the Go BSD license. These require retaining
+  their applicable notices. This focused review does not qualify the complete
+  release license inventory or native-library licenses.
+- `npm audit --omit=dev --audit-level=high` reports no vulnerabilities. The full
+  install audit reports eight development-dependency advisories; the npm lockfile
+  is unchanged by this upgrade.
+
+Native macOS/Linux builds, installer qualification, the full native interaction
+matrix, asset MIME checks in native WebViews, and hardened `wails dev` IPC
+qualification remain release gates requiring the corresponding environments.
+
+### Executed checks
+
+Validation host: Windows amd64; the backend selected Go 1.26.10 via its module
+baseline. Logs and scratch outputs are in the ignored `.tmp/` directory.
+
+| Check | Result |
+|---|---|
+| `npm run check` | Passed: palette guards, both TypeScript checks, 154 test files / 756 tests, production Vite build |
+| `go test ./... -timeout 10m` | Passed with the MinGW compiler available and embedded assets prepared |
+| `go test -race ./... -timeout 25m` | Passed on Windows amd64 with MinGW; no race reports |
+| `go vet ./...` | Passed |
+| Dependency inventory unit tests | 4 passed |
+| `govulncheck -tags desktop,production ./cmd/wails` | Passed: no reachable vulnerabilities |
+| Windows release command | Passed: v2.17 CLI `build -skipbindings -platform windows/amd64 -ldflags '-s -w'` |
+| `go version -m` | Executable embeds Go 1.26.10 and Wails v2.17.0 |
+| `check-windows-govuln.ps1` | Passed under the existing policy: GO-2026-5932 binary-mode overmatch excluded after the production graph confirmed no openpgp imports |
+| Basic Windows smoke | Passed using a temporary copy of `smoke-test.ps1`, with hidden launch, isolated `-data` directory and port 34125; window detected after 2 seconds and process stopped |
+
+Windows executable SHA-256:
+`D067685FB6AB3557C013288E4835A181294B801109721DD854893B2658B4320D`.
+This identifies the local executable, not an installed NSIS package. The initial
+smoke attempt used an incorrect harness argument (`-data-dir`); correcting it
+to the existing `-data` flag resolved the launch failure without app changes.

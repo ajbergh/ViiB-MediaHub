@@ -43,3 +43,10 @@ Proposed canonical release provenance: attest the exact 13 payloads and verify
 repository/workflow/commit/ref before publication. Live attestation qualification
 and production platform signing remain pending; see
 [provenance policy](../release-provenance.md).
+
+## Desktop framework
+
+- Upgrade Wails from v2.11.0 to v2.17.0, including upstream fixes for the
+  macOS 26 WebView crash during rapid updates, Linux bound-method panic handling,
+  and the Windows WebView2 bootstrapper error dialog. Native platform
+  qualification remains pending; see the [upgrade plan](../WAILS_V2_17_UPGRADE_PLAN.md).

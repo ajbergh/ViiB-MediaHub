@@ -11,7 +11,7 @@
 # Prerequisites:
 #   - Go 1.26.9+ with CGO_ENABLED=1
 #   - Node.js 20+ and npm
-#   - Wails CLI: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+#   - Wails CLI: go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0
 #   - CGO toolchain:
 #       amd64: gcc (e.g., sudo apt install gcc)
 #       arm64 cross-compile: gcc-aarch64-linux-gnu
@@ -102,7 +102,7 @@ check_cmd go   "Install from https://go.dev/dl/"
 
 if ! command -v wails &>/dev/null; then
     echo "❌ Wails CLI not found."
-    echo "  Install with: go install github.com/wailsapp/wails/v2/cmd/wails@latest"
+    echo "  Install with: go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0"
     exit 1
 fi
 echo "  ✓ wails $(wails version 2>&1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')"
