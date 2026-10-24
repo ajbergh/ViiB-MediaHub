@@ -1,6 +1,6 @@
 # Spotify cookie authentication parity audit
 
-> Scope update — 2026-10-12: This is a dated parity record. Its remaining provider/platform gaps are disclosed limitations, not completed features. Further local-scanning/DSP accuracy work is deferred to a future branch. See [current branch scope](SPOTIFY_BRANCH_REMAINING_WORK.md) and [future local-analysis work](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
+> Scope update — 2026-10-12: This is a dated parity record. Its remaining provider/platform gaps are disclosed limitations, not completed features. Further local-scanning/DSP accuracy work is deferred to a future branch. See [Spotify behavior and limitations](spotify.md) and [future local-analysis work](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
 
 Evidence updated: 2026-10-04. Branch: spotify/webplayer-auth-analysis-provider. Implementation checkpoint: `8187104`.
 

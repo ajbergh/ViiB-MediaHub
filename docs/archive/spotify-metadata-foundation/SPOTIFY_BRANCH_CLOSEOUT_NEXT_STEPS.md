@@ -1,6 +1,6 @@
 # Spotify metadata branch closeout plan
 
-> Archived on 2026-10-12. This is a historical checkpoint, not the current merge checklist. Further local scanning/DSP improvements and quality qualification are deferred to a future branch. See [current branch scope](../../SPOTIFY_BRANCH_REMAINING_WORK.md) and [deferred work](../../LOCAL_ANALYSIS_FUTURE_BRANCH.md). Original results and unchecked gates below remain historical evidence.
+> Archived on 2026-10-12. This is a historical checkpoint, not the current merge checklist. Further local scanning/DSP improvements and quality qualification are deferred to a future branch. See [Spotify behavior and limitations](../../spotify.md) and [deferred work](../../LOCAL_ANALYSIS_FUTURE_BRANCH.md). Original results and unchecked gates below remain historical evidence.
 
 **Branch:** `feature/spotify-metadata-foundation`
 **Branch state verified 2026-10-11:** HEAD is `c52c675` on `feature/spotify-metadata-foundation`; origin comparison was last confirmed as 0 ahead / 0 behind on 2026-10-09. The worktree has uncommitted implementation, regressions and documentation through Milestone 242; Spotify-first equivalent-field selection for BPM, key/mode, beat/bar timing and one three-band waveform is implemented, while broad acceptance gates remain open. Recheck branch and worktree before any release action.

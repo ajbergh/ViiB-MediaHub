@@ -1,7 +1,7 @@
 # Release dependency inventories
 
-The proposed P0.5 release-inventory workflow publishes two dependency files
-alongside future packages. It does not add files to previously published releases.
+The implemented P0.5 release-inventory workflow publishes two dependency files
+alongside release packages. It does not add files to previously published releases.
 Both files are required by the release asset verification step and included in
 `SHA256SUMS.txt`; missing inventories stop publishing.
 
@@ -39,7 +39,7 @@ prove publisher identity. Signing/provenance verification remains a separate
 [roadmap gate](ROADMAP.md#3-phase-0-security-and-release-foundations-p0).
 
 The release validation job retains inventories for 14 days, including PR builds.
-Future release publication attaches them to the GitHub release. Native/MinGW DLLs,
+The canonical release publisher attaches them to the GitHub release. Native/MinGW DLLs,
 OS libraries, vendored upstream code, license obligations, per-target linked
 packages and security advisory acceptance still need separate review.
 

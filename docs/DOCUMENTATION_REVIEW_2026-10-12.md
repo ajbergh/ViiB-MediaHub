@@ -1,6 +1,6 @@
 # Documentation review — 2026-10-12
 
-The owner deferred further local scanning/DSP improvements to a future branch and requested a new Spotify metadata PR into `main`. [Current branch scope](SPOTIFY_BRANCH_REMAINING_WORK.md) and [future work](LOCAL_ANALYSIS_FUTURE_BRANCH.md) now own that decision. The former twelve-gate tally is preserved only as dated history; deferral is not qualification.
+The owner deferred further local scanning/DSP improvements to a future branch and requested a new Spotify metadata PR into `main`. [Spotify behavior and limitations](spotify.md) and [future work](LOCAL_ANALYSIS_FUTURE_BRANCH.md) now own that decision. The former twelve-gate tally is preserved only as dated history; deferral is not qualification.
 
 ## Reconciliation
 
@@ -15,6 +15,6 @@ The owner deferred further local scanning/DSP improvements to a future branch an
 
 ## Validation boundary
 
-Run `python scripts/check_documentation_links.py` to check every tracked/unignored repository Markdown local target and parse documentation JSON. External website availability, generated anchor rendering and native/browser behavior are separate checks, not claims made by this audit. The final counts and backend/frontend verification are recorded in [PR closeout](SPOTIFY_BRANCH_CLOSEOUT_NEXT_STEPS.md).
+Run `python scripts/check_documentation_links.py` to check every tracked/unignored repository Markdown local target and parse documentation JSON. External website availability, generated anchor rendering and native/browser behavior are separate checks, not claims made by this audit. The final counts and backend/frontend verification are recorded in [Spotify behavior and limitations](spotify.md).
 
 Source review covered the changed provider capture, source/account publication, transient queue mapping, grid reset/snapping, benchmark options and user-facing operations. Existing unchanged operational guides retain their historical evidence and documented limits; this review creates no new runtime or accuracy evidence. Future plans remain visibly separate from current product behavior.

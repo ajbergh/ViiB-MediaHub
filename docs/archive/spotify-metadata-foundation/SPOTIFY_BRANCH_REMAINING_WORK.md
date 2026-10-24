@@ -1,6 +1,6 @@
 # Spotify metadata branch — remaining work to close
 
-> Archived on 2026-10-12. This is a historical checkpoint, not the current merge checklist. Further local scanning/DSP improvements and quality qualification are deferred to a future branch. See [current branch scope](../../SPOTIFY_BRANCH_REMAINING_WORK.md) and [deferred work](../../LOCAL_ANALYSIS_FUTURE_BRANCH.md). Original results and unchecked gates below remain historical evidence.
+> Archived on 2026-10-12. This is a historical checkpoint, not the current merge checklist. Further local scanning/DSP improvements and quality qualification are deferred to a future branch. See [Spotify behavior and limitations](../../spotify.md) and [deferred work](../../LOCAL_ANALYSIS_FUTURE_BRANCH.md). Original results and unchecked gates below remain historical evidence.
 
 **Reviewed:** 2026-10-12
 **Branch:** `feature/spotify-metadata-foundation`

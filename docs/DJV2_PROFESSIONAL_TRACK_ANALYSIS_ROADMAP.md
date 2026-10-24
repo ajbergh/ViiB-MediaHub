@@ -1,6 +1,8 @@
 # DJv2 Professional Track Analysis & Harmonic Mixing Roadmap
 
-> Scope update — 2026-10-12: Local scanning, estimator improvements, calibration, corpus expansion and further professional-quality qualification are deferred to a future branch. Delivered behavior remains available; unchecked accuracy gates are not release claims for this Spotify metadata PR. See [current branch scope](SPOTIFY_BRANCH_REMAINING_WORK.md) and [future local-analysis work](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
+> Current implementation checkpoint — 2026-10-23 (`818cf94`): bounded job scheduling, priority/paused states, single-flight claims and bulk queue pause/resume routes are implemented in `v2_jobs.go` and the DB job repository. Shared waveform decoding supports MP3, Ogg/Vorbis and WAV PCM16/float32. Effective scalars resolve source-bound manual overrides, then eligible fresh Spotify provider/import observations, then local analysis; AI enrichment supplies neither BPM nor key. The September local-only boundary was superseded by Spotify metadata imports. The September verification ledger and proposed scheduler specification below are historical design evidence, not a list of missing current features. See [Library Operations](library-operations.md) and [BPM/key import](SPOTIFY_BPM_KEY_IMPORT.md).
+
+> Scope reviewed — 2026-10-23: Further estimator research, calibration, corpus expansion, learned downbeats and professional-quality qualification remain deferred to [future local-analysis work](LOCAL_ANALYSIS_FUTURE_BRANCH.md). Delivered scanning, stem and Spotify metadata maintenance is present in `main`; implementation does not close accuracy gates. See [Spotify behavior and limitations](spotify.md).
 
 **Status:** Phases 0–4b landed and merged (through [#43](https://github.com/ajbergh/ViiB-MediaHub/pull/43)); Phase 1 complete; **Phase 5 is open by explicit project-owner override while the Phase 0 corpus/codec acceptance gate remains open.** Tempo/corpus optimization is deferred, not waived.
 **Scope:** DJv2 / professional DJ workflow only
@@ -68,7 +70,7 @@
 | 2026-09-08 | `analysis/phase0-mp3-ogg-evidence-gate` | Phase 5, Slice 1 | Complete — race-safe deck-analysis patches | `npm run typecheck`; `npx vitest run slices/djMixerSlice.test.ts` | Project owner explicitly opened Phase 5 while keeping the Phase 0 accuracy/corpus gate open for later optimization. Replaced the all-fields `setDeckAnalysis(deck, bpm, key, beatGrid)` setter with a partial patch. Independent async tempo, key, and future grid results now update only their own fields; tempo/key updates retain any user grid offset, while a replacement grid alone resets that offset. Regression coverage proves independently arriving results cannot clobber another result. |
 | 2026-09-08 | `analysis/phase0-mp3-ogg-evidence-gate` | Phase 5, Slice 2 | Complete — durable analysis hydration and library feature map | Focused `go test ./internal/db ./internal/api -run 'Test(ResolveEffectiveKey\|V2TrackAnalysisFeature)' -count=1`; `npm run typecheck`; `npx vitest run slices/djMixerSlice.test.ts` | Added explicit manual-over-measured key resolution alongside the existing effective-BPM resolver. `/api/v2/analysis` returns a two-query, library-wide resolved feature map (not an N+1 row lookup), and `/api/v2/analysis/{songID}` serves deck hydration. Both DJ load paths use durable manual/measured BPM and key before browser scanning; legacy inferred BPM is excluded, so it cannot enable Sync. The V2 library removes its session key cache, displays Camelot by default, includes source/confidence tooltips, and sorts using persisted analysis. The Phase 0 accuracy/corpus gate remains deferred rather than complete. |
 | 2026-09-08 | `analysis/phase0-mp3-ogg-evidence-gate` | Phase 5, Slice 3 | Complete — AI DJ measured-BPM preference | Focused `go test ./internal/db ./internal/dj ./internal/api -run 'Test(ResolveEffectiveKey\|V2TrackAnalysisFeature\|EffectiveBPM)' -count=1` | AI DJ scoring now receives a one-time, two-query map of resolved manual/measured BPM keyed by song ID. It overrides legacy `songs.bpm` only where a durable performance-safe value exists; otherwise the existing tag/tempo-descriptor fallback remains unchanged. Sequencing, phase statistics, continuity scoring, and last-song state use the same context map. |
-| 2026-09-09 | local-only BPM/key boundary | Phase 5, Slice 4 | Complete — removed AI/imported BPM and key paths | `go test -count=1 ./...`; `go vet ./...`; `npm run build` | Removed BPM from both LLM enrichment contracts, response models, validation, logs, scanner/API writes, playlist audit payloads, semantic documents, and UI fallbacks. AI enrichment never had a key field and now explicitly forbids both fields. Effective BPM/key accepts only locked manual overrides or locally measured analysis; imported tags, legacy `songs.bpm`, and tempo descriptors resolve to unknown. The legacy integer column is preserved but inert and hidden for database compatibility. |
+| 2026-09-09 | historical local-only BPM/key boundary | Phase 5, Slice 4 | Delivered then; imported-observation policy superseded by #117 | `go test -count=1 ./...`; `go vet ./...`; `npm run build` | Removed BPM from both LLM enrichment contracts, response models, validation, logs, scanner/API writes, playlist audit payloads, semantic documents, and UI fallbacks. AI enrichment never had a key field and now explicitly forbids both fields. At this dated checkpoint, effective BPM/key accepted only locked manual overrides or local analysis. Current source-bound Spotify provider/import observations are also eligible, below manual overrides and above local analysis; arbitrary tags, legacy `songs.bpm` and tempo descriptors do not become trusted scalars. The legacy integer column is preserved but inert and hidden for database compatibility. |
 | 2026-09-07 | `analysis/phase0-metered-fixtures` | Phase 4b CI repair | Complete | `go test -race ./internal/api -run '^TestAnalyzeTracksJobsStayWithinWorkerBound$'` | Fixed a flaky scheduler-bound test exposed by PR #42 CI. The assertion now waits for the authoritative succeeded count instead of treating separate queued/running snapshots as a terminal condition; a worker can claim between those reads. Production scheduler behavior is unchanged. |
 | 2026-09-07 | `analysis/foundation-pcm-dsp-persistence` | Phase 1, Slice 1 | Complete | `go test ./internal/db -run '^TestTrackAnalysisSchema'` | Added additive song-keyed `track_analysis`, `track_analysis_artifacts`, and `track_analysis_overrides` tables with version, provenance, fingerprint, scalar confidence, artifact, and lock fields. Tests prove fractional measured BPM remains separate from `songs.bpm` and related records cascade on song removal. Opened dependent draft PR [#38](https://github.com/ajbergh/ViiB-MediaHub/pull/38). Decoder/DSP/service work remains. |
 | 2026-09-07 | `analysis/foundation-pcm-dsp-persistence` | Phase 1, Slice 2 | Complete | `go test ./internal/db -run '^TestTrackAnalysis'` | Added validated scalar-analysis upsert/load operations and an explicit source-fingerprint staleness query. Regression coverage proves fractional BPM/key/confidence survive persistence, source changes invalidate a result, and missing analysis is stale. Artifact/override repositories and the PCM pipeline remain. |
@@ -117,7 +119,7 @@ The immediate product outcome is:
 - **Do not treat the current generated beat grid as detected beat data.** Today ViiB creates uniformly spaced beat timestamps from one BPM value and an offset. A professional beatgrid must eventually contain detected beat/downbeat positions or tempo segments and must be independently editable/versioned.
 - **Preserve the canonical `songs` catalog.** Local and Plex-synchronized tracks must continue to share ViiB song identity. Analysis should attach to `song_id`; do not create a DJ-only catalog and do not write ViiB analysis back to Plex by default.
 - **Separate measured facts from inferred metadata.** `songs.bpm` currently participates in AI metadata enrichment and may be an estimated value based on genre/title/artist context rather than measured audio. New measured BPM must carry provenance and take precedence for DJ behavior without silently changing the meaning of old rows.
-- **Reuse the durable job *state* model, but expect to build the *scheduler*.** ViiB has `operation_jobs` with queued/running/succeeded/failed/canceling/canceled/interrupted states, progress counters, retry, and restart recovery. What it does **not** have is a queue: `createJobV2` calls `go a.runJob(job.ID)` immediately, so `queued` is a status that is written but never *drained* ([v2_jobs.go:75](../backend/internal/api/v2_jobs.go#L75)). There is no worker pool, no concurrency bound, no priority column, no claim/lease, and no paused state. Track analysis should extend the persistence layer and **must** add the scheduler that does not exist yet. This is real Phase 4 scope, not glue — see §2.3-B and §9.4.
+- **Historical scheduler gap (closed by Phase 4a).** The following describes the pre-implementation snapshot: ViiB has `operation_jobs` with queued/running/succeeded/failed/canceling/canceled/interrupted states, progress counters, retry, and restart recovery. What it does **not** have is a queue: `createJobV2` calls `go a.runJob(job.ID)` immediately, so `queued` is a status that is written but never *drained* ([v2_jobs.go:75](../backend/internal/api/v2_jobs.go#L75)). There is no worker pool, no concurrency bound, no priority column, no claim/lease, and no paused state. Track analysis should extend the persistence layer and **must** add the scheduler that does not exist yet. This is real Phase 4 scope, not glue — see §2.3-B and §9.4.
 - **Analysis queues must survive restart.** Current restart recovery marks `queued`, `running`, *and* `canceling` rows as `interrupted` ([jobs_schema.go:70-78](../backend/internal/db/jobs_schema.go#L70-L78)). For a scan that finishes in minutes that is correct. For a 50,000-track analysis run measured in days, it silently discards all pending work. Durable per-track state in `track_analysis` — not job rows — is what makes an analysis run resumable.
 - **Reuse one decoded PCM stream.** Waveform overview, onset/tempo, chroma/key, and later energy/loudness should share decoding, downmixing, resampling, windowing, and where practical spectral frames.
 - **Prefer a separate scalar `track_analysis` row plus versioned artifact blobs.** Scalar query fields belong in a queryable table; high-volume beat/phrase/waveform artifacts should not become tens of millions of SQLite rows.
@@ -145,7 +147,9 @@ The immediate product outcome is:
 
 ---
 
-## 2. Current-state audit
+## 2. Historical current-state audit (September verification snapshot)
+
+This section preserves the pre-implementation audit at `3359371`. Its missing-feature statements and source line numbers describe that snapshot. The current implementation checkpoint at the top of this document supersedes it.
 
 ### 2.0 Evidence ledger
 
@@ -170,7 +174,7 @@ Every current-state claim below was re-verified against commit `3359371`. This t
 | `go-mp3` (Apache-2.0) and `oggvorbis` (MIT) are existing pure-Go deps | [go.mod](../backend/go.mod); `oggvorbis.NewReader` [ogg_to_mp3.go:61](../backend/internal/audio/ogg_to_mp3.go#L61) | Confirmed |
 | No CGO in the tree; SQLite is pure Go | `modernc.org/sqlite v1.56.0`, no `import "C"` in `backend/` | Confirmed |
 | No `backend/internal/analysis` package exists | `ls backend/internal/` | Confirmed — Phase 1 is greenfield |
-| **There is no job queue or scheduler** | `go a.runJob(job.ID)` [v2_jobs.go:75](../backend/internal/api/v2_jobs.go#L75); no `ClaimJob`/lease/priority in [jobs_repository.go](../backend/internal/db/jobs_repository.go) | **Corrected** — see §2.3-B |
+| **Historical snapshot: no job queue or scheduler (superseded by Phase 4a)** | `go a.runJob(job.ID)` [v2_jobs.go:75](../backend/internal/api/v2_jobs.go#L75); no `ClaimJob`/lease/priority in [jobs_repository.go](../backend/internal/db/jobs_repository.go) | **Corrected** — see §2.3-B |
 | **A WASM runtime already ships in production** | `go mod why wazero` → `internal/audio → go.senan.xyz/taglib → wazero` | **New finding** — see §2.3-A |
 | **`.aiff`/`.aif` cannot be ingested at all** | `supportedExtensions` [scanner.go:42-51](../backend/internal/scanner/scanner.go#L42-L51) | **Corrected** — see §2.3-C |
 | **AI DJ BPM has a third, text-derived provenance tier** | `getSongBPM` falls back to `TempoToBPM(song.Tempo)` [scoring.go:326-331](../backend/internal/dj/scoring.go#L326-L331) | **New finding** — see §2.3-E |
@@ -1275,11 +1279,11 @@ The first implementation can expose a smaller set, but the service API should su
 
 Use the existing durable `operation_jobs` record for batch jobs and keep per-track work state in `track_analysis`.
 
-> **What must be built, not reused.** `operation_jobs` has no queue. Job creation dispatches immediately via `go a.runJob(job.ID)` ([v2_jobs.go:75](../backend/internal/api/v2_jobs.go#L75)), and no code path ever selects `WHERE status = 'queued'`. Phase 4 must add: a dispatcher that drains `queued` rows, a bounded worker pool, work ordering, single-flight claiming, and pause. See §2.3-B. Treat the following as a specification for new code.
+> **Historical Phase 4 specification, implemented by #37/#41.** The gaps in the following table refer to the original snapshot, not current `main`. `operation_jobs` has no queue. Job creation dispatches immediately via `go a.runJob(job.ID)` ([v2_jobs.go:75](../backend/internal/api/v2_jobs.go#L75)), and no code path ever selects `WHERE status = 'queued'`. Phase 4 must add: a dispatcher that drains `queued` rows, a bounded worker pool, work ordering, single-flight claiming, and pause. See §2.3-B. Treat the following as a specification for new code.
 
-**Required additions to the job layer:**
+**Original job-layer specification (implemented; historical comparison):**
 
-| Need | Current state | Phase 4 work |
+| Need | Original snapshot | Phase 4 specification (delivered) |
 |---|---|---|
 | Dequeue loop | absent | dispatcher goroutine draining `queued` by priority then `created_at` |
 | Concurrency bound | absent (goroutine per job) | worker pool sized per §9.4 worker policy |
@@ -1304,9 +1308,9 @@ Worker policy:
 
 ### 9.5 Pause/resume
 
-`operation_jobs` supports cancellation and interruption but has **no `paused` status** in its enum, and `V2JobRoutes()` exposes no pause/resume endpoint — only `cancel` and `retry`. Both are new.
+`operation_jobs` now includes a `paused` status and `V2JobRoutes()` exposes `POST /pause` and `POST /resume` under `/api/v2/jobs`, alongside per-job cancel/retry. These bulk endpoints pause queued jobs and resume paused jobs; they do not suspend a running DSP item. The design below records the original implementation policy.
 
-**Recommended:** implement pause as “stop dispatching new track items; let the current item finish,” rather than serializing arbitrary DSP internals mid-track. Combined with the derivable-work-list model in §9.4, this makes pause/resume nearly free: pause stops the dispatcher, resume restarts it, and correctness comes from `track_analysis` rather than from suspended job state. Mid-track suspension buys a few seconds of latency at the cost of a substantially harder invariant, and is not worth it.
+**Original policy rationale:** implement pause as “stop dispatching new track items; let the current item finish,” rather than serializing arbitrary DSP internals mid-track. Combined with the derivable-work-list model in §9.4, this makes pause/resume nearly free: pause stops the dispatcher, resume restarts it, and correctness comes from `track_analysis` rather than from suspended job state. Mid-track suspension buys a few seconds of latency at the cost of a substantially harder invariant, and is not worth it.
 
 ### 9.6 Failure semantics
 
@@ -1981,7 +1985,7 @@ Makes analysis persistent, reproducible, source-transparent, and extensible.
 
 ### Current-state gap
 
-Authoritative analysis is renderer/deck-load scoped; backend waveform decoding is MP3-only.
+Historical pre-implementation baseline: authoritative analysis was renderer/deck-load scoped and backend waveform decoding was MP3-only. Current analysis is persisted and shared decoding supports MP3, Ogg/Vorbis and WAV PCM16/float32.
 
 ### Architecture
 
@@ -2275,7 +2279,7 @@ DJs can prepare thousands of tracks before a set, see progress, cancel, resume, 
 
 Analysis occurs opportunistically on deck load and has no durable batch lifecycle.
 
-**Scope correction (§2.3-B).** The draft treated this phase as adding a job type and a worker pool on top of existing infrastructure. Verification shows there is no queue at all: `operation_jobs` is a durable *state* table whose `queued` status is written but never drained, because `createJobV2` dispatches immediately with `go a.runJob(job.ID)`. Phase 4 therefore builds the scheduler ViiB does not have and becomes its first consumer. That is a larger and riskier phase than originally scoped, and it sits on the critical path to Phase 5 — the first phase with user-visible value. Plan accordingly.
+**Historical scope correction (§2.3-B), implemented by Phase 4a.** The draft treated this phase as adding a job type and a worker pool on top of existing infrastructure. Verification shows there is no queue at all: `operation_jobs` is a durable *state* table whose `queued` status is written but never drained, because `createJobV2` dispatches immediately with `go a.runJob(job.ID)`. Phase 4 therefore builds the scheduler ViiB does not have and becomes its first consumer. That is a larger and riskier phase than originally scoped, and it sits on the critical path to Phase 5 — the first phase with user-visible value. Plan accordingly.
 
 The compensation is that this work is not analysis-specific. The existing `full_scan`, `quick_scan`, and `refresh_genre_stats` jobs share the same unbounded-goroutine behavior and would inherit the fix. Build the scheduler as a general `operation_jobs` dispatcher, not an analysis-private one, and migrate the scan jobs onto it — otherwise ViiB ends up with exactly the parallel job framework this roadmap set out to avoid.
 
@@ -2315,11 +2319,11 @@ Analysis-specific work:
 
 ### Database changes
 
-Reuse the `operation_jobs` table, but add the scheduling columns it lacks: `priority INTEGER NOT NULL DEFAULT 0` and an index on `(status, priority, created_at)`. Add a `paused` status constant if the gating approach in §9.5 is not used. No per-item job table — per-track state lives in `track_analysis`, which keeps the work list derivable and the row count bounded by the catalog rather than by job history.
+Implemented: `operation_jobs` includes the scheduling column `priority INTEGER NOT NULL DEFAULT 0` and an index on `(status, priority, created_at)`. The `paused` status is implemented; bulk queue pause/resume behavior is described in §9.5. No per-item job table — per-track state lives in `track_analysis`, which keeps the work list derivable and the row count bounded by the catalog rather than by job history.
 
 ### APIs/events
 
-Extend the existing `V2JobRoutes()` surface rather than adding a parallel API. Present today: `GET /`, `POST /`, `GET /events` (SSE), `GET /{id}`, `POST /{id}/cancel`, `POST /{id}/retry`. To add: `POST /{id}/pause`, `POST /{id}/resume`, and the analysis job types in the `createJobV2` type allowlist (currently hardcoded to `full_scan`, `quick_scan`, `refresh_genre_stats`) and the `runJob` dispatch switch. Reuse `jobEventsV2` for progress rather than opening a second SSE stream.
+The implemented `V2JobRoutes()` surface exposes `GET /`, `POST /`, `GET /events` (SSE), `GET /{id}`, `POST /{id}/cancel`, `POST /{id}/retry`, bulk `POST /pause`, bulk `POST /resume`, and `POST /analysis-pressure`, under `/api/v2/jobs`. The creation allowlist includes analysis, scan, genre-refresh and stem refresh/link jobs. Stem Library scans are queued through `/api/v2/stems/scan`. Progress uses `jobEventsV2`.
 
 ### Candidate Go packages
 
@@ -2965,7 +2969,7 @@ Keep implementation PRs reviewable. Suggested sequence after this roadmap:
 | 5 | `analysis/key-v1` | 3 | **Merged as [#40](https://github.com/ajbergh/ViiB-MediaHub/pull/40).** Implementation landed; held-out corpus/profile and confidence work remain open. |
 | 6 | `analysis/library-jobs` | 4b | **Merged as [#41](https://github.com/ajbergh/ViiB-MediaHub/pull/41).** Analysis job types, selection expansion, auto-analyze hooks, playback throttle, scale test, and library controls landed. |
 | 6b | `analysis/wav-waveform-bridge` | 1 (completion) + review | **Merged as [#43](https://github.com/ajbergh/ViiB-MediaHub/pull/43).** Waveform generation moved onto the shared decoder registry, closing the last Phase 1 backend item; four correctness defects in the merged stack fixed (§2.4). Not gated by Phase 0 — it added no user-visible BPM/key claim. |
-| 7 | `djv2/persistent-analysis-library-ux` | 5 | **Started by explicit project-owner override while Phase 0 remains open.** Slices 1–2 completed the `setDeckAnalysis` split (§2.3-F), server-resolved deck hydration, and durable Camelot-first library features. **In Review on `codex/manual-bpm-correction` (rebased onto `4eb78e0`):** loaded-deck fractional BPM entry, ×2/÷2, four-tap BPM, and reset to measured BPM. Manual BPM is stored against the current source fingerprint; stale manual/measured values are hidden after source replacement, and legacy unbound overrides remain unknown. BPM-only writes are conditional and preserve key/grid override state. Scalar BPM edits do not move or re-align beat-grid timestamps; use the existing grid editor for grid changes. Remaining: manual key controls and migrating AI DJ `getSongBPM` onto the effective-BPM resolver (§2.4 finding 3); retain the Phase 0 gate as deferred optimization work. |
+| 7 | `djv2/persistent-analysis-library-ux` | 5 | **Started by explicit project-owner override while Phase 0 remains open.** Slices 1–2 completed the `setDeckAnalysis` split (§2.3-F), server-resolved deck hydration, and durable Camelot-first library features. **Merged in #106:** loaded-deck fractional BPM entry, ×2/÷2, four-tap BPM, and reset to measured BPM. Manual BPM is stored against the current source fingerprint; stale manual/measured values are hidden after source replacement, and legacy unbound overrides remain unknown. BPM-only writes are conditional and preserve key/grid override state. Scalar BPM edits do not move or re-align beat-grid timestamps; use the existing grid editor for grid changes. Remaining: manual key controls and migrating AI DJ `getSongBPM` onto the effective-BPM resolver (§2.4 finding 3); retain the Phase 0 gate as deferred optimization work. |
 | 8 | `analysis/beatgrid-downbeat-v1` | 6 | |
 | 9 | `djv2/beatgrid-editor-sync-integration` | 6 | |
 | 10 | `analysis/energy-structure-v1` | 7 | |
@@ -3111,7 +3115,7 @@ The existing JavaScript BPM/key detectors are not wasted work. They provide a co
 
 Three findings alter the plan rather than merely annotating it, and they are the reason to read §2.3 before estimating:
 
-1. **The scheduler does not exist.** `operation_jobs` is a durable state table with no queue — job creation dispatches straight to a goroutine. Phase 4 must build the dispatcher, worker pool, priority, claiming, and pause from scratch, and it sits on the critical path to the first user-visible phase. Split it out as its own early PR (§22, PR 3), build it as a general dispatcher, and migrate the existing scan jobs onto it.
+1. **At the original snapshot the scheduler did not exist; Phase 4a subsequently delivered it.** `operation_jobs` is a durable state table with no queue — job creation dispatches straight to a goroutine. Phase 4 must build the dispatcher, worker pool, priority, claiming, and pause from scratch, and it sits on the critical path to the first user-visible phase. Split it out as its own early PR (§22, PR 3), build it as a general dispatcher, and migrate the existing scan jobs onto it.
 2. **A WASM runtime already ships.** wazero is already in every ViiB binary via `go.senan.xyz/taglib`. The codec strategy's worst gaps — AAC/M4A and Opus — become tractable at the cost of a license review and a throughput benchmark, not a runtime adoption. Evaluate it in Phase 0 as a first-class option, and keep it strictly at the decode boundary.
 3. **Scale is weeks, not days.** 50,000 tracks is ~28 days of single-worker analysis. That makes partial-library usefulness, priority scheduling, restart resume, and honest progress UX into hard requirements rather than polish.
 
@@ -3121,4 +3125,4 @@ The rest of the original analysis held up. The DSP pipelines, the licensing disc
 
 ### Definition of ready
 
-This document is ready to implement when a reader can start Phase 0 without asking a clarifying question. It now provides: verified current state with `file:line` evidence (§2.0); the assumptions that changed and why (§2.3); a critical path and a minimum shippable slice (§1); numeric Phase 0 exit tripwires (Phase 0); a specification for the missing scheduler (§9.4); and an owner phase and decision form for every open question (§20). The remaining unknowns are genuine research questions, not gaps in the plan — which is the correct state for a roadmap whose first phase is a research gate.
+This document is ready to implement when a reader can start Phase 0 without asking a clarifying question. It now provides: verified current state with `file:line` evidence (§2.0); the assumptions that changed and why (§2.3); a critical path and a minimum shippable slice (§1); numeric Phase 0 exit tripwires (Phase 0); a historical specification for the now-implemented scheduler (§9.4); and an owner phase and decision form for every open question (§20). The remaining unknowns are genuine research questions, not gaps in the plan — which is the correct state for a roadmap whose first phase is a research gate.

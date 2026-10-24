@@ -1,6 +1,6 @@
 # Release channel and signing policy
 
-Roadmap P0.4. **Proposed guard; stable signing is not implemented or qualified.**
+Roadmap P0.4. **Implemented stable-release guard; production platform signing is not qualified.**
 The current desktop pipeline ad-hoc signs macOS bundles without notarization and
 only signs Windows executables/installers when credentials are available. Those
 paths remain suitable only for clearly disclosed prerelease qualification work.

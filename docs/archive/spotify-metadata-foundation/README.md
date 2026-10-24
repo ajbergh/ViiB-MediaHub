@@ -1,6 +1,6 @@
 # Spotify metadata foundation — historical records
 
-**Archived:** 2026-10-12 following the owner's decision to defer further local scanning/DSP improvements to a future branch. These records preserve dated claims and evidence. Their active-work instructions, old branch hashes and twelve-gate tally are historical and superseded by [current scope](../../SPOTIFY_BRANCH_REMAINING_WORK.md), [PR closeout](../../SPOTIFY_BRANCH_CLOSEOUT_NEXT_STEPS.md) and [future work](../../LOCAL_ANALYSIS_FUTURE_BRANCH.md).
+**Archived:** 2026-10-12 following the owner's decision to defer further local scanning/DSP improvements to a future branch. These records preserve dated claims and evidence. Their active-work instructions, old branch hashes and twelve-gate tally are historical and superseded by [Spotify behavior and limitations](../../spotify.md) and [future work](../../LOCAL_ANALYSIS_FUTURE_BRANCH.md).
 
 | Record | Purpose |
 | --- | --- |

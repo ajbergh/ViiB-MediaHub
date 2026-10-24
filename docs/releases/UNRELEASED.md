@@ -1,52 +1,30 @@
-# Proposed changes for the next release
+# Unreleased changes since v1.0.0-rc8
 
-These changes are under PR review and are not part of an existing published release.
+Reviewed against `main` at `818cf94` on 2026-10-23. These changes are merged
+after the RC8 tag; this file does not announce a new release. See the
+[RC8 notes](v1.0.0-rc8.md) for earlier recovery, MIDI, accessibility and release-integrity work.
 
-## Recovery
+## Stems
 
-- Creating a backup preserves existing archives. Duplicate normalized API names
-  return `409 backup_exists` instead of replacing a recovery point; omit the name
-  for an automatically generated name with subsecond precision.
-- Failed backup writes clean up the newly created incomplete archive. Existing
-  archives and the live database remain unchanged.
+- MP3 and Ogg/Vorbis stem packages now validate and play through the backend
+  decoder. Compressed packages declare `compressed-stems-v1`; hashes cover the
+  encoded files and validation checks exact decoded geometry. WAV remains
+  supported. See the [package contract](../VIIB_STEM_PACKAGE_V1.md). (#156)
+- Stem Library discovery supports nested packages, four-stem compatibility and
+  source-identity reconciliation. Successful startup catalog checks enqueue a
+  background stem scan; **Scan Stem Libraries** remains available for a manual
+  refresh. Ordinary music scans exclude `.viibstems` contents. See
+  [Settings](../settings.md#stem-libraries). (#157)
 
-See [Library Operations](../library-operations.md#backup-and-staged-restore) for
-backup/restore behavior. This fix does not establish RC5 upgrade or complete
-cross-platform recovery qualification.
+## Desktop and dependencies
 
-## Maintenance
+- Correct Windows tray icon corruption and icon packaging. (#158)
+- Upgrade Wails and its pinned CLI from v2.11.0 to v2.17.0. The
+  [upgrade record](../WAILS_V2_17_UPGRADE_PLAN.md) separates executed Windows checks
+  from remaining native macOS/Linux and interaction qualification. (#159)
+- Repair Wails dependency restoration and update npm dependencies/lockfile to
+  resolve the audit findings recorded during the upgrade. (#160)
 
-- Removal and restore confirmations explain which library details change and
-  recommend creating a current backup before continuing. Declining leaves the
-  repair or restore request unsent.
-
-## Accessibility
-
-- Proposed modal improvements in [PR #134](https://github.com/ajbergh/ViiB-MediaHub/pull/134)
-  name Direct Download controls, contain keyboard focus and make confirmation
-  dialogs start on Cancel. Escape dismisses idle dialogs; busy actions stay protected.
-
-## Release dependency information
-
-- Proposed [release inventories](../release-dependency-inventories.md) add an npm
-  SBOM and Go module graph to future release assets and their checksum manifest.
-  Signing, provenance, native-library inventories and licensing review remain open.
-
-## Release channel gate
-
-- Proposed workflows reject stable versions/tags until production signing,
-  notarization and verification are qualified. RC/prerelease packaging remains
-  available with existing signing limitations. Non-tag manual Windows builds
-  use development artifact versions; accepted tag drafts are marked prerelease.
-
-Proposed canonical release provenance: attest the exact 13 payloads and verify
-repository/workflow/commit/ref before publication. Live attestation qualification
-and production platform signing remain pending; see
-[provenance policy](../release-provenance.md).
-
-## Desktop framework
-
-- Upgrade Wails from v2.11.0 to v2.17.0, including upstream fixes for the
-  macOS 26 WebView crash during rapid updates, Linux bound-method panic handling,
-  and the Windows WebView2 bootstrapper error dialog. Native platform
-  qualification remains pending; see the [upgrade plan](../WAILS_V2_17_UPGRADE_PLAN.md).
+The current backend baseline is Go 1.26.10. Stable release signing/notarization,
+hardware routing/controller validation and professional analysis accuracy remain
+open gates in the [roadmap](../ROADMAP.md).

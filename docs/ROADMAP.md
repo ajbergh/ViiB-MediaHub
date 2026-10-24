@@ -1,13 +1,17 @@
 # ViiB MediaHub — Product & Engineering Roadmap
 
 > **Status:** Active / living plan  
-> **Last reviewed:** 2026-10-20<br>
+> **Last reviewed:** 2026-10-23<br>
 > **Target:** Reliable, secure, supportable **ViiB MediaHub 1.0** followed by qualified professional-DJ improvements  
 > **Source of truth:** This file owns cross-project priorities and release gates. Domain-specific plans and dated evidence remain authoritative for the technical detail they cover.
 
 ## 1. Baseline and scope
 
-**Current easy-first pass (October 20):** [PR #153](https://github.com/ajbergh/ViiB-MediaHub/pull/153) was squash merged into main as [`3400c0d`](https://github.com/ajbergh/ViiB-MediaHub/commit/3400c0df720d36b421718a562ff1a0e364518910) after all 27 PR checks passed (publication skipped). Its tree matches reviewed head `26e002f`; source PRs #131–#152 were closed as superseded after verifying every source head was included. Main protection is active. Global strict TypeScript, seven browser journeys, recovery/diagnostic safeguards and release validation improvements are merged. [Post-merge CI](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39530977041) was running at this status checkpoint. No release was published. See the [completed slices and per-item deferral audit](ROADMAP_EASY_PASS_2026-10-20.md). Phases 0–3 remain Partial/qualification-open; Phase 4 Planned; Phase 5 Deferred.
+**Current repository checkpoint (2026-10-23):** `main` at `818cf94`; the repository's release baseline is `v1.0.0-rc8` and Go 1.26.10. Since that tag, #156 adds MP3/Vorbis stem packages and playback, #157 improves Stem Library discovery/rescans and four-stem compatibility, #158 fixes Windows tray/icon packaging, #159 upgrades Wails to v2.17.0, and #160 fixes dependency restoration and npm audit findings. See [unreleased changes](releases/UNRELEASED.md) and [RC8 notes](releases/v1.0.0-rc8.md). This checkpoint describes source/tag state; this pass did not independently verify hosted publication or payload attestations. Stable 1.0 and host/provider/hardware/accuracy qualification remain open.
+
+The October 15/20 checkpoints below preserve integration history. Their running-CI and latest-release statements describe those dates.
+
+**Historical easy-first pass (October 20):** [PR #153](https://github.com/ajbergh/ViiB-MediaHub/pull/153) was squash merged into main as [`3400c0d`](https://github.com/ajbergh/ViiB-MediaHub/commit/3400c0df720d36b421718a562ff1a0e364518910) after all 27 PR checks passed (publication skipped). Its tree matches reviewed head `26e002f`; source PRs #131–#152 were closed as superseded after verifying every source head was included. Main protection is active. Global strict TypeScript, seven browser journeys, recovery/diagnostic safeguards and release validation improvements are merged. [Post-merge CI](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/39530977041) was running at this status checkpoint. No release was published. See the [completed slices and per-item deferral audit](ROADMAP_EASY_PASS_2026-10-20.md). Phases 0–3 remain Partial/qualification-open; Phase 4 Planned; Phase 5 Deferred.
 
 ViiB MediaHub is a local-first music hub: React 19 / TypeScript frontend, Go / SQLite backend, Wails desktop builds, browser/server mode, a unified local/Plex music catalog, separate Spotify integration, AI-assisted library intelligence, and two-deck DJ functionality.
 
@@ -22,7 +26,7 @@ ViiB MediaHub is a local-first music hub: React 19 / TypeScript frontend, Go / S
 - **Release-pipeline baseline (from [`release.yml`](../.github/workflows/release.yml)):** the workflow builds a Windows x64 installer, macOS arm64/x64 DMGs, a Linux amd64 `.deb`/tarball, and web builds for Windows/macOS/Linux on x64 and arm64; it publishes `SHA256SUMS.txt` and marks RC tags as pre-releases. macOS bundles are **ad-hoc signed and not notarized**; Windows Authenticode signing runs **only when repository secrets exist** and otherwise continues unsigned. PR #153 adds an npm CI SBOM, checksummed npm/Go release inventories, exact-payload validation and provenance workflow gates. Per-target/native SBOMs, signing and provenance remain open.
 - **Merged tooling (October 20, #153):** deterministic Chromium CI now covers seven journeys, including real four-format upload/persistence. Global TypeScript strict checking passes; the initial four-to-twelve-file migration has been superseded. Merged-head acceptance and broader runtime qualification remain open.
 
-**Important continuity decision:** The owner previously deferred further local DSP estimator research from the Spotify metadata branch. PR #117 is merged; deferred work belongs in a **separate future scope** (Phase 5), not retroactively in that PR or as an undisclosed 1.0 dependency. Subsequent scan lifecycle/storage fixes (#123) and local semantic matching (#124) are delivered maintenance/product work; they do not close deferred estimator accuracy gates. See [Spotify scope](SPOTIFY_BRANCH_REMAINING_WORK.md), [closeout](SPOTIFY_BRANCH_CLOSEOUT_NEXT_STEPS.md), and [deferred local analysis](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
+**Important continuity decision:** The owner previously deferred further local DSP estimator research from the Spotify metadata branch. PR #117 is merged; deferred work belongs in a **separate future scope** (Phase 5), not retroactively in that PR or as an undisclosed 1.0 dependency. Subsequent scan lifecycle/storage fixes (#123) and local semantic matching (#124) are delivered maintenance/product work; they do not close deferred estimator accuracy gates. See [Spotify behavior and limitations](spotify.md) and [deferred local analysis](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
 
 ### Outcome priorities
 
@@ -708,7 +712,7 @@ real-host qualification.
 
 - [Documentation index](index.md)
 - [Architecture](architecture.md) and [versioned API](openapi-v2.yaml)
-- [Spotify scope](SPOTIFY_BRANCH_REMAINING_WORK.md), [closeout evidence](SPOTIFY_BRANCH_CLOSEOUT_NEXT_STEPS.md), [parity audit](SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md)
+- [Spotify behavior and limitations](spotify.md), [parity audit](SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md)
 - [Scan stability and analysis storage](scan-stability-and-storage.md), [October 15 documentation review](DOCUMENTATION_REVIEW_2026-10-15.md)
 - [Codec limitations](AUDIO_FORMAT_SUPPORT_GAPS.md), [preparation measurements](SPOTIFY_PREPARATION_PERFORMANCE.md)
 - [Plex behavior and limitations](plex-music.md)

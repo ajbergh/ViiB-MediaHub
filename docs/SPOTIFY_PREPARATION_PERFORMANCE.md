@@ -1,6 +1,6 @@
 # Local preparation performance baseline
 
-> Scope update — 2026-10-12: Existing preparation and offline one-/105-track measurements remain documented. Further local scan/backfill optimization and broad runtime/performance qualification are deferred to a future branch; historical measurements are not cross-platform qualification. See [current branch scope](SPOTIFY_BRANCH_REMAINING_WORK.md) and [future local-analysis work](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
+> Scope update — 2026-10-12: Existing preparation and offline one-/105-track measurements remain documented. Further local scan/backfill optimization and broad runtime/performance qualification are deferred to a future branch; historical measurements are not cross-platform qualification. See [Spotify behavior and limitations](spotify.md) and [future local-analysis work](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
 
 This opt-in benchmark exercises the production preparation runner, SQLite persistence, bounded artifact decoding and the real analysis-list HTTP handler. It creates and cleans up its own temporary database, reads existing audio in place, and loads no provider credentials, private caches or live database. It does not start the API constructor's scanner, download manager or scheduler.
 

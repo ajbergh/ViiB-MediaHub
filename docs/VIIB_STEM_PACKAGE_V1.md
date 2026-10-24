@@ -116,11 +116,11 @@ Treat the directory, manifest, and all manifest strings as untrusted input:
 - Reject absolute stem paths, drive/UNC paths, backslashes, NUL, empty path segments, `.` and `..` segments. Use `/` as the manifest separator on every platform.
 - Resolve each path and reject symlinks whose final target escapes the resolved package root. Only regular files are accepted.
 - Allow `.wav`/`.wave` for PCM16/float32, `.mp3` for MP3, and `.ogg` for Vorbis; compressed stems require `compressed-stems-v1`.
-- Verify each file's byte size and SHA-256 before the package becomes ready. Inspect its WAV header and frame geometry before indexing it.
+- Verify each file's byte size and SHA-256 before the package becomes ready. Inspect codec headers and verify frame geometry before indexing it; compressed stems are fully decoded to validate their declared frame counts.
 - Reject unsupported schema versions, unsupported required features, missing/extra layout stems, malformed hashes, invalid geometry, and unsupported codecs.
 - Do not serve paths from a manifest that has not passed validation. A later registry may cache validation by file size/mtime, but explicit revalidation must recompute hashes.
 
-The Go implementation lives in `backend/internal/stems/manifest.go`. It parses a bounded manifest, validates the v1 schema, resolves safe in-package paths, verifies complete-file hashes/sizes, and accepts WAV PCM16/float32 and feature-gated gapless MP3/Vorbis geometry. It does not discover packages, persist registry state, hash source tracks, serve audio, or generate stems; those belong to later roadmap slices.
+The Go implementation lives in `backend/internal/stems/manifest.go`. It parses a bounded manifest, validates the v1 schema, resolves safe in-package paths, verifies complete-file hashes/sizes, and accepts WAV PCM16/float32 and feature-gated gapless MP3/Vorbis geometry. That validator is separate from the implemented discovery/source-matching layer (`backend/internal/stems`), persistent registry (`backend/internal/db`), and preview/frame APIs (`backend/internal/api/v2_stems.go`). MediaHub discovers, indexes and plays packages; stem generation remains the responsibility of the separate StemLab application.
 
 ## Deterministic fixture packages
 

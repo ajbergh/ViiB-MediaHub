@@ -1,5 +1,7 @@
 # Spotify Integration
 
+> Current scope reviewed on 2026-10-23: the metadata implementation from PR #117 is merged. Provider parity, native-host qualification and professional local-analysis accuracy remain separate open gates. Historical branch handoffs are preserved in the [metadata foundation archive](archive/spotify-metadata-foundation/README.md).
+
 ![Spotify page](../assets/screenshots/spotify.png)
 
 The Spotify page connects ViiB to your Spotify account for browsing, streaming, and downloads. Spotify browsing is separate from the local/Plex catalog; downloaded media becomes part of that catalog after scanning.
@@ -32,7 +34,7 @@ Artist results open profiles with top tracks and albums. Saved-library pages sup
 
 ## Account plans
 
-Free and unknown-plan sessions can search and browse artists, albums, playlists, and saved-library metadata. Streaming, playback queue additions, shuffle playback, and downloads require a confirmed **Spotify Premium** account. Unsupported media actions are disabled in the UI and rejected by the backend. Local-file playback does not require Spotify Premium.
+Free and unknown-plan sessions can search and browse artists, albums, playlists, and saved-library metadata. Streaming, playback queue additions, shuffle playback, and downloads require a confirmed **Spotify Premium** account. Unsupported media actions are disabled in the UI and rejected by the backend. Local-file playback does not require Spotify Premium. The [dated Free-account probe](SPOTIFY_FREE_ACCOUNT_PROBE.md) records the current transport's provider-side Premium rejection and its account/market limits.
 
 ## Streaming and queue actions
 
@@ -48,7 +50,7 @@ Use **Play**, **Play Next**, or **Add to Queue** on supported track results. Str
 
 Available Spotify BPM/key values are written to download tags and durable source-bound evidence. Manual locks retain precedence, and unavailable provider data does not fail the audio download. **Prepare library** can enrich existing linked/matched recordings while local analysis supplies energy, loudness, beatgrid, structure, and cues. See [BPM/key import](SPOTIFY_BPM_KEY_IMPORT.md) and [Library Operations](library-operations.md#track-analysis).
 
-Source-bound Spotify three-band waveform selection and expanded sanitized metadata persistence are implemented, with local waveform fallback when provider data is unusable. Provider field availability varies; missing information remains unknown. Spotify scalar BPM alone does not establish beat phase or authorize deck sync. See [current scope and limitations](SPOTIFY_BRANCH_REMAINING_WORK.md). Further local scanning/audio-analysis improvements are [deferred](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
+Source-bound Spotify three-band waveform selection and expanded sanitized metadata persistence are implemented, with local waveform fallback when provider data is unusable. Provider field availability varies; missing information remains unknown. Spotify scalar BPM alone does not establish beat phase or authorize deck sync. See the [BPM/key contract](SPOTIFY_BPM_KEY_IMPORT.md) and [provider parity limits](SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md). Further local scanning/audio-analysis improvements are [deferred](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
 
 ## Troubleshooting
 

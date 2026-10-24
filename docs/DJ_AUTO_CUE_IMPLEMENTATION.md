@@ -1,6 +1,6 @@
 # Native event-based DJ cues
 
-Implemented on `research/dj-auto-cue-accuracy` from the
+Implemented in `main`, originally developed on `research/dj-auto-cue-accuracy` from the
 [cue accuracy research](DJ_AUTO_CUE_ACCURACY_RESEARCH.md).
 
 ## Behavior

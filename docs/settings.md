@@ -36,7 +36,7 @@ Continuous monitoring is configured directly below local folder scanning. It che
 
 ### Stem Libraries
 
-Use **Add Stem Library** to configure separate roots for pre-generated stem packages, then **Scan Stem Libraries** to validate and associate packages with tracks already in your music library. Artist/Album subfolders are supported; each named `.viibstems` folder is one package. Adjacent packages beside a matching music file are also checked.
+Use **Add Stem Library** to configure separate roots for pre-generated stem packages, then **Scan Stem Libraries** to validate and associate packages with tracks already in your music library. Artist/Album subfolders are supported; each named `.viibstems` folder is one package. Adjacent packages beside a matching music file are also checked. After a successful startup catalog check, ViiB queues a background scan of enabled Stem Libraries. Use **Scan Stem Libraries** to request a manual refresh after adding or changing packages; this does not import their component audio as songs.
 
 Stem audio is not added as separate songs. If an older scan added package audio under Music Folders, run **Full Rescan** once to remove those catalog entries. ViiB consumes packages; it does not generate stems. See the [stem package contract](VIIB_STEM_PACKAGE_V1.md) and [DJ Mode](dj-mode.md#stem-packages).
 
