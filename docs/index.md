@@ -50,6 +50,7 @@ The [October 15 documentation refresh](DOCUMENTATION_REVIEW_2026-10-15.md) recon
 |---|---|
 | [Product & Engineering Roadmap](ROADMAP.md) | Active overarching phases, priorities, release gates, dependencies and qualified-vs-planned status |
 | [Accessibility qualification](ACCESSIBILITY_QUALIFICATION.md) | Draft WCAG 2.2 AA workflow/host test plan, DJ alternative tasks and findings register; execution remains open |
+| [Wails v2.17 upgrade plan](WAILS_V2_17_UPGRADE_PLAN.md) | Proposed v2.11.0 → v2.17.0 framework upgrade, verification gates and v2-only follow-ups; v3 deferred |
 | [Release dependency inventories](release-dependency-inventories.md) | Proposed checksummed npm/Go release inventories, reproducibility and coverage limits |
 | [Proposed release notes](releases/UNRELEASED.md) | Reviewed change candidates for a future release; not a published-release claim |
 | [Repository governance](repository-governance.md) | Main-only required CI ruleset, stacked-PR handling and reviewed emergency bypass process |
