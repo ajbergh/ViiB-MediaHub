@@ -14,7 +14,7 @@ import { SpotifyAlbumDetail } from './SpotifyAlbumDetail';
 import { SpotifyPlaylistDetail } from './SpotifyPlaylistDetail';
 
 const initial = useStore.getState();
-afterEach(() => { useStore.setState(initial, true); vi.restoreAllMocks(); vi.clearAllMocks(); });
+afterEach(() => { useStore.setState(initial, true); vi.restoreAllMocks(); vi.resetAllMocks(); });
 
 it.each(['album', 'playlist'] as const)('%s actions preserve collection order and duplicate row positions', async kind => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -55,15 +55,17 @@ it.each(['album', 'playlist'] as const)('%s ignores detail responses from a reti
   useStore.setState({ spotifyAccountProduct: 'premium', spotifyConnected: true, spotifySessionGeneration: 1, addLog: vi.fn() });
   let finish!: (value: any) => void;
   const late = new Promise(resolve => { finish = resolve; });
-  mocks.album.mockReturnValueOnce(late).mockRejectedValue(new Error('Session retired'));
+  const detail = kind === 'album' ? mocks.album : mocks.playlist;
+  detail.mockReturnValueOnce(late).mockRejectedValue(new Error('Session retired'));
   mocks.backend.mockResolvedValue({ ok: true, status: 200 });
-  mocks.playlist.mockReturnValueOnce(late).mockRejectedValue(new Error('Session retired'));
   const host = document.createElement('div'); const root = createRoot(host);
   const Component = kind === 'album' ? SpotifyAlbumDetail : SpotifyPlaylistDetail;
   try {
     await act(async () => root.render(<MemoryRouter initialEntries={['/collection/id']}><Routes><Route path="/collection/:id" element={<Component/>}/></Routes></MemoryRouter>));
+    // Retire the session only after its detail request is in flight.
+    await act(async () => { await vi.waitFor(() => expect(detail).toHaveBeenCalledTimes(1)); });
     await act(async () => useStore.setState({ spotifySessionGeneration: 2, spotifyConnected: false }));
-    await act(async () => finish({ name: 'Retired Collection', tracks: { items: [] } }));
+    await act(async () => finish({ id: 'retired', name: 'Retired Collection', images: [], artists: [], owner: { display_name: 'Owner' }, external_urls: { spotify: '#' }, tracks: { total: 0, items: [] } }));
     expect(host.textContent).not.toContain('Retired Collection');
     expect(host.querySelector(`[aria-label="Play ${kind}"]`)).toBeNull();
   } finally { await act(async () => root.unmount()); }
