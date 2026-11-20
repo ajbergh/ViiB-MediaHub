@@ -40,7 +40,9 @@ func (a *API) PlexRoutes() chi.Router {
 	r.Get("/libraries", a.getPlexLibraries)
 	r.Put("/library", a.selectPlexLibrary)
 	r.Post("/sync", a.startPlexSync)
+	r.Post("/sync/cancel", a.cancelPlexSync)
 	r.Get("/sync/status", a.getPlexSyncStatus)
+	r.Put("/sync/schedule", a.setPlexSyncSchedule)
 	r.Post("/metadata-writeback/preview", a.previewPlexMetadataWriteback)
 	r.Post("/metadata-writeback/sync", a.syncPlexMetadataWriteback)
 	return r
@@ -56,7 +58,7 @@ func (a *API) loadPlexCredentials() (plex.Credentials, error) {
 	}
 	var credentials plex.Credentials
 	if err := json.Unmarshal([]byte(raw), &credentials); err != nil {
-		return plex.Credentials{}, errors.New("stored Plex credentials are invalid")
+		return plex.Credentials{}, fmt.Errorf("stored Plex credentials are invalid: %w", crypto.ErrReauthRequired)
 	}
 	if credentials.ServerTokens == nil {
 		credentials.ServerTokens = map[string]string{}
@@ -83,6 +85,8 @@ func classifyPlexError(err error) (status int, code, message string, retryable b
 		status, code, message, retryable = http.StatusUnauthorized, "plex_auth_required", "Plex authentication is required or has expired", false
 	case errors.Is(err, plex.ErrNotPlexServer):
 		status, code, message, retryable = http.StatusBadRequest, "not_plex_server", "The configured endpoint is not a Plex Media Server", false
+	case errors.Is(err, plex.ErrServerIdentityMismatch):
+		code, message, retryable = "plex_server_identity_mismatch", err.Error(), false
 	case errors.Is(err, plex.ErrMetadataWriteNotAllowed):
 		status, code, message, retryable = http.StatusForbidden, "plex_metadata_write_not_allowed", "This Plex account is not allowed to change library metadata", false
 	case errors.Is(err, plex.ErrDNSFailure):
@@ -140,36 +144,46 @@ func (a *API) discoverPlexServers(w http.ResponseWriter, r *http.Request) {
 	respondV2JSON(w, http.StatusOK, map[string]any{"servers": servers})
 }
 
-func (a *API) tokenForSource(ctx context.Context, source *db.PlexSource) (string, error) {
+func (a *API) plexClientForSource(ctx context.Context, source *db.PlexSource) (*plex.Client, error) {
 	credentials, err := a.loadPlexCredentials()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	if token := credentials.ServerTokens[source.MachineIdentifier]; token != "" {
-		return token, nil
+	if token := credentials.ServerTokens[source.MachineIdentifier]; token != "" || credentials.AccountToken == "" {
+		return plex.NewClient(source.BaseURL, token, credentials.ClientIdentifier)
 	}
-	if credentials.AccountToken == "" {
-		return "", nil
+	a.plexAuthMu.Lock()
+	defer a.plexAuthMu.Unlock()
+	credentials, err = a.loadPlexCredentials()
+	if err != nil {
+		return nil, err
 	}
-	auth := plex.NewAuthClient()
-	if err := auth.EnsureFreshToken(ctx, &credentials); err != nil {
-		return "", err
+	if token := credentials.ServerTokens[source.MachineIdentifier]; token != "" || credentials.AccountToken == "" {
+		return plex.NewClient(source.BaseURL, token, credentials.ClientIdentifier)
 	}
-	token, _, resolveErr := auth.ResolveServerToken(ctx, &credentials, source.MachineIdentifier)
+	auth := a.newPlexAuthClient()
+	previous := credentials.AccountToken
+	token, _, resolveErr := auth.ResolveServerRoutes(ctx, &credentials, source.MachineIdentifier)
 	if resolveErr == nil && token != "" {
-		_ = a.savePlexCredentials(credentials)
-		return token, nil
+		credentials.ServerTokens[source.MachineIdentifier] = token
+		if err := a.savePlexCredentials(credentials); err != nil {
+			logger.API("Failed to cache Plex server credentials: %v", err)
+		}
+		return plex.NewClient(source.BaseURL, token, credentials.ClientIdentifier)
 	}
 	// Plex JWTs can also be presented as X-Plex-Token to PMS. This fallback
 	// keeps a manually configured local server usable if resources discovery is
 	// temporarily unavailable.
-	_ = a.savePlexCredentials(credentials)
-	return credentials.AccountToken, nil
+	if credentials.AccountToken != previous {
+		_ = a.savePlexCredentials(credentials)
+	}
+	return plex.NewClient(source.BaseURL, credentials.AccountToken, credentials.ClientIdentifier)
 }
 
 func (a *API) connectPlexServer(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		URL string `json:"url"`
+		URL             string `json:"url"`
+		ReplaceSourceID string `json:"replaceSourceId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil || strings.TrimSpace(request.URL) == "" {
 		respondPlexAPIMessage(w, r, http.StatusBadRequest, "invalid_plex_server", "A Plex server URL, hostname, or IP is required", false)
@@ -186,6 +200,8 @@ func (a *API) connectPlexServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.plexAuthMu.Lock()
+	defer a.plexAuthMu.Unlock()
 	credentials, err := a.loadPlexCredentials()
 	if err != nil {
 		if errors.Is(err, crypto.ErrReauthRequired) {
@@ -201,18 +217,14 @@ func (a *API) connectPlexServer(w http.ResponseWriter, r *http.Request) {
 	if token := credentials.ServerTokens[server.MachineIdentifier]; token != "" {
 		authenticatedClient, clientErr := plex.NewClient(server.URL, token, credentials.ClientIdentifier)
 		if clientErr == nil {
-			if authenticated, validationErr := authenticatedClient.ValidateServer(r.Context()); validationErr == nil {
+			if authenticated, validationErr := authenticatedClient.ValidateServerForMachine(r.Context(), server.MachineIdentifier); validationErr == nil {
 				server = authenticated
 			}
 		}
 	}
 
-	if err := a.activatePlexServer(server, &credentials); err != nil {
-		respondPlexAPIError(w, r, err)
-		return
-	}
-	if err := a.savePlexCredentials(credentials); err != nil {
-		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_save_failed", "Plex server was connected but authentication state could not be saved", true)
+	if err := a.activatePlexServer(server, &credentials, false, request.ReplaceSourceID); err != nil {
+		respondPlexActivationError(w, r, err)
 		return
 	}
 	respondV2JSON(w, http.StatusOK, server)
@@ -220,32 +232,68 @@ func (a *API) connectPlexServer(w http.ResponseWriter, r *http.Request) {
 
 // activatePlexServer persists a validated server as ViiB's single active Plex
 // source. The cached media removal is local-only; it never alters PMS data.
-func (a *API) activatePlexServer(server plex.Server, credentials *plex.Credentials) error {
+var errPlexReplaceConfirmation = errors.New("confirm replacement of the current Plex source")
+
+func respondPlexActivationError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, errPlexReplaceConfirmation) {
+		respondPlexAPIMessage(w, r, http.StatusConflict, "plex_replace_confirmation_required", "Replacing the Plex server removes its synced tracks from ViiB.", false)
+		return
+	}
+	logger.API("Plex activation failed: %v", plex.RedactError(err))
+	respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_config_save_failed", "ViiB could not save the Plex source configuration.", true)
+}
+
+func (a *API) activatePlexServer(server plex.Server, credentials *plex.Credentials, accountManaged bool, approvedSourceID string) error {
+	a.plexSyncMu.Lock()
+	defer a.plexSyncMu.Unlock()
 	source := db.PlexSource{
 		ID: plex.StableSourceID(server.MachineIdentifier), MachineIdentifier: server.MachineIdentifier,
 		BaseURL: server.URL, Name: server.Name, Version: server.Version, ConnectedAt: time.Now().UnixMilli(),
-		LastSyncStatus: "never", Available: true, Active: true,
+		LastSyncStatus: "never", Available: true, Active: true, AccountManaged: accountManaged,
 	}
-	if previous, _ := a.db.GetPlexSource(source.ID); previous != nil {
+	previous, err := a.db.GetPlexSource(source.ID)
+	if err != nil {
+		return err
+	}
+	if previous != nil {
 		source.LibraryID, source.LibraryTitle = previous.LibraryID, previous.LibraryTitle
 		source.LastSyncAt, source.LastSyncStatus, source.LastSyncError = previous.LastSyncAt, previous.LastSyncStatus, previous.LastSyncError
+		source.ConnectedAt = max(source.ConnectedAt, previous.ConnectedAt+1)
 	}
-	// The current settings UX manages one active Plex source. Replacing it
-	// removes only ViiB's prior catalog/cache and never sends a delete to PMS.
-	if active, _ := a.db.GetActivePlexSource(); active != nil && active.ID != source.ID {
-		if err := a.db.RemovePlexSource(active.ID); err != nil {
-			return fmt.Errorf("replace previous Plex source: %w", err)
+	if source.LastSyncStatus == "running" {
+		source.LastSyncStatus = "interrupted"
+		source.LastSyncError = "The Plex connection changed during sync. Synchronize to try again."
+	}
+	active, err := a.db.GetActivePlexSource()
+	if err != nil {
+		return err
+	}
+	var replacedSourceID string
+	if active != nil && active.ID != source.ID {
+		if approvedSourceID != active.ID {
+			return errPlexReplaceConfirmation
 		}
+		replacedSourceID = active.ID
 		delete(credentials.ServerTokens, active.MachineIdentifier)
 	}
-	if err := a.db.SavePlexSource(source); err != nil {
+	payload, err := json.Marshal(credentials)
+	if err != nil {
+		return err
+	}
+	if err := a.db.ActivatePlexSource(source, replacedSourceID, string(payload)); err != nil {
 		return fmt.Errorf("save Plex server configuration: %w", err)
+	}
+	a.cancelPlexSyncLocked()
+	a.plexLastAttemptSource = ""
+	delete(a.plexRecoveryAttempts, source.ID)
+	if replacedSourceID != "" && a.scanner != nil {
+		a.scanner.EmitEvent(scanner.LibraryEvent{Type: "library_updated", Message: "Plex source changed"})
 	}
 	return nil
 }
 
 func (a *API) getPlexConfig(w http.ResponseWriter, r *http.Request) {
-	source, err := a.db.GetActivePlexSource()
+	source, err := a.plexSyncSource()
 	if err != nil {
 		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_config_load_failed", "Failed to load Plex configuration", true)
 		return
@@ -255,7 +303,7 @@ func (a *API) getPlexConfig(w http.ResponseWriter, r *http.Request) {
 	if source != nil && credErr == nil {
 		authenticated = authenticated || credentials.ServerTokens[source.MachineIdentifier] != ""
 	}
-	response := map[string]any{"source": source, "authenticated": authenticated}
+	response := map[string]any{"source": source, "authenticated": authenticated, "autoSync": a.plexAutoSyncEnabled()}
 	if errors.Is(credErr, crypto.ErrReauthRequired) {
 		response["reauthRequired"] = true
 		response["message"] = "Stored Plex credentials could not be decrypted; please reconnect to Plex."
@@ -264,21 +312,25 @@ func (a *API) getPlexConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) disconnectPlex(w http.ResponseWriter, r *http.Request) {
+	a.plexAuthMu.Lock()
+	defer a.plexAuthMu.Unlock()
+	a.plexSyncMu.Lock()
+	defer a.plexSyncMu.Unlock()
 	source, err := a.db.GetActivePlexSource()
 	if err != nil {
 		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_config_load_failed", "Failed to load Plex configuration", true)
 		return
 	}
+	var sourceID string
 	if source != nil {
-		if err := a.db.RemovePlexSource(source.ID); err != nil {
-			respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_remove_failed", "Failed to remove Plex source from ViiB", true)
-			return
-		}
+		sourceID = source.ID
 	}
-	if err := a.db.SetSetting(db.PlexCredentialsSettingKey, ""); err != nil {
-		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_credentials_clear_failed", "Plex source removed but credentials could not be cleared", true)
+	if err := a.db.DisconnectPlexSource(sourceID); err != nil {
+		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_remove_failed", "Failed to remove Plex source from ViiB", true)
 		return
 	}
+	a.cancelPlexSyncLocked()
+	delete(a.plexRecoveryAttempts, sourceID)
 	if a.scanner != nil {
 		a.scanner.EmitEvent(scanner.LibraryEvent{Type: "library_updated", Message: "Plex source removed"})
 	}
@@ -286,6 +338,8 @@ func (a *API) disconnectPlex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) startPlexAuth(w http.ResponseWriter, r *http.Request) {
+	a.plexAuthMu.Lock()
+	defer a.plexAuthMu.Unlock()
 	credentials, err := a.loadPlexCredentials()
 	if err != nil {
 		if errors.Is(err, crypto.ErrReauthRequired) {
@@ -296,7 +350,7 @@ func (a *API) startPlexAuth(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	start, err := plex.NewAuthClient().StartPIN(r.Context(), &credentials)
+	start, err := a.newPlexAuthClient().StartPIN(r.Context(), &credentials)
 	if err != nil {
 		respondPlexAPIError(w, r, err)
 		return
@@ -309,11 +363,8 @@ func (a *API) startPlexAuth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) getPlexAuthStatus(w http.ResponseWriter, r *http.Request) {
-	source, err := a.db.GetActivePlexSource()
-	if err != nil {
-		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_config_load_failed", "Failed to load Plex configuration", true)
-		return
-	}
+	a.plexAuthMu.Lock()
+	defer a.plexAuthMu.Unlock()
 	credentials, err := a.loadPlexCredentials()
 	if err != nil {
 		if errors.Is(err, crypto.ErrReauthRequired) {
@@ -323,42 +374,20 @@ func (a *API) getPlexAuthStatus(w http.ResponseWriter, r *http.Request) {
 		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_state_failed", "Failed to load Plex authentication state", true)
 		return
 	}
-	status, err := plex.NewAuthClient().PollPIN(r.Context(), &credentials)
+	hadPendingPIN := credentials.PendingPINID != 0
+	auth := a.newPlexAuthClient()
+	status, err := auth.PollPIN(r.Context(), &credentials)
 	if err != nil {
 		respondPlexAPIError(w, r, err)
 		return
 	}
-	if status.Authenticated && source != nil {
-		auth := plex.NewAuthClient()
-		token, preferredURL, resolveErr := auth.ResolveServerToken(r.Context(), &credentials, source.MachineIdentifier)
-		if resolveErr != nil || token == "" {
-			token = credentials.AccountToken
-		}
-		client, clientErr := plex.NewClient(source.BaseURL, token, credentials.ClientIdentifier)
-		if clientErr != nil {
-			respondPlexAPIError(w, r, clientErr)
-			return
-		}
-		validated, validationErr := client.ValidateServer(r.Context())
-		if validationErr != nil && isPlexConnectionError(validationErr) && !isPlexAuthError(validationErr) && preferredURL != "" {
-			fallback, fallbackErr := plex.NewClient(preferredURL, token, credentials.ClientIdentifier)
-			if fallbackErr == nil && fallback.BaseURL() != client.BaseURL() {
-				validated, validationErr = fallback.ValidateServer(r.Context())
-			}
-		}
-		if validationErr != nil {
-			respondPlexAPIError(w, r, validationErr)
-			return
-		}
-		if validated.MachineIdentifier != source.MachineIdentifier {
-			respondPlexAPIMessage(w, r, http.StatusBadGateway, "plex_server_identity_mismatch", "The configured address returned a different Plex server", false)
-			return
-		}
-		credentials.ServerTokens[source.MachineIdentifier] = token
-		if err := a.db.UpdatePlexConnection(source.ID, validated.URL, validated.Name, validated.Version, true); err != nil {
-			respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_state_update_failed", "Authenticated, but failed to update Plex server state", true)
-			return
-		}
+	if !hadPendingPIN || status.Pending {
+		respondV2JSON(w, http.StatusOK, status)
+		return
+	}
+	if status.Authenticated {
+		credentials.ServerTokens = make(map[string]string)
+		clear(a.plexRecoveryAttempts)
 	}
 	if err := a.savePlexCredentials(credentials); err != nil {
 		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_save_failed", "Failed to securely save Plex authentication state", true)
@@ -371,6 +400,8 @@ func (a *API) getPlexAuthStatus(w http.ResponseWriter, r *http.Request) {
 // The directory includes both servers owned by the account and servers shared
 // with it; access tokens remain encrypted in the backend.
 func (a *API) getPlexAccountServers(w http.ResponseWriter, r *http.Request) {
+	a.plexAuthMu.Lock()
+	defer a.plexAuthMu.Unlock()
 	credentials, err := a.loadPlexCredentials()
 	if err != nil {
 		if errors.Is(err, crypto.ErrReauthRequired) {
@@ -380,7 +411,7 @@ func (a *API) getPlexAccountServers(w http.ResponseWriter, r *http.Request) {
 		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_state_failed", "Failed to load Plex authentication state", true)
 		return
 	}
-	servers, err := plex.NewAuthClient().ListServers(r.Context(), &credentials)
+	servers, err := a.newPlexAuthClient().ListServers(r.Context(), &credentials)
 	if err != nil {
 		respondPlexAPIError(w, r, err)
 		return
@@ -398,11 +429,14 @@ func (a *API) getPlexAccountServers(w http.ResponseWriter, r *http.Request) {
 func (a *API) connectPlexAccountServer(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		MachineIdentifier string `json:"machineIdentifier"`
+		ReplaceSourceID   string `json:"replaceSourceId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil || strings.TrimSpace(request.MachineIdentifier) == "" {
 		respondPlexAPIMessage(w, r, http.StatusBadRequest, "plex_server_required", "Choose a Plex account server first", false)
 		return
 	}
+	a.plexAuthMu.Lock()
+	defer a.plexAuthMu.Unlock()
 	credentials, err := a.loadPlexCredentials()
 	if err != nil {
 		if errors.Is(err, crypto.ErrReauthRequired) {
@@ -412,52 +446,28 @@ func (a *API) connectPlexAccountServer(w http.ResponseWriter, r *http.Request) {
 		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_state_failed", "Failed to load Plex authentication state", true)
 		return
 	}
-	auth := plex.NewAuthClient()
-	token, preferredURL, err := auth.ResolveAccountServerToken(r.Context(), &credentials, strings.TrimSpace(request.MachineIdentifier))
+	machine := strings.TrimSpace(request.MachineIdentifier)
+	ctx, cancel := context.WithTimeout(r.Context(), 35*time.Second)
+	defer cancel()
+	token, routes, err := a.newPlexAuthClient().ResolveServerRoutes(ctx, &credentials, machine)
 	if err != nil {
 		respondPlexAPIError(w, r, err)
 		return
 	}
-	if preferredURL == "" {
-		respondPlexAPIMessage(w, r, http.StatusBadGateway, "plex_connection_failed", "Plex did not provide a usable connection for this server", true)
-		return
-	}
-	client, err := plex.NewClient(preferredURL, token, credentials.ClientIdentifier)
+	server, err := validatePlexRoutes(ctx, machine, token, credentials.ClientIdentifier, routes)
 	if err != nil {
 		respondPlexAPIError(w, r, err)
-		return
-	}
-	server, err := client.ValidateServer(r.Context())
-	if err != nil {
-		respondPlexAPIError(w, r, err)
-		return
-	}
-	if server.MachineIdentifier != strings.TrimSpace(request.MachineIdentifier) {
-		respondPlexAPIMessage(w, r, http.StatusBadGateway, "plex_server_identity_mismatch", "Plex returned a different server than the one selected", true)
 		return
 	}
 	if credentials.ServerTokens == nil {
 		credentials.ServerTokens = map[string]string{}
 	}
 	credentials.ServerTokens[server.MachineIdentifier] = token
-	if err := a.activatePlexServer(server, &credentials); err != nil {
-		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_config_save_failed", "Failed to save Plex server configuration", true)
-		return
-	}
-	if err := a.savePlexCredentials(credentials); err != nil {
-		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_save_failed", "Plex server was connected but authentication state could not be saved", true)
+	if err := a.activatePlexServer(server, &credentials, true, request.ReplaceSourceID); err != nil {
+		respondPlexActivationError(w, r, err)
 		return
 	}
 	respondV2JSON(w, http.StatusOK, server)
-}
-
-func (a *API) plexClientForSource(ctx context.Context, source *db.PlexSource) (*plex.Client, error) {
-	token, err := a.tokenForSource(ctx, source)
-	if err != nil {
-		return nil, err
-	}
-	credentials, _ := a.loadPlexCredentials()
-	return plex.NewClient(source.BaseURL, token, credentials.ClientIdentifier)
 }
 
 func (a *API) getPlexLibraries(w http.ResponseWriter, r *http.Request) {
@@ -466,15 +476,9 @@ func (a *API) getPlexLibraries(w http.ResponseWriter, r *http.Request) {
 		respondPlexAPIMessage(w, r, http.StatusBadRequest, "plex_server_required", "Connect a Plex server first", false)
 		return
 	}
-	client, err := a.plexClientForSource(r.Context(), source)
-	if err != nil {
-		if isPlexAuthError(err) {
-			a.recordPlexAvailability(r.Context(), source, false)
-		}
-		respondPlexAPIError(w, r, err)
-		return
-	}
-	libraries, err := client.ListMusicLibraries(r.Context())
+	libraries, err := retryPlexRead(a, r.Context(), source, func(client *plex.Client) ([]plex.Library, error) {
+		return client.ListMusicLibrarySections(r.Context())
+	})
 	if err != nil {
 		if isPlexConnectionError(err) {
 			a.recordPlexAvailability(r.Context(), source, false)
@@ -501,30 +505,40 @@ func (a *API) selectPlexLibrary(w http.ResponseWriter, r *http.Request) {
 		respondPlexAPIMessage(w, r, http.StatusBadRequest, "plex_server_required", "Connect a Plex server first", false)
 		return
 	}
-	client, err := a.plexClientForSource(r.Context(), source)
-	if err != nil {
-		respondPlexAPIError(w, r, err)
-		return
-	}
-	libraries, err := client.ListMusicLibraries(r.Context())
-	if err != nil {
-		respondPlexAPIError(w, r, err)
-		return
-	}
-	var selected *plex.Library
-	for i := range libraries {
-		if libraries[i].ID == request.LibraryID {
-			selected = &libraries[i]
-			break
+	selected, err := retryPlexRead(a, r.Context(), source, func(client *plex.Client) (plex.Library, error) {
+		libraries, err := client.ListMusicLibrarySections(r.Context())
+		if err != nil {
+			return plex.Library{}, err
 		}
+		for _, library := range libraries {
+			if library.ID == request.LibraryID {
+				return client.MusicLibraryDetails(r.Context(), library)
+			}
+		}
+		return plex.Library{}, nil
+	})
+	if err != nil {
+		respondPlexAPIError(w, r, err)
+		return
 	}
-	if selected == nil {
+	if selected.ID == "" {
 		respondPlexAPIMessage(w, r, http.StatusBadRequest, "invalid_plex_music_library", "Selected Plex library is not a music library", false)
+		return
+	}
+	a.plexSyncMu.Lock()
+	defer a.plexSyncMu.Unlock()
+	current, err := a.db.GetActivePlexSource()
+	if err != nil || current == nil || current.ID != source.ID || current.ConnectedAt != source.ConnectedAt {
+		respondPlexAPIMessage(w, r, http.StatusConflict, "plex_source_changed", "The Plex source changed. Refresh Libraries and try again.", true)
 		return
 	}
 	if err := a.db.SetPlexLibrary(source.ID, selected.ID, selected.Title); err != nil {
 		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_library_save_failed", "Failed to save Plex music library selection", true)
 		return
+	}
+	if current.LibraryID != selected.ID {
+		a.cancelPlexSyncLocked()
+		a.plexLastAttemptSource = ""
 	}
 	if a.scanner != nil {
 		a.scanner.EmitEvent(scanner.LibraryEvent{Type: "library_updated", Message: "Plex music library selection changed"})
@@ -533,59 +547,43 @@ func (a *API) selectPlexLibrary(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) startPlexSync(w http.ResponseWriter, r *http.Request) {
-	source, err := a.db.GetActivePlexSource()
-	if err != nil || source == nil {
+	run, err := a.beginPlexSync(r.Context(), false)
+	switch {
+	case errors.Is(err, errPlexSourceRequired):
 		respondPlexAPIMessage(w, r, http.StatusBadRequest, "plex_server_required", "Connect a Plex server first", false)
-		return
-	}
-	if source.LibraryID == "" {
+	case errors.Is(err, errPlexLibraryRequired):
 		respondPlexAPIMessage(w, r, http.StatusBadRequest, "plex_library_required", "Select a Plex music library before synchronizing", false)
-		return
-	}
-	if source.LastSyncStatus == "running" && source.LastSyncAt > 0 && time.Since(time.UnixMilli(source.LastSyncAt)) < 30*time.Minute {
-		respondPlexAPIMessage(w, r, http.StatusConflict, "plex_sync_running", "Plex synchronization is already running", true)
-		return
-	}
-	if err := a.db.SetPlexSyncState(source.ID, "running", "", source.Available, time.Now().UnixMilli()); err != nil {
-		logger.API("Failed to start Plex sync for source %s: %v", source.ID, err)
+	case errors.Is(err, errPlexSyncRunning):
+		respondPlexAPIMessage(w, r, http.StatusConflict, "plex_sync_running", err.Error(), true)
+	case err != nil:
+		logger.API("Failed to start Plex sync: %v", err)
 		respondPlexAPIMessage(w, r, http.StatusServiceUnavailable, "plex_sync_start_failed", "ViiB could not start Plex synchronization. Try again shortly.", true)
-		return
+	default:
+		go a.runPlexSync(run)
+		respondV2JSON(w, http.StatusOK, map[string]string{"status": "started"})
 	}
-	go a.runPlexSync(source.ID)
-	respondV2JSON(w, http.StatusOK, map[string]string{"status": "started"})
 }
 
-func (a *API) runPlexSync(sourceID string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer cancel()
-	source, err := a.db.GetPlexSource(sourceID)
-	if err != nil || source == nil {
-		return
-	}
-	client, err := a.plexClientForSource(ctx, source)
-	if err != nil {
-		a.failPlexSync(source, err, source.Available && !isPlexConnectionError(err), "")
-		return
-	}
-	libraries, err := client.ListMusicLibraries(ctx)
-	if err != nil {
-		a.failPlexSync(source, err, source.Available && !isPlexConnectionError(err), "")
-		return
-	}
-	var library *plex.Library
-	for i := range libraries {
-		if libraries[i].ID == source.LibraryID {
-			library = &libraries[i]
-			break
+func (a *API) runPlexSync(run *plexSyncRun) {
+	defer a.finishPlexSync(run)
+	source, ctx := run.source, run.ctx
+	result, err := retryPlexRead(a, ctx, source, func(client *plex.Client) (plex.SyncResult, error) {
+		libraries, err := client.ListMusicLibrarySections(ctx)
+		if err != nil {
+			return plex.SyncResult{}, err
 		}
-	}
-	if library == nil {
-		a.failPlexSync(source, errors.New("selected Plex music library no longer exists"), true, "")
-		return
-	}
-	result, err := client.FetchTracks(ctx, *library)
+		for _, library := range libraries {
+			if library.ID == source.LibraryID {
+				return client.FetchTracksWithProgress(ctx, library, func(tracks, total int) {
+					run.tracks.Store(int64(tracks))
+					run.total.Store(int64(total))
+				})
+			}
+		}
+		return plex.SyncResult{}, errors.New("selected Plex music library no longer exists")
+	})
 	if err != nil {
-		a.failPlexSync(source, err, !isPlexConnectionError(err), "")
+		a.failPlexSync(run, err, !isPlexConnectionError(err), "")
 		return
 	}
 
@@ -602,18 +600,15 @@ func (a *API) runPlexSync(sourceID string) {
 			Year: track.Year, Duration: track.DurationSeconds, AddedAt: track.AddedAt,
 		})
 	}
-	added, updated, removed, err := a.db.SyncPlexLibrary(source.ID, source.LibraryID, catalog)
+	added, updated, removed, err := a.completePlexSync(run, catalog)
 	if err != nil {
-		a.failPlexSync(source, err, true, "Plex responded, but ViiB could not save the music library. Try synchronizing again.")
+		a.failPlexSync(run, err, true, "Plex responded, but ViiB could not save the music library. Try synchronizing again.")
 		return
 	}
 	if err := a.db.UpdateGenreStats(); err != nil {
 		logger.API("Failed to rebuild genre stats after Plex sync: %v", err)
 	}
 	message := fmt.Sprintf("Plex sync complete: %d added, %d updated, %d removed", added, updated, removed)
-	if err := a.db.SetPlexSyncState(source.ID, "complete", "", true, time.Now().UnixMilli()); err != nil {
-		logger.API("Failed to save Plex sync result for source %s: %v", source.ID, err)
-	}
 	if a.scanner != nil {
 		a.scanner.EmitEvent(scanner.LibraryEvent{Type: "library_updated", Message: message})
 	}
@@ -638,7 +633,13 @@ func (a *API) recordPlexAvailability(ctx context.Context, source *db.PlexSource,
 	}
 }
 
-func (a *API) failPlexSync(source *db.PlexSource, err error, available bool, message string) {
+func (a *API) failPlexSync(run *plexSyncRun, err error, available bool, message string) {
+	a.plexSyncMu.Lock()
+	defer a.plexSyncMu.Unlock()
+	if a.plexSync != run || errors.Is(err, context.Canceled) || errors.Is(run.ctx.Err(), context.Canceled) {
+		return
+	}
+	source := run.source
 	status := "error"
 	if isPlexAuthError(err) {
 		status = "auth_required"
@@ -646,14 +647,18 @@ func (a *API) failPlexSync(source *db.PlexSource, err error, available bool, mes
 	if message == "" {
 		_, _, message, _ = classifyPlexError(err)
 	}
-	if stateErr := a.db.SetPlexSyncState(source.ID, status, message, available, 0); stateErr != nil {
+	health := &available
+	if errors.Is(run.ctx.Err(), context.DeadlineExceeded) {
+		status, message, health = "error", "Plex synchronization timed out. Try synchronizing again.", nil
+	}
+	if stateErr := a.db.FailPlexSync(source.ID, run.id, status, message, health); stateErr != nil {
 		logger.API("Failed to save Plex sync failure for source %s: %v", source.ID, stateErr)
 	}
 	logger.API("Plex sync failed for source %s: %v", source.ID, plex.RedactError(err))
 }
 
 func (a *API) getPlexSyncStatus(w http.ResponseWriter, r *http.Request) {
-	source, err := a.db.GetActivePlexSource()
+	source, err := a.plexSyncSource()
 	if err != nil {
 		respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_sync_status_failed", "Failed to load Plex sync status", true)
 		return
@@ -693,7 +698,7 @@ func (a *API) proxyPlexArtistArtwork(w http.ResponseWriter, r *http.Request) {
 		respondPlexStreamMessage(w, http.StatusServiceUnavailable, "Plex source is not configured")
 		return
 	}
-	a.proxyPlexSourceAsset(w, r, source, artwork.ArtworkKey, "", false)
+	a.proxyPlexSourceAsset(w, r, source, plexMediaInput{key: artwork.ArtworkKey})
 }
 
 func (a *API) proxyPlexAsset(w http.ResponseWriter, r *http.Request, track *db.PlexTrackSource, key string, rangeRequest bool) {
@@ -706,79 +711,81 @@ func (a *API) proxyPlexAsset(w http.ResponseWriter, r *http.Request, track *db.P
 		respondPlexStreamMessage(w, http.StatusServiceUnavailable, "Plex source is not configured")
 		return
 	}
-	a.proxyPlexSourceAsset(w, r, source, key, track.MetadataKey, rangeRequest)
+	a.proxyPlexSourceAsset(w, r, source, plexMediaInput{key: key, metadataKey: track.MetadataKey, ratingKey: track.RatingKey, audio: rangeRequest, byteRange: r.Header.Get("Range")})
 }
 
-func plexMediaRequest(r *http.Request, client *plex.Client, key string, rangeRequest bool) (*http.Request, error) {
-	upstream, err := client.MediaRequest(r.Context(), key)
-	if err != nil {
-		return nil, err
-	}
-	upstream.Header.Set("Accept", "*/*")
-	if rangeRequest {
-		client.ApplyPlaybackIdentity(upstream)
-	}
-	if rangeRequest && r.Header.Get("Range") != "" {
-		upstream.Header.Set("Range", r.Header.Get("Range"))
-	}
-	return upstream, nil
+type plexMediaInput struct {
+	key, metadataKey, ratingKey string
+	audio                       bool
+	byteRange                   string
 }
 
-func (a *API) proxyPlexSourceAsset(w http.ResponseWriter, r *http.Request, source *db.PlexSource, key, metadataKey string, rangeRequest bool) {
-	client, err := a.plexClientForSource(r.Context(), source)
-	if err != nil {
-		if rangeRequest && isPlexAuthError(err) {
-			a.recordPlexAvailability(r.Context(), source, false)
-		}
-		respondPlexStreamError(w, err)
-		return
-	}
-	upstream, err := plexMediaRequest(r, client, key, rangeRequest)
-	if err != nil {
-		respondPlexStreamError(w, err)
-		return
-	}
-	resp, err := client.MediaHTTPClient().Do(upstream)
-	if err != nil {
-		if rangeRequest {
-			a.recordPlexAvailability(r.Context(), source, false)
-		}
-		respondPlexStreamMessage(w, http.StatusServiceUnavailable, "Plex Media Server is unreachable")
-		return
-	}
-	// PMS 1.43 can reject a media-part request with 503 when it has no active
-	// playback decision. Ask PMS for a direct-play decision once, then repeat
-	// the exact original (including Range) request. We intentionally do not
-	// enable transcoding: ViiB's player contract remains direct audio playback.
-	if resp.StatusCode == http.StatusServiceUnavailable && rangeRequest && metadataKey != "" {
-		resp.Body.Close()
-		if err := client.PrepareDirectPlay(r.Context(), metadataKey); err != nil {
-			if isPlexConnectionError(err) {
-				a.recordPlexAvailability(r.Context(), source, false)
+func (a *API) openPlexMedia(ctx context.Context, source *db.PlexSource, input plexMediaInput) (*http.Response, error) {
+	return retryPlexRead(a, ctx, source, func(client *plex.Client) (*http.Response, error) {
+		request := func(key string) (*http.Response, error) {
+			req, err := client.MediaRequest(ctx, key)
+			if err != nil {
+				return nil, err
 			}
-			respondPlexStreamError(w, err)
-			return
+			req.Header.Set("Accept", "*/*")
+			if input.audio {
+				client.ApplyPlaybackIdentity(req)
+				if input.byteRange != "" {
+					req.Header.Set("Range", input.byteRange)
+				}
+			}
+			return client.DoMedia(req)
 		}
-		upstream, err = plexMediaRequest(r, client, key, rangeRequest)
-		if err != nil {
-			respondPlexStreamError(w, err)
-			return
+		key := input.key
+		response, err := request(key)
+		if err != nil || !input.audio {
+			return response, err
 		}
-		resp, err = client.MediaHTTPClient().Do(upstream)
-		if err != nil {
+		if (response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusGone) && input.ratingKey != "" {
+			refreshedKey, err := client.GetTrackMediaKey(ctx, input.ratingKey)
+			if isPlexConnectionError(err) {
+				response.Body.Close()
+				return nil, err
+			}
+			if err == nil && refreshedKey != "" && refreshedKey != key {
+				response.Body.Close()
+				key = refreshedKey
+				response, err = request(key)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+		// Some Plex versions require a playback decision before serving a part.
+		if response.StatusCode == http.StatusServiceUnavailable && input.metadataKey != "" {
+			response.Body.Close()
+			if err := client.PrepareDirectPlay(ctx, input.metadataKey); err != nil {
+				return nil, err
+			}
+			return request(key)
+		}
+		return response, nil
+	})
+}
+
+func (a *API) proxyPlexSourceAsset(w http.ResponseWriter, r *http.Request, source *db.PlexSource, input plexMediaInput) {
+	resp, err := a.openPlexMedia(r.Context(), source, input)
+	if err != nil {
+		if input.audio && isPlexConnectionError(err) {
 			a.recordPlexAvailability(r.Context(), source, false)
+		}
+		if isPlexAuthError(err) {
+			respondPlexStreamMessage(w, http.StatusUnauthorized, "Plex authentication expired; reconnect in Settings")
+			return
+		}
+		if isPlexConnectionError(err) {
 			respondPlexStreamMessage(w, http.StatusServiceUnavailable, "Plex Media Server is unreachable")
 			return
 		}
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden || resp.StatusCode == 498 {
-		if rangeRequest {
-			a.recordPlexAvailability(r.Context(), source, false)
-		}
-		respondPlexStreamMessage(w, http.StatusUnauthorized, "Plex authentication expired; reconnect in Settings")
+		respondPlexStreamError(w, err)
 		return
 	}
+	defer resp.Body.Close()
 	// Preserve RFC 7233 range semantics. In particular, a seek beyond the end of
 	// the media must remain 416 with PMS's Content-Range (for example bytes */N)
 	// rather than being rewritten as a generic upstream 502.
@@ -788,23 +795,27 @@ func (a *API) proxyPlexSourceAsset(w http.ResponseWriter, r *http.Request, sourc
 		_, _ = io.Copy(w, resp.Body)
 		return
 	}
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+		respondPlexStreamMessage(w, http.StatusNotFound, "Plex no longer has this media asset")
+		return
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respondPlexStreamMessage(w, http.StatusBadGateway, fmt.Sprintf("Plex media request returned HTTP %d", resp.StatusCode))
 		return
 	}
 	copyPlexProxyHeaders(w.Header(), resp.Header)
-	if rangeRequest && w.Header().Get("Accept-Ranges") == "" {
+	if input.audio && w.Header().Get("Accept-Ranges") == "" {
 		w.Header().Set("Accept-Ranges", "bytes")
 	}
 	w.WriteHeader(resp.StatusCode)
 	_, copyErr := io.Copy(w, resp.Body)
 	if copyErr != nil {
-		if rangeRequest && r.Context().Err() == nil {
+		if input.audio && r.Context().Err() == nil {
 			logger.API("Plex audio transfer interrupted for source %s: %v", source.ID, plex.RedactError(copyErr))
 		}
 		return
 	}
-	if rangeRequest && !source.Available {
+	if input.audio && !source.Available {
 		a.recordPlexAvailability(r.Context(), source, true)
 	}
 }

@@ -104,15 +104,15 @@ func TestListServersIncludesOwnedAndSharedPlexResources(t *testing.T) {
 	if len(servers) != 2 {
 		t.Fatalf("servers=%#v", servers)
 	}
-	if servers[0].MachineIdentifier != "owned-server" || !servers[0].Owned || servers[0].URL != "https://owned.example:32400" || servers[0].Version != "1.42.0" {
-		t.Fatalf("owned server remote route was not mapped/preferred correctly: %#v", servers[0])
+	if servers[0].MachineIdentifier != "owned-server" || !servers[0].Owned || servers[0].URL != "http://192.168.1.20:32400" || servers[0].Version != "1.42.0" {
+		t.Fatalf("owned server local route was not mapped/preferred correctly: %#v", servers[0])
 	}
 	if servers[1].MachineIdentifier != "shared-server" || servers[1].Owned || servers[1].Owner != "Alice" || !servers[1].Relay {
 		t.Fatalf("shared server was not exposed correctly: %#v", servers[1])
 	}
-	token, endpoint, err := auth.ResolveAccountServerToken(context.Background(), &credentials, "owned-server")
-	if err != nil || token != "owned-token" || endpoint != "https://owned.example:32400" {
-		t.Fatalf("account connection did not retain its remote route: token=%q endpoint=%q err=%v", token, endpoint, err)
+	token, endpoints, err := auth.ResolveServerRoutes(context.Background(), &credentials, "owned-server")
+	if err != nil || token != "owned-token" || len(endpoints) != 2 || endpoints[0] != "http://192.168.1.20:32400" || endpoints[1] != "https://owned.example:32400" {
+		t.Fatalf("unexpected account connection candidates: endpoints=%q err=%v", endpoints, err)
 	}
 }
 

@@ -22,6 +22,7 @@ var (
 	ErrAuthenticationRequired  = errors.New("plex authentication required")
 	ErrInvalidToken            = errors.New("plex authentication token is invalid or expired")
 	ErrNotPlexServer           = errors.New("endpoint is not a Plex Media Server")
+	ErrServerIdentityMismatch  = errors.New("the address returned a different Plex Media Server")
 	ErrDNSFailure              = errors.New("plex server DNS lookup failed")
 	ErrConnectionFailed        = errors.New("plex server connection failed")
 	ErrConnectionTimeout       = errors.New("plex server connection timed out")
@@ -38,6 +39,15 @@ type Client struct {
 	httpClient       *http.Client
 }
 
+var plexTransport = func() *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = http.ProxyFromEnvironment
+	transport.DialContext = (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext
+	transport.TLSHandshakeTimeout = 5 * time.Second
+	transport.ResponseHeaderTimeout = 15 * time.Second
+	return transport
+}()
+
 func NewClient(rawBaseURL, token, clientIdentifier string) (*Client, error) {
 	normalized, err := NormalizeServerURL(rawBaseURL)
 	if err != nil {
@@ -47,16 +57,11 @@ func NewClient(rawBaseURL, token, clientIdentifier string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse Plex server URL: %w", err)
 	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = http.ProxyFromEnvironment
-	transport.DialContext = (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext
-	transport.TLSHandshakeTimeout = 5 * time.Second
-	transport.ResponseHeaderTimeout = 15 * time.Second
 	return &Client{
 		baseURL:          parsed,
 		token:            token,
 		clientIdentifier: clientIdentifier,
-		httpClient:       &http.Client{Transport: transport, Timeout: 30 * time.Second},
+		httpClient:       &http.Client{Transport: plexTransport, Timeout: 30 * time.Second},
 	}, nil
 }
 
@@ -73,6 +78,8 @@ func NewClientWithHTTP(rawBaseURL, token, clientIdentifier string, httpClient *h
 }
 
 func (c *Client) BaseURL() string { return strings.TrimRight(c.baseURL.String(), "/") }
+
+func (c *Client) UsesToken(token string) bool { return c.token == token }
 
 // NormalizeServerURL accepts either a bare host/IP (defaulting to PMS 32400) or
 // a complete HTTP(S) URL. Complete URLs are authoritative so reverse proxies on
@@ -166,6 +173,8 @@ func (c *Client) sameServer(u *url.URL) bool {
 	return strings.EqualFold(u.Scheme, c.baseURL.Scheme) && strings.EqualFold(u.Host, c.baseURL.Host)
 }
 
+func (c *Client) IsServerURL(u *url.URL) bool { return u != nil && c.sameServer(u) }
+
 // guardedHTTPClient preserves any injected transport/client behavior while
 // ensuring a PMS authentication token can never follow a redirect off the
 // configured server origin. X-Plex-Token is a custom header, so relying on the
@@ -225,19 +234,7 @@ func classifyHTTPError(resp *http.Response) error {
 func (c *Client) doJSON(req *http.Request, out any) error {
 	resp, err := c.guardedHTTPClient(false).Do(req)
 	if err != nil {
-		var dnsErr *net.DNSError
-		var netErr net.Error
-		var tlsErr *tls.CertificateVerificationError
-		switch {
-		case errors.As(err, &dnsErr):
-			return fmt.Errorf("%w: %v", ErrDNSFailure, dnsErr)
-		case errors.As(err, &tlsErr):
-			return fmt.Errorf("%w: %v", ErrTLSFailure, tlsErr)
-		case errors.As(err, &netErr) && netErr.Timeout():
-			return fmt.Errorf("%w: %v", ErrConnectionTimeout, netErr)
-		default:
-			return fmt.Errorf("%w: %v", ErrConnectionFailed, err)
-		}
+		return classifyConnectionError(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -248,6 +245,49 @@ func (c *Client) doJSON(req *http.Request, out any) error {
 		return fmt.Errorf("invalid Plex server response: %w", err)
 	}
 	return nil
+}
+
+func classifyConnectionError(err error) error {
+	var dnsErr *net.DNSError
+	var netErr net.Error
+	var tlsErr *tls.CertificateVerificationError
+	switch {
+	case errors.Is(err, context.Canceled):
+		return err
+	case errors.As(err, &dnsErr):
+		return fmt.Errorf("%w: %v", ErrDNSFailure, dnsErr)
+	case errors.As(err, &tlsErr):
+		return fmt.Errorf("%w: %v", ErrTLSFailure, tlsErr)
+	case errors.As(err, &netErr) && netErr.Timeout():
+		return fmt.Errorf("%w: %v", ErrConnectionTimeout, netErr)
+	default:
+		return fmt.Errorf("%w: %v", ErrConnectionFailed, err)
+	}
+}
+
+// DoMedia preserves range responses and restricts token rejection handling
+// to replies from the configured Plex server.
+func (c *Client) DoMedia(req *http.Request) (*http.Response, error) {
+	response, err := c.MediaHTTPClient().Do(req)
+	if err != nil {
+		if c.IsServerURL(req.URL) {
+			return nil, classifyConnectionError(err)
+		}
+		return nil, RedactError(err)
+	}
+	responseURL := req.URL
+	if response.Request != nil {
+		responseURL = response.Request.URL
+	}
+	if c.IsServerURL(responseURL) && isAuthStatus(response.StatusCode) {
+		response.Body.Close()
+		return nil, ErrInvalidToken
+	}
+	return response, nil
+}
+
+func isAuthStatus(status int) bool {
+	return status == http.StatusUnauthorized || status == http.StatusForbidden || status == 498
 }
 
 // doNoContent executes a request whose successful PMS response need not be
@@ -298,6 +338,10 @@ type rootEnvelope struct {
 // ValidateServer uses the documented unauthenticated /identity endpoint to
 // prove that the address is a PMS, then optionally enriches the result via root.
 func (c *Client) ValidateServer(ctx context.Context) (Server, error) {
+	return c.ValidateServerForMachine(ctx, "")
+}
+
+func (c *Client) ValidateServerForMachine(ctx context.Context, expectedMachine string) (Server, error) {
 	var identity identityEnvelope
 	req, err := c.newRequest(ctx, http.MethodGet, "", "/identity", false)
 	if err != nil {
@@ -314,6 +358,9 @@ func (c *Client) ValidateServer(ctx context.Context) (Server, error) {
 	}
 	if strings.TrimSpace(identity.MediaContainer.MachineIdentifier) == "" {
 		return Server{}, ErrNotPlexServer
+	}
+	if expectedMachine != "" && identity.MediaContainer.MachineIdentifier != expectedMachine {
+		return Server{}, ErrServerIdentityMismatch
 	}
 	port, _ := strconv.Atoi(c.baseURL.Port())
 	if port == 0 {
@@ -427,6 +474,30 @@ func isMusicLibraryType(value string) bool {
 // ListMusicLibraries follows the documented /media/providers content feature
 // and returns only music sections. It intentionally ignores video/clip pivots.
 func (c *Client) ListMusicLibraries(ctx context.Context) ([]Library, error) {
+	libraries, err := c.ListMusicLibrarySections(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for index, library := range libraries {
+		libraries[index], err = c.MusicLibraryDetails(ctx, library)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return libraries, nil
+}
+
+func (c *Client) MusicLibraryDetails(ctx context.Context, library Library) (Library, error) {
+	var err error
+	library.TrackKey, library.AlbumKey, err = c.findMusicPivotKeys(ctx, library.ContentKey)
+	if err != nil {
+		return Library{}, fmt.Errorf("inspect Plex music library %q: %w", library.Title, err)
+	}
+	return library, nil
+}
+
+// ListMusicLibrarySections reads the directory without opening every library.
+func (c *Client) ListMusicLibrarySections(ctx context.Context) ([]Library, error) {
 	var response providersEnvelope
 	req, err := c.newRequest(ctx, http.MethodGet, "", "/media/providers", true)
 	if err != nil {
@@ -458,23 +529,11 @@ func (c *Client) ListMusicLibraries(ctx context.Context) ([]Library, error) {
 						id = id[:slash]
 					}
 				}
-				library := Library{ID: id, Title: directory.Title, Type: directory.Type, ContentKey: directory.Key}
-				trackKey, albumKey, err := c.findMusicPivotKeys(ctx, library.ContentKey)
-				if err != nil {
-					return nil, fmt.Errorf("inspect Plex music library %q: %w", library.Title, err)
-				}
-				library.TrackKey = trackKey
-				library.AlbumKey = albumKey
-				libraries = append(libraries, library)
+				libraries = append(libraries, Library{ID: id, Title: directory.Title, Type: directory.Type, ContentKey: directory.Key})
 			}
 		}
 	}
 	return libraries, nil
-}
-
-func (c *Client) findTrackKey(ctx context.Context, sectionKey string) (string, error) {
-	trackKey, _, err := c.findMusicPivotKeys(ctx, sectionKey)
-	return trackKey, err
 }
 
 // findMusicPivotKeys resolves the documented type pivots exposed by a music
@@ -578,12 +637,42 @@ type TrackMetadataEdit struct {
 	Year   int
 }
 type trackEnvelope struct {
-	MediaContainer struct {
-		Size      int         `json:"size"`
-		TotalSize int         `json:"totalSize"`
-		Offset    int         `json:"offset"`
-		Metadata  []plexTrack `json:"Metadata"`
-	} `json:"MediaContainer"`
+	MediaContainer *plexTrackPage `json:"MediaContainer"`
+}
+
+type plexTrackPage struct {
+	Size      *int        `json:"size"`
+	TotalSize *int        `json:"totalSize"`
+	Offset    *int        `json:"offset"`
+	Metadata  []plexTrack `json:"Metadata"`
+}
+
+// endOfPlexPage validates page coverage before callers accept the result as a catalog snapshot.
+func endOfPlexPage(page *plexTrackPage, offset int, expectedTotal *int) (bool, error) {
+	if page == nil {
+		return false, errors.New("missing Plex media container")
+	}
+	count := len(page.Metadata)
+	if (page.Offset != nil && *page.Offset != offset) || (page.Size != nil && *page.Size != count) ||
+		(count == 0 && page.Size == nil && page.TotalSize == nil && (offset == 0 || page.Metadata == nil)) {
+		return false, errors.New("invalid Plex catalog page coverage")
+	}
+	if page.TotalSize != nil {
+		if *page.TotalSize < 0 || (*expectedTotal >= 0 && *expectedTotal != *page.TotalSize) {
+			return false, errors.New("Plex catalog size changed during synchronization")
+		}
+		*expectedTotal = *page.TotalSize
+	}
+	if *expectedTotal < 0 {
+		// Without a total, probe the next offset even after a short page. Plex
+		// providers can cap pages below the requested size.
+		return count == 0, nil
+	}
+	next := offset + count
+	if next > *expectedTotal || (count == 0 && next < *expectedTotal) {
+		return false, errors.New("Plex returned an incomplete catalog page")
+	}
+	return next == *expectedTotal, nil
 }
 
 func selectPlayablePart(media []plexMedia) (plexMedia, plexPart, bool) {
@@ -601,8 +690,11 @@ func mapPlexTrack(raw plexTrack) (Track, bool) {
 	if raw.Type != "" && !strings.EqualFold(raw.Type, "track") {
 		return Track{}, false
 	}
-	if raw.RatingKey == "" || raw.Title == "" {
+	if strings.TrimSpace(raw.RatingKey) == "" {
 		return Track{}, false
+	}
+	if strings.TrimSpace(raw.Title) == "" {
+		return Track{RatingKey: raw.RatingKey}, true
 	}
 	// PMS metadata identity is authoritative even when the server temporarily
 	// omits a playable Media/Part. Preserve the track in the snapshot with an
@@ -680,25 +772,42 @@ func normalizePlexTags(values []string) []string {
 // GetTrackMetadata loads one music track from PMS for preview and post-write
 // verification. rating keys are numeric PMS identities, never client URLs.
 func (c *Client) GetTrackMetadata(ctx context.Context, ratingKey string) (TrackMetadata, error) {
+	track, err := c.getTrack(ctx, ratingKey)
+	if err != nil {
+		return TrackMetadata{}, err
+	}
+	return TrackMetadata{RatingKey: track.RatingKey, Title: track.Title, Genres: normalizePlexTags(plexGenres(track.Genre)), Year: track.Year, UpdatedAt: track.UpdatedAt}, nil
+}
+
+func (c *Client) GetTrackMediaKey(ctx context.Context, ratingKey string) (string, error) {
+	track, err := c.getTrack(ctx, ratingKey)
+	if err != nil {
+		return "", err
+	}
+	_, part, _ := selectPlayablePart(track.Media)
+	return part.Key, nil
+}
+
+func (c *Client) getTrack(ctx context.Context, ratingKey string) (plexTrack, error) {
 	if !validRatingKey(ratingKey) {
-		return TrackMetadata{}, errors.New("invalid plex track rating key")
+		return plexTrack{}, errors.New("invalid plex track rating key")
 	}
 	var response trackEnvelope
 	req, err := c.newRequest(ctx, http.MethodGet, "", "/library/metadata/"+ratingKey, true)
 	if err != nil {
-		return TrackMetadata{}, err
+		return plexTrack{}, err
 	}
 	if err := c.doJSON(req, &response); err != nil {
-		return TrackMetadata{}, err
+		return plexTrack{}, err
 	}
-	if len(response.MediaContainer.Metadata) != 1 {
-		return TrackMetadata{}, errors.New("plex track metadata was not found")
+	if response.MediaContainer == nil || len(response.MediaContainer.Metadata) != 1 {
+		return plexTrack{}, errors.New("plex track metadata was not found")
 	}
 	track := response.MediaContainer.Metadata[0]
 	if track.RatingKey != ratingKey || (track.Type != "" && !strings.EqualFold(track.Type, "track")) {
-		return TrackMetadata{}, errors.New("plex metadata response is not the requested music track")
+		return plexTrack{}, errors.New("plex metadata response is not the requested music track")
 	}
-	return TrackMetadata{RatingKey: track.RatingKey, Title: track.Title, Genres: normalizePlexTags(plexGenres(track.Genre)), Year: track.Year, UpdatedAt: track.UpdatedAt}, nil
+	return track, nil
 }
 
 // CanManageMetadata checks the capability Plex exposes for management actions.
@@ -772,17 +881,22 @@ func firstNonEmpty(values ...string) string {
 // is authoritative only if every page succeeds; callers must not delete cached
 // tracks when this method returns an error.
 func (c *Client) FetchTracks(ctx context.Context, library Library) (SyncResult, error) {
+	return c.FetchTracksWithProgress(ctx, library, nil)
+}
+
+func (c *Client) FetchTracksWithProgress(ctx context.Context, library Library, progress func(tracks, total int)) (SyncResult, error) {
 	started := time.Now()
 	if library.TrackKey == "" {
-		trackKey, err := c.findTrackKey(ctx, library.ContentKey)
+		var err error
+		library, err = c.MusicLibraryDetails(ctx, library)
 		if err != nil {
 			return SyncResult{}, err
 		}
-		library.TrackKey = trackKey
 	}
 	const pageSize = 500
 	tracks := make([]Track, 0, pageSize)
 	seenRatingKeys := make(map[string]struct{}, pageSize)
+	expectedTotal := -1
 	for offset := 0; ; {
 		req, err := c.newRequest(ctx, http.MethodGet, "", library.TrackKey, true)
 		if err != nil {
@@ -794,43 +908,29 @@ func (c *Client) FetchTracks(ctx context.Context, library Library) (SyncResult, 
 		if err := c.doJSON(req, &response); err != nil {
 			return SyncResult{}, fmt.Errorf("read Plex music library page at offset %d: %w", offset, err)
 		}
-		count := len(response.MediaContainer.Metadata)
-		if count == 0 {
-			break
+		done, err := endOfPlexPage(response.MediaContainer, offset, &expectedTotal)
+		if err != nil {
+			return SyncResult{}, fmt.Errorf("read Plex music library page at offset %d: %w", offset, err)
 		}
 		for _, raw := range response.MediaContainer.Metadata {
 			track, ok := mapPlexTrack(raw)
 			if !ok {
-				continue
+				return SyncResult{}, fmt.Errorf("invalid Plex music track at offset %d", offset)
 			}
 			if _, duplicate := seenRatingKeys[track.RatingKey]; duplicate {
-				continue
+				return SyncResult{}, fmt.Errorf("Plex repeated a track at offset %d; the library may have changed during synchronization", offset)
 			}
 			seenRatingKeys[track.RatingKey] = struct{}{}
 			tracks = append(tracks, track)
 		}
+		if progress != nil {
+			progress(len(tracks), max(expectedTotal, 0))
+		}
 
-		// PMS may return fewer rows than requested because of a server/provider
-		// cap. totalSize is authoritative when present, so advance by the actual
-		// number returned instead of pageSize and continue until it is exhausted.
-		nextOffset := offset + count
-		if response.MediaContainer.Offset > offset {
-			nextOffset = response.MediaContainer.Offset + count
-		}
-		if nextOffset <= offset {
-			return SyncResult{}, fmt.Errorf("plex music library paging made no progress at offset %d", offset)
-		}
-		if response.MediaContainer.TotalSize > 0 {
-			if nextOffset >= response.MediaContainer.TotalSize {
-				break
-			}
-			offset = nextOffset
-			continue
-		}
-		if count < pageSize {
+		if done {
 			break
 		}
-		offset = nextOffset
+		offset += len(response.MediaContainer.Metadata)
 	}
 	if library.AlbumKey != "" {
 		needsAlbumMetadata := false
@@ -874,6 +974,8 @@ type albumMetadata struct {
 func (c *Client) fetchAlbumMetadata(ctx context.Context, albumKey string) (map[string]albumMetadata, error) {
 	const pageSize = 500
 	metadataByAlbum := make(map[string]albumMetadata)
+	seenAlbums := make(map[string]struct{})
+	expectedTotal := -1
 	for offset := 0; ; {
 		req, err := c.newRequest(ctx, http.MethodGet, "", albumKey, true)
 		if err != nil {
@@ -885,37 +987,27 @@ func (c *Client) fetchAlbumMetadata(ctx context.Context, albumKey string) (map[s
 		if err := c.doJSON(req, &response); err != nil {
 			return nil, fmt.Errorf("read Plex music album page at offset %d: %w", offset, err)
 		}
-		count := len(response.MediaContainer.Metadata)
-		if count == 0 {
-			break
+		done, err := endOfPlexPage(response.MediaContainer, offset, &expectedTotal)
+		if err != nil {
+			return nil, fmt.Errorf("read Plex music album page at offset %d: %w", offset, err)
 		}
 		for _, raw := range response.MediaContainer.Metadata {
 			if raw.RatingKey == "" || (raw.Type != "" && !strings.EqualFold(raw.Type, "album")) {
-				continue
+				return nil, fmt.Errorf("invalid Plex music album at offset %d", offset)
 			}
+			if _, duplicate := seenAlbums[raw.RatingKey]; duplicate {
+				return nil, fmt.Errorf("Plex repeated an album at offset %d", offset)
+			}
+			seenAlbums[raw.RatingKey] = struct{}{}
 			if genres := plexGenres(raw.Genre); len(genres) > 0 || raw.Year > 0 {
 				metadataByAlbum[raw.RatingKey] = albumMetadata{Genres: genres, Year: raw.Year}
 			}
 		}
 
-		nextOffset := offset + count
-		if response.MediaContainer.Offset > offset {
-			nextOffset = response.MediaContainer.Offset + count
-		}
-		if nextOffset <= offset {
-			return nil, fmt.Errorf("plex music album paging made no progress at offset %d", offset)
-		}
-		if response.MediaContainer.TotalSize > 0 {
-			if nextOffset >= response.MediaContainer.TotalSize {
-				break
-			}
-			offset = nextOffset
-			continue
-		}
-		if count < pageSize {
+		if done {
 			break
 		}
-		offset = nextOffset
+		offset += len(response.MediaContainer.Metadata)
 	}
 	return metadataByAlbum, nil
 }

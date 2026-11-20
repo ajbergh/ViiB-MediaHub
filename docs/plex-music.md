@@ -89,7 +89,7 @@ ViiB uses the current Plex JWT/PIN device flow:
 
 Expired or rejected credentials surface as an authentication-required/reconnect state instead of silently breaking playback.
 
-After account sign-in, ViiB can also list Plex servers that the account owns or can access through sharing. Select one to validate and activate it without manually entering a LAN address. Access tokens used for that selection remain encrypted in the backend.
+After account sign-in, ViiB can also list Plex servers that the account owns or can access through sharing. ViiB tries the advertised addresses, favors a LAN address for owned servers, and checks the server identity before authenticating. Account-selected servers can switch to a verified alternate address if the active route fails. A manual address stays fixed. ViiB asks for confirmation before replacing a different server and removing its synced catalog.
 
 ### 4. Select a music library
 
@@ -98,6 +98,8 @@ After connecting/authenticating, ViiB displays only Plex sections representing m
 Select the desired music library and choose **Synchronize**.
 
 ## Synchronization
+
+Settings shows sync progress and the last successfully saved catalog. You can reopen Settings during a sync or cancel before the catalog is saved. ViiB checks whether Plex is due for a sync about a minute after startup and syncs hourly while the app is open. Turn off **Sync automatically every hour while ViiB is open** in Settings to use manual sync.
 
 A Plex synchronization maps available PMS track metadata into normal ViiB songs, including:
 
@@ -118,7 +120,7 @@ A Plex synchronization maps available PMS track metadata into normal ViiB songs,
 - metadata key
 - media/part key used for playback
 
-The initial import and every explicit resync are treated as authoritative **only after the complete Plex read succeeds**.
+The initial import and every resync are treated as authoritative **only after the complete Plex read succeeds**. ViiB checks page coverage and rejects incomplete snapshots before changing the catalog.
 
 After a successful synchronization ViiB:
 
@@ -251,6 +253,8 @@ Plex configuration uses `/api/v2/plex`:
 - `PUT /library`
 - `POST /sync`
 - `GET /sync/status`
+- `POST /sync/cancel`
+- `PUT /sync/schedule`
 - `POST /metadata-writeback/preview`
 - `POST /metadata-writeback/sync`
 

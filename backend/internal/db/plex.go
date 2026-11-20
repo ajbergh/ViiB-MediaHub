@@ -72,6 +72,9 @@ type PlexSource struct {
 	LastSyncError     string `json:"lastSyncError,omitempty"`
 	Available         bool   `json:"available"`
 	Active            bool   `json:"active"`
+	AccountManaged    bool   `json:"accountManaged"`
+	SyncTracks        int64  `json:"syncTracks,omitempty"`
+	SyncTotal         int64  `json:"syncTotal,omitempty"`
 }
 
 // PlexCatalogTrack contains the unified song fields plus PMS source identity.
@@ -327,8 +330,33 @@ func (d *DB) EnsurePlexSchema() error {
 	if _, err := d.conn.Exec(`ALTER TABLE plex_tracks ADD COLUMN artist_artwork_key TEXT NOT NULL DEFAULT ''`); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
 		return fmt.Errorf("add Plex artist artwork column: %w", err)
 	}
+	if _, err := d.conn.Exec(`ALTER TABLE plex_sources ADD COLUMN account_managed INTEGER NOT NULL DEFAULT 0`); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+		return fmt.Errorf("add Plex account-managed route flag: %w", err)
+	}
+	if err := d.migratePlexSyncOwnership(); err != nil {
+		return err
+	}
 	plexSchemas.Store(d, plexSchemaResult{})
 	return nil
+}
+
+func (d *DB) migratePlexSyncOwnership() error {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`ALTER TABLE plex_sources ADD COLUMN sync_run_id TEXT NOT NULL DEFAULT ''`); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+			return nil
+		}
+		return fmt.Errorf("add Plex sync ownership: %w", err)
+	}
+	// Legacy timestamps recorded the start of an attempt until it completed.
+	if _, err := tx.Exec(`UPDATE plex_sources SET last_sync_at=NULL WHERE last_sync_status<>'complete'`); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // queuePlexAIWriteback records an AI value only when the song is Plex-backed.
@@ -460,6 +488,18 @@ func nullableInt64(value int64) any {
 }
 
 func (d *DB) SavePlexSource(source PlexSource) error {
+	return d.savePlexSource(source, "", nil)
+}
+
+func (d *DB) ActivatePlexSource(source PlexSource, replacedSourceID, credentials string) error {
+	sealed, err := d.encodeSettingValue(PlexCredentialsSettingKey, credentials)
+	if err != nil {
+		return err
+	}
+	return d.savePlexSource(source, replacedSourceID, &sealed)
+}
+
+func (d *DB) savePlexSource(source PlexSource, replacedSourceID string, credentials *string) error {
 	if err := d.EnsurePlexSchema(); err != nil {
 		return err
 	}
@@ -472,19 +512,24 @@ func (d *DB) SavePlexSource(source PlexSource) error {
 	if source.LastSyncStatus == "" {
 		source.LastSyncStatus = "never"
 	}
-	tx, err := d.conn.Begin()
+	tx, err := d.beginSQLiteWriteTx(context.Background(), `UPDATE plex_sources SET available=available WHERE 0`)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if replacedSourceID != "" && replacedSourceID != source.ID {
+		if err := removePlexSourceTx(tx, replacedSourceID); err != nil {
+			return fmt.Errorf("replace previous Plex source: %w", err)
+		}
+	}
 	if source.Active {
 		if _, err := tx.Exec(`UPDATE plex_sources SET active = 0`); err != nil {
 			return err
 		}
 	}
 	_, err = tx.Exec(`
-		INSERT INTO plex_sources (id, machine_identifier, base_url, name, version, library_id, library_title, connected_at, last_sync_at, last_sync_status, last_sync_error, available, active)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO plex_sources (id, machine_identifier, base_url, name, version, library_id, library_title, connected_at, last_sync_at, last_sync_status, last_sync_error, available, active, account_managed)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			machine_identifier=excluded.machine_identifier,
 			base_url=excluded.base_url,
@@ -492,16 +537,24 @@ func (d *DB) SavePlexSource(source PlexSource) error {
 			version=excluded.version,
 			library_id=excluded.library_id,
 			library_title=excluded.library_title,
+			connected_at=excluded.connected_at,
 			last_sync_at=excluded.last_sync_at,
 			last_sync_status=excluded.last_sync_status,
 			last_sync_error=excluded.last_sync_error,
+			sync_run_id='',
 			available=excluded.available,
-			active=excluded.active
+			active=excluded.active,
+			account_managed=excluded.account_managed
 	`, source.ID, source.MachineIdentifier, source.BaseURL, source.Name, source.Version,
 		source.LibraryID, source.LibraryTitle, source.ConnectedAt, nullableInt64(source.LastSyncAt),
-		source.LastSyncStatus, source.LastSyncError, boolInt(source.Available), boolInt(source.Active))
+		source.LastSyncStatus, source.LastSyncError, boolInt(source.Available), boolInt(source.Active), boolInt(source.AccountManaged))
 	if err != nil {
 		return fmt.Errorf("save Plex source: %w", err)
+	}
+	if credentials != nil {
+		if _, err := tx.Exec(upsertSettingSQL, PlexCredentialsSettingKey, *credentials); err != nil {
+			return fmt.Errorf("save Plex credentials: %w", err)
+		}
 	}
 	return tx.Commit()
 }
@@ -509,10 +562,10 @@ func (d *DB) SavePlexSource(source PlexSource) error {
 func scanPlexSource(row interface{ Scan(...any) error }) (*PlexSource, error) {
 	var source PlexSource
 	var lastSync sql.NullInt64
-	var available, active int
+	var available, active, accountManaged int
 	err := row.Scan(&source.ID, &source.MachineIdentifier, &source.BaseURL, &source.Name, &source.Version,
 		&source.LibraryID, &source.LibraryTitle, &source.ConnectedAt, &lastSync, &source.LastSyncStatus,
-		&source.LastSyncError, &available, &active)
+		&source.LastSyncError, &available, &active, &accountManaged)
 	if err != nil {
 		return nil, err
 	}
@@ -521,10 +574,11 @@ func scanPlexSource(row interface{ Scan(...any) error }) (*PlexSource, error) {
 	}
 	source.Available = available != 0
 	source.Active = active != 0
+	source.AccountManaged = accountManaged != 0
 	return &source, nil
 }
 
-const plexSourceSelect = `SELECT id, machine_identifier, base_url, name, version, library_id, library_title, connected_at, last_sync_at, last_sync_status, last_sync_error, available, active FROM plex_sources`
+const plexSourceSelect = `SELECT id, machine_identifier, base_url, name, version, library_id, library_title, connected_at, last_sync_at, last_sync_status, last_sync_error, available, active, account_managed FROM plex_sources`
 
 func (d *DB) GetActivePlexSource() (*PlexSource, error) {
 	if err := d.EnsurePlexSchema(); err != nil {
@@ -555,11 +609,15 @@ func (d *DB) SetPlexLibrary(sourceID, libraryID, libraryTitle string) error {
 	if err := d.EnsurePlexSchema(); err != nil {
 		return err
 	}
-	result, err := d.conn.Exec(`
+	result, err := d.execSQLiteWrite(context.Background(), `
 		UPDATE plex_sources
-		SET library_id=?, library_title=?, last_sync_status='never', last_sync_error=''
+		SET library_id=?, library_title=?,
+			last_sync_status=CASE WHEN library_id<>? THEN 'never' ELSE last_sync_status END,
+			last_sync_error=CASE WHEN library_id<>? THEN '' ELSE last_sync_error END,
+			last_sync_at=CASE WHEN library_id<>? THEN NULL ELSE last_sync_at END,
+			sync_run_id=CASE WHEN library_id<>? THEN '' ELSE sync_run_id END
 		WHERE id=?
-	`, libraryID, libraryTitle, sourceID)
+	`, libraryID, libraryTitle, libraryID, libraryID, libraryID, libraryID, sourceID)
 	if err != nil {
 		return err
 	}
@@ -571,14 +629,6 @@ func (d *DB) SetPlexLibrary(sourceID, libraryID, libraryTitle string) error {
 		return sql.ErrNoRows
 	}
 	return nil
-}
-
-func (d *DB) UpdatePlexConnection(sourceID, baseURL, name, version string, available bool) error {
-	if err := d.EnsurePlexSchema(); err != nil {
-		return err
-	}
-	_, err := d.conn.Exec(`UPDATE plex_sources SET base_url=?, name=?, version=?, available=? WHERE id=?`, baseURL, name, version, boolInt(available), sourceID)
-	return err
 }
 
 func (d *DB) SetPlexSyncState(sourceID, status, message string, available bool, syncedAt int64) error {
@@ -593,12 +643,41 @@ func (d *DB) SetPlexSyncState(sourceID, status, message string, available bool, 
 	return err
 }
 
+func (d *DB) StartPlexSync(ctx context.Context, source PlexSource, runID string) error {
+	result, err := d.execSQLiteWrite(ctx, `UPDATE plex_sources SET last_sync_status='running', last_sync_error='', sync_run_id=?
+		WHERE id=? AND library_id=? AND connected_at=? AND active=1`, runID, source.ID, source.LibraryID, source.ConnectedAt)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err == nil && rows == 0 {
+		return sql.ErrNoRows
+	}
+	return err
+}
+
+func (d *DB) FailPlexSync(sourceID, runID, status, message string, available *bool) error {
+	if len(message) > 500 {
+		message = message[:500]
+	}
+	_, err := d.execSQLiteWrite(context.Background(), `UPDATE plex_sources
+		SET last_sync_status=?, last_sync_error=?, available=COALESCE(?, available), sync_run_id=''
+		WHERE id=? AND sync_run_id=?`, status, message, available, sourceID, runID)
+	return err
+}
+
 // SetPlexAvailability updates connection health without rewriting sync results.
 // An in-flight request can only report on the connection it used.
 func (d *DB) SetPlexAvailability(ctx context.Context, source PlexSource, available bool) error {
 	_, err := d.execSQLiteWrite(ctx, `UPDATE plex_sources SET available=?
 		WHERE id=? AND base_url=? AND connected_at=? AND available<>?`,
 		boolInt(available), source.ID, source.BaseURL, source.ConnectedAt, boolInt(available))
+	return err
+}
+
+func (d *DB) UpdatePlexVerifiedRoute(ctx context.Context, source PlexSource, baseURL, name, version string) error {
+	_, err := d.execSQLiteWrite(ctx, `UPDATE plex_sources SET base_url=?, name=?, version=?, available=1
+		WHERE id=? AND base_url=? AND connected_at=? AND active=1`, baseURL, name, version, source.ID, source.BaseURL, source.ConnectedAt)
 	return err
 }
 
@@ -712,14 +791,34 @@ func syncPlexArtistArtwork(tx *sql.Tx, sourceID string, artwork map[string]plexA
 // read has succeeded. That means a library switch while PMS is offline leaves
 // the previous cache intact; the successful new snapshot performs the cleanup.
 func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTrack) (added, updated, removed int, err error) {
+	return d.syncPlexLibrary(context.Background(), sourceID, libraryID, tracks, "")
+}
+
+func (d *DB) CompletePlexSync(ctx context.Context, sourceID, libraryID, runID string, tracks []PlexCatalogTrack) (added, updated, removed int, err error) {
+	return d.syncPlexLibrary(ctx, sourceID, libraryID, tracks, runID)
+}
+
+func (d *DB) syncPlexLibrary(ctx context.Context, sourceID, libraryID string, tracks []PlexCatalogTrack, runID string) (added, updated, removed int, err error) {
 	if err = d.EnsurePlexSchema(); err != nil {
 		return
 	}
-	tx, err := d.beginSQLiteWriteTx(context.Background(), `UPDATE plex_sources SET available=available WHERE 0`)
+	tx, err := d.beginSQLiteWriteTx(ctx, `UPDATE plex_sources SET available=available WHERE 0`)
 	if err != nil {
 		return 0, 0, 0, err
 	}
 	defer tx.Rollback()
+
+	if runID != "" {
+		var current bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(
+			SELECT 1 FROM plex_sources WHERE id=? AND library_id=? AND active=1 AND sync_run_id=?
+		)`, sourceID, libraryID, runID).Scan(&current); err != nil {
+			return 0, 0, 0, err
+		}
+		if !current {
+			return 0, 0, 0, context.Canceled
+		}
+	}
 
 	existing := map[string]existingPlexCatalogTrack{}
 	rows, err := tx.Query(`
@@ -828,6 +927,11 @@ func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTra
 	}
 	if err := syncPlexArtistArtwork(tx, sourceID, artistArtwork); err != nil {
 		return 0, 0, 0, err
+	}
+	if runID != "" {
+		if _, err := tx.Exec(`UPDATE plex_sources SET last_sync_status='complete', last_sync_error='', available=1, sync_run_id='', last_sync_at=? WHERE id=?`, time.Now().UnixMilli(), sourceID); err != nil {
+			return 0, 0, 0, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, 0, 0, err
@@ -953,14 +1057,36 @@ func (d *DB) ListAnalysisSourceIdentities(songIDs []string) ([]AnalysisSourceIde
 // RemovePlexSource deletes only ViiB's cached catalog/configuration rows. It
 // performs no network request and can never delete or modify media on PMS.
 func (d *DB) RemovePlexSource(sourceID string) error {
+	return d.removePlexSource(sourceID, false)
+}
+
+func (d *DB) DisconnectPlexSource(sourceID string) error {
+	return d.removePlexSource(sourceID, true)
+}
+
+func (d *DB) removePlexSource(sourceID string, clearCredentials bool) error {
 	if err := d.EnsurePlexSchema(); err != nil {
 		return err
 	}
-	tx, err := d.conn.Begin()
+	tx, err := d.beginSQLiteWriteTx(context.Background(), `UPDATE plex_sources SET available=available WHERE 0`)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if sourceID != "" {
+		if err := removePlexSourceTx(tx, sourceID); err != nil {
+			return err
+		}
+	}
+	if clearCredentials {
+		if _, err := tx.Exec(upsertSettingSQL, PlexCredentialsSettingKey, ""); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func removePlexSourceTx(tx *sql.Tx, sourceID string) error {
 	if _, err := tx.Exec(`
 		UPDATE artist_metadata SET plex_image_url=NULL
 		WHERE artist_name IN (SELECT artist_name FROM plex_artist_artwork WHERE source_id=?)
@@ -997,5 +1123,5 @@ func (d *DB) RemovePlexSource(sourceID string) error {
 	if _, err := tx.Exec(`DELETE FROM plex_sources WHERE id=?`, sourceID); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return nil
 }

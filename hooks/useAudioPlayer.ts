@@ -34,6 +34,7 @@ import {
     resolvePlaybackContext,
 } from '../lib/playbackLifecycle';
 import { findPlexPlaybackFallback } from '../lib/plexPlayback';
+import { plexService } from '../services/plex';
 
 // Pre-buffer threshold: start preloading next track when X seconds remain
 const PRELOAD_THRESHOLD_SECONDS = 15;
@@ -213,6 +214,8 @@ export const useAudioPlayer = () => {
         if (!primary || !secondary) return;
         
         const activeElement = () => activePlayerIndex.current === 0 ? primaryRef.current : secondaryRef.current;
+        let pendingPlexFailure: number | null = null;
+        const plexStatusController = new AbortController();
         const handleWaiting = (event: Event) => {
             if (!isActivePlaybackEvent(event.currentTarget, activeElement())) return;
             const { currentSong, setBuffering, recordStreamEvent } = useStore.getState();
@@ -268,39 +271,53 @@ export const useAudioPlayer = () => {
             const audio = e.target as HTMLAudioElement;
             const { currentSong, retryCount, setBuffering, setStreamError, showToast, retryStream, nextSong, recordStreamEvent } = useStore.getState();
 
-            // Plex tracks use ViiB's normal /api/audio/{id} transport. Media
-            // errors may come from the track, the decoder, or the connection.
             if (currentSong?.source === 'plex') {
-                const state = useStore.getState();
-                const fallbackIndex = findPlexPlaybackFallback(state.queue, state.currentSongIndex);
+                const { isPlaying, playbackGeneration } = useStore.getState();
+                if (!isPlaying || !audio.error || audio.error.code === 1 || pendingPlexFailure === playbackGeneration) return;
+                const decodeError = audio.error.code === 3;
+                pendingPlexFailure = playbackGeneration;
                 setBuffering(false);
 
-                if (fallbackIndex >= 0) {
-                    const fallback = state.queue[fallbackIndex];
-                    showToast({
-                        type: 'warning',
-                        message: `Could not play this Plex track. Continuing with ${fallback.title}.`,
-                        duration: 5000,
-                    });
-                    setTimeout(() => {
-                        const latest = useStore.getState();
-                        if (latest.currentSong === currentSong && latest.isPlaying) {
-                            void latest.playSong(fallback, latest.queue, currentSong.playbackContext || 'queue', fallbackIndex);
+                void (async () => {
+                    let plexAvailable = true;
+                    if (!decodeError) {
+                        const controller = new AbortController();
+                        const abort = () => controller.abort();
+                        plexStatusController.signal.addEventListener('abort', abort, { once: true });
+                        const timer = setTimeout(abort, 2500);
+                        try {
+                            const source = await plexService.getSyncStatus(controller.signal);
+                            plexAvailable = source?.available === true;
+                        } catch {
+                            // Try the next queued track when connection status is unknown.
+                        } finally {
+                            clearTimeout(timer);
+                            plexStatusController.signal.removeEventListener('abort', abort);
                         }
-                    }, 0);
-                } else {
+                    }
+                    if (pendingPlexFailure === playbackGeneration) pendingPlexFailure = null;
+                    const latest = useStore.getState();
+                    if (plexStatusController.signal.aborted || !latest.isPlaying || latest.playbackGeneration !== playbackGeneration ||
+                        activeElement() !== audio || !audio.error) return;
+
+                    const fallbackIndex = findPlexPlaybackFallback(latest.queue, latest.currentSongIndex, plexAvailable);
+                    const fallback = latest.queue[fallbackIndex];
+                    const reason = !plexAvailable ? 'Plex Media Server is unavailable.' :
+                        decodeError ? 'This Plex track could not be decoded.' : 'Could not play this Plex track.';
                     showToast({
-                        type: 'error',
-                        message: 'Could not play this Plex track. Check Plex in Library Sources or try another track.',
+                        type: fallback ? 'warning' : 'error',
+                        message: fallback ? `${reason} Continuing with ${fallback.title}.` : reason,
                         duration: 5000,
                     });
-                    if (state.isPlaying) {
-                        state.togglePlay();
+                    if (fallback) {
+                        void latest.playSong(fallback, latest.queue, currentSong.playbackContext || 'queue', fallbackIndex);
+                    } else {
+                        latest.togglePlay();
                     }
-                }
+                })();
                 return;
             }
-            
+
             if (!currentSong?.isStreaming) return;
             
             const errorType = getStreamingErrorType(audio.error);
@@ -390,6 +407,7 @@ export const useAudioPlayer = () => {
         secondary.addEventListener('stalled', handleStalled);
         
         return () => {
+            plexStatusController.abort();
             primary.removeEventListener('waiting', handleWaiting);
             primary.removeEventListener('canplay', handleCanPlay);
             primary.removeEventListener('canplaythrough', handleCanPlay);

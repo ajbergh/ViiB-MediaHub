@@ -2659,22 +2659,28 @@ func (d *DB) GetSetting(key string) (string, error) {
 // Empty Value Handling:
 // Empty strings are stored without encryption to avoid unnecessary processing.
 func (d *DB) SetSetting(key, value string) error {
-	storeValue := value
+	storeValue, err := d.encodeSettingValue(key, value)
+	if err != nil {
+		return err
+	}
+	_, err = d.conn.Exec(upsertSettingSQL, key, storeValue)
+	return err
+}
 
-	// Encrypt sensitive settings
+const upsertSettingSQL = `
+	INSERT INTO settings (key, value) VALUES (?, ?)
+	ON CONFLICT(key) DO UPDATE SET value = excluded.value
+`
+
+func (d *DB) encodeSettingValue(key, value string) (string, error) {
 	if crypto.IsSensitiveKey(key) && value != "" {
 		encrypted, err := d.credentialKeys.Encrypt(value)
 		if err != nil {
-			return fmt.Errorf("failed to encrypt setting %s: %w", key, err)
+			return "", fmt.Errorf("failed to encrypt setting %s: %w", key, err)
 		}
-		storeValue = encrypted
+		return encrypted, nil
 	}
-
-	_, err := d.conn.Exec(`
-		INSERT INTO settings (key, value) VALUES (?, ?)
-		ON CONFLICT(key) DO UPDATE SET value = excluded.value
-	`, key, storeValue)
-	return err
+	return value, nil
 }
 
 // SetSettingsBatch atomically saves multiple settings in a single transaction.
@@ -2686,18 +2692,11 @@ func (d *DB) SetSettingsBatch(settings map[string]string) error {
 	defer tx.Rollback()
 
 	for key, value := range settings {
-		storeValue := value
-		if crypto.IsSensitiveKey(key) && value != "" {
-			encrypted, err := d.credentialKeys.Encrypt(value)
-			if err != nil {
-				return fmt.Errorf("failed to encrypt setting %s: %w", key, err)
-			}
-			storeValue = encrypted
+		storeValue, err := d.encodeSettingValue(key, value)
+		if err != nil {
+			return err
 		}
-		if _, err := tx.Exec(`
-			INSERT INTO settings (key, value) VALUES (?, ?)
-			ON CONFLICT(key) DO UPDATE SET value = excluded.value
-		`, key, storeValue); err != nil {
+		if _, err := tx.Exec(upsertSettingSQL, key, storeValue); err != nil {
 			return fmt.Errorf("failed to save setting %s: %w", key, err)
 		}
 	}

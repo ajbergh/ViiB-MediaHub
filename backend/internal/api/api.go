@@ -40,6 +40,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/mediafetch"
+	"github.com/ajbergh/viib-mediahub/internal/plex"
 	"github.com/ajbergh/viib-mediahub/internal/releasedate"
 	"github.com/ajbergh/viib-mediahub/internal/scanner"
 	"github.com/ajbergh/viib-mediahub/internal/semantic"
@@ -98,6 +99,16 @@ type API struct {
 	analysisPressure       playbackPressure
 	plexAnalysisMu         sync.Mutex
 	plexAnalysisGates      map[string]chan struct{}
+	plexAuthMu             sync.Mutex
+	plexAuthFactory        func() *plex.AuthClient
+	plexRecoveryAttempts   map[string]time.Time
+	plexSyncMu             sync.Mutex
+	plexSync               *plexSyncRun
+	plexSyncClosed         bool
+	plexSyncWorkers        sync.WaitGroup
+	plexScheduleCancel     context.CancelFunc
+	plexLastAttemptSource  string
+	plexLastAttemptAt      time.Time
 	djWaveformMu           sync.Mutex
 	djWaveformFlights      map[string]*djWaveformFlight
 	libraryPruneMu         sync.Mutex
@@ -162,6 +173,7 @@ func New(database *db.DB, dataDir string) *API {
 	dm.spotifyReleaseDate = api.spotifyTrackEditionDate
 	api.releaseMusicBrainz = releasedate.NewClient()
 	api.startReleaseMetadataWorker()
+	api.startPlexSyncScheduler()
 	dm.Start()
 	// Initialize Last.FM client if configured
 	api.initLastFMClient()

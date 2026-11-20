@@ -39,7 +39,7 @@ func (a *API) resolveAnalysisSource(ctx context.Context, songID string) (analysi
 		SongID: songID, Name: name, Path: "plex://" + plexTrack.SourceID + "/" + plexTrack.RatingKey,
 		Fingerprint: revision, SourceRevision: revision,
 		OpenStream: func() (io.ReadCloser, error) {
-			return a.openPlexAnalysisStream(ctx, source, plexTrack.MediaKey, plexTrack.MetadataKey)
+			return a.openPlexAnalysisStream(ctx, source, plexMediaInput{key: plexTrack.MediaKey, metadataKey: plexTrack.MetadataKey, audio: true})
 		},
 	}, nil
 }
@@ -62,7 +62,7 @@ func plexAnalysisFilename(ratingKey, container string) string {
 // openPlexAnalysisStream makes an authenticated, server-side direct-play
 // request. One stream per PMS source is allowed at a time so an explicit
 // library preparation run cannot saturate a remote server.
-func (a *API) openPlexAnalysisStream(ctx context.Context, source *db.PlexSource, mediaKey, metadataKey string) (io.ReadCloser, error) {
+func (a *API) openPlexAnalysisStream(ctx context.Context, source *db.PlexSource, input plexMediaInput) (io.ReadCloser, error) {
 	release, err := a.acquirePlexAnalysisGate(ctx, source.ID)
 	if err != nil {
 		return nil, err
@@ -73,41 +73,11 @@ func (a *API) openPlexAnalysisStream(ctx context.Context, source *db.PlexSource,
 			release()
 		}
 	}()
-	client, err := a.plexClientForSource(ctx, source)
+	response, err := a.openPlexMedia(ctx, source, input)
 	if err != nil {
-		return nil, fmt.Errorf("plex source unavailable")
-	}
-	request, err := client.MediaRequest(ctx, mediaKey)
-	if err != nil {
-		return nil, fmt.Errorf("plex source unavailable")
-	}
-	request.Header.Set("Accept", "*/*")
-	client.ApplyPlaybackIdentity(request)
-	response, err := client.MediaHTTPClient().Do(request)
-	if err != nil {
-		a.recordPlexAvailability(ctx, source, false)
-		return nil, fmt.Errorf("plex source unavailable")
-	}
-	if response.StatusCode == http.StatusServiceUnavailable && strings.TrimSpace(metadataKey) != "" {
-		response.Body.Close()
-		if err := client.PrepareDirectPlay(ctx, metadataKey); err != nil {
-			return nil, fmt.Errorf("plex source unavailable")
-		}
-		request, err = client.MediaRequest(ctx, mediaKey)
-		if err != nil {
-			return nil, fmt.Errorf("plex source unavailable")
-		}
-		request.Header.Set("Accept", "*/*")
-		client.ApplyPlaybackIdentity(request)
-		response, err = client.MediaHTTPClient().Do(request)
-		if err != nil {
+		if isPlexConnectionError(err) {
 			a.recordPlexAvailability(ctx, source, false)
-			return nil, fmt.Errorf("plex source unavailable")
 		}
-	}
-	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden || response.StatusCode == 498 {
-		response.Body.Close()
-		a.recordPlexAvailability(ctx, source, false)
 		return nil, fmt.Errorf("plex source unavailable")
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {

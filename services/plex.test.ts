@@ -23,7 +23,22 @@ describe('plexService', () => {
       error: { code: 'plex_connection_failed', message: 'Plex server connection refused', retryable: true },
     }), { status: 502, headers: { 'Content-Type': 'application/json' } }));
 
-    await expect(plexService.connect('192.168.1.20')).rejects.toThrow('Plex server connection refused');
+    await expect(plexService.connect('192.168.1.20')).rejects.toMatchObject({
+      message: 'Plex server connection refused', status: 502, code: 'plex_connection_failed',
+    });
+  });
+
+  it('saves the hourly schedule and stops an active sync through separate controls', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(Response.json({ enabled: true }))
+      .mockResolvedValueOnce(Response.json({ status: 'stopped' }));
+
+    await expect(plexService.setAutoSync(true)).resolves.toBe(true);
+    await expect(plexService.cancelSync()).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/v2/plex/sync/schedule', expect.objectContaining({
+      method: 'PUT', body: JSON.stringify({ enabled: true }),
+    }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/v2/plex/sync/cancel', { method: 'POST' });
   });
 
   it('lists and selects Plex account servers without exposing server tokens', async () => {

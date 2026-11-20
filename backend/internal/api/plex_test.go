@@ -7,10 +7,12 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/plex"
@@ -268,7 +270,11 @@ func TestPlexCatalogWriteFailureLeavesSourceAvailable(t *testing.T) {
 	if _, err := writer.Exec(`CREATE TRIGGER fail_plex_sync BEFORE INSERT ON songs BEGIN SELECT RAISE(ABORT, 'test local write failure'); END`); err != nil {
 		t.Fatal(err)
 	}
-	handler.runPlexSync(track.SourceID)
+	run, err := handler.beginPlexSync(context.Background(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler.runPlexSync(run)
 	const message = "Plex responded, but ViiB could not save the music library. Try synchronizing again."
 	source, err := database.GetActivePlexSource()
 	if err != nil || source == nil || !source.Available || source.LastSyncStatus != "error" || source.LastSyncError != message {
@@ -289,5 +295,249 @@ func TestClassifyPlexErrorPreservesSentinelBeforeRedaction(t *testing.T) {
 	status, code, _, retryable = classifyPlexError(plex.ErrInvalidToken)
 	if status != http.StatusUnauthorized || code != "plex_auth_required" || retryable {
 		t.Fatalf("unexpected auth classification: status=%d code=%s retryable=%v", status, code, retryable)
+	}
+}
+
+func TestPlexSyncCanRecoverAfterRestartAndRejectsSupersededCommit(t *testing.T) {
+	database, handler, track := setupPlexProxyTest(t, "http://127.0.0.1:32400", "/audio", "token", true)
+	ctx := context.Background()
+	const lastSuccess = 12345
+	if err := database.SetPlexSyncState(track.SourceID, "complete", "", true, lastSuccess); err != nil {
+		t.Fatal(err)
+	}
+	source, err := database.GetActivePlexSource()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.StartPlexSync(ctx, *source, "previous-process"); err != nil {
+		t.Fatal(err)
+	}
+	restarted, err := handler.plexSyncSource()
+	if err != nil || restarted.LastSyncStatus != "interrupted" || restarted.LastSyncAt != lastSuccess {
+		t.Fatalf("state after restart: %+v, err=%v", restarted, err)
+	}
+	run, err := handler.beginPlexSync(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.finishPlexSync(run)
+	if _, err := handler.beginPlexSync(ctx, false); !errors.Is(err, errPlexSyncRunning) {
+		t.Fatalf("duplicate sync: %v", err)
+	}
+	if _, _, _, err := database.CompletePlexSync(ctx, track.SourceID, track.LibraryID, "previous-process", nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("old snapshot was accepted: %v", err)
+	}
+	if _, _, _, err := handler.completePlexSync(run, []db.PlexCatalogTrack{track}); err != nil {
+		t.Fatal(err)
+	}
+	source, err = database.GetActivePlexSource()
+	if err != nil || source.LastSyncStatus != "complete" || source.LastSyncAt <= lastSuccess {
+		t.Fatalf("final state: %+v, err=%v", source, err)
+	}
+	if scheduled, err := handler.beginPlexSync(ctx, true); err != nil || scheduled != nil {
+		t.Fatalf("automatic sync repeated a fresh import: %+v, err=%v", scheduled, err)
+	}
+	run, err = handler.beginPlexSync(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handler.finishPlexSync(run)
+	recorder := httptest.NewRecorder()
+	handler.cancelPlexSync(recorder, httptest.NewRequest(http.MethodPost, "/sync/cancel", nil))
+	canceled, err := database.GetActivePlexSource()
+	if recorder.Code != http.StatusOK || !errors.Is(run.ctx.Err(), context.Canceled) || err != nil ||
+		canceled.LastSyncStatus != "interrupted" || canceled.LastSyncAt != source.LastSyncAt {
+		t.Fatalf("cancel result: status=%d source=%+v, err=%v", recorder.Code, canceled, err)
+	}
+}
+
+func TestPlexAutoSyncDefaultsOnAndHonorsSavedPreference(t *testing.T) {
+	_, handler, _ := setupPlexProxyTest(t, "http://127.0.0.1:32400", "/audio", "token", true)
+	routes := handler.PlexRoutes()
+	checkConfig := func(want bool) {
+		t.Helper()
+		response := httptest.NewRecorder()
+		routes.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/config", nil))
+		var config struct {
+			AutoSync *bool `json:"autoSync"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &config); err != nil || response.Code != http.StatusOK ||
+			config.AutoSync == nil || *config.AutoSync != want || handler.plexAutoSyncEnabled() != want {
+			t.Fatalf("automatic sync for config and scheduler should be %t, got HTTP %d, body=%s, err=%v", want, response.Code, response.Body.String(), err)
+		}
+	}
+	checkConfig(true)
+	response := httptest.NewRecorder()
+	routes.ServeHTTP(response, httptest.NewRequest(http.MethodPut, "/sync/schedule", bytes.NewBufferString(`{"enabled":false}`)))
+	if response.Code != http.StatusOK {
+		t.Fatalf("saving opt-out failed: HTTP %d, body=%s", response.Code, response.Body.String())
+	}
+	checkConfig(false)
+}
+
+func TestPlexAudioRecoversRejectedServerTokenAndPreservesRange(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Plex-Token") != "fresh-token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if r.Header.Get("Range") != "bytes=2-4" {
+			t.Error("retry lost the requested range")
+		}
+		w.Header().Set("Content-Range", "bytes 2-4/6")
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = w.Write([]byte("234"))
+	}))
+	defer upstream.Close()
+	cloud := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Plex-Token") != "account-token" {
+			t.Error("resource request did not authenticate with the account token")
+		}
+		_, _ = w.Write([]byte(`[{"provides":"server","clientIdentifier":"machine-proxy","accessToken":"fresh-token"}]`))
+	}))
+	defer cloud.Close()
+	database, handler, track := setupPlexProxyTest(t, upstream.URL, "/audio", "stale-token", true)
+	handler.plexAuthFactory = func() *plex.AuthClient { return plex.NewAuthClientWithHTTP(cloud.URL, cloud.Client()) }
+	if err := handler.savePlexCredentials(plex.Credentials{
+		ClientIdentifier: "viib-test", AccountToken: "account-token", AccountTokenExpiry: time.Now().Add(48 * time.Hour).Unix(),
+		ServerTokens: map[string]string{track.MachineID: "stale-token"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/audio/"+track.SongID, nil)
+	req.Header.Set("Range", "bytes=2-4")
+	recorder := httptest.NewRecorder()
+	handler.ServeAudioSourceAware(recorder, req)
+	if recorder.Code != http.StatusPartialContent || recorder.Body.String() != "234" {
+		t.Fatalf("recovered request: status=%d body=%q", recorder.Code, recorder.Body.String())
+	}
+	credentials, err := handler.loadPlexCredentials()
+	source, sourceErr := database.GetActivePlexSource()
+	if err != nil || credentials.ServerTokens[track.MachineID] != "fresh-token" || sourceErr != nil || !source.Available {
+		t.Fatalf("failed to persist recovery: credential error=%v, source=%+v, sourceErr=%v", err, source, sourceErr)
+	}
+}
+
+func TestPlexAudioRecoversMovedMediaPart(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/library/metadata/99":
+			_, _ = w.Write([]byte(`{"MediaContainer":{"Metadata":[{"ratingKey":"99","type":"track","Media":[{"Part":[{"key":"/new-part"}]}]}]}}`))
+		case "/new-part":
+			_, _ = w.Write([]byte("audio"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+	_, handler, track := setupPlexProxyTest(t, upstream.URL, "/old-part", "token", true)
+	recorder := httptest.NewRecorder()
+	handler.ServeAudioSourceAware(recorder, httptest.NewRequest(http.MethodGet, "/api/audio/"+track.SongID, nil))
+	if recorder.Code != http.StatusOK || recorder.Body.String() != "audio" {
+		t.Fatalf("relocated part: status=%d body=%q", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestPlexRouteValidationTriesAlternateWithoutSendingTokenToWrongServer(t *testing.T) {
+	wrong := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/identity" || r.Header.Get("X-Plex-Token") != "" {
+			t.Error("attempted to authenticate against a different Plex machine")
+		}
+		_, _ = w.Write([]byte(`{"MediaContainer":{"machineIdentifier":"other-machine"}}`))
+	}))
+	defer wrong.Close()
+	right := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" && r.Header.Get("X-Plex-Token") != "token" {
+			t.Error("verified machine did not receive its token")
+		}
+		_, _ = w.Write([]byte(`{"MediaContainer":{"machineIdentifier":"expected-machine"}}`))
+	}))
+	defer right.Close()
+	server, err := validatePlexRoutes(context.Background(), "expected-machine", "token", "viib-test", []string{wrong.URL, right.URL})
+	if err != nil || server.URL != right.URL {
+		t.Fatalf("alternate route: %+v, err=%v", server, err)
+	}
+}
+
+func TestPlexAccountManagedPlaybackSwitchesToVerifiedRoute(t *testing.T) {
+	unreachable := httptest.NewServer(http.NotFoundHandler())
+	unreachable.Close()
+	alternate := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/identity", "/":
+			_, _ = w.Write([]byte(`{"MediaContainer":{"machineIdentifier":"machine-proxy"}}`))
+		case "/audio":
+			if r.Header.Get("X-Plex-Token") != "resource-token" {
+				t.Error("media request did not use the verified server's token")
+			}
+			_, _ = w.Write([]byte("alternate audio"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer alternate.Close()
+	cloud := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]map[string]any{{
+			"provides": "server", "clientIdentifier": "machine-proxy", "accessToken": "resource-token",
+			"connections": []map[string]any{{"uri": unreachable.URL}, {"uri": alternate.URL}},
+		}})
+	}))
+	defer cloud.Close()
+	database, handler, track := setupPlexProxyTest(t, unreachable.URL, "/audio", "resource-token", true)
+	source, err := database.GetActivePlexSource()
+	if err != nil {
+		t.Fatal(err)
+	}
+	source.AccountManaged = true
+	if err := database.SavePlexSource(*source); err != nil {
+		t.Fatal(err)
+	}
+	handler.plexAuthFactory = func() *plex.AuthClient { return plex.NewAuthClientWithHTTP(cloud.URL, cloud.Client()) }
+	if err := handler.savePlexCredentials(plex.Credentials{
+		ClientIdentifier: "viib-test", AccountToken: "account-token", AccountTokenExpiry: time.Now().Add(48 * time.Hour).Unix(),
+		ServerTokens: map[string]string{track.MachineID: "resource-token"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	handler.ServeAudioSourceAware(recorder, httptest.NewRequest(http.MethodGet, "/api/audio/"+track.SongID, nil))
+	if recorder.Code != http.StatusOK || recorder.Body.String() != "alternate audio" {
+		t.Fatalf("failover playback: status=%d body=%q", recorder.Code, recorder.Body.String())
+	}
+	source, err = database.GetActivePlexSource()
+	if err != nil || source.BaseURL != alternate.URL || !source.Available {
+		t.Fatalf("alternate route was not persisted: %+v, err=%v", source, err)
+	}
+}
+
+func TestPlexSourceReplacementRequiresConfirmationAndKeepsCatalogOnWriteFailure(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "library.db")
+	database, handler, oldTrack := setupPlexProxyTestWithDB(t, dbPath, "http://127.0.0.1:32400", "/audio", "old-token", true)
+	server := plex.Server{MachineIdentifier: "new-machine", URL: "http://127.0.0.1:32401"}
+	credentials, err := handler.loadPlexCredentials()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.activatePlexServer(server, &credentials, false, ""); !errors.Is(err, errPlexReplaceConfirmation) {
+		t.Fatalf("unconfirmed replacement: %v", err)
+	}
+	writer, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	if _, err := writer.Exec(`CREATE TRIGGER fail_plex_replacement BEFORE INSERT ON plex_sources BEGIN SELECT RAISE(ABORT, 'test replacement failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := handler.activatePlexServer(server, &credentials, false, oldTrack.SourceID); err == nil {
+		t.Fatal("expected the new source insert to fail")
+	}
+	source, err := database.GetActivePlexSource()
+	track, trackErr := database.GetPlexTrackSource(oldTrack.SongID)
+	saved, credentialErr := handler.loadPlexCredentials()
+	if err != nil || source == nil || source.ID != oldTrack.SourceID || trackErr != nil || track == nil ||
+		credentialErr != nil || saved.ServerTokens[oldTrack.MachineID] != "old-token" {
+		t.Fatalf("failed replacement changed the previous source: source=%+v, err=%v, track=%+v, trackErr=%v, credentialErr=%v",
+			source, err, track, trackErr, credentialErr)
 	}
 }

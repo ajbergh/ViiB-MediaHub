@@ -43,6 +43,8 @@ export interface PlexSource {
   lastSyncAt?: number;
   lastSyncStatus: 'never' | 'running' | 'complete' | 'error' | 'auth_required' | string;
   lastSyncError?: string;
+  syncTracks?: number;
+  syncTotal?: number;
   available: boolean;
   active: boolean;
 }
@@ -58,6 +60,7 @@ export interface PlexLibrary {
 export interface PlexConfig {
   source: PlexSource | null;
   authenticated: boolean;
+  autoSync?: boolean;
 }
 
 export interface PlexMetadataWritebackField {
@@ -106,11 +109,20 @@ interface V2ErrorPayload {
   error?: string | { message?: string; code?: string };
 }
 
+export class PlexRequestError extends Error {
+  constructor(message: string, readonly status: number, readonly code?: string) {
+    super(message);
+    this.name = 'PlexRequestError';
+  }
+}
+
 async function plexResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({})) as V2ErrorPayload;
-    const message = typeof payload.error === 'string' ? payload.error : payload.error?.message;
-    throw new Error(message || `HTTP ${response.status}`);
+    const payload = await response.json().catch(() => null) as V2ErrorPayload | null;
+    const failure = payload?.error;
+    const message = typeof failure === 'string' ? failure : failure?.message;
+    const code = typeof failure === 'object' ? failure?.code : undefined;
+    throw new PlexRequestError(message || `HTTP ${response.status}`, response.status, code);
   }
   return response.json() as Promise<T>;
 }
@@ -130,11 +142,11 @@ export const plexService = {
     return { ...result, servers: result.servers || [] };
   },
 
-  async connect(url: string): Promise<PlexServer> {
+  async connect(url: string, replaceSourceId?: string): Promise<PlexServer> {
     const response = await fetch(`${PLEX_API_BASE}/connect`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, replaceSourceId }),
     });
     return plexResponse<PlexServer>(response);
   },
@@ -165,11 +177,11 @@ export const plexService = {
     return result.servers || [];
   },
 
-  async connectAccountServer(machineIdentifier: string): Promise<PlexServer> {
+  async connectAccountServer(machineIdentifier: string, replaceSourceId?: string): Promise<PlexServer> {
     const response = await fetch(`${PLEX_API_BASE}/servers/select`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ machineIdentifier }),
+      body: JSON.stringify({ machineIdentifier, replaceSourceId }),
     });
     return plexResponse<PlexServer>(response);
   },
@@ -196,8 +208,22 @@ export const plexService = {
     await plexResponse(response);
   },
 
-  async getSyncStatus(): Promise<PlexSource | null> {
-    const response = await fetch(`${PLEX_API_BASE}/sync/status`);
+  async setAutoSync(enabled: boolean): Promise<boolean> {
+    const response = await fetch(`${PLEX_API_BASE}/sync/schedule`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    });
+    return (await plexResponse<{ enabled: boolean }>(response)).enabled;
+  },
+
+  async cancelSync(): Promise<void> {
+    const response = await fetch(`${PLEX_API_BASE}/sync/cancel`, { method: 'POST' });
+    await plexResponse(response);
+  },
+
+  async getSyncStatus(signal?: AbortSignal): Promise<PlexSource | null> {
+    const response = await fetch(`${PLEX_API_BASE}/sync/status`, signal ? { signal } : undefined);
     const result = await plexResponse<{ source: PlexSource | null }>(response);
     return result.source;
   },
