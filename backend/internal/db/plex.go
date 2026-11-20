@@ -588,8 +588,17 @@ func (d *DB) SetPlexSyncState(sourceID, status, message string, available bool, 
 	if len(message) > 500 {
 		message = message[:500]
 	}
-	_, err := d.conn.Exec(`UPDATE plex_sources SET last_sync_status=?, last_sync_error=?, available=?, last_sync_at=COALESCE(?, last_sync_at) WHERE id=?`,
+	_, err := d.execSQLiteWrite(context.Background(), `UPDATE plex_sources SET last_sync_status=?, last_sync_error=?, available=?, last_sync_at=COALESCE(?, last_sync_at) WHERE id=?`,
 		status, message, boolInt(available), nullableInt64(syncedAt), sourceID)
+	return err
+}
+
+// SetPlexAvailability updates connection health without rewriting sync results.
+// An in-flight request can only report on the connection it used.
+func (d *DB) SetPlexAvailability(ctx context.Context, source PlexSource, available bool) error {
+	_, err := d.execSQLiteWrite(ctx, `UPDATE plex_sources SET available=?
+		WHERE id=? AND base_url=? AND connected_at=? AND available<>?`,
+		boolInt(available), source.ID, source.BaseURL, source.ConnectedAt, boolInt(available))
 	return err
 }
 
@@ -706,7 +715,7 @@ func (d *DB) SyncPlexLibrary(sourceID, libraryID string, tracks []PlexCatalogTra
 	if err = d.EnsurePlexSchema(); err != nil {
 		return
 	}
-	tx, err := d.conn.Begin()
+	tx, err := d.beginSQLiteWriteTx(context.Background(), `UPDATE plex_sources SET available=available WHERE 0`)
 	if err != nil {
 		return 0, 0, 0, err
 	}

@@ -85,7 +85,7 @@ func (a *API) openPlexAnalysisStream(ctx context.Context, source *db.PlexSource,
 	client.ApplyPlaybackIdentity(request)
 	response, err := client.MediaHTTPClient().Do(request)
 	if err != nil {
-		_ = a.db.SetPlexSyncState(source.ID, source.LastSyncStatus, "Plex server unreachable during analysis", false, 0)
+		a.recordPlexAvailability(ctx, source, false)
 		return nil, fmt.Errorf("plex source unavailable")
 	}
 	if response.StatusCode == http.StatusServiceUnavailable && strings.TrimSpace(metadataKey) != "" {
@@ -101,13 +101,13 @@ func (a *API) openPlexAnalysisStream(ctx context.Context, source *db.PlexSource,
 		client.ApplyPlaybackIdentity(request)
 		response, err = client.MediaHTTPClient().Do(request)
 		if err != nil {
-			_ = a.db.SetPlexSyncState(source.ID, source.LastSyncStatus, "Plex server unreachable during analysis", false, 0)
+			a.recordPlexAvailability(ctx, source, false)
 			return nil, fmt.Errorf("plex source unavailable")
 		}
 	}
 	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden || response.StatusCode == 498 {
 		response.Body.Close()
-		_ = a.db.SetPlexSyncState(source.ID, "auth_required", "Plex authentication expired", false, 0)
+		a.recordPlexAvailability(ctx, source, false)
 		return nil, fmt.Errorf("plex source unavailable")
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {

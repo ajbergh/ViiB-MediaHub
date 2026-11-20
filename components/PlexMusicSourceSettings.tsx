@@ -1,7 +1,7 @@
 /** Manages Plex source configuration, synchronization, and reviewed AI metadata writeback. */
 
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ExternalLink, Eye, Loader2, Music, RefreshCw, Search, Server, ShieldCheck, Trash2, WifiOff } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ExternalLink, Eye, Loader2, Music, RefreshCw, Search, Server, ShieldCheck, Trash2 } from 'lucide-react';
 import { Button } from './ui/Button';
 import { TextInput } from './ui/TextInput';
 import { useStore } from '../store';
@@ -57,7 +57,11 @@ export const PlexMusicSourceSettings: React.FC = () => {
   const loadLibraries = useCallback(async () => {
     dispatch({ type: 'busy', busy: 'libraries' });
     try {
-      const libraries = await plexService.getLibraries();
+      const libraries = await plexService.getLibraries().finally(async () => {
+        if (disposed.current) return;
+        const config = await plexService.getConfig().catch(() => null);
+        if (config && !disposed.current) dispatch({ type: 'source', source: config.source });
+      });
       if (!disposed.current) dispatch({ type: 'libraries', libraries });
     } catch (error) {
       if (!disposed.current) dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Unable to load Plex music libraries' });
@@ -88,16 +92,11 @@ export const PlexMusicSourceSettings: React.FC = () => {
         if (config.authenticated) await loadAccountServers();
         return;
       }
-      try {
-        const libraries = await plexService.getLibraries();
-        if (!disposed.current) dispatch({ type: 'libraries', libraries });
-      } catch (error) {
-        if (!disposed.current) dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Plex authentication may be required' });
-      }
+      await loadLibraries();
     } catch (error) {
       if (!disposed.current) dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Unable to load Plex configuration' });
     }
-  }, [loadAccountServers]);
+  }, [loadAccountServers, loadLibraries]);
 
   useEffect(() => {
     disposed.current = false;
@@ -131,11 +130,7 @@ export const PlexMusicSourceSettings: React.FC = () => {
       setEditingServer(false);
       const config = await plexService.getConfig();
       dispatch({ type: 'loaded', source: config.source, authenticated: config.authenticated });
-      try {
-        dispatch({ type: 'libraries', libraries: await plexService.getLibraries() });
-      } catch (error) {
-        dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Sign in to Plex to view this server’s music libraries' });
-      }
+      await loadLibraries();
     } catch (error) {
       dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Unable to connect to Plex Media Server' });
     }
@@ -149,7 +144,7 @@ export const PlexMusicSourceSettings: React.FC = () => {
       setEditingServer(false);
       const config = await plexService.getConfig();
       dispatch({ type: 'loaded', source: config.source, authenticated: config.authenticated });
-      dispatch({ type: 'libraries', libraries: await plexService.getLibraries() });
+      await loadLibraries();
     } catch (error) {
       dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Unable to connect to Plex account server' });
     }
@@ -226,6 +221,7 @@ export const PlexMusicSourceSettings: React.FC = () => {
     if (disposed.current) return;
     try {
       const source = await plexService.getSyncStatus();
+      if (disposed.current) return;
       dispatch({ type: 'source', source });
       if (!source) {
         dispatch({ type: 'error', error: 'Plex source was removed while synchronizing.' });
@@ -239,6 +235,10 @@ export const PlexMusicSourceSettings: React.FC = () => {
         await refreshLibrary();
         dispatch({ type: 'message', message: 'Plex music synchronization complete.' });
         addLog('success', `[Plex] Synchronized ${source.libraryTitle || 'music library'}`);
+        return;
+      }
+      if (source.lastSyncStatus === 'error' && source.lastSyncError) {
+        dispatch({ type: 'busy', busy: null });
         return;
       }
       dispatch({ type: 'error', error: source.lastSyncError || (source.lastSyncStatus === 'auth_required' ? 'Plex authentication is required. Reconnect and try again.' : 'Plex synchronization failed.') });
@@ -311,6 +311,7 @@ export const PlexMusicSourceSettings: React.FC = () => {
   };
 
   const sourceNeedsAuth = plexSourceNeedsAuthentication(state.source, state.error);
+  const sourceConnected = state.source?.available && !sourceNeedsAuth;
   const busy = state.busy !== null;
 
   return (
@@ -324,8 +325,8 @@ export const PlexMusicSourceSettings: React.FC = () => {
           </div>
         </div>
         {state.source && (
-          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${state.source.available ? 'bg-success/15 text-success' : 'bg-warning/15 text-warning'}`}>
-            {state.source.available ? 'Connected' : 'Offline / unavailable'}
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${sourceConnected ? 'bg-success/15 text-success' : 'bg-warning/15 text-warning'}`}>
+            {sourceNeedsAuth ? 'Sign-in required' : sourceConnected ? 'Connected' : 'Unavailable'}
           </span>
         )}
       </div>
@@ -356,8 +357,8 @@ export const PlexMusicSourceSettings: React.FC = () => {
 
           {state.source.lastSyncStatus === 'error' && state.source.lastSyncError && (
             <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
-              <WifiOff size={16} className="mt-0.5" />
-              <span>{state.source.lastSyncError}. Cached Plex music remains in ViiB until a later successful sync confirms changes.</span>
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              <span>Sync failed. {state.source.lastSyncError} ViiB kept any previously synced tracks.</span>
             </div>
           )}
         </div>

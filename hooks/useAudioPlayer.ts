@@ -268,10 +268,8 @@ export const useAudioPlayer = () => {
             const audio = e.target as HTMLAudioElement;
             const { currentSong, retryCount, setBuffering, setStreamError, showToast, retryStream, nextSong, recordStreamEvent } = useStore.getState();
 
-            // Plex tracks use ViiB's normal /api/audio/{id} transport, so they
-            // are not classified as third-party streaming. The backend marks a
-            // source offline when its proxy fails; here we finish the handoff
-            // by moving an AI DJ queue to its next local candidate.
+            // Plex tracks use ViiB's normal /api/audio/{id} transport. Media
+            // errors may come from the track, the decoder, or the connection.
             if (currentSong?.source === 'plex') {
                 const state = useStore.getState();
                 const fallbackIndex = findPlexPlaybackFallback(state.queue, state.currentSongIndex);
@@ -281,7 +279,7 @@ export const useAudioPlayer = () => {
                     const fallback = state.queue[fallbackIndex];
                     showToast({
                         type: 'warning',
-                        message: `Plex Media Server is unavailable. Continuing with ${fallback.title}.`,
+                        message: `Could not play this Plex track. Continuing with ${fallback.title}.`,
                         duration: 5000,
                     });
                     setTimeout(() => {
@@ -293,7 +291,7 @@ export const useAudioPlayer = () => {
                 } else {
                     showToast({
                         type: 'error',
-                        message: 'Plex Media Server is unavailable and there is no local fallback in this queue.',
+                        message: 'Could not play this Plex track. Check Plex in Library Sources or try another track.',
                         duration: 5000,
                     });
                     if (state.isPlaying) {

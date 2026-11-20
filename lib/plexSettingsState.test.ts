@@ -39,7 +39,8 @@ describe('plexSettingsReducer', () => {
   it('does not require account auth solely because no token exists', () => {
     expect(plexSourceNeedsAuthentication(source, '')).toBe(false);
     expect(plexSourceNeedsAuthentication(source, 'Plex authentication is required or has expired')).toBe(true);
-    expect(plexSourceNeedsAuthentication({ ...source, lastSyncStatus: 'auth_required' }, '')).toBe(true);
+    expect(plexSourceNeedsAuthentication({ ...source, available: false, lastSyncStatus: 'auth_required' }, '')).toBe(true);
+    expect(plexSourceNeedsAuthentication({ ...source, lastSyncStatus: 'auth_required' }, '')).toBe(false);
   });
 
   it('clears configuration on disconnect reset', () => {

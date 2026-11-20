@@ -48,7 +48,7 @@ export type PlexSettingsAction =
 // says authentication/reconnect is required.
 export function plexSourceNeedsAuthentication(source: PlexSource | null, error: string): boolean {
   if (!source) return false;
-  if (source.lastSyncStatus === 'auth_required') return true;
+  if (!source.available && source.lastSyncStatus === 'auth_required') return true;
   return /authentication|sign[ -]?in|reconnect/i.test(error);
 }
 

@@ -4,6 +4,8 @@ package api
 
 import (
 	"bytes"
+	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -16,7 +18,12 @@ import (
 
 func setupPlexProxyTest(t *testing.T, upstreamURL, mediaKey, token string, available bool) (*db.DB, *API, db.PlexCatalogTrack) {
 	t.Helper()
-	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	return setupPlexProxyTestWithDB(t, filepath.Join(t.TempDir(), "library.db"), upstreamURL, mediaKey, token, available)
+}
+
+func setupPlexProxyTestWithDB(t *testing.T, dbPath, upstreamURL, mediaKey, token string, available bool) (*db.DB, *API, db.PlexCatalogTrack) {
+	t.Helper()
+	database, err := db.New(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +203,7 @@ func TestPlexAudioProxyPreservesRangeNotSatisfiable(t *testing.T) {
 	}
 }
 
-func TestPlexAudioProxyMarksSourceUnavailableOnInterruptedUpstream(t *testing.T) {
+func TestPlexAudioProxyKeepsSourceAvailableOnInterruptedTransfer(t *testing.T) {
 	const token = "stream-token"
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "audio/flac")
@@ -214,11 +221,63 @@ func TestPlexAudioProxyMarksSourceUnavailableOnInterruptedUpstream(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if source == nil || source.Available {
-		t.Fatalf("expected interrupted upstream to mark source unavailable: %#v", source)
-	}
-	if source.LastSyncError != "Plex server connection interrupted during playback" {
+	if source == nil || !source.Available || source.LastSyncError != "" {
 		t.Fatalf("unexpected interrupted-stream status: %#v", source)
+	}
+}
+
+func TestPlexAudioProxyDoesNotMarkCanceledRequestUnavailable(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("canceled request unexpectedly reached Plex")
+	}))
+	defer upstream.Close()
+	database, handler, track := setupPlexProxyTest(t, upstream.URL, "/audio", "token", true)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	handler.ServeAudioSourceAware(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/audio/"+track.SongID, nil).WithContext(ctx))
+	source, err := database.GetActivePlexSource()
+	if err != nil || source == nil || !source.Available || source.LastSyncError != "" {
+		t.Fatalf("canceled playback changed Plex source: %+v, err=%v", source, err)
+	}
+}
+
+func TestPlexCatalogWriteFailureLeavesSourceAvailable(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/media/providers":
+			_, _ = w.Write([]byte(`{"MediaContainer":{"MediaProvider":[{"identifier":"com.plexapp.plugins.library","Feature":[{"type":"content","key":"/library/sections","Directory":[{"id":2,"key":"/library/sections/2","title":"Music","type":"artist"}]}]}]}}`))
+		case "/library/sections/2":
+			_, _ = w.Write([]byte(`{"MediaContainer":{"Type":[{"key":"all?type=10","type":"track","title":"Tracks"}]}}`))
+		case "/library/sections/2/all":
+			_, _ = w.Write([]byte(`{"MediaContainer":{"offset":0,"size":1,"totalSize":1,"Metadata":[{"ratingKey":"100","type":"track","title":"New Track","Media":[{"Part":[{"key":"/audio"}]}]}]}}`))
+		case "/audio":
+			w.Header().Set("Content-Type", "audio/flac")
+			_, _ = w.Write([]byte("audio"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+	dbPath := filepath.Join(t.TempDir(), "library.db")
+	database, handler, track := setupPlexProxyTestWithDB(t, dbPath, upstream.URL, "/audio", "token", false)
+	writer, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	if _, err := writer.Exec(`CREATE TRIGGER fail_plex_sync BEFORE INSERT ON songs BEGIN SELECT RAISE(ABORT, 'test local write failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	handler.runPlexSync(track.SourceID)
+	const message = "Plex responded, but ViiB could not save the music library. Try synchronizing again."
+	source, err := database.GetActivePlexSource()
+	if err != nil || source == nil || !source.Available || source.LastSyncStatus != "error" || source.LastSyncError != message {
+		t.Fatalf("unexpected local sync failure state: %+v, err=%v", source, err)
+	}
+	recorder := httptest.NewRecorder()
+	handler.ServeAudioSourceAware(recorder, httptest.NewRequest(http.MethodGet, "/api/audio/"+track.SongID, nil))
+	if recorder.Code != http.StatusOK || recorder.Body.String() != "audio" {
+		t.Fatalf("cached playback failed: status=%d body=%q", recorder.Code, recorder.Body.String())
 	}
 }
 
