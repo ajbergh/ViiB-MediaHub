@@ -12,6 +12,7 @@ import (
 type streamAssetKey struct {
 	track, quality string
 	generation     uint64
+	mp3            bool
 }
 type streamAsset struct {
 	newReader   func() (io.ReadSeekCloser, error)

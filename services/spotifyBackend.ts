@@ -6,6 +6,12 @@ import { useStore } from '../store';
 export class SpotifySessionChangedError extends Error {
     constructor() { super('Spotify session changed'); this.name = 'SpotifySessionChangedError'; }
 }
+
+/** Handles cancellation on WebKit versions that lack AbortSignal.throwIfAborted. */
+export function throwIfSpotifyRequestAborted(signal?: AbortSignal): void {
+    if (!signal?.aborted) return;
+    throw signal.reason === undefined ? new DOMException('The operation was aborted.', 'AbortError') : signal.reason;
+}
 export function assertSpotifySession(generation: number): void {
     const state = useStore.getState();
     if (state.spotifySessionGeneration !== generation) throw new SpotifySessionChangedError();
@@ -24,7 +30,7 @@ export async function backendSpotifyFetch(resource: string, signal?: AbortSignal
     query.set('path', url.pathname.slice(1));
     const controller = new AbortController();
     const abort = () => controller.abort();
-    signal?.throwIfAborted();
+    throwIfSpotifyRequestAborted(signal);
     signal?.addEventListener('abort', abort, {once: true});
     const unsubscribe = useStore.subscribe(state => {
         if (state.spotifySessionGeneration !== generation) controller.abort();
@@ -45,7 +51,7 @@ export async function backendSpotifyFetch(resource: string, signal?: AbortSignal
     if (useStore.getState().spotifySessionGeneration !== generation || signal?.aborted) {
         cleanup();
         assertSpotifySession(generation);
-        signal?.throwIfAborted();
+        throwIfSpotifyRequestAborted(signal);
     }
     assertSpotifySession(generation);
     if (response.status === 401) {
@@ -60,10 +66,10 @@ export async function backendSpotifyFetch(resource: string, signal?: AbortSignal
     const readJSON = response.json.bind(response);
     response.json = async () => {
         try {
-            signal?.throwIfAborted();
+            throwIfSpotifyRequestAborted(signal);
             assertSpotifySession(generation);
             const value = await readJSON();
-            signal?.throwIfAborted();
+            throwIfSpotifyRequestAborted(signal);
             assertSpotifySession(generation);
             return value;
         } finally { cleanup(); }

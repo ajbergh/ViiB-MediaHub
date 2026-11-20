@@ -124,7 +124,7 @@ backend/
 
 #### Scanner System
 - Fast incremental scanning using directory signatures
-- Platform-specific filesystem journals (USN on Windows, FSEvents on macOS)
+- USN journal on Windows and metadata-cache comparison on macOS
 - Background workers for metadata extraction
 - File metadata caching for change detection
 

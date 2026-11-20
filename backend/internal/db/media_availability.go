@@ -46,8 +46,15 @@ func (d *DB) ConfirmMissingLocalMedia(path string) bool {
 func confirmMissingLocalMedia(path string, folders []ScanFolder, stat func(string) (os.FileInfo, error), readDir func(string) ([]os.DirEntry, error)) bool {
 	var owner string
 	for _, folder := range folders {
-		if PathWithinRoot(folder.Path, path) && len(folder.Path) > len(owner) {
-			owner = folder.Path
+		root := folder.Path
+		if runtime.GOOS == "darwin" && !PathWithinRoot(root, path) {
+			resolved, err := filepath.EvalSymlinks(root)
+			if err == nil {
+				root = resolved
+			}
+		}
+		if PathWithinRoot(root, path) && len(root) > len(owner) {
+			owner = root
 		}
 	}
 	if owner == "" {

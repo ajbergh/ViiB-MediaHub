@@ -205,6 +205,15 @@ func (s *Streamer) StreamTrack(ctx context.Context, spotifyID string, requestID 
 // quality preference ("high"/"medium"/"low") and returns an ActiveStream
 // which supports seeking.
 func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string, requestID string, quality string) (*ActiveStream, error) {
+	return s.streamTrack(ctx, spotifyID, requestID, quality, false)
+}
+
+// StreamTrackAsMP3 prepares a seekable rendition for players without Vorbis support.
+func (s *Streamer) StreamTrackAsMP3(ctx context.Context, spotifyID, requestID, quality string) (*ActiveStream, error) {
+	return s.streamTrack(ctx, spotifyID, requestID, quality, true)
+}
+
+func (s *Streamer) streamTrack(ctx context.Context, spotifyID, requestID, quality string, mp3 bool) (*ActiveStream, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -257,7 +266,7 @@ func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string,
 		}
 	}
 
-	key := streamAssetKey{track: spotifyID, quality: quality, generation: s.sessionManager.Generation()}
+	key := streamAssetKey{track: spotifyID, quality: quality, generation: s.sessionManager.Generation(), mp3: mp3}
 	shared, releaseAsset, err := s.assets.acquire(ctx, key, func() (*streamAsset, error) {
 		pinOpts := respot.PinOpts{StartInternally: false, Format: asset.AssetFormat{AudioFormats: audioFormats}}
 		releaseKey, err := s.sessionManager.acquireAudioKeyRequest(ctx)
@@ -285,6 +294,12 @@ func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string,
 			stopCancel()
 			_ = assetCtx.Close()
 			return nil, err
+		}
+		if mp3 {
+			defer assetCtx.Close()
+			defer stopCancel()
+			defer probe.Close()
+			return prepareMP3StreamAsset(ctx, probe)
 		}
 		size, err := probe.Seek(0, io.SeekEnd)
 		_ = probe.Close()
@@ -320,13 +335,17 @@ func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string,
 
 	// Create cancellable context for cleanup
 	streamCtx, cancel := context.WithCancel(ctx)
+	format := "OGG_VORBIS"
+	if mp3 {
+		format = "MP3"
+	}
 
 	// Create active stream wrapper
 	stream := &ActiveStream{
 		reader: reader,
 		info: StreamInfo{
 			SpotifyID:   spotifyID,
-			Format:      "OGG_VORBIS",
+			Format:      format,
 			ContentType: shared.contentType,
 		},
 		cancelCtx:  cancel,

@@ -294,6 +294,7 @@ func (a *API) Routes() chi.Router {
 
 	// Spotify Streaming
 	r.Get("/spotify/stream/{id}", a.spotifyMediaOnly(a.streamSpotifyTrack))
+	r.Head("/spotify/stream/{id}", a.spotifyMediaOnly(a.streamSpotifyTrack))
 
 	// Album metadata cache
 	r.Get("/albums/metadata", a.getAllAlbumMetadata)
@@ -1403,10 +1404,17 @@ func (a *API) browseFolder(w http.ResponseWriter, r *http.Request) {
 
 	for _, entry := range entries {
 		// Only show directories for folder browsing
-		if entry.IsDir() {
+		path := filepath.Join(req.Path, entry.Name())
+		isDir := entry.IsDir()
+		if runtime.GOOS == "darwin" && entry.Type()&os.ModeSymlink != 0 {
+			if target, err := os.Stat(path); err == nil {
+				isDir = target.IsDir()
+			}
+		}
+		if isDir {
 			result = append(result, FolderEntry{
 				Name:  entry.Name(),
-				Path:  filepath.Join(req.Path, entry.Name()),
+				Path:  path,
 				IsDir: true,
 			})
 		}

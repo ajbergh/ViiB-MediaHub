@@ -348,6 +348,10 @@ func main() {
 			Appearance:           mac.NSAppearanceNameDarkAqua,
 			WebviewIsTransparent: false,
 			WindowIsTranslucent:  false,
+			Preferences: &mac.Preferences{
+				// Spotify resolves its stream asynchronously before invoking play().
+				EnableAutoplayWithoutUserAction: mac.Enabled,
+			},
 		},
 		Windows: &windows.Options{
 			WebviewIsTransparent:              false,

@@ -53,8 +53,15 @@ func (m *MtimeChangeDetector) GetChangesSince(since time.Time, watchPaths []stri
 	seenFiles := make(map[string]bool)
 	failedRoots := make(map[string]bool)
 
-	for _, watchPath := range watchPaths {
-		err := filepath.Walk(watchPath, func(path string, info os.FileInfo, err error) error {
+	resolvedRoots := make([]string, 0, len(watchPaths))
+	for _, configuredPath := range watchPaths {
+		watchPath, err := resolveScanRoot(configuredPath)
+		if err != nil {
+			logger.Scanner("Cannot resolve scan folder %s: %v", configuredPath, err)
+			continue
+		}
+		resolvedRoots = append(resolvedRoots, watchPath)
+		err = filepath.Walk(watchPath, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				failedRoots[watchPath] = true
 				logger.Scanner("Source unavailable at %s: %v; suppressing deletions for %s", path, err, watchPath)
@@ -116,7 +123,7 @@ func (m *MtimeChangeDetector) GetChangesSince(since time.Time, watchPaths []stri
 	for path := range metadataCache {
 		if !seenFiles[path] {
 			// Check if the path is within our watch paths
-			for _, watchPath := range watchPaths {
+			for _, watchPath := range resolvedRoots {
 				if !failedRoots[watchPath] && db.PathWithinRoot(watchPath, path) && m.scanner.db.ConfirmMissingLocalMedia(path) {
 					cached := metadataCache[path]
 					changes = append(changes, FileChange{

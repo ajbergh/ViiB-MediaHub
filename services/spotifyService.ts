@@ -8,7 +8,7 @@
  * for compatibility. The normal connection UI uses Spotify browser sign-in.
  */
 
-import { backendSpotifyFetch, assertSpotifySession, SpotifySessionChangedError } from './spotifyBackend';
+import { backendSpotifyFetch, assertSpotifySession, SpotifySessionChangedError, throwIfSpotifyRequestAborted } from './spotifyBackend';
 import { ArtistMetadata, AlbumMetadata, SpotifyProfile } from '../types';
 import { useStore } from '../store';
 import { isWailsEnvironment } from '../utils';
@@ -65,10 +65,10 @@ const enqueue = <T>(task: () => Promise<T>): Promise<T> => {
 // The backend bounds catalog concurrency and enforces the shared cooldown.
 const runInteractive = async <T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> => {
     const generation = useStore.getState().spotifySessionGeneration;
-    signal?.throwIfAborted();
+    throwIfSpotifyRequestAborted(signal);
     assertSpotifySession(generation);
     const result = await task();
-    signal?.throwIfAborted();
+    throwIfSpotifyRequestAborted(signal);
     assertSpotifySession(generation);
     return result;
 };
@@ -504,7 +504,7 @@ export const SpotifyService = {
                 }
 
                 const results = await res.json();
-                options.signal?.throwIfAborted();
+                throwIfSpotifyRequestAborted(options.signal);
                 assertSpotifySession(generation);
                 options.onCatalogResults?.(results);
                 
@@ -513,10 +513,10 @@ export const SpotifyService = {
                 if (types.includes('playlist') && offset === 0) {
                     try {
                         const { api } = await import('./api');
-                        options.signal?.throwIfAborted();
+                        throwIfSpotifyRequestAborted(options.signal);
                         assertSpotifySession(generation);
                         const fallbackResults = await api.searchPlaylistsFallback(query, options.signal);
-                        options.signal?.throwIfAborted();
+                        throwIfSpotifyRequestAborted(options.signal);
                         assertSpotifySession(generation);
                         
                         if (fallbackResults?.playlists?.items?.length > 0) {

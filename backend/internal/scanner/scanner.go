@@ -564,8 +564,8 @@ func isSubPath(parent, child string) bool {
 }
 
 // resolveScanRoot returns an absolute, symlink-resolved scan root. Scanned
-// files, metadata cache entries, directory signatures, and macOS FSEvents
-// events must all use the same physical path representation.
+// files, metadata cache entries, and directory signatures must all use the
+// same physical path representation.
 func resolveScanRoot(folderPath string) (string, error) {
 	if runtime.GOOS != "darwin" {
 		return folderPath, nil

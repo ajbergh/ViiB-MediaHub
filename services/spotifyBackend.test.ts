@@ -24,6 +24,19 @@ describe('backend Spotify session boundary', () => {
         await expect(backendSpotifyFetch('https://untrusted.invalid')).rejects.toThrow();
         expect(fetchMock).toHaveBeenCalledTimes(1);
     });
+    it('honors cancellation on WebKit without throwIfAborted or reason', async () => {
+        const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+        vi.stubGlobal('fetch', fetchMock);
+        const controller = new AbortController();
+        Object.defineProperties(controller.signal, {
+            throwIfAborted: { value: undefined },
+            reason: { value: undefined },
+        });
+        await backendSpotifyFetch('/me', controller.signal);
+        controller.abort();
+        await expect(backendSpotifyFetch('/me', controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
     it('preserves reconnect, rate-limit and playlist fallback outcomes', async () => {
         const mock=vi.fn().mockResolvedValueOnce(new Response('{}',{status:401})).mockResolvedValueOnce(new Response('{}',{status:429,headers:{'Retry-After':'28'}})).mockResolvedValueOnce(new Response('{}',{status:403}));
         vi.stubGlobal('fetch',mock);

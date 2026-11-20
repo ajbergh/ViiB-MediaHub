@@ -50,6 +50,7 @@ export interface SpotifyDownloadOrigin {
 import { AudioSettings } from '../types';
 import { requestJSON } from './httpClient';
 import { getEventStreamURL } from './eventStreamURL';
+import { needsSpotifyMP3 } from './spotifyPlaybackFormat';
 
 export interface SpotifySessionStatus {
   provider: 'oauth' | 'webplayer';
@@ -580,8 +581,11 @@ export const api = {
   // Used for direct streaming of Spotify tracks without downloading
   // Quality parameter: 'high' (320kbps), 'medium' (160kbps), 'low' (96kbps)
   getSpotifyStreamUrl(spotifyId: string, quality?: 'high' | 'medium' | 'low'): string {
-    const qualityParam = quality ? `?quality=${quality}` : '';
-    return `${API_BASE}/spotify/stream/${spotifyId}${qualityParam}`;
+    const params = new URLSearchParams();
+    if (quality) params.set('quality', quality);
+    if (needsSpotifyMP3()) params.set('format', 'mp3');
+    const query = params.toString();
+    return `${API_BASE}/spotify/stream/${spotifyId}${query ? '?' + query : ''}`;
   },
 
   async resolveSpotifyStreamUrl(spotifyId: string, quality?: 'high' | 'medium' | 'low'): Promise<string> {

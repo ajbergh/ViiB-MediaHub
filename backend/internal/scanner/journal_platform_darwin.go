@@ -5,12 +5,11 @@
 
 package scanner
 
-// getPlatformDetectors returns the platform-specific change detectors for macOS.
-// macOS supports FSEvents for efficient change detection.
+// Use the metadata cache as the checkpoint on macOS. A host-wide FSEvents ID
+// cannot establish coverage for newly added folders, moved trees, or mounted
+// volumes. Comparing with the committed cache also retries unprocessed changes.
 func (s *Scanner) getPlatformDetectors() []JournalChangeDetector {
-	return []JournalChangeDetector{
-		newFSEventsDetector(s),
-	}
+	return nil
 }
 
 // newMtimeDetector creates an mtime-based fallback detector for macOS.

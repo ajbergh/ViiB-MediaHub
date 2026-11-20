@@ -43,6 +43,15 @@ type MP3Metadata struct {
 // encoded. Callers can use it to refresh a long-running job's watchdog.
 type ActivityCallback func()
 
+// EncodeOggVorbisMP3 converts a Vorbis stream to MP3 without modifying its source.
+func EncodeOggVorbisMP3(ctx context.Context, source io.Reader, output io.Writer) error {
+	decoder, err := oggvorbis.NewReader(source)
+	if err != nil {
+		return fmt.Errorf("open Ogg/Vorbis decoder: %w", err)
+	}
+	return encodeVorbisPCM(ctx, decoder, output, nil)
+}
+
 // ConvertOggToMP3 decodes an Ogg/Vorbis file and encodes a 320 kbps MP3 using
 // pure Go codecs. The MP3 is written transactionally beside the source file;
 // the Ogg source is removed only after the completed MP3 has been validated.
@@ -65,10 +74,6 @@ func ConvertOggToMP3(ctx context.Context, sourcePath string, metadata MP3Metadat
 	decoder, err := oggvorbis.NewReader(source)
 	if err != nil {
 		return "", fmt.Errorf("open Ogg/Vorbis decoder: %w", err)
-	}
-	channels := decoder.Channels()
-	if channels != 1 && channels != 2 {
-		return "", fmt.Errorf("unsupported Ogg channel count %d: MP3 conversion supports mono or stereo", channels)
 	}
 	temp, err := os.CreateTemp(filepath.Dir(targetPath), ".viib-mp3-*.tmp")
 	if err != nil {
@@ -127,6 +132,9 @@ type vorbisPCMReader interface {
 
 func encodeVorbisPCM(ctx context.Context, decoder vorbisPCMReader, output io.Writer, activity ActivityCallback) error {
 	inputChannels := decoder.Channels()
+	if inputChannels != 1 && inputChannels != 2 {
+		return fmt.Errorf("unsupported Ogg channel count %d: MP3 conversion supports mono or stereo", inputChannels)
+	}
 	// Shine cannot byte-align 320 kbps mono frames when the per-granule main
 	// data exceeds MP3's 4095-bit field. Duplicate mono into stereo so the bit
 	// budget is divided between channels and every emitted frame stays valid.

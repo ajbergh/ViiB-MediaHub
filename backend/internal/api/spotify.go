@@ -1959,12 +1959,12 @@ func (a *API) fetchPlaylistTracksByScraping(ctx context.Context, playlistID stri
 // This enables real-time playback of Spotify tracks within the player.
 //
 // The endpoint supports HTTP Range requests for seeking within the stream.
-// Audio is streamed as OGG Vorbis format (320kbps when available).
+// Audio is streamed as Ogg Vorbis by default, or MP3 with format=mp3.
 //
 // GET /api/spotify/stream/{id}
 //
 // Response Headers:
-//   - Content-Type: audio/ogg
+//   - Content-Type: audio/ogg or audio/mpeg
 //   - Accept-Ranges: bytes
 //   - Content-Range: bytes start-end/total (for 206 responses)
 //
@@ -2018,7 +2018,11 @@ func (a *API) streamSpotifyTrack(w http.ResponseWriter, r *http.Request) {
 	requestID := uuid.New().String()
 
 	// Stream the track with specified quality
-	stream, err := streamer.StreamTrackWithQuality(r.Context(), spotifyID, requestID, quality)
+	openStream := streamer.StreamTrackWithQuality
+	if r.URL.Query().Get("format") == "mp3" {
+		openStream = streamer.StreamTrackAsMP3
+	}
+	stream, err := openStream(r.Context(), spotifyID, requestID, quality)
 	if err != nil {
 		logger.SpotifyStreamer("Failed to start stream: %v", err)
 		if strings.Contains(err.Error(), "premium") {
