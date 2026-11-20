@@ -105,7 +105,12 @@ export const useAudioPlayer = () => {
 
     // Only destructure reactive state needed for effect dependencies and rendering.
     // Action functions are accessed via useStore.getState() inside handlers to avoid stale closures (H-6).
-    const { currentSong, isPlaying, volume, audioSettings, spotifyConnected, spotifySessionGeneration } = useStore();
+    const currentSong = useStore(state => state.currentSong);
+    const isPlaying = useStore(state => state.isPlaying);
+    const volume = useStore(state => state.volume);
+    const audioSettings = useStore(state => state.audioSettings);
+    const spotifyConnected = useStore(state => state.spotifyConnected);
+    const spotifySessionGeneration = useStore(state => state.spotifySessionGeneration);
 
     // Release an outgoing or gapless-preloaded Spotify stream while preserving local audio.
     useEffect(() => {

@@ -33,6 +33,7 @@ import { SongColumnMenu } from '../components/SongColumnMenu';
 import { SONG_COLUMNS, SongColumnId, SONG_COLUMNS_STORAGE_KEY, loadSongColumns, songColumnValue } from '../lib/songColumns';
 import { getCamelotColor } from '../lib/camelotColors';
 import { useAnalysisFeatures } from '../hooks/useAnalysisFeatures';
+import { coverThumbnailUrl } from '../lib/artwork';
 
 const songGridClass = 'grid grid-cols-[36px_minmax(0,1fr)_52px_36px] md:grid-cols-[var(--song-columns)] md:min-w-[var(--song-min-width)] gap-2 md:gap-4';
 
@@ -203,7 +204,8 @@ const Footer = () => <div className="h-32 bg-transparent" />;
 
 export const Songs: React.FC = () => {
   const navigate = useNavigate();
-  const songs = useStore((state) => state.songs);
+  const preview = useStore(state => state.libraryPreviewSongs);
+  const songs = useStore((state) => state.libraryPreviewSongs ?? state.songs);
   const playSong = useStore((state) => state.playSong);
   const currentSongId = useStore((state) => state.currentSong?.id);
   const isPlaying = useStore((state) => state.isPlaying);
@@ -228,7 +230,7 @@ export const Songs: React.FC = () => {
     try { localStorage.setItem(SONG_COLUMNS_STORAGE_KEY, JSON.stringify(columns)); } catch { /* Keep the active layout when storage is unavailable. */ }
   }, [columns]);
   const needsAnalysis = columns.some(id => ['bpm', 'key', 'camelot', 'energy'].includes(id));
-  const { rows: analysis } = useAnalysisFeatures(needsAnalysis);
+  const { rows: analysis } = useAnalysisFeatures(needsAnalysis && !isLibraryInitializing);
   const visibleColumns = SONG_COLUMNS.filter(column => columns.includes(column.id));
   const gridStyle = {
     '--song-columns': ['36px', 'minmax(220px, 4fr)', ...visibleColumns.map(column => column.width), '64px', '40px'].join(' '),
@@ -282,6 +284,7 @@ export const Songs: React.FC = () => {
 
   return (
     <div className="h-full min-w-0 animate-fade-in" style={gridStyle}>
+        {preview && <p role="status" className="px-4 py-2 text-sm text-text-secondary">Loading the rest of your library. Playback is available when loading finishes.</p>}
         <Virtuoso
             useWindowScroll={false}
             customScrollParent={scrollParent ?? undefined}
@@ -290,15 +293,15 @@ export const Songs: React.FC = () => {
             components={components}
             itemContent={(index, song) => {
                const isCurrent = currentSongId === song.id;
-               const displayCover = song.coverUrl || albumCovers[song.album];
+               const displayCover = coverThumbnailUrl(song.coverUrl || albumCovers[song.album], 96);
                
                return (
                 <div className="bg-surface-1 px-4 sm:px-6 lg:px-7">
                     <div 
-                        className={`${songGridClass} rounded-md px-4 py-2 items-center hover:bg-surface-hover group transition-colors cursor-pointer ${isCurrent ? 'bg-surface-hover' : 'bg-transparent'}`}
+                        className={`${songGridClass} rounded-md px-4 py-2 items-center group transition-colors ${preview ? '' : 'hover:bg-surface-hover cursor-pointer'} ${isCurrent ? 'bg-surface-hover' : 'bg-transparent'}`}
                         data-song-id={song.id}
-                        onClick={() => playSong(song, sortedAndFilteredSongs, undefined, index)}
-                        onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, song)}
+                        onClick={preview ? undefined : () => playSong(song, sortedAndFilteredSongs, undefined, index)}
+                        onContextMenu={preview ? undefined : (e) => openContextMenu(e, ContextMenuType.SONG, song)}
                     >
                         <div className="text-center text-text-subtle tabular-nums text-sm relative h-full flex items-center justify-center">
                         <span className="group-hover:hidden">{isCurrent && isPlaying ? <div className="w-2.5 h-2.5 bg-brand rounded-full animate-pulse"></div> : <span className={isCurrent ? 'text-brand font-semibold' : ''}>{index + 1}</span>}</span>
@@ -307,7 +310,7 @@ export const Songs: React.FC = () => {
                         <div className="flex items-center gap-3 overflow-hidden">
                             <div className="w-10 h-10 flex-shrink-0 rounded bg-surface-3 overflow-hidden relative">
                                     {displayCover ? (
-                                    <img src={displayCover} alt={song.album} loading="lazy" className="w-full h-full object-cover" />
+                                    <img src={displayCover} alt={song.album} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                                     ) : (
                                     <div className="w-full h-full" style={{ background: generateGradient(song.album) }}></div>
                                     )}
@@ -330,7 +333,7 @@ export const Songs: React.FC = () => {
                             </div>
                         </div>
                         {visibleColumns.map(column => {
-                          const value = songColumnValue(column.id, song, analysis[song.id]);
+                          const value = songColumnValue(column.id, song, analysis.get(song.id));
                           const isCentered = CENTERED_SONG_COLUMNS.has(column.id);
                           if (column.id === 'camelot') {
                             const camelotColor = getCamelotColor(value);
@@ -369,6 +372,7 @@ export const Songs: React.FC = () => {
                         <div className="hidden md:flex items-center justify-center gap-1">
                             <Button
                               variant="ghost"
+                              disabled={Boolean(preview)}
                               className="rounded-full p-1.5 opacity-0 group-hover:opacity-100 text-text-secondary hover:text-text-main"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -379,12 +383,13 @@ export const Songs: React.FC = () => {
                             >
                               <Info size={16} />
                             </Button>
-                            <LikeButton songId={song.id} size={16} className="opacity-0 group-hover:opacity-100" />
+                            {!preview && <LikeButton songId={song.id} size={16} className="opacity-0 group-hover:opacity-100" />}
                         </div>
                         
                         <div className="flex justify-center relative">
                           <Button
                             variant="ghost"
+                            disabled={Boolean(preview)}
                             className="rounded-full p-1.5 opacity-0 group-hover:opacity-100"
                             onClick={(e) => {
                               e.stopPropagation();

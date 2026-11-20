@@ -32,8 +32,8 @@ export const AlbumLikeButton: React.FC<AlbumLikeButtonProps> = ({
     className = '',
     showFilled = false 
 }) => {
-    const { isLikedAlbum, toggleLikeAlbum } = useStore();
-    const isLiked = isLikedAlbum(albumKey);
+    const isLiked = useStore(state => state.likedAlbumKeys.has(albumKey));
+    const toggleLikeAlbum = useStore(state => state.toggleLikeAlbum);
 
     const handleClick = async (e: React.MouseEvent) => {
         e.stopPropagation(); // Prevent triggering parent click handlers

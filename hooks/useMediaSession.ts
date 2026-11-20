@@ -11,7 +11,8 @@
 
 
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useLayoutEffect, useRef } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../store';
 
 /**
@@ -26,13 +27,17 @@ export const useMediaSession = (
     duration: number,
     onSeek: (time: number) => void
 ) => {
-    const { 
-        currentSong, 
-        isPlaying, 
-        togglePlay, 
-        nextSong, 
-        prevSong 
-    } = useStore();
+    const { currentSong, isPlaying, togglePlay, nextSong, prevSong } = useStore(useShallow(state => ({
+        currentSong: state.currentSong,
+        isPlaying: state.isPlaying,
+        togglePlay: state.togglePlay,
+        nextSong: state.nextSong,
+        prevSong: state.prevSong,
+    })));
+    const timeline = useRef({ currentTime, duration, onSeek });
+    useLayoutEffect(() => {
+        timeline.current = { currentTime, duration, onSeek };
+    }, [currentTime, duration, onSeek]);
 
     // =========================================================================
     // Phase 1: Metadata Updates
@@ -141,8 +146,8 @@ export const useMediaSession = (
         if (isPlaying) {
             togglePlay();
         }
-        onSeek(0);
-    }, [isPlaying, togglePlay, onSeek]);
+        timeline.current.onSeek(0);
+    }, [isPlaying, togglePlay]);
 
     /**
      * Register all action handlers with the Media Session API.
@@ -210,29 +215,31 @@ export const useMediaSession = (
     const handleSeekTo = useCallback((details: MediaSessionActionDetails) => {
         if (details.seekTime !== undefined) {
             console.log('[MediaSession] Seek to:', details.seekTime);
-            onSeek(details.seekTime);
+            timeline.current.onSeek(details.seekTime);
         }
-    }, [onSeek]);
+    }, []);
 
     /**
      * Handle seek backward action (rewind).
      */
     const handleSeekBackward = useCallback((details: MediaSessionActionDetails) => {
         const skipTime = details.seekOffset || 10; // Default 10 seconds
+        const { currentTime, onSeek } = timeline.current;
         const newTime = Math.max(currentTime - skipTime, 0);
         console.log('[MediaSession] Seek backward:', skipTime, 'seconds to', newTime);
         onSeek(newTime);
-    }, [currentTime, onSeek]);
+    }, []);
 
     /**
      * Handle seek forward action (fast forward).
      */
     const handleSeekForward = useCallback((details: MediaSessionActionDetails) => {
         const skipTime = details.seekOffset || 10; // Default 10 seconds
+        const { currentTime, duration, onSeek } = timeline.current;
         const newTime = Math.min(currentTime + skipTime, duration);
         console.log('[MediaSession] Seek forward:', skipTime, 'seconds to', newTime);
         onSeek(newTime);
-    }, [currentTime, duration, onSeek]);
+    }, []);
 
     /**
      * Register seek action handlers.

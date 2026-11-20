@@ -7,10 +7,89 @@ import type { AnalysisListLoadState } from '../lib/analysisReadiness';
 interface AnalysisSnapshot {
   generation: number;
   status: AnalysisListLoadState;
-  rows: Record<string, TrackAnalysisFeature>;
+  rows: AnalysisRows;
 }
 
-const empty: AnalysisSnapshot = { generation: -1, status: 'loading', rows: {} };
+const orderingFields = [
+  'bpm', 'key', 'camelotKey', 'energyLevel', 'status', 'analyzedAt',
+  'integratedLufsBs1770', 'truePeakDbtp', 'providerScores', 'providerScoresUnverified',
+] as const;
+export type AnalysisOrderingField = typeof orderingFields[number];
+let orderingRevision = 0;
+
+// Preserve a stable snapshot for React while copying only buckets touched by a delta.
+class AnalysisRows {
+  constructor(
+    private readonly buckets = new Map<number, ReadonlyMap<string, TrackAnalysisFeature>>(),
+    private readonly revisions: Partial<Record<AnalysisOrderingField, number>> = {},
+  ) {}
+
+  private bucket(id: string) {
+    let hash = id.length;
+    // File and provider IDs may share a prefix. Include the suffix without
+    // walking the entire ID for every lookup in a sort comparator.
+    for (let i = 0; i < Math.min(id.length, 4); i++) {
+      hash = Math.imul(hash, 31) + id.charCodeAt(i) + 17 * id.charCodeAt(id.length - i - 1);
+    }
+    return (hash ^ (hash >>> 16)) & 255;
+  }
+
+  get(id: string) {
+    return this.buckets.get(this.bucket(id))?.get(id);
+  }
+
+  *values() {
+    for (const bucket of this.buckets.values()) yield* bucket.values();
+  }
+
+  revisionFor(fields: readonly AnalysisOrderingField[]) {
+    return fields.reduce((revision, field) => Math.max(revision, this.revisions[field] ?? 0), 0);
+  }
+
+  update(ids: string[], features: TrackAnalysisFeature[], invalidated: ReadonlySet<string>, full: boolean) {
+    const buckets = new Map(this.buckets);
+    const changed = new Map<number, Map<string, TrackAnalysisFeature>>();
+    const edit = (id: string) => {
+      const key = this.bucket(id);
+      let bucket = changed.get(key);
+      if (!bucket) {
+        bucket = new Map(this.buckets.get(key));
+        buckets.set(key, bucket);
+        changed.set(key, bucket);
+      }
+      return bucket;
+    };
+    for (const id of ids) if (this.get(id) && !invalidated.has(id)) edit(id).delete(id);
+    for (const feature of features) {
+      if (!invalidated.has(feature.songId)) edit(feature.songId).set(feature.songId, feature);
+    }
+    if (!changed.size) return this;
+
+    const revisions = { ...this.revisions };
+    const revision = ++orderingRevision;
+    if (full) {
+      for (const field of orderingFields) revisions[field] = revision;
+    } else {
+      const touched = new Set([...ids, ...features.map(feature => feature.songId)]);
+      for (const id of touched) {
+        const bucket = changed.get(this.bucket(id));
+        if (!bucket) continue;
+        const before = this.get(id);
+        const after = bucket.get(id);
+        for (const field of orderingFields) {
+          if (!Object.is(before?.[field], after?.[field]) &&
+              (field !== 'providerScores' || JSON.stringify(before?.providerScores) !== JSON.stringify(after?.providerScores))) {
+            revisions[field] = revision;
+          }
+        }
+      }
+    }
+    return new AnalysisRows(buckets, revisions);
+  }
+}
+
+const emptyAnalysisRows = new AnalysisRows();
+const empty: AnalysisSnapshot = { generation: -1, status: 'loading', rows: emptyAnalysisRows };
 let snapshot = empty;
 let fullRefresh = true;
 let pending = new Set<string>();
@@ -82,11 +161,7 @@ async function refresh() {
       }
     }
     if (!current() || fullRefresh) return;
-    const rows = all ? {} : { ...snapshot.rows };
-    ids.forEach(id => { delete rows[id]; });
-    features.forEach(feature => {
-      if (!pending.has(feature.songId)) rows[feature.songId] = feature;
-    });
+    const rows = (all ? emptyAnalysisRows : snapshot.rows).update(ids, features, pending, all);
     publish({ generation, rows, status: 'loaded' });
   } catch {
     if (current()) {

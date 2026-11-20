@@ -21,6 +21,7 @@ import { useStore, useAlbumCovers } from '../store';
 import { Play, Clock, ArrowLeft, MoreHorizontal, Sparkles, Shuffle, Save } from 'lucide-react';
 import { formatTime, generateGradient } from '../utils';
 import { ContextMenuType } from '../types';
+import { indexPlaylistSongs, resolvePlaylistSongs } from '../lib/playlistContents';
 
 export const SmartMixDetail: React.FC = () => {
     const { mixId } = useParams<{ mixId: string }>();
@@ -31,12 +32,7 @@ export const SmartMixDetail: React.FC = () => {
     const mix = smartMixes.find(m => m.id === mixId);
 
     // Filter and Sort songs for this mix
-    const mixSongs = useMemo(() => {
-        if (!mix) return [];
-        return mix.songIds
-            .map(id => songs.find(s => s.id === id))
-            .filter((s): s is typeof s & {} => !!s);
-    }, [mix, songs]);
+    const mixSongs = useMemo(() => mix ? resolvePlaylistSongs(mix.songIds, indexPlaylistSongs(songs)) : [], [mix, songs]);
 
     if (!mix) {
         return (

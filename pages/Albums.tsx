@@ -28,7 +28,8 @@ import { Page, PageHeader } from '../components/ui/Page';
 import { CardSizeSlider, MAX_CARD_COLUMNS } from '../components/ui/CardSizeSlider';
 import { LibraryListHeader, LibraryListRow } from '../components/ui/LibraryList';
 import { TextInput } from '../components/ui/TextInput';
-import { resolveAlbumArtwork } from '../lib/artwork';
+import { coverThumbnailUrl, resolveAlbumArtwork } from '../lib/artwork';
+import { useVisibleAlbumEnrichment } from '../hooks/useBackgroundEnrichment';
 
 type AlbumSortOption = 'recent' | 'name-asc' | 'name-desc' | 'artist-asc' | 'artist-desc' | 'songs-desc' | 'songs-asc';
 
@@ -67,10 +68,10 @@ const ItemContainer = forwardRef<HTMLDivElement, any>(({ children, ...props }, r
 export const Albums: React.FC = () => {
   const albums = useAlbums();
   const openContextMenu = useStore((state) => state.openContextMenu);
-  const fetchAlbumMetadata = useStore((state) => state.fetchAlbumMetadata);
   const albumMetadata = useStore((state) => state.albumMetadata);
   const navigate = useNavigate();
   const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
+  const [visibleRange, setVisibleRange] = useState({ startIndex: 0, endIndex: 7 });
   const [sortBy, setSortBy] = useState<AlbumSortOption>('recent');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [filter, setFilter] = useState('');
@@ -82,24 +83,6 @@ export const Albums: React.FC = () => {
   useEffect(() => {
     setScrollParent(document.querySelector('main'));
   }, []);
-
-  useEffect(() => {
-    // Plex-backed albums own their artwork decision, including "no artwork".
-    // Do not trigger Spotify enrichment merely to fill a cover Plex did not set.
-    const albumsMissingArt = albums.filter(album => {
-        if (album.plexBacked) return false;
-        const metadataKey = `${album.name}::${album.artist}`;
-        const hasMetadata = !!albumMetadata[metadataKey];
-        const hasCatalogCover = !!album.coverUrl;
-        return !hasMetadata && !hasCatalogCover;
-    });
-
-    albumsMissingArt.slice(0, 30).forEach((album, idx) => {
-        setTimeout(() => {
-            fetchAlbumMetadata(album.name, album.artist);
-        }, idx * 200);
-    });
-  }, [albums, albumMetadata, fetchAlbumMetadata]);
 
   const sortedAlbums = useMemo(() => {
     const sorted = [...albums];
@@ -130,6 +113,8 @@ export const Albums: React.FC = () => {
       album => album.name.toLowerCase().includes(query) || album.artist.toLowerCase().includes(query)
     );
   }, [sortedAlbums, deferredFilter]);
+  const visibleAlbums = useMemo(() => filteredAlbums.slice(visibleRange.startIndex, visibleRange.endIndex + 1), [filteredAlbums, visibleRange]);
+  useVisibleAlbumEnrichment(visibleAlbums);
 
   return (
     <Page withPlayerPadding={false}>
@@ -203,11 +188,13 @@ export const Albums: React.FC = () => {
               useWindowScroll={false}
               customScrollParent={scrollParent ?? undefined}
               data={filteredAlbums}
+              rangeChanged={setVisibleRange}
               components={{ List: ListContainer, Item: ItemContainer }}
               itemContent={(index, album) => {
                 const metadataKey = `${album.name}::${album.artist}`;
                 const metadata = albumMetadata[metadataKey];
-                const coverUrl = resolveAlbumArtwork(album.coverUrl, metadata?.coverUrl, album.plexBacked);
+                const artwork = resolveAlbumArtwork(album.coverUrl, metadata?.coverUrl, album.plexBacked);
+                const coverUrl = coverThumbnailUrl(artwork, listView ? 96 : cardCols <= 3 ? 512 : 256);
 
                 if (listView) return <LibraryListRow index={index} name={album.name}
                   artwork={<div className="w-full h-full flex items-center justify-center" style={{ background: coverBackground(coverUrl, album.name) }}>{!coverUrl && album.name.charAt(0)}</div>}

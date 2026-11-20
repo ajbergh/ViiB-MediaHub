@@ -76,6 +76,7 @@ type API struct {
 	db                     *db.DB
 	dataDir                string
 	coverDir               string
+	coverThumbnails        coverThumbnailCache
 	downloadManager        *DownloadManager
 	scanner                *scanner.Scanner
 	lastfmClient           *lastfm.Client
@@ -1298,8 +1299,8 @@ func (a *API) serveCover(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if isAllowed {
-			if _, err := os.Stat(normalizedPath); err == nil {
-				http.ServeFile(w, r, normalizedPath)
+			if info, err := os.Stat(normalizedPath); err == nil {
+				a.serveCoverFile(w, r, normalizedPath, info)
 				return
 			}
 			logger.API("Cover file not found at path: %s", normalizedPath)
@@ -1312,16 +1313,16 @@ func (a *API) serveCover(w http.ResponseWriter, r *http.Request) {
 	song, err := a.db.GetSongByID(pathOrID)
 	if err == nil && song.CoverPath != "" {
 		// Song has a cover path set - serve that file
-		if _, err := os.Stat(song.CoverPath); err == nil {
-			http.ServeFile(w, r, song.CoverPath)
+		if info, err := os.Stat(song.CoverPath); err == nil {
+			a.serveCoverFile(w, r, song.CoverPath, info)
 			return
 		}
 	}
 
 	// Fallback: try legacy per-song cover file
 	coverPath := filepath.Join(a.coverDir, pathOrID+".jpg")
-	if _, err := os.Stat(coverPath); err == nil {
-		http.ServeFile(w, r, coverPath)
+	if info, err := os.Stat(coverPath); err == nil {
+		a.serveCoverFile(w, r, coverPath, info)
 		return
 	}
 

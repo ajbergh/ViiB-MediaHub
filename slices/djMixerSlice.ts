@@ -293,6 +293,7 @@ export interface DJMixerSlice {
   // Position updates (called from audio engine)
   updateDeckPosition: (deck: DeckId, position: number) => void;
   setDeckPosition: (deck: DeckId, position: number) => void; // Alias for updateDeckPosition
+  setDeckPositions: (positionA?: number, positionB?: number) => void;
   setDeckDuration: (deck: DeckId, duration: number) => void;
   setDeckPlaying: (deck: DeckId, isPlaying: boolean) => void;
   
@@ -589,6 +590,16 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
       [deckKey]: { ...state[deckKey], position }
     }));
   },
+
+  setDeckPositions: (positionA, positionB) => set(state => {
+    const updateA = positionA !== undefined && positionA !== state.djDeckA.position;
+    const updateB = positionB !== undefined && positionB !== state.djDeckB.position;
+    if (!updateA && !updateB) return state;
+    return {
+      djDeckA: updateA ? { ...state.djDeckA, position: positionA } : state.djDeckA,
+      djDeckB: updateB ? { ...state.djDeckB, position: positionB } : state.djDeckB,
+    };
+  }),
   
   setDeckDuration: (deck, duration) => {
     const deckKey = deck === 'A' ? 'djDeckA' : 'djDeckB';

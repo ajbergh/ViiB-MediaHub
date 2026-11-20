@@ -167,6 +167,7 @@ export interface LibrarySlice {
   scanProgress: string;
   backendAvailable: boolean;
   isLibraryInitializing: boolean;
+  libraryPreviewSongs: Song[] | undefined;
   scanFolders: ScanFolder[];
   
   // Likes state

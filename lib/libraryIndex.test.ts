@@ -26,6 +26,15 @@ describe('LibraryIndex', () => {
     const first = { ...song('1', 'First', 'A'), trackNumber: 1 };
     expect(index.initialize([second, first]).map(item => item.id)).toEqual(['1', '2']);
   });
+
+  it('keeps the same song snapshot for an analysis-only revision', () => {
+    const index = new LibraryIndex();
+    const original = { ...song('1', 'One'), genre: ['Rock'] };
+    const snapshot = index.initialize([original]);
+    const change = { revision: 1, songId: '1', operation: 'upsert' as const, changedAt: 1 };
+    expect(index.apply([change], [{ ...original, genre: ['Rock'] }])).toBe(snapshot);
+    expect(index.apply([change], [{ ...original, genre: ['Jazz'] }])).not.toBe(snapshot);
+  });
 });
 
 it('removes payload-less invisible upserts and restores unignored songs',()=>{

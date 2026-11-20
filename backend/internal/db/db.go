@@ -2947,14 +2947,15 @@ func (d *DB) GetAlbumsNeedingMetadata() ([]AlbumMetadata, error) {
 
 // NextAlbumNeedingMetadata returns the next unchecked or expired album.
 func (d *DB) NextAlbumNeedingMetadata(expirationDays int) (*AlbumMetadata, error) {
-	expiry := time.Now().AddDate(0, 0, -expirationDays).Unix()
+	expiry := time.Now().Add(-time.Duration(expirationDays) * 24 * time.Hour)
 	var album AlbumMetadata
 	err := d.conn.QueryRow(`SELECT album_key, album_name, artist_name FROM (
 		SELECT album_key, album_name, artist_name FROM album_metadata WHERE spotify_checked = 0
 		UNION ALL
 		SELECT album_key, album_name, artist_name FROM album_metadata
-		WHERE spotify_checked = 1 AND spotify_found = 0 AND fetched_at < ?
-	) LIMIT 1`, expiry).Scan(&album.AlbumKey, &album.AlbumName, &album.ArtistName)
+		WHERE spotify_checked = 1 AND spotify_found = 0 AND
+			(fetched_at < ? OR fetched_at BETWEEN 10000000000 AND ?)
+	) LIMIT 1`, expiry.Unix(), expiry.UnixMilli()-1).Scan(&album.AlbumKey, &album.AlbumName, &album.ArtistName)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -4094,6 +4095,31 @@ func (d *DB) GetFileMetadataCacheMap() (map[string]FileMetadataCache, error) {
 		result[cache.FilePath] = cache
 	}
 	return result, nil
+}
+
+// FileCheckpoint holds the fields needed to detect changes without opening media.
+type FileCheckpoint struct {
+	FileSize int64
+	Mtime    int64
+}
+
+func (d *DB) GetFileCheckpoints() (map[string]FileCheckpoint, error) {
+	rows, err := d.conn.Query(`SELECT file_path, file_size, mtime FROM file_metadata_cache`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	checkpoints := make(map[string]FileCheckpoint)
+	for rows.Next() {
+		var path string
+		var checkpoint FileCheckpoint
+		if err := rows.Scan(&path, &checkpoint.FileSize, &checkpoint.Mtime); err != nil {
+			return nil, err
+		}
+		checkpoints[path] = checkpoint
+	}
+	return checkpoints, rows.Err()
 }
 
 // DeleteFileMetadataCache removes a file metadata cache entry by path.

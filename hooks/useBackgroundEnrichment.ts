@@ -20,6 +20,19 @@
 import { useEffect, useRef } from 'react';
 import { useArtists, useStore } from '../store';
 import api from '../services/api';
+import type { Album } from '../types';
+
+type VisibleAlbum = Album & { plexBacked?: boolean };
+let visibleAlbums: readonly VisibleAlbum[] = [];
+let onVisibleAlbumsChanged: (() => void) | undefined;
+
+export function useVisibleAlbumEnrichment(albums: readonly VisibleAlbum[]) {
+    useEffect(() => {
+        visibleAlbums = albums;
+        if (albums.length) onVisibleAlbumsChanged?.();
+        return () => { visibleAlbums = []; };
+    }, [albums]);
+}
 
 /**
  * @internal Hook implementation — see module-level JSDoc above.
@@ -31,7 +44,6 @@ export function useBackgroundEnrichment() {
     const generation = useStore(state => state.spotifySessionGeneration);
     const spotifyConnected = useStore(state => state.spotifyConnected);
     const artists = useArtists(backendAvailable && spotifyConnected);
-    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const artistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const processingRef = useRef(false);
     
@@ -42,18 +54,32 @@ export function useBackgroundEnrichment() {
         }
         
         let cancelled = false;
+        let timer: ReturnType<typeof setTimeout>;
+        let nextAllowed = 0;
+        const checkedVisible = new Set<string>();
         const current = () => !cancelled && useStore.getState().spotifyConnected && useStore.getState().spotifySessionGeneration === generation;
+        const schedule = (delay: number) => {
+            clearTimeout(timer);
+            if (current()) timer = setTimeout(processNextAlbum, delay);
+        };
         const processNextAlbum = async () => {
-            if (!current() || processingRef.current) return;
+            if (!current()) return;
+            if (processingRef.current) { schedule(1000); return; }
             processingRef.current = true;
             
             try {
-                const album = await api.getNextAlbumMetadata();
+                const state = useStore.getState();
+                const visible = visibleAlbums.find(({ name, artist, plexBacked, coverUrl }) => {
+                    const key = `${name}::${artist}`;
+                    return !plexBacked && !coverUrl && !state.albumMetadata[key] &&
+                        !state.fetchingAlbums.has(key) && !checkedVisible.has(key);
+                });
+                if (visible) checkedVisible.add(`${visible.name}::${visible.artist}`);
+                const album = visible ? { albumName: visible.name, artistName: visible.artist } : await api.getNextAlbumMetadata();
                 if (!current()) return;
 
                 if (!album) {
-                    // No albums to process, check again in 60 seconds
-                    if (current()) timerRef.current = setTimeout(processNextAlbum, 60000);
+                    schedule(60000);
                     return;
                 }
                 
@@ -62,27 +88,27 @@ export function useBackgroundEnrichment() {
                 await fetchAlbumMetadata(album.albumName, album.artistName);
                 
                 // Wait 5 seconds before processing next album (rate limiting)
-                if (current()) timerRef.current = setTimeout(processNextAlbum, 5000);
+                nextAllowed = Date.now() + 5000;
+                schedule(5000);
             } catch (error) {
                 console.warn('Background enrichment error:', error);
                 // On error, wait longer before retrying
-                if (current()) timerRef.current = setTimeout(processNextAlbum, 30000);
+                nextAllowed = Date.now() + 30000;
+                schedule(30000);
             } finally {
                 processingRef.current = false;
             }
         };
         
-        // Start enrichment after 10 seconds of startup
-        const startupTimer = setTimeout(() => {
-            processNextAlbum();
-        }, 10000);
+        onVisibleAlbumsChanged = () => {
+            if (!processingRef.current) schedule(Math.max(300, nextAllowed - Date.now()));
+        };
+        schedule(visibleAlbums.length ? 300 : 10000);
         
         return () => {
             cancelled = true;
-            clearTimeout(startupTimer);
-            if (timerRef.current) {
-                clearTimeout(timerRef.current);
-            }
+            clearTimeout(timer);
+            onVisibleAlbumsChanged = undefined;
         };
     }, [backendAvailable, spotifyConnected, generation, fetchAlbumMetadata]);
 

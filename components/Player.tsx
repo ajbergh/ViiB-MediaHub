@@ -224,13 +224,31 @@ const SkinnyPlayer: React.FC<SkinnyPlayerProps> = ({
 };
 
 export const Player: React.FC = () => {
-  const { 
-      currentSong, isPlaying, togglePlay, nextSong, prevSong, volume, setVolume, 
-      isQueueOpen, setQueueOpen, queue, isNowPlayingOpen, setNowPlayingOpen, 
-      openContextMenu, audioSettings, toggleEqPanel, isBuffering, bufferProgress,
-      streamError, retryStream, clearStreamError, openSongInfoModal,
-      isSkinnyMode, isSkinnyAlwaysOnTop, setSkinnyMode, setSkinnyAlwaysOnTop
-  } = useStore();
+  const currentSong = useStore(state => state.currentSong);
+  const isPlaying = useStore(state => state.isPlaying);
+  const togglePlay = useStore(state => state.togglePlay);
+  const nextSong = useStore(state => state.nextSong);
+  const prevSong = useStore(state => state.prevSong);
+  const volume = useStore(state => state.volume);
+  const setVolume = useStore(state => state.setVolume);
+  const isQueueOpen = useStore(state => state.isQueueOpen);
+  const setQueueOpen = useStore(state => state.setQueueOpen);
+  const queue = useStore(state => state.queue);
+  const isNowPlayingOpen = useStore(state => state.isNowPlayingOpen);
+  const setNowPlayingOpen = useStore(state => state.setNowPlayingOpen);
+  const openContextMenu = useStore(state => state.openContextMenu);
+  const audioSettings = useStore(state => state.audioSettings);
+  const toggleEqPanel = useStore(state => state.toggleEqPanel);
+  const isBuffering = useStore(state => state.isBuffering);
+  const bufferProgress = useStore(state => state.bufferProgress);
+  const streamError = useStore(state => state.streamError);
+  const retryStream = useStore(state => state.retryStream);
+  const clearStreamError = useStore(state => state.clearStreamError);
+  const openSongInfoModal = useStore(state => state.openSongInfoModal);
+  const isSkinnyMode = useStore(state => state.isSkinnyMode);
+  const isSkinnyAlwaysOnTop = useStore(state => state.isSkinnyAlwaysOnTop);
+  const setSkinnyMode = useStore(state => state.setSkinnyMode);
+  const setSkinnyAlwaysOnTop = useStore(state => state.setSkinnyAlwaysOnTop);
   
   const { 
       primaryRef, secondaryRef,

@@ -8,6 +8,7 @@ import { Play, SkipForward, ListPlus, Save, RefreshCw, Sparkles } from 'lucide-r
 import { useStore } from '../../store';
 import { MenuItem } from './MenuShared';
 import { SmartMix } from '../../types';
+import { indexPlaylistSongs, resolvePlaylistSongs } from '../../lib/playlistContents';
 
 /**
  * SmartMixMenu props:
@@ -16,7 +17,7 @@ import { SmartMix } from '../../types';
  */
 export const SmartMixMenu: React.FC<{ mix: SmartMix; onClose: () => void }> = ({ mix, onClose }) => {
     const { songs, playSong, playNext, addToQueue, saveSmartMixAsPlaylist, refreshSmartMixes, showToast } = useStore();
-    const mixSongs = mix.songIds.map((id: string) => songs.find(s => s.id === id)).filter(Boolean) as any[];
+    const mixSongs = React.useMemo(() => resolvePlaylistSongs(mix.songIds, indexPlaylistSongs(songs)), [mix.songIds, songs]);
 
     const handleAction = (action: () => void) => {
         action();

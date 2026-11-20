@@ -63,6 +63,7 @@ const SCAN_LIBRARY_REFRESH_INTERVAL_MS = 3000;
 
 export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = (set, get) => {
   const libraryIndex = new LibraryIndex();
+  const albumRequests = new Map<string, number>();
   let isPollingActive = false;
   let revision: number | null = null;
   let lastLegacyRead = 0;
@@ -80,9 +81,9 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
     }, 400);
   };
 
-  const loadCatalog = async () => {
+  const loadCatalog = async (onFirstPage?: (songs: Song[]) => void) => {
     try {
-      const snapshot = await libraryV2.getSnapshot();
+      const snapshot = await libraryV2.getSnapshot(undefined, onFirstPage);
       revision = snapshot.revision;
       return libraryIndex.initialize(snapshot.songs);
     } catch (error) {
@@ -95,8 +96,10 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
   };
 
   const publishCatalog = (songs: Song[], songIds?: string[]) => {
-    set({ songs });
-    scheduleMixes();
+    if (songs !== get().songs) {
+      set({ songs });
+      scheduleMixes();
+    }
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("library_updated", {
         detail: songIds ? { source: "library_delta", revision, songIds } : { source: "full_refresh" },
@@ -116,6 +119,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
   scanProgress: '',
   backendAvailable: false,
   isLibraryInitializing: true,
+  libraryPreviewSongs: undefined,
   scanFolders: [],
   likedSongIds: new Set(),
   likedAlbumKeys: new Set(),
@@ -149,8 +153,10 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
                   api.getLikedSongIds().catch(() => Array.from(get().likedSongIds)),
                   api.getLikedAlbumKeys().catch(() => Array.from(get().likedAlbumKeys)),
               ]);
-              const [songs, scanFolders] = await Promise.all([loadCatalog(), folders]);
-              set({ songs, scanFolders, isLibraryInitializing: false });
+              const [songs, scanFolders] = await Promise.all([loadCatalog(firstPage => {
+                  if (get().songs.length === 0) set({ libraryPreviewSongs: firstPage });
+              }), folders]);
+              set({ songs, scanFolders, isLibraryInitializing: false, libraryPreviewSongs: undefined });
               scheduleMixes();
               void get().pollScanStatus();
               const [playlists, cachedAlbumMetadata, cachedArtistMetadata, likedIds, likedAlbumKeysList] = await metadata;
@@ -186,7 +192,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
               // Reset scanning state on error
               set({ isScanning: false, scanProgress: '' });
           } finally {
-              set({ isLibraryInitializing: false });
+              set({ isLibraryInitializing: false, libraryPreviewSongs: undefined });
           }
       } else {
           // Fallback: Load from IndexedDB (browser-only mode)
@@ -709,29 +715,18 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       const state = get();
       const generation = state.spotifySessionGeneration;
       
-      // Skip if already have metadata or currently fetching
-      if (state.albumMetadata[key] || state.fetchingAlbums.has(key)) return;
-
-      // Check if we've already checked Spotify and found nothing (cached "not found")
-      try {
-          const cached = await api.getAlbumMetadata(key);
-          if (cached?.spotifyChecked && !cached.spotifyFound) {
-              // Already checked, Spotify had nothing - don't re-query
-              console.log(`📦 Album "${albumName}" already checked - Spotify had no results`);
-              return;
-          }
-      } catch {
-          // Ignore cache lookup errors
-      }
-
-      set((s) => {
-          const newSet = new Set(s.fetchingAlbums);
-          newSet.add(key);
-          return { fetchingAlbums: newSet };
-      });
+      if (!state.spotifyConnected || state.albumMetadata[key] || albumRequests.get(key) === generation) return;
+      albumRequests.set(key, generation);
+      set(s => ({ fetchingAlbums: new Set(s.fetchingAlbums).add(key) }));
 
       try {
+          const cached = await api.getAlbumMetadata(key).catch(() => null);
           assertSpotifySession(generation);
+          const fetchedAt = cached?.fetchedAt ?? 0;
+          const timestampMs = fetchedAt < 10_000_000_000 ? fetchedAt * 1000 : fetchedAt;
+          if (cached?.spotifyChecked && !cached.spotifyFound &&
+              Date.now() - timestampMs < 30 * 24 * 60 * 60 * 1000) return;
+
           const data = await SpotifyService.searchAlbum(albumName, artistName);
           assertSpotifySession(generation);
 
@@ -755,36 +750,32 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
               cacheEntry.copyright = data.copyright;
           }
 
-          // Save to backend cache (fire and forget)
-          api.saveAlbumMetadata(cacheEntry).catch(e => {
-              console.warn('Failed to cache album metadata:', e);
+          await api.saveAlbumMetadata(cacheEntry).catch(error => {
+              console.warn('Failed to cache album metadata:', error);
           });
+          if (get().spotifySessionGeneration !== generation) return;
 
-          // If we got artwork URL and backend is available, download cover.jpg to album folder
-          if (data?.coverUrl && state.backendAvailable) {
-              api.downloadAlbumCover(key, data.coverUrl).catch(e => {
-                  console.warn('Failed to download album cover:', e);
+          if (data) {
+              set(s => ({ albumMetadata: { ...s.albumMetadata, [key]: data } }));
+              if (state.backendAvailable && data.coverUrl) {
+                  api.downloadAlbumCover(key, data.coverUrl).catch(error => {
+                      console.warn('Failed to download album cover:', error);
+                  });
+              }
+          }
+      } catch (error) {
+          if (get().spotifySessionGeneration === generation) {
+              console.error('Failed to fetch album metadata:', albumName, error);
+          }
+      } finally {
+          if (albumRequests.get(key) === generation) {
+              albumRequests.delete(key);
+              set(s => {
+                  const fetchingAlbums = new Set(s.fetchingAlbums);
+                  fetchingAlbums.delete(key);
+                  return { fetchingAlbums };
               });
           }
-
-          set((s) => {
-              const newFetching = new Set(s.fetchingAlbums);
-              newFetching.delete(key);
-              if (data) {
-                  return {
-                      albumMetadata: { ...s.albumMetadata, [key]: data },
-                      fetchingAlbums: newFetching
-                  };
-              }
-              return { fetchingAlbums: newFetching };
-          });
-      } catch (error) {
-          console.error(`Failed to fetch album metadata for "${albumName}":`, error);
-          set((s) => {
-              const newFetching = new Set(s.fetchingAlbums);
-              newFetching.delete(key);
-              return { fetchingAlbums: newFetching };
-          });
       }
   },
 

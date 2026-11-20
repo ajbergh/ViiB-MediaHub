@@ -2839,18 +2839,19 @@ export class DJAudioEngine {
       const aScratch = this.scratchStateA?.active ?? false;
       const bScratch = this.scratchStateB?.active ?? false;
 
+      let positionA: number | undefined;
+      let positionB: number | undefined;
       if (this.deckSourceA && (!aPaused || aScratch) && now - this.lastPositionUpdateA >= this.POSITION_UPDATE_INTERVAL) {
         this.lastPositionUpdateA = now;
-        const position = this.getPosition('A');
-        this.onPositionUpdate?.('A', position);
-        storeState.setDeckPosition('A', position);
+        positionA = this.getPosition('A');
+        this.onPositionUpdate?.('A', positionA);
       }
       if (this.deckSourceB && (!bPaused || bScratch) && now - this.lastPositionUpdateB >= this.POSITION_UPDATE_INTERVAL) {
         this.lastPositionUpdateB = now;
-        const position = this.getPosition('B');
-        this.onPositionUpdate?.('B', position);
-        storeState.setDeckPosition('B', position);
+        positionB = this.getPosition('B');
+        this.onPositionUpdate?.('B', positionB);
       }
+      if (positionA !== undefined || positionB !== undefined) storeState.setDeckPositions(positionA, positionB);
       if (aPaused && !aScratch && bPaused && !bScratch) {
         this.positionIdleTimer = setTimeout(() => { this.animationFrameId = requestAnimationFrame(updatePositions); }, 250);
       } else this.animationFrameId = requestAnimationFrame(updatePositions);
