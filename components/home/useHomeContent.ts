@@ -70,6 +70,68 @@ const sortSongsForAlbum = (songs: Song[]) =>
     return (a.trackNumber || 0) - (b.trackNumber || 0);
   });
 
+interface HeapEntry<T> {
+  item: T;
+  index: number;
+}
+
+function selectTopK<T>(
+  items: readonly T[],
+  k: number,
+  compare: (a: T, b: T) => number,
+  include?: (item: T) => boolean,
+): T[] {
+  if (k <= 0 || items.length === 0) return [];
+
+  // Max-eviction heap: root is the worst element among the current top K
+  // (larger according to `compare`, breaking ties by larger original index).
+  const heap: HeapEntry<T>[] = [];
+  const isWorse = (a: HeapEntry<T>, b: HeapEntry<T>) => {
+    const cmp = compare(a.item, b.item);
+    return cmp > 0 || (cmp === 0 && a.index > b.index);
+  };
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (include && !include(item)) continue;
+
+    if (heap.length < k) {
+      heap.push({ item, index: i });
+      let idx = heap.length - 1;
+      while (idx > 0) {
+        const parent = (idx - 1) >> 1;
+        if (isWorse(heap[idx], heap[parent])) {
+          const tmp = heap[idx];
+          heap[idx] = heap[parent];
+          heap[parent] = tmp;
+          idx = parent;
+        } else {
+          break;
+        }
+      }
+    } else if (compare(item, heap[0].item) < 0) {
+      heap[0] = { item, index: i };
+      let idx = 0;
+      const len = heap.length;
+      while (true) {
+        const left = (idx << 1) + 1;
+        const right = left + 1;
+        let worst = idx;
+        if (left < len && isWorse(heap[left], heap[worst])) worst = left;
+        if (right < len && isWorse(heap[right], heap[worst])) worst = right;
+        if (worst === idx) break;
+        const tmp = heap[idx];
+        heap[idx] = heap[worst];
+        heap[worst] = tmp;
+        idx = worst;
+      }
+    }
+  }
+
+  heap.sort((a, b) => compare(a.item, b.item) || a.index - b.index);
+  return heap.map((entry) => entry.item);
+}
+
 export const useHomeContent = (): HomeContent => {
   const navigate = useNavigate();
   const songs = useStore(state => state.songs);
@@ -78,68 +140,78 @@ export const useHomeContent = (): HomeContent => {
   const openContextMenu = useStore(state => state.openContextMenu);
   const showSmartMixes = useStore(state => state.showSmartMixes);
   const artistMetadata = useStore(state => state.artistMetadata);
+  const homeLayoutVariant = useStore(state => state.homeLayoutVariant);
   const albums = useAlbums();
   const artists = useArtists();
 
-  const albumByName = useMemo(() => {
-    const map = new Map<string, Album>();
-    albums.forEach((album) => {
-      if (!map.has(album.name)) {
-        map.set(album.name, album);
-      }
-    });
-    return map;
-  }, [albums]);
+  const computeAll = homeLayoutVariant == null;
+  const needsFullRecentTracks = computeAll || homeLayoutVariant === 'shelves';
+  const needsTopAlbumsByPlays = computeAll || homeLayoutVariant === 'dashboard';
+  const needsTopArtistsByLibrary = computeAll || homeLayoutVariant === 'shelves' || homeLayoutVariant === 'coverWall';
+  const needsTopArtistsByPlays = computeAll || homeLayoutVariant === 'dashboard';
+  const needsCoverWallAlbums = computeAll || homeLayoutVariant === 'coverWall';
 
-  const recentlyPlayedTracks = useMemo(() => {
-    return [...songs]
-      .filter((song) => song.lastPlayed && song.lastPlayed > 0)
-      .sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0))
-      .slice(0, 20);
-  }, [songs]);
+  const recentTracksLimit = needsFullRecentTracks ? 20 : 6;
 
-  const recentlyPlayedAlbums = useMemo(() => {
-    const seen = new Set<string>();
-    const result: Album[] = [];
+  const recentTracksTop = useMemo(
+    () =>
+      selectTopK(
+        songs,
+        recentTracksLimit,
+        (a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0),
+        (song) => Boolean(song.lastPlayed && song.lastPlayed > 0),
+      ),
+    [recentTracksLimit, songs],
+  );
 
-    recentlyPlayedTracks.forEach((song) => {
-      const album = albumByName.get(song.album);
-      if (!album) return;
-
-      const key = getAlbumKey(album);
-      if (seen.has(key)) return;
-
-      seen.add(key);
-      result.push(album);
-    });
-
-    return result.slice(0, 10);
-  }, [albumByName, recentlyPlayedTracks]);
+  const recentlyPlayedTracks = useMemo(
+    () => (needsFullRecentTracks ? recentTracksTop : []),
+    [needsFullRecentTracks, recentTracksTop],
+  );
 
   const recentlyAddedAlbums = useMemo(() => albums.slice(0, 12), [albums]);
 
   const topAlbumsByPlays = useMemo(() => {
+    if (!needsTopAlbumsByPlays) return [];
+
     const playsByAlbum = new Map<string, number>();
+    for (let i = 0; i < songs.length; i++) {
+      const song = songs[i];
+      const plays = song.playCount || 0;
+      if (plays > 0) {
+        playsByAlbum.set(song.album, (playsByAlbum.get(song.album) || 0) + plays);
+      }
+    }
 
-    songs.forEach((song) => {
-      playsByAlbum.set(song.album, (playsByAlbum.get(song.album) || 0) + (song.playCount || 0));
-    });
+    if (playsByAlbum.size === 0) {
+      return albums.slice(0, 12);
+    }
 
-    const ranked = albums
-      .map((album) => ({ album, plays: playsByAlbum.get(album.name) || 0 }))
-      .filter((entry) => entry.plays > 0)
-      .sort((a, b) => b.plays - a.plays)
-      .map((entry) => entry.album);
+    const ranked = selectTopK(
+      albums,
+      12,
+      (a, b) => (playsByAlbum.get(b.name) || 0) - (playsByAlbum.get(a.name) || 0),
+      (album) => (playsByAlbum.get(album.name) || 0) > 0,
+    );
 
-    return (ranked.length > 0 ? ranked : albums).slice(0, 12);
-  }, [albums, songs]);
+    return ranked.length > 0 ? ranked : albums.slice(0, 12);
+  }, [albums, needsTopAlbumsByPlays, songs]);
 
-  const topArtistsByLibrary = useMemo(() => artists.slice(0, 12), [artists]);
+  const topArtistsByLibrary = useMemo(
+    () => (needsTopArtistsByLibrary ? artists.slice(0, 12) : []),
+    [artists, needsTopArtistsByLibrary],
+  );
 
   const topArtistsByPlays = useMemo(() => {
+    if (!needsTopArtistsByPlays) return [];
+
     const playsByArtist = new Map<string, number>();
     const namesByCredit = new Map<string, Set<string>>();
-    for (const song of songs) {
+    for (let i = 0; i < songs.length; i++) {
+      const song = songs[i];
+      const plays = song.playCount || 0;
+      if (plays <= 0) continue;
+
       const credit = song.artist;
       let names = namesByCredit.get(credit);
       if (!names) {
@@ -147,23 +219,83 @@ export const useHomeContent = (): HomeContent => {
         namesByCredit.set(credit, names);
       }
       for (const name of names) {
-        playsByArtist.set(name, (playsByArtist.get(name) || 0) + (song.playCount || 0));
+        playsByArtist.set(name, (playsByArtist.get(name) || 0) + plays);
       }
     }
-    const ranked = artists
-      .map(artist => ({ artist, plays: playsByArtist.get(artist.name.toLowerCase()) || 0 }))
-      .filter((entry) => entry.plays > 0)
-      .sort((a, b) => b.plays - a.plays)
-      .map((entry) => entry.artist);
 
-    return (ranked.length > 0 ? ranked : artists).slice(0, 12);
-  }, [artists, songs]);
+    if (playsByArtist.size === 0) {
+      return artists.slice(0, 12);
+    }
+
+    const ranked = selectTopK(
+      artists,
+      12,
+      (a, b) => (playsByArtist.get(b.name.toLowerCase()) || 0) - (playsByArtist.get(a.name.toLowerCase()) || 0),
+      (artist) => (playsByArtist.get(artist.name.toLowerCase()) || 0) > 0,
+    );
+
+    return ranked.length > 0 ? ranked : artists.slice(0, 12);
+  }, [artists, needsTopArtistsByPlays, songs]);
 
   const coverWallAlbums = useMemo(() => {
-    return [...albums]
-      .sort((a, b) => Number(Boolean(b.coverUrl)) - Number(Boolean(a.coverUrl)))
-      .slice(0, 16);
-  }, [albums]);
+    if (!needsCoverWallAlbums) return [];
+
+    const withCover: Album[] = [];
+    const withoutCover: Album[] = [];
+    for (let i = 0; i < albums.length; i++) {
+      const album = albums[i];
+      if (album.coverUrl) {
+        withCover.push(album);
+        if (withCover.length === 16) return withCover;
+      } else if (withCover.length + withoutCover.length < 16) {
+        withoutCover.push(album);
+      }
+    }
+
+    const remaining = 16 - withCover.length;
+    return remaining > 0 ? withCover.concat(withoutCover.slice(0, remaining)) : withCover;
+  }, [albums, needsCoverWallAlbums]);
+
+  const needsSpotlight =
+    computeAll ||
+    homeLayoutVariant === 'shelves' ||
+    (homeLayoutVariant === 'coverWall' && coverWallAlbums.length < 4);
+
+  const recentlyPlayedAlbums = useMemo(() => {
+    if (!needsSpotlight || recentTracksTop.length === 0 || albums.length === 0) {
+      return [];
+    }
+
+    const neededNames = new Set<string>();
+    for (let i = 0; i < recentTracksTop.length; i++) {
+      neededNames.add(recentTracksTop[i].album);
+    }
+
+    const matched = new Map<string, Album>();
+    for (let i = 0; i < albums.length; i++) {
+      const album = albums[i];
+      if (neededNames.has(album.name) && !matched.has(album.name)) {
+        matched.set(album.name, album);
+        if (matched.size === neededNames.size) break;
+      }
+    }
+
+    const seen = new Set<string>();
+    const result: Album[] = [];
+    for (let i = 0; i < recentTracksTop.length; i++) {
+      const album = matched.get(recentTracksTop[i].album);
+      if (!album) continue;
+
+      const key = getAlbumKey(album);
+      if (seen.has(key)) continue;
+
+      seen.add(key);
+      result.push(album);
+      if (result.length === 10) break;
+    }
+
+    return result;
+  }, [albums, needsSpotlight, recentTracksTop]);
 
   const formatRelativeTime = (timestamp: number): string => {
     const now = Date.now();
@@ -237,7 +369,9 @@ export const useHomeContent = (): HomeContent => {
   };
 
   const spotlightItem = useMemo<HomeSpotlightItem | null>(() => {
-    const album = recentlyPlayedAlbums[0] || recentlyAddedAlbums[0] || topAlbumsByPlays[0];
+    if (!needsSpotlight) return null;
+
+    const album = recentlyPlayedAlbums[0] || recentlyAddedAlbums[0] || topAlbumsByPlays[0] || albums[0];
     if (album) {
       return {
         kind: 'album',
@@ -251,7 +385,7 @@ export const useHomeContent = (): HomeContent => {
       };
     }
 
-    const artist = topArtistsByLibrary[0];
+    const artist = topArtistsByLibrary[0] || artists[0];
     if (artist) {
       return {
         kind: 'artist',
@@ -280,10 +414,10 @@ export const useHomeContent = (): HomeContent => {
     }
 
     return null;
-  }, [artistMetadata, recentlyAddedAlbums, recentlyPlayedAlbums, showSmartMixes, smartMixes, topAlbumsByPlays, topArtistsByLibrary]);
+  }, [albums, artistMetadata, artists, needsSpotlight, recentlyAddedAlbums, recentlyPlayedAlbums, showSmartMixes, smartMixes, topAlbumsByPlays, topArtistsByLibrary]);
 
   const quickTiles = useMemo<HomeQuickTileItem[]>(() => {
-    const trackTiles = recentlyPlayedTracks.slice(0, 6).map((song) => ({
+    const trackTiles = recentTracksTop.slice(0, 6).map((song) => ({
       id: song.id,
       title: song.title,
       subtitle: `${song.artist} • ${formatRelativeTime(song.lastPlayed || Date.now())}`,
@@ -310,7 +444,7 @@ export const useHomeContent = (): HomeContent => {
       onPlay: () => playAlbum(album),
       onContextMenu: (e: React.MouseEvent) => openAlbumMenu(e, album),
     }));
-  }, [recentlyAddedAlbums, recentlyPlayedTracks, songs]);
+  }, [recentTracksTop, recentlyAddedAlbums, songs]);
 
   return {
     songs,

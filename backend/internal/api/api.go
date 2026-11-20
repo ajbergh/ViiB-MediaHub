@@ -98,6 +98,11 @@ type API struct {
 	analysisPressure       playbackPressure
 	plexAnalysisMu         sync.Mutex
 	plexAnalysisGates      map[string]chan struct{}
+	djWaveformMu           sync.Mutex
+	djWaveformFlights      map[string]*djWaveformFlight
+	libraryPruneMu         sync.Mutex
+	libraryPruneRunning    bool
+	libraryLastPrunedRev   int64
 }
 
 // New constructs a new API instance using the given database and

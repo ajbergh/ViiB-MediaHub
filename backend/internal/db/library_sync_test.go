@@ -216,3 +216,50 @@ func TestConcurrentDeltaCannotAdvancePastUnseenChanges(t *testing.T) {
 		t.Fatalf("lost changes: %d", len(seen))
 	}
 }
+
+func TestRecordSongLibraryChangeNotifiesSubscribers(t *testing.T) {
+	database := openLibrarySyncTestDB(t)
+	ch, unsub := database.SubscribeLibraryRevision()
+	defer unsub()
+
+	if err := database.RecordSongLibraryChange("song-1"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-ch:
+	case <-time.After(time.Second):
+		t.Fatal("expected library revision notification after RecordSongLibraryChange")
+	}
+}
+
+func TestPruneLibraryChangesChunkedRetainsNewest(t *testing.T) {
+	database := openLibrarySyncTestDB(t)
+	tx, err := database.conn.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 5500; i++ {
+		if _, err := tx.Exec(`INSERT INTO library_changes(revision, song_id, operation, changed_at) VALUES (?, ?, 'upsert', 1)`, i, fmt.Sprint(i)); err != nil {
+			tx.Rollback()
+			t.Fatal(err)
+		}
+	}
+	if _, err := tx.Exec(`UPDATE library_state SET revision = 5500 WHERE id = 1`); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := database.PruneLibraryChanges(400); err != nil {
+		t.Fatal(err)
+	}
+	oldest, ok, err := database.OldestLibraryChangeRevision()
+	if err != nil || !ok {
+		t.Fatalf("oldest revision lookup failed: ok=%v err=%v", ok, err)
+	}
+	if oldest != 5100 {
+		t.Fatalf("oldest retained revision = %d, want 5100", oldest)
+	}
+}

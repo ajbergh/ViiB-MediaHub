@@ -44,8 +44,12 @@ function getBeatFXBpm(state: ReturnType<typeof useStore.getState>, target: BeatF
   return 120;
 }
 
+function isAbortError(error: unknown): boolean {
+  return (error as { name?: string } | null)?.name === 'AbortError';
+}
+
 function isSupersededTrackLoad(error: unknown): boolean {
-  return error instanceof Error && error.name === 'AbortError';
+  return isAbortError(error);
 }
 
 /** Discard only this load's audio; a newer deck operation always owns its own cleanup. */
@@ -57,19 +61,37 @@ function discardUncommittedLoad(engine: ReturnType<typeof getDJAudioEngine>, dec
 }
 
 /** A transient read may recover once, only while this audio load still owns the deck. */
-async function readDeckAnalysis(trackId: string, stillOwned: () => boolean) {
+async function readDeckAnalysis(trackId: string, stillOwned: () => boolean, signal?: AbortSignal) {
   for (let attempt = 0; attempt < 2; attempt++) {
-    if (!stillOwned()) return null;
+    if (!stillOwned() || signal?.aborted) return null;
     try {
-      return await api.getTrackAnalysisFeature(trackId);
+      return await api.getTrackAnalysisFeature(trackId, signal);
     } catch (error) {
       const status = (error as { status?: number } | null)?.status;
       if (status === 404) return null;
       const transient = status === undefined ? error instanceof TypeError
         : status >= 500 && status <= 599;
-      if ((error as { name?: string } | null)?.name === 'AbortError'
+      if (isAbortError(error) || signal?.aborted
         || !transient || attempt === 1 || !stillOwned()) throw error;
-      await new Promise(resolve => setTimeout(resolve, 250));
+      await new Promise<void>(resolve => {
+        if (!signal) {
+          setTimeout(resolve, 250);
+          return;
+        }
+        if (signal.aborted) {
+          resolve();
+          return;
+        }
+        const onAbort = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+        const timer = setTimeout(() => {
+          signal.removeEventListener('abort', onAbort);
+          resolve();
+        }, 250);
+        signal.addEventListener('abort', onAbort, { once: true });
+      });
     }
   }
   return null;
@@ -173,6 +195,7 @@ export interface UseDJAudioEngineReturn {
 
 export function useDJAudioEngine(): UseDJAudioEngineReturn {
   const isInitializedRef = useRef(false);
+  const loadAbortRef = useRef<Record<DeckId, AbortController | null>>({ A: null, B: null });
   
   // Get store actions (these don't cause re-renders - they're stable function references)
   const loadTrackToDeck = useStore(state => state.loadTrackToDeck);
@@ -293,13 +316,18 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
     }
 
     if (guard && (engine.getDeckLoadGeneration(deck) !== guard.expectedLoadGeneration || !guard.shouldCommit())) return;
+    loadAbortRef.current[deck]?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current[deck] = controller;
+    const { signal } = controller;
     const loadGeneration = engine.getDeckLoadGeneration(deck) + 1;
     const loadSession = useStore.getState().spotifySessionGeneration;
     try {
       logger.debug(`Calling engine.loadTrack for Deck ${deck}...`);
       await engine.loadTrack(deck, track);
       logger.debug(`engine.loadTrack complete, updating store...`);
-      if (engine.getDeckLoadGeneration(deck) !== loadGeneration
+      if (signal.aborted
+        || engine.getDeckLoadGeneration(deck) !== loadGeneration
         || engine.getDeckLoadedTrackId(deck) !== track.id || !engine.isLoaded(deck)
         || useStore.getState().spotifySessionGeneration !== loadSession
         || (guard && !guard.shouldCommit())) {
@@ -310,6 +338,7 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
       
       // Helper to check if the deck is still playing the same track
       const isTrackStillLoaded = () => {
+        if (signal.aborted) return false;
         const currentDeckState = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
         return currentDeckState.track?.id === track.id
           && engine.getDeckLoadGeneration(deck) === loadGeneration
@@ -321,7 +350,7 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
       const loadWaveform = async () => {
         try {
           // Try server-side first
-          const waveformResponse = await api.getDJWaveform(track.id);
+          const waveformResponse = await api.getDJWaveform(track.id, signal);
           if (waveformResponse && waveformResponse.peaks) {
             if (isTrackStillLoaded()) {
               setDeckWaveform(deck, waveformResponse.peaks);
@@ -330,18 +359,20 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
             return;
           }
         } catch (serverErr) {
+          if (isAbortError(serverErr) || signal.aborted) return;
           logger.debug(`Server waveform unavailable for Deck ${deck}, trying client-side generation...`);
         }
         
         // Fall back to client-side generation
         try {
           const audioUrl = `/api/audio/${track.id}`;
-          const peaks = await generateClientWaveform(audioUrl);
+          const peaks = await generateClientWaveform(audioUrl, undefined, signal);
           if (isTrackStillLoaded()) {
             setDeckWaveform(deck, peaks);
             logger.debug(`Waveform generated client-side for Deck ${deck}: ${peaks.length} peaks`);
           }
         } catch (clientErr) {
+          if (isAbortError(clientErr) || signal.aborted) return;
           logger.warn(`Failed to generate waveform for Deck ${deck}`, clientErr);
           // Non-critical error - waveform display will show loading state
         }
@@ -353,14 +384,17 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
       // Fetch the feature record first. A missing record means there cannot be
       // a persisted beat grid, so do not issue a second guaranteed 404.
       try {
-        const feature = await readDeckAnalysis(track.id, isTrackStillLoaded);
+        const feature = await readDeckAnalysis(track.id, isTrackStillLoaded, signal);
         if (!feature) {
           if (isTrackStillLoaded()) useStore.getState().setDeckAnalysisStatus(deck, 'not_analyzed');
         } else {
           if (!isTrackStillLoaded()) return;
           const grid = feature.status === 'unsupported' && feature.hasManualBeatGrid === false
             ? null
-            : await api.getTrackBeatGrid(track.id).catch(() => null);
+            : await api.getTrackBeatGrid(track.id, signal).catch(err => {
+              if (isAbortError(err)) throw err;
+              return null;
+            });
           if (isTrackStillLoaded()) {
             const loadedDeck = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
             const patch = resolvedGridPatch(feature, grid, loadedDeck.duration || track.duration || 0);
@@ -377,18 +411,20 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
           }
         }
       } catch (analysisErr) {
-        if (isTrackStillLoaded()) {
+        if (!isAbortError(analysisErr) && isTrackStillLoaded()) {
           reportAudioReadFailure('deck_analysis', analysisErr);
           useStore.getState().setDeckAnalysisStatus(deck, 'error');
         }
-        logger.debug(`Persisted analysis unavailable for Deck ${deck}`, analysisErr);
+        if (!isAbortError(analysisErr)) {
+          logger.debug(`Persisted analysis unavailable for Deck ${deck}`, analysisErr);
+        }
       }
       
       // Load hot cues from backend
       const loadSavedHotCues = async () => {
         try {
           logger.debug(`Loading hot cues for track ${track.id}...`);
-          const response = await api.getDJHotCues(track.id);
+          const response = await api.getDJHotCues(track.id, signal);
           
           if (!isTrackStillLoaded()) return;
           
@@ -401,6 +437,7 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
             logger.debug(`No hot cues found for track ${track.id}`);
           }
         } catch (hotCueErr) {
+          if (isAbortError(hotCueErr) || signal.aborted) return;
           logger.warn(`Failed to load hot cues for Deck ${deck}`, hotCueErr);
           if (isTrackStillLoaded()) {
             loadHotCues(deck, []);
@@ -602,6 +639,9 @@ export function useDJAudioEngine(): UseDJAudioEngineReturn {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      loadAbortRef.current.A?.abort();
+      loadAbortRef.current.B?.abort();
+      loadAbortRef.current = { A: null, B: null };
       // Don't dispose on unmount to allow returning to DJ mode
       // The engine will be disposed when the app closes
     };
@@ -1043,6 +1083,15 @@ export function useDJAudioEngineSync(): void {
  */
 export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
   const isInitializedRef = useRef(false);
+  const loadAbortRef = useRef<Record<DeckId, AbortController | null>>({ A: null, B: null });
+
+  useEffect(() => {
+    return () => {
+      loadAbortRef.current.A?.abort();
+      loadAbortRef.current.B?.abort();
+      loadAbortRef.current = { A: null, B: null };
+    };
+  }, []);
 
   // ---- Core lifecycle ----
 
@@ -1088,6 +1137,11 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
     if (guard && (!engine.initialized || engine.getDeckLoadGeneration(deck) !== guard.expectedLoadGeneration || !guard.shouldCommit())) return;
     if (!engine.initialized) await initialize();
 
+    if (guard && (engine.getDeckLoadGeneration(deck) !== guard.expectedLoadGeneration || !guard.shouldCommit())) return;
+    loadAbortRef.current[deck]?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current[deck] = controller;
+    const { signal } = controller;
     const loadGeneration = engine.getDeckLoadGeneration(deck) + 1;
     const loadSession = useStore.getState().spotifySessionGeneration;
     try {
@@ -1115,7 +1169,8 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
       }
       return;
     }
-    if (engine.getDeckLoadGeneration(deck) !== loadGeneration
+    if (signal.aborted
+      || engine.getDeckLoadGeneration(deck) !== loadGeneration
       || engine.getDeckLoadedTrackId(deck) !== track.id || !engine.isLoaded(deck)
       || useStore.getState().spotifySessionGeneration !== loadSession) {
       discardUncommittedLoad(engine, deck, loadGeneration);
@@ -1124,6 +1179,7 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
     useStore.getState().loadTrackToDeck(deck, track);
 
     const isTrackStillLoaded = () => {
+      if (signal.aborted) return false;
       const ds = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
       return ds.track?.id === track.id
         && engine.getDeckLoadGeneration(deck) === loadGeneration
@@ -1134,30 +1190,37 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
     // Waveform (async, non-blocking)
     (async () => {
       try {
-        const resp = await api.getDJWaveform(track.id);
+        const resp = await api.getDJWaveform(track.id, signal);
         if (resp?.peaks) { 
           if (isTrackStillLoaded()) useStore.getState().setDeckWaveform(deck, resp.peaks); 
           return; 
         }
-      } catch { /* server unavailable */ }
+      } catch (serverErr) {
+        if (isAbortError(serverErr) || signal.aborted) return;
+      }
       try {
-        const peaks = await generateClientWaveform(`/api/audio/${track.id}`);
+        const peaks = await generateClientWaveform(`/api/audio/${track.id}`, undefined, signal);
         if (isTrackStillLoaded()) useStore.getState().setDeckWaveform(deck, peaks);
-      } catch { /* non-critical */ }
+      } catch (clientErr) {
+        if (isAbortError(clientErr) || signal.aborted) return;
+      }
     })();
 
     // Resolve the feature first: beat-grid data cannot exist without its base
     // analysis feature, and issuing both requests together creates avoidable
     // 404s for tracks that have not been analysed.
     try {
-      const feature = await readDeckAnalysis(track.id, isTrackStillLoaded);
+      const feature = await readDeckAnalysis(track.id, isTrackStillLoaded, signal);
       if (!feature) {
         if (isTrackStillLoaded()) useStore.getState().setDeckAnalysisStatus(deck, 'not_analyzed');
       } else {
         if (!isTrackStillLoaded()) return;
         const grid = feature.status === 'unsupported' && feature.hasManualBeatGrid === false
           ? null
-          : await api.getTrackBeatGrid(track.id).catch(() => null);
+          : await api.getTrackBeatGrid(track.id, signal).catch(err => {
+            if (isAbortError(err)) throw err;
+            return null;
+          });
         if (isTrackStillLoaded()) {
           const loadedDeck = deck === 'A' ? useStore.getState().djDeckA : useStore.getState().djDeckB;
           const patch = resolvedGridPatch(feature, grid, loadedDeck.duration || track.duration || 0);
@@ -1174,7 +1237,7 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
         }
       }
     } catch (analysisErr) {
-      if (isTrackStillLoaded()) {
+      if (!isAbortError(analysisErr) && isTrackStillLoaded()) {
         reportAudioReadFailure('deck_analysis', analysisErr);
         useStore.getState().setDeckAnalysisStatus(deck, 'error');
       }
@@ -1183,14 +1246,15 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
     // Hot cues (async, non-blocking)
     (async () => {
       try {
-        const resp = await api.getDJHotCues(track.id);
+        const resp = await api.getDJHotCues(track.id, signal);
         if (!isTrackStillLoaded()) return;
         const cues = resp?.hotCues?.length
           ? resp.hotCues.map(hc => ({ ...hc }))
           : [];
         useStore.getState().loadHotCues(deck, cues);
-      } catch { 
-        if (isTrackStillLoaded()) useStore.getState().loadHotCues(deck, []); 
+      } catch (hotCueErr) {
+        if (isAbortError(hotCueErr) || signal.aborted) return;
+        if (isTrackStillLoaded()) useStore.getState().loadHotCues(deck, []);
       }
     })();
   }, [initialize]);

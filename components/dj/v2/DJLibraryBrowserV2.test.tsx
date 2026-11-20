@@ -6,10 +6,10 @@ const mocks = vi.hoisted(() => ({ load: vi.fn(), loadTrack: vi.fn(), scroll: vi.
 vi.mock('../../../store', () => { const useStore = (select: any) => select(mocks.state); Object.assign(useStore, { getState: () => mocks.state }); return { useStore }; });
 vi.mock('../../../services/api', () => ({ api: { getTrackAnalysisFeatures: mocks.load } }));
 vi.mock('../../../hooks/useDJAudioEngine', () => ({ useDJAudioEngineActions: () => ({ loadTrack: mocks.loadTrack }) }));
-vi.mock('react-virtuoso', () => ({ TableVirtuoso: React.forwardRef(function Table({ data, itemContent, context, components }: any, ref) {
+vi.mock('react-virtuoso', () => ({ TableVirtuoso: React.forwardRef(function Table({ data, itemContent, fixedHeaderContent, context, components }: any, ref) {
  React.useImperativeHandle(ref, () => ({ scrollIntoView: mocks.scroll }), []);
  const Row = components.TableRow;
- return <table><tbody>{data.map((item: any, index: number) => <Row key={item.id} item={item} context={context}>{itemContent(index, item)}</Row>)}</tbody></table>;
+ return <table><thead>{fixedHeaderContent?.()}</thead><tbody>{data.map((item: any, index: number) => <Row key={item.id} item={item} context={context}>{itemContent(index, item)}</Row>)}</tbody></table>;
 }) }));
 import { DJLibraryBrowserV2 } from './DJLibraryBrowserV2';
 import { browseDJMidiLibrary, loadDJMidiLibrary } from '../../../lib/djMidiLibrary';
@@ -155,5 +155,38 @@ it('shows only current effective meter with its provenance and no beat-grid side
   await act(async()=>root.unmount());
   localStorage.clear();
   mocks.state.songs = [{ id: 'a', title: 'Track', artist: 'Artist', album: 'Album', duration: 60, genre: [], addedAt: 1 }];
+ }
+});
+
+it('fetches only the initial viewport window on open and loads full analysis when sorting by BPM', async () => {
+ (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+ localStorage.clear();
+ const originalSongs = mocks.state.songs;
+ mocks.state.songs = Array.from({ length: 150 }, (_, index) => ({
+  id: `track-${String(index).padStart(3, '0')}`,
+  title: `Track ${String(index).padStart(3, '0')}`,
+  artist: 'Artist',
+  album: 'Album',
+  duration: 60,
+  genre: [],
+  addedAt: index,
+ }));
+ mocks.load.mockReset().mockResolvedValue([]);
+ const host = document.createElement('div');
+ const root = createRoot(host);
+ try {
+  await act(async () => root.render(<DJLibraryBrowserV2 />));
+  await flushAnalysis();
+  expect(mocks.load).toHaveBeenCalledTimes(1);
+  expect(mocks.load.mock.calls[0][0]).toHaveLength(100);
+
+  const bpmHeader = Array.from(host.querySelectorAll('th')).find(th => th.textContent?.includes('BPM'))!;
+  await act(async () => bpmHeader.click());
+  await flushAnalysis();
+  expect(mocks.load).toHaveBeenCalledTimes(2);
+  expect(mocks.load.mock.calls[1][0]).toBeUndefined();
+ } finally {
+  await act(async () => root.unmount());
+  mocks.state.songs = originalSongs;
  }
 });

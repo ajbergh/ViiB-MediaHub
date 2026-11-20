@@ -3,12 +3,14 @@
 package db
 
 import (
+	"cmp"
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // GenreStat represents aggregated statistics for a single music genre.
@@ -164,7 +166,7 @@ func (d *DB) UpdateGenreStats() error {
 	defer d.genreStatsMu.Unlock()
 
 	// 1. Fetch all songs with genres, including song IDs for cover URL generation
-	query := `SELECT id, artist, genre, cover_path FROM songs WHERE genre IS NOT NULL AND genre != '' AND genre != '[]'`
+	query := `SELECT id, artist, genre, cover_path FROM songs WHERE genre IS NOT NULL AND genre != '' AND genre != '[]' AND genre != 'null'`
 	rows, err := d.conn.Query(query)
 	if err != nil {
 		return fmt.Errorf("failed to query songs: %w", err)
@@ -172,62 +174,70 @@ func (d *DB) UpdateGenreStats() error {
 	defer rows.Close()
 
 	// 2. Aggregate genre statistics in memory
-	type songCover struct {
-		songID    string // Song ID for generating API cover URL
-		coverPath string // File path for fallback
-	}
 	type genreData struct {
-		count   int                  // Total number of tracks with this genre
-		artists map[string]int       // Artist name -> track count mapping
-		covers  map[string]songCover // Artist name -> cover info (for selecting representative cover)
+		count   int               // Total number of tracks with this genre
+		artists map[string]int    // Artist name -> track count mapping
+		covers  map[string]string // Artist name -> song ID (for selecting representative cover)
 	}
 	stats := make(map[string]*genreData)
+	genresBuf := make([]string, 0, 8)
+	var songID, artist, genreJSON string
+	var coverPath sql.NullString
 
 	for rows.Next() {
-		var songID string
-		var artist string
-		var genreJSON string
-		var coverPath sql.NullString
-
 		if err := rows.Scan(&songID, &artist, &genreJSON, &coverPath); err != nil {
 			continue
 		}
 
-		// Parse genre JSON array (e.g., ["Rock", "Alternative Rock"])
-		var genres []string
-		if err := json.Unmarshal([]byte(genreJSON), &genres); err != nil {
-			continue
+		genresBuf = genresBuf[:0]
+		if !parseGenreJSONArray(genreJSON, &genresBuf) {
+			if err := json.Unmarshal([]byte(genreJSON), &genresBuf); err != nil {
+				continue
+			}
 		}
 
 		// Process each individual genre tag
-		for _, g := range genres {
+		for _, g := range genresBuf {
 			g = strings.TrimSpace(g)
 			if g == "" {
 				continue
 			}
 
 			// Initialize genre data structure if this is the first occurrence
-			if _, exists := stats[g]; !exists {
-				stats[g] = &genreData{
+			entry, exists := stats[g]
+			if !exists {
+				entry = &genreData{
 					artists: make(map[string]int),
-					covers:  make(map[string]songCover),
+					covers:  make(map[string]string),
 				}
+				stats[g] = entry
 			}
 
-			entry := stats[g]
 			entry.count++
 			entry.artists[artist]++
 
 			// Store cover info for this artist (will use the most popular artist's cover later)
-			// Only update if we don't have a cover for this artist yet or if this song has a cover
+			// Only update if we don't have a cover for this artist yet
 			if coverPath.Valid && coverPath.String != "" {
-				if _, hascover := entry.covers[artist]; !hascover {
-					entry.covers[artist] = songCover{
-						songID:    songID,
-						coverPath: coverPath.String,
-					}
+				if _, hasCover := entry.covers[artist]; !hasCover {
+					entry.covers[artist] = songID
 				}
 			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("failed to iterate songs: %w", err)
+	}
+	rows.Close()
+
+	// Skip opening a write transaction when there are no song genres and genre_stats is already empty.
+	if len(stats) == 0 {
+		var hasExisting int
+		if err := d.conn.QueryRow(`SELECT EXISTS(SELECT 1 FROM genre_stats)`).Scan(&hasExisting); err != nil {
+			return err
+		}
+		if hasExisting == 0 {
+			return nil
 		}
 	}
 
@@ -243,30 +253,40 @@ func (d *DB) UpdateGenreStats() error {
 		return err
 	}
 
+	if len(stats) == 0 {
+		return tx.Commit()
+	}
+
 	stmt, err := tx.Prepare("INSERT INTO genre_stats (name, count, artists, cover_url) VALUES (?, ?, ?, ?)")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
+	type artistCount struct {
+		Name  string
+		Count int
+	}
+	var acs []artistCount
+	topArtists := make([]string, 0, 3)
+
 	// Insert computed statistics for each genre
 	for name, data := range stats {
-		// Sort artists by their track count in descending order to find top contributors
-		type artistCount struct {
-			Name  string
-			Count int
-		}
-		var acs []artistCount
+		acs = acs[:0]
 		for a, c := range data.artists {
 			acs = append(acs, artistCount{a, c})
 		}
-		sort.Slice(acs, func(i, j int) bool {
-			return acs[i].Count > acs[j].Count
+		slices.SortFunc(acs, func(a, b artistCount) int {
+			return cmp.Compare(b.Count, a.Count)
 		})
 
 		// Select up to 3 top artists for display in the UI
-		topArtists := make([]string, 0)
-		for i := 0; i < len(acs) && i < 3; i++ {
+		limit := len(acs)
+		if limit > 3 {
+			limit = 3
+		}
+		topArtists = topArtists[:0]
+		for i := 0; i < limit; i++ {
 			topArtists = append(topArtists, acs[i].Name)
 		}
 		artistsJSON, _ := json.Marshal(topArtists)
@@ -275,11 +295,10 @@ func (d *DB) UpdateGenreStats() error {
 		// This ensures the genre's visual representation matches its most prominent content
 		coverUrl := ""
 		if len(acs) > 0 {
-			topArtist := acs[0].Name
-			if cover, exists := data.covers[topArtist]; exists {
+			if repSongID, exists := data.covers[acs[0].Name]; exists {
 				// Use song ID-based URL for proper API routing through /api/cover/{songId}
 				// This works with the serveCover endpoint which handles song ID lookups
-				coverUrl = "/api/cover/" + cover.songID
+				coverUrl = "/api/cover/" + repSongID
 			}
 		}
 
@@ -288,7 +307,76 @@ func (d *DB) UpdateGenreStats() error {
 		}
 	}
 
+	if err := stmt.Close(); err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+// parseGenreJSONArray parses simple JSON string arrays without allocations or
+// reflection, returning false whenever escapes or non-standard syntax require
+// encoding/json fallback.
+func parseGenreJSONArray(s string, dst *[]string) bool {
+	if len(s) < 2 || strings.IndexByte(s, '\\') >= 0 || !utf8.ValidString(s) {
+		return false
+	}
+	i, n := 0, len(s)
+	for i < n && isJSONSpace(s[i]) {
+		i++
+	}
+	for n > i && isJSONSpace(s[n-1]) {
+		n--
+	}
+	if n-i < 2 || s[i] != '[' || s[n-1] != ']' {
+		return false
+	}
+	i++
+	end := n - 1
+	for i < end && isJSONSpace(s[i]) {
+		i++
+	}
+	if i == end {
+		return true
+	}
+	for {
+		if i >= end || s[i] != '"' {
+			*dst = (*dst)[:0]
+			return false
+		}
+		i++
+		start := i
+		for i < end && s[i] != '"' {
+			if s[i] < 0x20 {
+				*dst = (*dst)[:0]
+				return false
+			}
+			i++
+		}
+		if i >= end || s[i] != '"' {
+			*dst = (*dst)[:0]
+			return false
+		}
+		*dst = append(*dst, s[start:i])
+		i++
+		for i < end && isJSONSpace(s[i]) {
+			i++
+		}
+		if i == end {
+			return true
+		}
+		if s[i] != ',' {
+			*dst = (*dst)[:0]
+			return false
+		}
+		i++
+		for i < end && isJSONSpace(s[i]) {
+			i++
+		}
+	}
+}
+
+func isJSONSpace(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\r' || b == '\n'
 }
 
 // GetGenreNames returns all known genre names from the genre_stats table.

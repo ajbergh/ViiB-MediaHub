@@ -4,8 +4,48 @@ package db
 import (
 	"database/sql"
 	"encoding/json"
+	"sync"
 	"time"
 )
+
+var jobBrokers sync.Map // map[*DB]*changeBroker
+
+func (d *DB) jobBroker() *changeBroker {
+	if d == nil {
+		return nil
+	}
+	if value, ok := jobBrokers.Load(d); ok {
+		return value.(*changeBroker)
+	}
+	broker := &changeBroker{}
+	actual, _ := jobBrokers.LoadOrStore(d, broker)
+	return actual.(*changeBroker)
+}
+
+// NotifyJobEvent increments the job mutation sequence and wakes job SSE subscribers.
+func (d *DB) NotifyJobEvent() {
+	if broker := d.jobBroker(); broker != nil {
+		broker.notify()
+	}
+}
+
+// SubscribeJobEvents returns a channel signaled when job state changes in-process.
+func (d *DB) SubscribeJobEvents() (<-chan struct{}, func()) {
+	broker := d.jobBroker()
+	if broker == nil {
+		return nil, func() {}
+	}
+	return broker.subscribe()
+}
+
+// JobEventSequence returns the monotonic in-process job mutation counter.
+func (d *DB) JobEventSequence() uint64 {
+	broker := d.jobBroker()
+	if broker == nil {
+		return 0
+	}
+	return broker.sequence()
+}
 
 // CreateJob persists a new job in its supplied state, defaulting to queued.
 func (d *DB) CreateJob(job Job) error {
@@ -27,6 +67,9 @@ func (d *DB) CreateJob(job Job) error {
 	`, job.ID, job.Type, job.Status, job.ProgressCurrent, job.ProgressTotal,
 		job.Message, nullableJSON(job.Parameters), nullableJSON(job.Result),
 		job.ErrorCode, job.ErrorMessage, job.Attempts, job.Priority, job.CreatedAt, job.UpdatedAt)
+	if err == nil {
+		d.NotifyJobEvent()
+	}
 	return err
 }
 
@@ -70,7 +113,11 @@ func (d *DB) QueueStemLibraryScan(job Job) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return id, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
+	d.NotifyJobEvent()
+	return id, nil
 }
 
 // StartJob atomically claims a queued, failed, or interrupted job for execution.
@@ -97,6 +144,7 @@ func (d *DB) StartJob(id, message string) error {
 	if rows == 0 {
 		return sql.ErrNoRows
 	}
+	d.NotifyJobEvent()
 	return nil
 }
 
@@ -122,7 +170,11 @@ func (d *DB) ClaimNextQueuedJob(message string) (Job, error) {
 		RETURNING id, type, status, progress_current, progress_total, message, parameters, result,
 		error_code, error_message, attempts, priority, created_at, started_at, completed_at, updated_at`,
 		JobStatusRunning, message, now, now, JobStatusQueued, now, JobStatusQueued)
-	return scanJob(row)
+	job, err := scanJob(row)
+	if err == nil {
+		d.NotifyJobEvent()
+	}
+	return job, err
 }
 
 // PauseQueuedJobs prevents queued work from being claimed without disrupting
@@ -132,7 +184,11 @@ func (d *DB) PauseQueuedJobs() (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return result.RowsAffected()
+	rows, err := result.RowsAffected()
+	if err == nil && rows > 0 {
+		d.NotifyJobEvent()
+	}
+	return rows, err
 }
 
 // ResumePausedJobs returns paused work to the durable queue.
@@ -141,7 +197,11 @@ func (d *DB) ResumePausedJobs() (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return result.RowsAffected()
+	rows, err := result.RowsAffected()
+	if err == nil && rows > 0 {
+		d.NotifyJobEvent()
+	}
+	return rows, err
 }
 
 // RequeueJob returns a running job to the durable queue without recording a
@@ -159,6 +219,9 @@ func (d *DB) RequeueJob(id, message string, notBefore time.Duration) (bool, erro
 		return false, err
 	}
 	rows, err := result.RowsAffected()
+	if err == nil && rows > 0 {
+		d.NotifyJobEvent()
+	}
 	return rows > 0, err
 }
 
@@ -171,7 +234,11 @@ func (d *DB) ClearJobBackoff() (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return result.RowsAffected()
+	rows, err := result.RowsAffected()
+	if err == nil && rows > 0 {
+		d.NotifyJobEvent()
+	}
+	return rows, err
 }
 
 // CountPendingJobsByType counts jobs of one type that are not yet settled. It
@@ -189,11 +256,17 @@ func (d *DB) CountPendingJobsByType(jobType string) (int, error) {
 
 // UpdateJobProgress records progress only while a job is running.
 func (d *DB) UpdateJobProgress(id string, current, total int64, message string) error {
-	_, err := d.conn.Exec(`
+	result, err := d.conn.Exec(`
 		UPDATE operation_jobs SET progress_current = ?, progress_total = ?,
 		message = ?, updated_at = ? WHERE id = ? AND status = ?
 	`, current, total, message, time.Now().UnixMilli(), id, JobStatusRunning)
-	return err
+	if err != nil {
+		return err
+	}
+	if rows, rowsErr := result.RowsAffected(); rowsErr == nil && rows > 0 {
+		d.NotifyJobEvent()
+	}
+	return nil
 }
 
 // CompleteJob records a successful terminal result for a job.
@@ -207,6 +280,9 @@ func (d *DB) CompleteJob(id string, result any, message string) error {
 		UPDATE operation_jobs SET status = ?, result = ?, message = ?,
 		completed_at = ?, updated_at = ? WHERE id = ?
 	`, JobStatusSucceeded, string(payload), message, now, now, id)
+	if err == nil {
+		d.NotifyJobEvent()
+	}
 	return err
 }
 
@@ -226,6 +302,9 @@ func (d *DB) CompleteJobIfRunning(id string, result any, message string) (bool, 
 		return false, err
 	}
 	rows, err := updated.RowsAffected()
+	if err == nil && rows > 0 {
+		d.NotifyJobEvent()
+	}
 	return rows > 0, err
 }
 
@@ -236,6 +315,9 @@ func (d *DB) FailJob(id, code, message string) error {
 		UPDATE operation_jobs SET status = ?, error_code = ?, error_message = ?,
 		message = ?, completed_at = ?, updated_at = ? WHERE id = ?
 	`, JobStatusFailed, code, message, message, now, now, id)
+	if err == nil {
+		d.NotifyJobEvent()
+	}
 	return err
 }
 
@@ -254,8 +336,12 @@ func (d *DB) RequestJobCancellation(id string) (bool, error) {
 		return false, err
 	}
 	rows, err := result.RowsAffected()
-	if err != nil || rows > 0 {
-		return rows > 0, err
+	if err != nil {
+		return false, err
+	}
+	if rows > 0 {
+		d.NotifyJobEvent()
+		return true, nil
 	}
 
 	result, err = d.conn.Exec(`
@@ -266,6 +352,9 @@ func (d *DB) RequestJobCancellation(id string) (bool, error) {
 		return false, err
 	}
 	rows, err = result.RowsAffected()
+	if err == nil && rows > 0 {
+		d.NotifyJobEvent()
+	}
 	return rows > 0, err
 }
 
@@ -275,6 +364,9 @@ func (d *DB) CancelJob(id, message string) error {
 	_, err := d.conn.Exec(`
 		UPDATE operation_jobs SET status = ?, message = ?, completed_at = ?, updated_at = ? WHERE id = ?
 	`, JobStatusCanceled, message, now, now, id)
+	if err == nil {
+		d.NotifyJobEvent()
+	}
 	return err
 }
 
@@ -377,5 +469,8 @@ func (d *DB) QueueMissingAnalysisIfNeeded(job Job) (bool, error) {
 		return false, err
 	}
 	n, err := result.RowsAffected()
+	if err == nil && n == 1 {
+		d.NotifyJobEvent()
+	}
 	return n == 1, err
 }

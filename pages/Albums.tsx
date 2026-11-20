@@ -30,6 +30,7 @@ import { LibraryListHeader, LibraryListRow } from '../components/ui/LibraryList'
 import { TextInput } from '../components/ui/TextInput';
 import { coverThumbnailUrl, resolveAlbumArtwork } from '../lib/artwork';
 import { useVisibleAlbumEnrichment } from '../hooks/useBackgroundEnrichment';
+import { sortByTextKey } from '../lib/libraryIndex';
 
 type AlbumSortOption = 'recent' | 'name-asc' | 'name-desc' | 'artist-asc' | 'artist-desc' | 'songs-desc' | 'songs-asc';
 
@@ -85,34 +86,39 @@ export const Albums: React.FC = () => {
   }, []);
 
   const sortedAlbums = useMemo(() => {
-    const sorted = [...albums];
     switch (sortBy) {
       case 'recent':
-        return sorted.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+        return [...albums].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
       case 'name-asc':
-        return sorted.sort((a, b) => a.name.localeCompare(b.name));
+        return sortByTextKey(albums, album => album.name, 'asc');
       case 'name-desc':
-        return sorted.sort((a, b) => b.name.localeCompare(a.name));
+        return sortByTextKey(albums, album => album.name, 'desc');
       case 'artist-asc':
-        return sorted.sort((a, b) => a.artist.localeCompare(b.artist));
+        return sortByTextKey(albums, album => album.artist, 'asc');
       case 'artist-desc':
-        return sorted.sort((a, b) => b.artist.localeCompare(a.artist));
+        return sortByTextKey(albums, album => album.artist, 'desc');
       case 'songs-desc':
-        return sorted.sort((a, b) => b.songCount - a.songCount);
+        return [...albums].sort((a, b) => b.songCount - a.songCount);
       case 'songs-asc':
-        return sorted.sort((a, b) => a.songCount - b.songCount);
+        return [...albums].sort((a, b) => a.songCount - b.songCount);
       default:
-        return sorted;
+        return [...albums];
     }
   }, [albums, sortBy]);
 
+  const searchTextByAlbum = useMemo(() => new WeakMap<typeof albums[number], string>(), [albums]);
   const filteredAlbums = useMemo(() => {
     if (!deferredFilter.trim()) return sortedAlbums;
     const query = deferredFilter.toLowerCase();
-    return sortedAlbums.filter(
-      album => album.name.toLowerCase().includes(query) || album.artist.toLowerCase().includes(query)
-    );
-  }, [sortedAlbums, deferredFilter]);
+    return sortedAlbums.filter(album => {
+      let text = searchTextByAlbum.get(album);
+      if (text === undefined) {
+        text = `${album.name}\u0000${album.artist}`.toLowerCase();
+        searchTextByAlbum.set(album, text);
+      }
+      return text.includes(query);
+    });
+  }, [sortedAlbums, deferredFilter, searchTextByAlbum]);
   const visibleAlbums = useMemo(() => filteredAlbums.slice(visibleRange.startIndex, visibleRange.endIndex + 1), [filteredAlbums, visibleRange]);
   useVisibleAlbumEnrichment(visibleAlbums);
 

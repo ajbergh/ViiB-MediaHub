@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"errors"
 	"github.com/google/uuid"
 	"time"
@@ -18,6 +19,16 @@ func (d *DB) ClaimWaveformLease(song, fingerprint string) (string, bool, error) 
 		return "", false, err
 	}
 	now := time.Now().UnixMilli()
+	var busy int
+	err := d.conn.QueryRow(`SELECT 1 WHERE EXISTS(SELECT 1 FROM track_analysis WHERE song_id=? AND status='running' AND analyzed_at>?)
+ OR EXISTS(SELECT 1 FROM track_waveform_leases WHERE song_id=? AND renewed_at>?)`,
+		song, now-TrackAnalysisLeaseMillis, song, now-TrackAnalysisLeaseMillis).Scan(&busy)
+	if err == nil {
+		return "", false, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return "", false, err
+	}
 	token := uuid.NewString()
 	result, err := d.conn.Exec(`INSERT INTO track_waveform_leases(song_id,source_fingerprint,token,renewed_at)
  SELECT ?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM track_analysis WHERE song_id=? AND status='running' AND analyzed_at>?)

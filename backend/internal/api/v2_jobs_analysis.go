@@ -62,16 +62,39 @@ func (a *API) runAnalyzeTracksJob(job db.Job) {
 		_ = a.db.FailJob(job.ID, "invalid_analysis_selection", err.Error())
 		return
 	}
+	// Yield before expanding selection rather than scanning the whole catalog
+	// while DJ playback is active.
+	if a.analysisThrottled(job.Priority) {
+		a.deferAnalysisJob(job.ID)
+		return
+	}
 	ctx, cancel := a.analysisJobContext(job.ID)
 	defer cancel()
-	songIDs, err := track.ExpandPreparationJobSelection(ctx, a.db, selection, func(ctx context.Context, id string) (analysis.ResolvedSource, error) {
-		if a.jobCancellationRequested(job.ID) {
-			cancel()
-			return analysis.ResolvedSource{}, context.Canceled
+	var resolveSource func(context.Context, string) (analysis.ResolvedSource, error)
+	if selection.Source != "" && selection.Source != db.AnalysisSourceLocal {
+		resolveSource = func(ctx context.Context, id string) (analysis.ResolvedSource, error) {
+			if a.jobCancellationRequested(job.ID) {
+				cancel()
+				return analysis.ResolvedSource{}, context.Canceled
+			}
+			return a.resolveAnalysisSource(ctx, id)
 		}
-		return a.resolveAnalysisSource(ctx, id)
+	}
+	songIDs, err := track.ExpandPreparationJobSelectionWithOptions(ctx, a.db, selection, track.SelectionOptions{
+		ResolveSource: resolveSource,
+		Canceled:      func() bool { return a.jobCancellationRequested(job.ID) },
+		Throttle: func(context.Context) error {
+			if a.analysisThrottled(job.Priority) {
+				return errAnalysisDeferred
+			}
+			return nil
+		},
 	})
 	if err != nil {
+		if errors.Is(err, errAnalysisDeferred) {
+			a.deferAnalysisJob(job.ID)
+			return
+		}
 		if errors.Is(err, track.ErrPreparationBusy) {
 			a.deferPreparationClaimJob(job.ID)
 			return

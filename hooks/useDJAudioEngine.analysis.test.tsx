@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Song } from '../types';
 const mocks = vi.hoisted(() => ({
  state: {} as any, generation: 0, loadedId: null as string | null,
- feature: vi.fn(), grid: vi.fn(), patch: vi.fn(), status: vi.fn(), audioLoad: vi.fn(),
+ feature: vi.fn(), grid: vi.fn(), waveform: vi.fn(), hotCues: vi.fn(), clientWaveform: vi.fn(),
+ patch: vi.fn(), status: vi.fn(), audioLoad: vi.fn(),
  engine: {} as any,
 }));
 vi.mock('../store', () => {
@@ -16,9 +17,9 @@ vi.mock('../store', () => {
 vi.mock('../lib/djAudio', () => ({ getDJAudioEngine: () => mocks.engine, disposeDJAudioEngine: vi.fn() }));
 vi.mock('../services/api', () => ({ api: {
  getTrackAnalysisFeature: mocks.feature, getTrackBeatGrid: mocks.grid,
- getDJWaveform: vi.fn(async () => ({peaks:[0]})), getDJHotCues: vi.fn(async () => ({hotCues:[]})),
+ getDJWaveform: mocks.waveform, getDJHotCues: mocks.hotCues,
 } }));
-vi.mock('../lib/clientWaveform', () => ({ generateClientWaveform: vi.fn() }));
+vi.mock('../lib/clientWaveform', () => ({ generateClientWaveform: mocks.clientWaveform }));
 vi.mock('../services/loggerService', () => ({ createLogger: () => ({debug:vi.fn(), info:vi.fn(), warn:vi.fn(), logError:vi.fn()}) }));
 import { useDJAudioEngine, useDJAudioEngineActions } from './useDJAudioEngine';
 const song = {id:'song',title:'Track',duration:60} as Song;
@@ -29,6 +30,9 @@ beforeEach(() => {
  (globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;
  vi.useFakeTimers(); mocks.generation=0; mocks.loadedId=null;
  mocks.feature.mockReset().mockResolvedValue(feature); mocks.grid.mockReset().mockResolvedValue(null);
+ mocks.waveform.mockReset().mockResolvedValue({peaks:[0]});
+ mocks.hotCues.mockReset().mockResolvedValue({hotCues:[]});
+ mocks.clientWaveform.mockReset().mockResolvedValue([0]);
  mocks.patch.mockReset();mocks.status.mockReset();mocks.audioLoad.mockReset();
  const deck=()=>({track:null,duration:0,volume:1,eq:{low:0,mid:0,high:0},tempo:0,cueEnabled:false});
  mocks.state={spotifySessionGeneration:0,djDeckA:deck(),djDeckB:deck(),djMixer:{beatFX:{target:'A'}},
@@ -131,7 +135,7 @@ for (const [name,useAudio] of [['full',useDJAudioEngine],['actions',useDJAudioEn
    mocks.feature.mockResolvedValueOnce({songId:'song',status:'unsupported',hasManualBeatGrid:true,bpmSource:'unknown',keySource:'unknown',syncAllowed:false,sourceFingerprint:'fp'});
    mocks.grid.mockResolvedValueOnce({songId:'song',resolution:'available',source:'manual',provenance:'manual',beats:[0,0.5,1],downbeatIndices:[0],locked:true,sourceFingerprint:'fp'});
    await mounted(async audio=>{await audio.loadTrack('A',song);});
-   expect(mocks.grid).toHaveBeenCalledWith('song');
+   expect(mocks.grid).toHaveBeenCalledWith('song',expect.any(AbortSignal));
    expect(mocks.patch).toHaveBeenCalledWith('A',expect.objectContaining({beatGrid:[0,0.5,1],beatGridSource:'manual',beatGridLocked:true}));
    expect(mocks.status).toHaveBeenLastCalledWith('A','available');
   });
@@ -140,6 +144,57 @@ for (const [name,useAudio] of [['full',useDJAudioEngine],['actions',useDJAudioEn
    await mounted(async audio=>{await audio.loadTrack('A',song);});
    expect(mocks.grid).not.toHaveBeenCalled();
    expect(mocks.status).toHaveBeenLastCalledWith('A','available');
+  });
+  it('aborts superseded deck requests and passes signals to waveform, client fallback, analysis, grid, and hot cues',async()=>{
+   const signals: Record<string, AbortSignal|undefined>={};
+   const pendingClient=deferred<number[]>();
+   const pendingHotCues=deferred<{hotCues:[]}>();
+   mocks.waveform.mockImplementationOnce(async (_id:string,s?:AbortSignal)=>{signals.waveform=s;throw new Error('no server waveform');});
+   mocks.clientWaveform.mockImplementationOnce(async (_u:string,_p:unknown,s?:AbortSignal)=>{signals.client=s;return pendingClient.promise;});
+   mocks.feature.mockImplementationOnce(async (_id:string,s?:AbortSignal)=>{signals.feature=s;return feature;});
+   mocks.grid.mockImplementationOnce(async (_id:string,s?:AbortSignal)=>{signals.grid=s;return null;});
+   mocks.hotCues.mockImplementationOnce(async (_id:string,s?:AbortSignal)=>{signals.hotCues=s;return pendingHotCues.promise;});
+   const deckBSignals: AbortSignal[]=[];
+   mocks.feature.mockImplementationOnce(async (_id:string,s?:AbortSignal)=>{if(s)deckBSignals.push(s);return feature;});
+   await mounted(async audio=>{
+    const first=audio.loadTrack('A',song);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(signals.waveform).toBeInstanceOf(AbortSignal);
+    expect(signals.client).toBe(signals.waveform);
+    expect(signals.feature).toBe(signals.waveform);
+    expect(signals.grid).toBe(signals.waveform);
+    expect(signals.hotCues).toBe(signals.waveform);
+    expect(signals.waveform!.aborted).toBe(false);
+    await audio.loadTrack('B',{...song,id:'song-b'});
+    expect(signals.waveform!.aborted).toBe(false);
+    expect(deckBSignals[0]?.aborted).toBe(false);
+    await audio.loadTrack('A',{...song,id:'song-2'});
+    expect(signals.waveform!.aborted).toBe(true);
+    expect(deckBSignals[0]?.aborted).toBe(false);
+    await first;
+   });
+   expect(mocks.status).not.toHaveBeenCalledWith('A','error');
+  });
+  it('aborts in-flight deck requests on unmount and ignores AbortError cleanly',async()=>{
+   let captured: AbortSignal|undefined;
+   const pendingFeature=deferred<typeof feature>();
+   const pendingHotCues=deferred<{hotCues:[]}>();
+   mocks.feature.mockImplementationOnce(async (_id:string,s?:AbortSignal)=>{captured=s;return pendingFeature.promise;});
+   mocks.hotCues.mockImplementationOnce(async ()=>pendingHotCues.promise);
+   const root=createRoot(document.createElement('div'));
+   let audio!:ReturnType<typeof useAudio>;
+   function Harness(){audio=useAudio();return null;}
+   await act(async()=>root.render(<Harness/>));
+   const load=audio.loadTrack('A',song);
+   await vi.advanceTimersByTimeAsync(0);
+   expect(captured?.aborted).toBe(false);
+   await act(async()=>root.unmount());
+   expect(captured?.aborted).toBe(true);
+   pendingFeature.reject(new DOMException('aborted','AbortError'));
+   pendingHotCues.reject(new DOMException('aborted','AbortError'));
+   await load;
+   expect(mocks.status).not.toHaveBeenCalledWith('A','error');
+   expect(mocks.state.loadHotCues).not.toHaveBeenCalled();
   });
  });
 }

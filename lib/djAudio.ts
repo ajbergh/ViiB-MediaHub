@@ -242,7 +242,6 @@ export class DJAudioEngine {
 
   // Animation frame for position updates
   private animationFrameId: number | null = null;
-  private vuAnimationFrameId: number | null = null;
   
   private trackLoadGenerationA = 0;
   private trackLoadGenerationB = 0;
@@ -272,8 +271,13 @@ export class DJAudioEngine {
   }>> = {};
 
   // VU metering state
+  private readonly VU_SAMPLE_INTERVAL_MS = 40; // ~25 Hz shared sample cadence
   private vuLevels: VULevels = { deckA: { left: 0, right: 0 }, deckB: { left: 0, right: 0 }, master: { left: 0, right: 0 } };
-  private vuIdleTimer: ReturnType<typeof setTimeout> | null = null;
+  private vuTimerId: ReturnType<typeof setTimeout> | null = null;
+  private vuDataA: Uint8Array<ArrayBuffer> | null = null;
+  private vuDataB: Uint8Array<ArrayBuffer> | null = null;
+  private vuDataMaster: Uint8Array<ArrayBuffer> | null = null;
+  private lastVUSampleTime = -Infinity;
 
   constructor(config?: DJAudioEngineConfig) {
     this.config = {
@@ -2916,68 +2920,98 @@ export class DJAudioEngine {
   // VU Metering
   // ============================================================================
 
-  private startVUMetering(): void {
-    const bufferLengthA = this.analyserA?.frequencyBinCount || 128;
-    const bufferLengthB = this.analyserB?.frequencyBinCount || 128;
-    const bufferLengthMaster = this.analyserMaster?.frequencyBinCount || 128;
-    
-    const dataArrayA = new Uint8Array(bufferLengthA);
-    const dataArrayB = new Uint8Array(bufferLengthB);
-    const dataArrayMaster = new Uint8Array(bufferLengthMaster);
+  private ensureVUDataBuffer(
+    current: Uint8Array<ArrayBuffer> | null,
+    analyser: AnalyserNode,
+  ): Uint8Array<ArrayBuffer> {
+    const length = analyser.frequencyBinCount || 128;
+    if (current && current.length === length) return current;
+    return new Uint8Array(length);
+  }
 
-    const updateVU = () => {
-      // When both decks are paused, skip expensive FFT and throttle to ~4fps
-      const aPaused = !this.deckSourceA || !this.deckSourceA.isPlaying();
-      const bPaused = !this.deckSourceB || !this.deckSourceB.isPlaying();
-      if (aPaused && bPaused && !this.isScratching('A') && !this.isScratching('B')) {
-        this.vuLevels = {
-          deckA: { left: 0, right: 0 },
-          deckB: { left: 0, right: 0 },
-          master: { left: 0, right: 0 },
-        };
-        this.onVUUpdate?.(this.vuLevels);
-        if (this.vuIdleTimer) clearTimeout(this.vuIdleTimer);
-        this.vuIdleTimer = setTimeout(() => {
-          this.vuAnimationFrameId = requestAnimationFrame(updateVU);
-        }, 250);
-        return;
-      }
-      if (this.vuIdleTimer) {
-        clearTimeout(this.vuIdleTimer);
-        this.vuIdleTimer = null;
-      }
+  private sampleVULevels(force = false): VULevels {
+    const now = performance.now();
+    if (!force && now - this.lastVUSampleTime < this.VU_SAMPLE_INTERVAL_MS) {
+      return this.vuLevels;
+    }
+    this.lastVUSampleTime = now;
 
-      const levels: VULevels = {
+    const aActive = Boolean(this.deckSourceA?.isPlaying() || this.isScratching('A'));
+    const bActive = Boolean(this.deckSourceB?.isPlaying() || this.isScratching('B'));
+    if (!aActive && !bActive) {
+      this.vuLevels = {
         deckA: { left: 0, right: 0 },
         deckB: { left: 0, right: 0 },
         master: { left: 0, right: 0 },
       };
+      return this.vuLevels;
+    }
 
-      // Get levels from analysers
-      if (this.analyserA) {
-        this.analyserA.getByteFrequencyData(dataArrayA);
-        const avg = this.getAverageLevel(dataArrayA);
-        levels.deckA = { left: avg, right: avg }; // Mono for now
-      }
-
-      if (this.analyserB) {
-        this.analyserB.getByteFrequencyData(dataArrayB);
-        const avg = this.getAverageLevel(dataArrayB);
-        levels.deckB = { left: avg, right: avg };
-      }
-
-      if (this.analyserMaster) {
-        this.analyserMaster.getByteFrequencyData(dataArrayMaster);
-        const avg = this.getAverageLevel(dataArrayMaster);
-        levels.master = { left: avg, right: avg };
-      }
-
-      this.vuLevels = levels;
-      this.onVUUpdate?.(levels);
-      this.vuAnimationFrameId = requestAnimationFrame(updateVU);
+    const levels: VULevels = {
+      deckA: { left: 0, right: 0 },
+      deckB: { left: 0, right: 0 },
+      master: { left: 0, right: 0 },
     };
 
-    this.vuAnimationFrameId = requestAnimationFrame(updateVU);
+    if (aActive && this.analyserA) {
+      this.vuDataA = this.ensureVUDataBuffer(this.vuDataA, this.analyserA);
+      this.analyserA.getByteFrequencyData(this.vuDataA);
+      const avg = this.getAverageLevel(this.vuDataA);
+      levels.deckA = { left: avg, right: avg };
+    }
+
+    if (bActive && this.analyserB) {
+      this.vuDataB = this.ensureVUDataBuffer(this.vuDataB, this.analyserB);
+      this.analyserB.getByteFrequencyData(this.vuDataB);
+      const avg = this.getAverageLevel(this.vuDataB);
+      levels.deckB = { left: avg, right: avg };
+    }
+
+    if (this.analyserMaster) {
+      this.vuDataMaster = this.ensureVUDataBuffer(this.vuDataMaster, this.analyserMaster);
+      this.analyserMaster.getByteFrequencyData(this.vuDataMaster);
+      const avg = this.getAverageLevel(this.vuDataMaster);
+      levels.master = { left: avg, right: avg };
+    }
+
+    this.vuLevels = levels;
+    return levels;
+  }
+
+  private scheduleVUCallbackLoop(): void {
+    if (this.vuTimerId) {
+      clearTimeout(this.vuTimerId);
+      this.vuTimerId = null;
+    }
+    if (!this.onVUUpdate) return;
+
+    const tick = () => {
+      this.vuTimerId = null;
+      if (!this.isInitialized || !this.onVUUpdate) return;
+      const levels = this.sampleVULevels(true);
+      this.onVUUpdate(levels);
+      const active = Boolean(
+        this.deckSourceA?.isPlaying()
+        || this.deckSourceB?.isPlaying()
+        || this.isScratching('A')
+        || this.isScratching('B'),
+      );
+      this.vuTimerId = setTimeout(tick, active ? this.VU_SAMPLE_INTERVAL_MS : 250);
+    };
+
+    this.vuTimerId = setTimeout(tick, this.VU_SAMPLE_INTERVAL_MS);
+  }
+
+  private startVUMetering(): void {
+    this.lastVUSampleTime = -Infinity;
+    if (this.analyserA) this.vuDataA = this.ensureVUDataBuffer(this.vuDataA, this.analyserA);
+    if (this.analyserB) this.vuDataB = this.ensureVUDataBuffer(this.vuDataB, this.analyserB);
+    if (this.analyserMaster) this.vuDataMaster = this.ensureVUDataBuffer(this.vuDataMaster, this.analyserMaster);
+    // Poll on a lightweight ~25 Hz timer only when an onVUUpdate listener is registered;
+    // visual meters (DJVUMeter / DJScopeView) pull lazily via getVULevels() on demand.
+    if (this.onVUUpdate) {
+      this.scheduleVUCallbackLoop();
+    }
   }
 
   private getAverageLevel(dataArray: Uint8Array): number {
@@ -2996,8 +3030,18 @@ export class DJAudioEngine {
     this.onPositionUpdate = callback;
   }
 
-  setOnVUUpdate(callback: (levels: VULevels) => void): void {
+  setOnVUUpdate(callback: ((levels: VULevels) => void) | null): void {
     this.onVUUpdate = callback;
+    if (!callback) {
+      if (this.vuTimerId) {
+        clearTimeout(this.vuTimerId);
+        this.vuTimerId = null;
+      }
+      return;
+    }
+    if (this.isInitialized && !this.vuTimerId) {
+      this.scheduleVUCallbackLoop();
+    }
   }
 
   setOnTrackEnd(callback: (deck: DeckId) => void): void {
@@ -3032,9 +3076,6 @@ export class DJAudioEngine {
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
     }
-    if (this.vuAnimationFrameId) {
-      cancelAnimationFrame(this.vuAnimationFrameId);
-    }
     if (this.positionIdleTimer) {
       clearTimeout(this.positionIdleTimer);
       this.positionIdleTimer = null;
@@ -3047,10 +3088,15 @@ export class DJAudioEngine {
       clearInterval(this.loopCheckTimer);
       this.loopCheckTimer = null;
     }
-    if (this.vuIdleTimer) {
-      clearTimeout(this.vuIdleTimer);
-      this.vuIdleTimer = null;
+    if (this.vuTimerId) {
+      clearTimeout(this.vuTimerId);
+      this.vuTimerId = null;
     }
+    this.vuDataA = null;
+    this.vuDataB = null;
+    this.vuDataMaster = null;
+    this.lastVUSampleTime = -Infinity;
+    this.vuLevels = { deckA: { left: 0, right: 0 }, deckB: { left: 0, right: 0 }, master: { left: 0, right: 0 } };
 
     // Stop and clean up deck transports.
     this.deckSourceA?.dispose();
@@ -3104,10 +3150,11 @@ export class DJAudioEngine {
   }
 
   /**
-   * Get cached VU levels (updated by startVUMetering loop).
+   * Get VU levels sampled at most every VU_SAMPLE_INTERVAL_MS (~25 Hz).
    */
   getVULevels(): VULevels {
-    return this.vuLevels;
+    if (!this.isInitialized) return this.vuLevels;
+    return this.sampleVULevels(false);
   }
   /**
    * Get a MediaStream from the master output for recording.

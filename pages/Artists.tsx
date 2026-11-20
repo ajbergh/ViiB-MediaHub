@@ -27,6 +27,7 @@ import { Page, PageHeader } from '../components/ui/Page';
 import { CardSizeSlider, MAX_CARD_COLUMNS } from '../components/ui/CardSizeSlider';
 import { LibraryListHeader, LibraryListRow } from '../components/ui/LibraryList';
 import { TextInput } from '../components/ui/TextInput';
+import { compareLibraryText, sortByTextKey } from '../lib/libraryIndex';
 
 type ArtistSortOption = 'name-asc' | 'name-desc' | 'songs-desc' | 'songs-asc' | 'albums-desc' | 'albums-asc';
 
@@ -86,30 +87,37 @@ export const Artists: React.FC = () => {
   }, [navigate]);
 
   const sortedArtists = useMemo(() => {
-    const sorted = [...artists];
     switch (sortBy) {
       case 'name-asc':
-        return sorted.sort((a, b) => a.name.localeCompare(b.name));
+        return sortByTextKey(artists, artist => artist.name, 'asc');
       case 'name-desc':
-        return sorted.sort((a, b) => b.name.localeCompare(a.name));
+        return sortByTextKey(artists, artist => artist.name, 'desc');
       case 'songs-desc':
-        return sorted.sort((a, b) => b.songCount - a.songCount || a.name.localeCompare(b.name));
+        return [...artists].sort((a, b) => b.songCount - a.songCount || compareLibraryText(a.name, b.name));
       case 'songs-asc':
-        return sorted.sort((a, b) => a.songCount - b.songCount || a.name.localeCompare(b.name));
+        return [...artists].sort((a, b) => a.songCount - b.songCount || compareLibraryText(a.name, b.name));
       case 'albums-desc':
-        return sorted.sort((a, b) => b.albumCount - a.albumCount || a.name.localeCompare(b.name));
+        return [...artists].sort((a, b) => b.albumCount - a.albumCount || compareLibraryText(a.name, b.name));
       case 'albums-asc':
-        return sorted.sort((a, b) => a.albumCount - b.albumCount || a.name.localeCompare(b.name));
+        return [...artists].sort((a, b) => a.albumCount - b.albumCount || compareLibraryText(a.name, b.name));
       default:
-        return sorted;
+        return [...artists];
     }
   }, [artists, sortBy]);
 
+  const searchTextByArtist = useMemo(() => new WeakMap<typeof artists[number], string>(), [artists]);
   const filteredArtists = useMemo(() => {
     if (!deferredFilter.trim()) return sortedArtists;
     const query = deferredFilter.toLowerCase();
-    return sortedArtists.filter(artist => artist.name.toLowerCase().includes(query));
-  }, [sortedArtists, deferredFilter]);
+    return sortedArtists.filter(artist => {
+      let text = searchTextByArtist.get(artist);
+      if (text === undefined) {
+        text = artist.name.toLowerCase();
+        searchTextByArtist.set(artist, text);
+      }
+      return text.includes(query);
+    });
+  }, [sortedArtists, deferredFilter, searchTextByArtist]);
 
   return (
     <Page withPlayerPadding={false}>

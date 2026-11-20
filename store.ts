@@ -22,6 +22,7 @@
 
 import { useMemo } from 'react';
 import { splitArtistNames } from './lib/artistNames';
+import { compareLibraryText } from './lib/libraryIndex';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { deduplicatingPersistStorage } from './lib/deduplicatingPersistStorage';
@@ -178,7 +179,10 @@ const computeAlbums = (songs: AppState['songs']): DerivedAlbum[] => {
 
   cachedAlbumsSongsRef = songs;
   cachedAlbumsResult = Array.from(albumsMap.values()).sort(
-    (a, b) => (b.addedAt || 0) - (a.addedAt || 0) || a.name.localeCompare(b.name) || a.artist.localeCompare(b.artist),
+    (a, b) =>
+      (b.addedAt || 0) - (a.addedAt || 0) ||
+      compareLibraryText(a.name, b.name) ||
+      compareLibraryText(a.artist, b.artist),
   );
   return cachedAlbumsResult;
 };
@@ -191,44 +195,69 @@ export const useAlbums = () => {
 let cachedArtistsSongsRef: AppState['songs'] | null = null;
 let cachedArtistsResult: Artist[] = [];
 
+type ArtistAccumulator = {
+  artist: Artist;
+  lastAlbum: string;
+  albums: Set<string> | null;
+};
+
 const computeArtists = (songs: AppState['songs']): Artist[] => {
   if (songs === cachedArtistsSongsRef) {
     return cachedArtistsResult;
   }
 
-  const artistMap = new Map<string, Artist & { albums: Set<string> }>();
+  const artistMap = new Map<string, ArtistAccumulator>();
+  const splitCache = new Map<string, string[]>();
 
   for (let i = 0; i < songs.length; i++) {
     const song = songs[i];
-    const artistNames = splitArtistNames(song.artist);
+    const credit = song.artist;
+    let artistNames = splitCache.get(credit);
+    if (!artistNames) {
+      artistNames = splitArtistNames(credit);
+      splitCache.set(credit, artistNames);
+    }
 
-    for (const artistName of artistNames) {
-      let artist = artistMap.get(artistName);
-      if (!artist) {
-        artist = {
-          name: artistName,
-          songCount: 0,
-          albumCount: 0,
-          albums: new Set(),
-          imageUrl: song.coverUrl,
+    for (let j = 0; j < artistNames.length; j++) {
+      const artistName = artistNames[j];
+      let entry = artistMap.get(artistName);
+      if (!entry) {
+        entry = {
+          artist: {
+            name: artistName,
+            songCount: 1,
+            albumCount: 1,
+            imageUrl: song.coverUrl,
+          },
+          lastAlbum: song.album,
+          albums: null,
         };
-        artistMap.set(artistName, artist);
-      }
-      artist.songCount++;
-      artist.albums.add(song.album);
-      if (!artist.imageUrl && song.coverUrl) {
-        artist.imageUrl = song.coverUrl;
+        artistMap.set(artistName, entry);
+      } else {
+        entry.artist.songCount++;
+        if (song.album !== entry.lastAlbum) {
+          if (entry.albums === null) {
+            entry.albums = new Set([entry.lastAlbum, song.album]);
+          } else {
+            entry.albums.add(song.album);
+          }
+          entry.artist.albumCount = entry.albums.size;
+        }
+        if (!entry.artist.imageUrl && song.coverUrl) {
+          entry.artist.imageUrl = song.coverUrl;
+        }
       }
     }
   }
 
+  const artists: Artist[] = [];
+  for (const entry of artistMap.values()) {
+    artists.push(entry.artist);
+  }
+  artists.sort((a, b) => b.songCount - a.songCount);
+
   cachedArtistsSongsRef = songs;
-  cachedArtistsResult = Array.from(artistMap.values())
-    .map((a) => ({
-      ...a,
-      albumCount: a.albums.size,
-    }))
-    .sort((a, b) => b.songCount - a.songCount);
+  cachedArtistsResult = artists;
   return cachedArtistsResult;
 };
 

@@ -139,3 +139,15 @@ it('renders Camelot Key column values with their deterministic Camelot wheel col
     expect(missingCell?.querySelector('span')).toBeNull();
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
+
+it('requests scalar-only viewport-scoped analysis when analysis columns are enabled', async () => {
+  localStorage.setItem(SONG_COLUMNS_STORAGE_KEY, JSON.stringify(['bpm']));
+  mocks.analysis.mockResolvedValue([{ songId: 'a', bpm: 128 }]);
+  const { root, container } = setup();
+  try {
+    await act(async () => root.render(<Songs/>));
+    await flushAnalysis();
+    expect(mocks.analysis).toHaveBeenCalledTimes(1);
+    expect(mocks.analysis).toHaveBeenCalledWith(['a', 'b'], expect.objectContaining({ summary: true, scalarsOnly: true }));
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});

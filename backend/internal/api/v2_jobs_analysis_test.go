@@ -573,3 +573,67 @@ func TestAnalysisCancellationInterruptsLazyWaveformLeaseWait(t *testing.T) {
 		t.Fatal("cancellation released another worker", err)
 	}
 }
+
+func TestRunAnalyzeTracksJobDefersBeforeExpandingSelection(t *testing.T) {
+	t.Run("empty_catalog_defers_instead_of_completing", func(t *testing.T) {
+		database, _, _ := analysisCatalog(t, 0)
+		api := &API{db: database}
+		api.analysisPressure.report(time.Minute)
+
+		job := db.Job{
+			ID:         "defer-before-empty",
+			Type:       JobTypeAnalyzeTracks,
+			Status:     db.JobStatusRunning,
+			Parameters: json.RawMessage(`{"mode":"missing"}`),
+		}
+		if err := database.CreateJob(job); err != nil {
+			t.Fatal(err)
+		}
+
+		api.runAnalyzeTracksJob(job)
+
+		after, err := database.GetJob(job.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if after.Status != db.JobStatusQueued || !strings.Contains(after.Message, "DJ playback") {
+			t.Fatalf("job should defer before discovery on empty catalog, got %#v", after)
+		}
+	})
+
+	t.Run("live_claim_catalog_defers_for_playback_not_claim_check", func(t *testing.T) {
+		database, _, ids := analysisCatalog(t, 1)
+		source, err := analysis.ResolveLocalSource(database, ids[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		token, ok, err := database.ClaimTrackAnalysisLease(ids[0], source.Fingerprint, track.AnalysisVersion, track.AlgorithmVersion)
+		if err != nil || !ok {
+			t.Fatalf("claim failed: ok=%v err=%v", ok, err)
+		}
+		defer database.ReleaseTrackAnalysisLease(ids[0], token)
+
+		api := &API{db: database}
+		api.analysisPressure.report(time.Minute)
+
+		job := db.Job{
+			ID:         "defer-before-claim",
+			Type:       JobTypeAnalyzeTracks,
+			Status:     db.JobStatusRunning,
+			Parameters: json.RawMessage(`{"mode":"missing"}`),
+		}
+		if err := database.CreateJob(job); err != nil {
+			t.Fatal(err)
+		}
+
+		api.runAnalyzeTracksJob(job)
+
+		after, err := database.GetJob(job.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if after.Status != db.JobStatusQueued || !strings.Contains(after.Message, "DJ playback") {
+			t.Fatalf("job ran discovery and saw preparation claim instead of deferring for playback: %#v", after)
+		}
+	})
+}

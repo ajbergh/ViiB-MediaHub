@@ -34,6 +34,7 @@ import { SONG_COLUMNS, SongColumnId, SONG_COLUMNS_STORAGE_KEY, loadSongColumns, 
 import { getCamelotColor } from '../lib/camelotColors';
 import { useAnalysisFeatures } from '../hooks/useAnalysisFeatures';
 import { coverThumbnailUrl } from '../lib/artwork';
+import { sortByTextKey } from '../lib/libraryIndex';
 
 const songGridClass = 'grid grid-cols-[36px_minmax(0,1fr)_52px_36px] md:grid-cols-[var(--song-columns)] md:min-w-[var(--song-min-width)] gap-2 md:gap-4';
 
@@ -230,7 +231,7 @@ export const Songs: React.FC = () => {
     try { localStorage.setItem(SONG_COLUMNS_STORAGE_KEY, JSON.stringify(columns)); } catch { /* Keep the active layout when storage is unavailable. */ }
   }, [columns]);
   const needsAnalysis = columns.some(id => ['bpm', 'key', 'camelot', 'energy'].includes(id));
-  const { rows: analysis } = useAnalysisFeatures(needsAnalysis && !isLibraryInitializing);
+  const [visibleRange, setVisibleRange] = useState<{ startIndex: number; endIndex: number } | null>(null);
   const visibleColumns = SONG_COLUMNS.filter(column => columns.includes(column.id));
   const gridStyle = {
     '--song-columns': ['36px', 'minmax(220px, 4fr)', ...visibleColumns.map(column => column.width), '64px', '40px'].join(' '),
@@ -239,42 +240,60 @@ export const Songs: React.FC = () => {
   } as React.CSSProperties;
 
   const sortedSongs = useMemo(() => {
-    const result = [...songs];
     switch (sortBy) {
       case 'recent':
-        return result.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+        return [...songs].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
       case 'title-asc':
-        return result.sort((a, b) => a.title.localeCompare(b.title));
+        return sortByTextKey(songs, s => s.title, 'asc');
       case 'title-desc':
-        return result.sort((a, b) => b.title.localeCompare(a.title));
+        return sortByTextKey(songs, s => s.title, 'desc');
       case 'artist-asc':
-        return result.sort((a, b) => a.artist.localeCompare(b.artist));
+        return sortByTextKey(songs, s => s.artist, 'asc');
       case 'artist-desc':
-        return result.sort((a, b) => b.artist.localeCompare(a.artist));
+        return sortByTextKey(songs, s => s.artist, 'desc');
       case 'album-asc':
-        return result.sort((a, b) => a.album.localeCompare(b.album));
+        return sortByTextKey(songs, s => s.album, 'asc');
       case 'album-desc':
-        return result.sort((a, b) => b.album.localeCompare(a.album));
+        return sortByTextKey(songs, s => s.album, 'desc');
       case 'duration-asc':
-        return result.sort((a, b) => a.duration - b.duration);
+        return [...songs].sort((a, b) => a.duration - b.duration);
       case 'duration-desc':
-        return result.sort((a, b) => b.duration - a.duration);
+        return [...songs].sort((a, b) => b.duration - a.duration);
       case 'plays-desc':
-        return result.sort((a, b) => (b.playCount || 0) - (a.playCount || 0));
+        return [...songs].sort((a, b) => (b.playCount || 0) - (a.playCount || 0));
       default:
-        return result;
+        return [...songs];
     }
   }, [songs, sortBy]);
 
+  const searchTextBySong = useMemo(() => new WeakMap<Song, string>(), [songs]);
   const sortedAndFilteredSongs = useMemo(() => {
     const normalizedFilter = deferredFilter.trim().toLowerCase();
     if (!normalizedFilter) return sortedSongs;
-    return sortedSongs.filter(
-      s => s.title.toLowerCase().includes(normalizedFilter) ||
-           s.artist.toLowerCase().includes(normalizedFilter) ||
-           s.album.toLowerCase().includes(normalizedFilter)
-    );
-  }, [sortedSongs, deferredFilter]);
+    return sortedSongs.filter(song => {
+      let text = searchTextBySong.get(song);
+      if (text === undefined) {
+        text = `${song.title}\u0000${song.artist}\u0000${song.album}`.toLowerCase();
+        searchTextBySong.set(song, text);
+      }
+      return text.includes(normalizedFilter);
+    });
+  }, [sortedSongs, deferredFilter, searchTextBySong]);
+
+  const visibleSongIds = useMemo(() => {
+    if (!needsAnalysis || isLibraryInitializing || sortedAndFilteredSongs.length === 0) return [];
+    const rawStart = visibleRange ? Math.max(0, visibleRange.startIndex - 30) : 0;
+    const rawEnd = visibleRange ? visibleRange.endIndex + 31 : 100;
+    const start = rawStart < sortedAndFilteredSongs.length ? rawStart : 0;
+    const end = rawStart < sortedAndFilteredSongs.length ? rawEnd : 100;
+    return sortedAndFilteredSongs.slice(start, end).map(song => song.id);
+  }, [needsAnalysis, isLibraryInitializing, sortedAndFilteredSongs, visibleRange]);
+
+  const { rows: analysis } = useAnalysisFeatures({
+    enabled: needsAnalysis && !isLibraryInitializing,
+    scalarsOnly: true,
+    songIds: visibleSongIds,
+  });
 
   // Memoize components to prevent re-renders of the list structure
   const components: Components<any, any> = useMemo(() => ({
@@ -289,6 +308,7 @@ export const Songs: React.FC = () => {
             useWindowScroll={false}
             customScrollParent={scrollParent ?? undefined}
             data={sortedAndFilteredSongs}
+            rangeChanged={setVisibleRange}
             context={{ filter, setFilter, sortBy, setSortBy, showSortMenu, setShowSortMenu, columns, setColumns }}
             components={components}
             itemContent={(index, song) => {

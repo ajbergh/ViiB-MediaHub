@@ -25,7 +25,9 @@ func resolveBeatGrid(q preparationExecutor, song, fp string) (BeatGridResolution
 	}
 	var data []byte
 	var source, encoding, provenance string
-	err := q.QueryRow(`SELECT data,source_fingerprint,encoding,provenance FROM track_analysis_artifacts WHERE song_id=? AND kind=? AND format_version=? AND algorithm_version=?`, song, beatgrid.ArtifactKind, beatgrid.FormatVersion, beatgrid.AlgorithmVersion).Scan(&data, &source, &encoding, &provenance)
+	err := q.QueryRow(`SELECT CASE WHEN length(data) <= ? THEN data END, source_fingerprint, encoding, provenance
+		FROM track_analysis_artifacts WHERE song_id=? AND kind=? AND format_version=? AND algorithm_version=?`,
+		beatgrid.MaxEncodedBytes, song, beatgrid.ArtifactKind, beatgrid.FormatVersion, beatgrid.AlgorithmVersion).Scan(&data, &source, &encoding, &provenance)
 	if errors.Is(err, sql.ErrNoRows) {
 		return BeatGridResolution{Reason: "missing"}, nil
 	}

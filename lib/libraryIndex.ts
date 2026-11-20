@@ -3,6 +3,33 @@
 import { Song } from '../types';
 import { LibraryChange } from '../services/libraryV2';
 
+export const compareLibraryText = new Intl.Collator().compare;
+
+/**
+ * Computes each text key once and reuses the collator for comparisons.
+ */
+export function sortByTextKey<T>(
+  items: readonly T[],
+  getText: (item: T) => string,
+  direction: 'asc' | 'desc' = 'asc',
+): T[] {
+  const len = items.length;
+  if (len <= 1) return [...items];
+  const keys = new Array<string>(len);
+  const indices = new Array<number>(len);
+  for (let i = 0; i < len; i++) {
+    keys[i] = getText(items[i]);
+    indices[i] = i;
+  }
+  const dir = direction === 'asc' ? 1 : -1;
+  indices.sort((a, b) => dir * compareLibraryText(keys[a], keys[b]));
+  const sorted = new Array<T>(len);
+  for (let i = 0; i < len; i++) {
+    sorted[i] = items[indices[i]];
+  }
+  return sorted;
+}
+
 function songSortKey(song: Song): string {
   return [
     song.album || '',
@@ -81,7 +108,9 @@ export class LibraryIndex {
   }
 
   private sortIds(): void {
-    this.orderedIds = [...this.sortKeys.keys()].sort((a, b) => this.sortKeys.get(a)!.localeCompare(this.sortKeys.get(b)!));
+    const entries = [...this.sortKeys.entries()];
+    entries.sort((a, b) => compareLibraryText(a[1], b[1]));
+    this.orderedIds = entries.map(([id]) => id);
   }
 
   toArray(): Song[] {

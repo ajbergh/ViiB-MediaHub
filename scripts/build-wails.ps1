@@ -29,34 +29,34 @@ $ErrorActionPreference = "Stop"
 # ============================================================================
 
 Write-Host "Stopping any existing running Viib MediaHub Process..." -ForegroundColor Cyan
-Stop-Process -Name "ViiB-MediaHub" -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1
+Get-Process -Name "ViiB-MediaHub" -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.Id -Force }; Start-Sleep -Seconds 1
 Write-Host "Building ViiB MediaHub for Wails..." -ForegroundColor Cyan
 
-Write-Host "`n🔍 Checking prerequisites..." -ForegroundColor Cyan
+Write-Host "`nChecking prerequisites..." -ForegroundColor Cyan
 
 # Check Node.js
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-    Write-Error "❌ Node.js not found. Install from https://nodejs.org/"
+    Write-Error "Node.js not found. Install from https://nodejs.org/"
     exit 1
 }
 $nodeVersion = (node --version)
-Write-Host "  ✓ Node.js $nodeVersion" -ForegroundColor Green
+Write-Host "  Node.js $nodeVersion" -ForegroundColor Green
 
 # Check npm
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
-    Write-Error "❌ npm not found. Should be installed with Node.js."
+    Write-Error "npm not found. Should be installed with Node.js."
     exit 1
 }
 $npmVersion = (npm --version)
-Write-Host "  ✓ npm $npmVersion" -ForegroundColor Green
+Write-Host "  npm $npmVersion" -ForegroundColor Green
 
 # Check Go
 if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
-    Write-Error "❌ Go not found. Install from https://go.dev/dl/"
+    Write-Error "Go not found. Install from https://go.dev/dl/"
     exit 1
 }
 $goVersion = (go version)
-Write-Host "  ✓ $goVersion" -ForegroundColor Green
+Write-Host "  $goVersion" -ForegroundColor Green
 
 # Make binaries installed with `go install` available even when the Go bin
 # directory has not been added to the user's persistent PATH.
@@ -71,11 +71,11 @@ if ((Test-Path $goBin) -and (($env:Path -split ';') -notcontains $goBin)) {
 
 # Check Wails
 if (-not (Get-Command wails -ErrorAction SilentlyContinue)) {
-    Write-Error "❌ Wails not found. Install with: go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0"
+    Write-Error "Wails not found. Install with: go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.0"
     exit 1
 }
 $wailsVersion = (wails version 2>&1 | Select-String -Pattern "v\d+\.\d+\.\d+").Matches.Value
-Write-Host "  ✓ Wails $wailsVersion" -ForegroundColor Green
+Write-Host "  Wails $wailsVersion" -ForegroundColor Green
 
 # Check GCC (for CGO/SQLite)
 # MSYS2's MinGW toolchain is the supported Windows CGO compiler. Make a
@@ -89,12 +89,12 @@ if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) {
     }
 }
 if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) {
-    Write-Host "  ⚠ gcc not found. CGO build may fail." -ForegroundColor Yellow
+    Write-Host "  gcc not found. CGO build may fail." -ForegroundColor Yellow
     Write-Host "    Install MSYS2 and run: pacman -S mingw-w64-x86_64-gcc" -ForegroundColor Yellow
     Write-Host "    Then add C:\msys64\mingw64\bin to PATH" -ForegroundColor Yellow
 } else {
     $gccVersion = (gcc --version | Select-Object -First 1)
-    Write-Host "  ✓ $gccVersion" -ForegroundColor Green
+    Write-Host "  $gccVersion" -ForegroundColor Green
 }
 
 # ============================================================================
@@ -106,11 +106,11 @@ $wailsDir = Join-Path $projectRoot "backend\cmd\wails"
 $distSource = Join-Path $projectRoot "dist"
 $distDest = Join-Path $wailsDir "frontend\dist"
 
-Write-Host "`n📁 Project root: $projectRoot" -ForegroundColor Gray
+Write-Host "`nProject root: $projectRoot" -ForegroundColor Gray
 
 # Validate Wails directory exists
 if (-not (Test-Path $wailsDir)) {
-    Write-Error "❌ Wails directory not found: $wailsDir"
+    Write-Error "Wails directory not found: $wailsDir"
     exit 1
 }
 
@@ -119,7 +119,7 @@ if (-not (Test-Path $wailsDir)) {
 # ============================================================================
 
 if ($Clean) {
-    Write-Host "`n🧹 Cleaning build artifacts..." -ForegroundColor Yellow
+    Write-Host "`nCleaning build artifacts..." -ForegroundColor Yellow
     
     $buildDir = Join-Path $wailsDir "build"
     if (Test-Path $buildDir) {
@@ -138,7 +138,7 @@ if ($Clean) {
 # ============================================================================
 
 if (-not $SkipFrontend) {
-    Write-Host "`n📦 [1/3] Building frontend..." -ForegroundColor Yellow
+    Write-Host "`n[1/3] Building frontend..." -ForegroundColor Yellow
     
     Push-Location $projectRoot
     try {
@@ -152,22 +152,22 @@ if (-not $SkipFrontend) {
         npm run build
         if ($LASTEXITCODE -ne 0) { throw "Frontend build failed" }
         
-        Write-Host "  ✓ Frontend built successfully" -ForegroundColor Green
+        Write-Host "  Frontend built successfully" -ForegroundColor Green
     } finally {
         Pop-Location
     }
 } else {
-    Write-Host "`n⏭️ [1/3] Skipping frontend build (--SkipFrontend)" -ForegroundColor Gray
+    Write-Host "`n[1/3] Skipping frontend build (--SkipFrontend)" -ForegroundColor Gray
 }
 
 # ============================================================================
 # Step 2: Copy Frontend to Wails Location
 # ============================================================================
 
-Write-Host "`n📋 [2/3] Copying frontend to Wails..." -ForegroundColor Yellow
+Write-Host "`n[2/3] Copying frontend to Wails..." -ForegroundColor Yellow
 
 if (-not (Test-Path $distSource)) {
-    Write-Error "❌ Frontend dist not found: $distSource"
+    Write-Error "Frontend dist not found: $distSource"
     Write-Error "   Run 'npm run build' first or remove --SkipFrontend flag"
     exit 1
 }
@@ -183,13 +183,13 @@ if (-not (Test-Path $frontendDir)) {
 }
 
 Copy-Item -Recurse $distSource $distDest
-Write-Host "  ✓ Frontend copied to $distDest" -ForegroundColor Green
+Write-Host "  Frontend copied to $distDest" -ForegroundColor Green
 
 # ============================================================================
 # Step 3: Build with Wails
 # ============================================================================
 
-Write-Host "`n🔨 [3/3] Building Wails application..." -ForegroundColor Yellow
+Write-Host "`n[3/3] Building Wails application..." -ForegroundColor Yellow
 
 & (Join-Path $PSScriptRoot 'prepare-windows-icons.ps1')
 
@@ -217,7 +217,7 @@ try {
     
     if ($LASTEXITCODE -ne 0) { throw "Wails build failed" }
     
-    Write-Host "  ✓ Wails build complete" -ForegroundColor Green
+    Write-Host "  Wails build complete" -ForegroundColor Green
 } finally {
     Pop-Location
 }
@@ -232,7 +232,7 @@ if (Test-Path $wailsOutputPath) {
         New-Item -ItemType Directory -Path $finalOutputDir -Force | Out-Null
     }
     Copy-Item -Force $wailsOutputPath $finalOutputPath
-    Write-Host "  ✓ Copied to $finalOutputPath" -ForegroundColor Green
+    Write-Host "  Copied to $finalOutputPath" -ForegroundColor Green
 }
 
 # ============================================================================
@@ -242,9 +242,9 @@ if (Test-Path $wailsOutputPath) {
 $outputPath = Join-Path $projectRoot "build\ViiB-MediaHub.exe"
 
 Write-Host "`n" -NoNewline
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Green
-Write-Host "  ✅ BUILD COMPLETE" -ForegroundColor Green
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Green
+Write-Host "==================================================================" -ForegroundColor Green
+Write-Host "  BUILD COMPLETE" -ForegroundColor Green
+Write-Host "==================================================================" -ForegroundColor Green
 
 if (Test-Path $outputPath) {
     $fileInfo = Get-Item $outputPath
@@ -258,7 +258,7 @@ if (Test-Path $outputPath) {
     Write-Host "    $outputPath" -ForegroundColor Yellow
     Write-Host "    $outputPath -debug    # With dev tools" -ForegroundColor Gray
 } else {
-    Write-Host "`n  ⚠ Output not found at expected location" -ForegroundColor Yellow
+    Write-Host "`n  Output not found at expected location" -ForegroundColor Yellow
     Write-Host "    Expected: $outputPath" -ForegroundColor Gray
 }
 

@@ -1469,8 +1469,8 @@ export const api = {
    * @param trackId - Song ID
    * @returns Waveform response with peaks array
    */
-  async getDJWaveform(trackId: string): Promise<DJWaveformResponse> {
-    const response = await fetch(`${API_BASE}/dj/waveform/${trackId}`);
+  async getDJWaveform(trackId: string, signal?: AbortSignal): Promise<DJWaveformResponse> {
+    const response = await fetch(`${API_BASE}/dj/waveform/${trackId}`, { signal });
     return handleResponse<DJWaveformResponse>(response);
   },
 
@@ -1478,8 +1478,8 @@ export const api = {
    * Get the persisted, precedence-resolved analysis for one track. A 404 is
    * expected for tracks that have not completed local analysis yet.
    */
-  async getTrackAnalysisFeature(trackId: string): Promise<TrackAnalysisFeature> {
-    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}`, { cache: 'no-store' });
+  async getTrackAnalysisFeature(trackId: string, signal?: AbortSignal): Promise<TrackAnalysisFeature> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}`, { cache: 'no-store', signal });
     return handleResponse<TrackAnalysisFeature>(response);
   },
 
@@ -1543,18 +1543,38 @@ export const api = {
     if (!response.ok) await handleResponse<void>(response);
   },
 
-  async getTrackAnalysisFeatures(songIds?: string[], options?: { summary?: boolean; signal?: AbortSignal }): Promise<TrackAnalysisFeature[]> {
+  async getTrackAnalysisFeatures(songIds?: string[], options?: { summary?: boolean; scalarsOnly?: boolean; signal?: AbortSignal }): Promise<TrackAnalysisFeature[]> {
     if (songIds?.length === 0) return [];
     const params = new URLSearchParams();
     songIds?.forEach(id => params.append("id", id));
     if (options?.summary) params.set("summary", "1");
+    if (options?.scalarsOnly) params.set("scalarsOnly", "1");
     const query = params.toString();
     const response = await fetch(`${API_BASE}/v2/analysis${query ? "?" + query : ""}`, { cache: 'no-store', signal: options?.signal });
     return handleResponse<TrackAnalysisFeature[]>(response);
   },
 
-  async getTrackBeatGrid(trackId: string): Promise<TrackBeatGrid> {
-    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/beatgrid`, { cache: 'no-store' });
+  async getTrackAnalysisFeaturesPage(
+    cursor?: string,
+    limit = 500,
+    options?: { summary?: boolean; scalarsOnly?: boolean; signal?: AbortSignal },
+  ): Promise<{ items: TrackAnalysisFeature[]; nextCursor?: string; hasMore: boolean }> {
+    const params = new URLSearchParams({ paged: '1', limit: String(limit) });
+    if (cursor) params.set('after', cursor);
+    if (options?.summary) params.set('summary', '1');
+    if (options?.scalarsOnly) params.set('scalarsOnly', '1');
+    const response = await fetch(`${API_BASE}/v2/analysis?${params.toString()}`, { cache: 'no-store', signal: options?.signal });
+    const payload = await handleResponse<TrackAnalysisFeature[] | { items?: TrackAnalysisFeature[]; features?: TrackAnalysisFeature[]; nextCursor?: string; hasMore?: boolean }>(response);
+    if (Array.isArray(payload)) {
+      return { items: payload, hasMore: false };
+    }
+    const items = Array.isArray(payload.items) ? payload.items : (Array.isArray(payload.features) ? payload.features : []);
+    const nextCursor = typeof payload.nextCursor === 'string' && payload.nextCursor.length > 0 ? payload.nextCursor : undefined;
+    return { items, nextCursor, hasMore: Boolean(payload.hasMore && nextCursor) };
+  },
+
+  async getTrackBeatGrid(trackId: string, signal?: AbortSignal): Promise<TrackBeatGrid> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/beatgrid`, { cache: 'no-store', signal });
     return handleResponse<TrackBeatGrid>(response);
   },
 
@@ -1625,8 +1645,8 @@ export const api = {
    * @param trackId - Song ID
    * @returns Hot cues response with array of cue points
    */
-  async getDJHotCues(trackId: string): Promise<DJHotCuesResponse> {
-    const response = await fetch(`${API_BASE}/dj/hotcues/${trackId}`);
+  async getDJHotCues(trackId: string, signal?: AbortSignal): Promise<DJHotCuesResponse> {
+    const response = await fetch(`${API_BASE}/dj/hotcues/${trackId}`, { signal });
     return handleResponse<DJHotCuesResponse>(response);
   },
 

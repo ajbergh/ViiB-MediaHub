@@ -3,11 +3,14 @@
 package api
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -21,6 +24,7 @@ import (
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
 	trackanalysis "github.com/ajbergh/viib-mediahub/internal/analysis/track"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/waveformartifact"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/go-chi/chi/v5"
 )
@@ -429,5 +433,364 @@ func TestLazyWaveformWaitsForFullPreparationArtifact(t *testing.T) {
 	}
 	if opens.Load() != 1 {
 		t.Fatalf("lazy request decoded completed preparation again: %d", opens.Load())
+	}
+}
+
+func TestWaveformSingleflightPartialAndFullCancellation(t *testing.T) {
+	audio := encodePCM16WAV(make([]float32, 22050), 22050)
+	entered := make(chan struct{}, 4)
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	defer unblock()
+
+	var opens atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		opens.Add(1)
+		entered <- struct{}{}
+		select {
+		case <-release:
+			_, _ = w.Write(audio)
+		case <-r.Context().Done():
+		}
+	}))
+	defer func() { unblock(); upstream.Close() }()
+
+	database, api, track := setupPlexProxyTest(t, upstream.URL, "/audio", "secret", true)
+	track.Container = "wav"
+	if _, _, _, err := database.SyncPlexLibrary(track.SourceID, track.LibraryID, []db.PlexCatalogTrack{track}); err != nil {
+		t.Fatal(err)
+	}
+	router := chi.NewRouter()
+	router.Get("/api/dj/waveform/{id}", api.getDJWaveform)
+
+	ctx1, cancel1 := context.WithCancel(t.Context())
+	done1 := make(chan *httptest.ResponseRecorder, 1)
+	done2 := make(chan *httptest.ResponseRecorder, 1)
+
+	go func() {
+		req := httptest.NewRequest(http.MethodGet, "/api/dj/waveform/"+track.SongID, nil).WithContext(ctx1)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		done1 <- w
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first request did not enter upstream")
+	}
+
+	go func() {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/dj/waveform/"+track.SongID, nil))
+		done2 <- w
+	}()
+	// Wait until the second request has joined the flight before canceling the first.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		api.djWaveformMu.Lock()
+		var waiters int
+		for _, f := range api.djWaveformFlights {
+			waiters += f.waiters
+		}
+		api.djWaveformMu.Unlock()
+		if waiters == 2 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	cancel1()
+	<-done1
+	unblock()
+
+	select {
+	case w := <-done2:
+		if w.Code != http.StatusOK {
+			t.Fatalf("surviving waiter status=%d body=%s", w.Code, w.Body.String())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("surviving waiter stuck")
+	}
+	if opens.Load() != 1 {
+		t.Fatalf("opens=%d, want 1", opens.Load())
+	}
+}
+
+func TestWaveformSingleflightAllWaitersCancelReleasesLease(t *testing.T) {
+	audio := encodePCM16WAV(make([]float32, 22050), 22050)
+	dir := t.TempDir()
+	wavPath := filepath.Join(dir, "tone.wav")
+	if err := os.WriteFile(wavPath, audio, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := db.New(filepath.Join(dir, "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	const songID = "local-cancel-song"
+	if err := database.SaveSong(&db.Song{
+		ID:       songID,
+		Title:    "Tone",
+		Artist:   "Artist",
+		Album:    "Album",
+		Duration: 1,
+		FilePath: wavPath,
+		AddedAt:  1,
+		FileHash: "tone-hash",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	api := &API{db: database}
+	source, err := api.resolveAnalysisSource(t.Context(), songID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaseToken, claimed, err := database.ClaimWaveformLease(songID, source.Fingerprint)
+	if err != nil || !claimed {
+		t.Fatalf("ClaimWaveformLease failed: claimed=%v err=%v", claimed, err)
+	}
+
+	router := chi.NewRouter()
+	router.Get("/api/dj/waveform/{id}", api.getDJWaveform)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		req := httptest.NewRequest(http.MethodGet, "/api/dj/waveform/"+songID, nil).WithContext(ctx)
+		router.ServeHTTP(httptest.NewRecorder(), req)
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		api.djWaveformMu.Lock()
+		n := len(api.djWaveformFlights)
+		api.djWaveformMu.Unlock()
+		if n == 1 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	cancel()
+	<-done
+
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		api.djWaveformMu.Lock()
+		n := len(api.djWaveformFlights)
+		api.djWaveformMu.Unlock()
+		if n == 0 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if err := database.ReleaseWaveformLease(songID, leaseToken); err != nil {
+		t.Fatal(err)
+	}
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/dj/waveform/"+songID, nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("retry after full cancel failed: status=%d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestSchedulePruneLibraryChangesThresholdAndSingleFlight(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.EnsureLibrarySyncSchema(); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := database.SaveSongsWithResult([]db.Song{{
+		ID: "s1", Title: "One", Artist: "A", Album: "B", Duration: 10,
+		FilePath: filepath.Join(t.TempDir(), "1.wav"), AddedAt: 1, FileHash: "h1",
+	}})
+	if err != nil || tx.Inserted == 0 {
+		t.Fatalf("seed song failed: %v", err)
+	}
+	for i := 0; i < 25; i++ {
+		if err := database.RecordSongLibraryChange("s1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	api := &API{db: database}
+	// Below retain+threshold: should not prune.
+	api.schedulePruneLibraryChangesWithRetain(20, 10, 26)
+	time.Sleep(30 * time.Millisecond)
+	oldest, ok, err := database.OldestLibraryChangeRevision()
+	if err != nil || !ok || oldest != 1 {
+		t.Fatalf("unexpected early prune: oldest=%d ok=%v err=%v", oldest, ok, err)
+	}
+
+	// Above retain+threshold (10 + 10 = 20): triggers async prune.
+	api.schedulePruneLibraryChangesWithRetain(10, 10, 26)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		oldest, ok, err = database.OldestLibraryChangeRevision()
+		if err == nil && ok && oldest == 16 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("async prune did not advance oldest revision: oldest=%d ok=%v err=%v", oldest, ok, err)
+}
+
+func TestLibraryRevisionAndJobSSEStreamsWakeOnNotify(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.EnsureLibrarySyncSchema(); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.EnsureJobSchema(); err != nil {
+		t.Fatal(err)
+	}
+
+	api := &API{db: database}
+	router := chi.NewRouter()
+	router.Get("/v2/library/events", api.libraryRevisionEventsV2)
+	router.Get("/v2/jobs/events", api.jobEventsV2)
+	srv := httptest.NewServer(router)
+	defer srv.Close()
+
+	// Library revision SSE stream wakes immediately on RecordSongLibraryChange.
+	libCtx, cancelLib := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancelLib()
+	libReq, _ := http.NewRequestWithContext(libCtx, http.MethodGet, srv.URL+"/v2/library/events", nil)
+	libResp, err := srv.Client().Do(libReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer libResp.Body.Close()
+
+	libLines := make(chan string, 16)
+	go func() {
+		scanner := bufio.NewScanner(libResp.Body)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "data: ") {
+				libLines <- line
+			}
+		}
+	}()
+
+	if err := database.RecordSongLibraryChange("song-1"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case line := <-libLines:
+		if !strings.Contains(line, `"revision":1`) {
+			t.Fatalf("unexpected library SSE payload: %s", line)
+		}
+	case <-time.After(1500 * time.Millisecond):
+		t.Fatal("library SSE stream did not wake promptly on change")
+	}
+
+	// Job SSE stream wakes immediately on job mutations.
+	jobCtx, cancelJob := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancelJob()
+	jobReq, _ := http.NewRequestWithContext(jobCtx, http.MethodGet, srv.URL+"/v2/jobs/events", nil)
+	jobResp, err := srv.Client().Do(jobReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jobResp.Body.Close()
+
+	jobLines := make(chan string, 16)
+	go func() {
+		scanner := bufio.NewScanner(jobResp.Body)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "data: ") {
+				jobLines <- line
+			}
+		}
+	}()
+
+	// Consume initial empty snapshot.
+	select {
+	case <-jobLines:
+	case <-time.After(1500 * time.Millisecond):
+		t.Fatal("missing initial job SSE snapshot")
+	}
+
+	if err := database.CreateJob(db.Job{ID: "job-sse-1", Type: "refresh_genre_stats", Status: db.JobStatusQueued}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case line := <-jobLines:
+		if !strings.Contains(line, `"job-sse-1"`) {
+			t.Fatalf("unexpected job SSE payload: %s", line)
+		}
+	case <-time.After(1500 * time.Millisecond):
+		t.Fatal("job SSE stream did not wake promptly on CreateJob")
+	}
+}
+
+func BenchmarkWaveformWaiterContention(b *testing.B) {
+	audio := encodePCM16WAV(make([]float32, 22050), 22050)
+	dir := b.TempDir()
+	wavPath := filepath.Join(dir, "bench.wav")
+	if err := os.WriteFile(wavPath, audio, 0o600); err != nil {
+		b.Fatal(err)
+	}
+
+	database, err := db.New(filepath.Join(dir, "bench.db"))
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = database.Close() })
+
+	const songID = "bench-wave-song"
+	if err := database.SaveSong(&db.Song{
+		ID:       songID,
+		Title:    "Bench",
+		Artist:   "Artist",
+		Album:    "Album",
+		Duration: 1,
+		FilePath: wavPath,
+		AddedAt:  1,
+		FileHash: "bench-hash",
+	}); err != nil {
+		b.Fatal(err)
+	}
+
+	api := &API{db: database}
+	router := chi.NewRouter()
+	router.Get("/api/dj/waveform/{id}", api.getDJWaveform)
+
+	const waiters = 16
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		if err := database.DeleteTrackAnalysisArtifact(songID, waveformartifact.Kind, waveformartifact.FormatVersion, waveformartifact.AlgorithmVersion); err != nil {
+			b.Fatal(err)
+		}
+		b.StartTimer()
+
+		var wg sync.WaitGroup
+		wg.Add(waiters)
+		for w := 0; w < waiters; w++ {
+			go func() {
+				defer wg.Done()
+				rec := httptest.NewRecorder()
+				router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/dj/waveform/%s", songID), nil))
+				if rec.Code != http.StatusOK {
+					b.Errorf("status=%d body=%s", rec.Code, rec.Body.String())
+				}
+			}()
+		}
+		wg.Wait()
 	}
 }

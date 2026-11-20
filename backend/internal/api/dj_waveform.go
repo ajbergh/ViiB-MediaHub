@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -63,6 +64,20 @@ type HotCuesResponse struct {
 	HotCues []HotCue `json:"hotCues"`
 }
 
+type djWaveformOutcome struct {
+	status     int
+	errMsg     string
+	capability *audio.CapabilityError
+	response   WaveformResponse
+}
+
+type djWaveformFlight struct {
+	done    chan struct{}
+	cancel  context.CancelFunc
+	waiters int
+	outcome djWaveformOutcome
+}
+
 // getDJWaveform generates or returns cached waveform data for a track.
 // GET /api/dj/waveform/{id}
 func (a *API) getDJWaveform(w http.ResponseWriter, r *http.Request) {
@@ -88,97 +103,205 @@ func (a *API) getDJWaveform(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if resp, ok, conflict := a.tryCachedDJWaveform(r.Context(), trackID, source.Fingerprint); conflict {
+		respondError(w, 409, "Track source changed while reading waveform")
+		return
+	} else if ok {
+		respondJSON(w, resp)
+		return
+	}
+
+	outcome, err := a.shareDJWaveform(r.Context(), trackID, source)
+	if err != nil {
+		return
+	}
+	if outcome.status == http.StatusOK {
+		respondJSON(w, outcome.response)
+		return
+	}
+	if outcome.capability != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(outcome.status)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error":      outcome.errMsg,
+			"capability": outcome.capability,
+		})
+		return
+	}
+	respondError(w, outcome.status, outcome.errMsg)
+}
+
+func (a *API) tryCachedDJWaveform(ctx context.Context, trackID, fingerprint string) (WaveformResponse, bool, bool) {
+	if fingerprint == "" {
+		return WaveformResponse{}, false, false
+	}
+	artifact, err := a.db.GetTrackAnalysisArtifactBounded(trackID, waveformartifact.Kind, waveformartifact.FormatVersion, waveformartifact.AlgorithmVersion, waveformartifact.MaxBytes)
+	if err != nil || artifact.SourceFingerprint != fingerprint || artifact.Encoding != waveformartifact.Encoding || artifact.Provenance != "measured" {
+		return WaveformResponse{}, false, false
+	}
+	overview, err := waveformartifact.Decode(artifact.Data)
+	if err != nil {
+		return WaveformResponse{}, false, false
+	}
+	current, resolveErr := a.resolveAnalysisSource(ctx, trackID)
+	if resolveErr != nil || current.Fingerprint != fingerprint {
+		return WaveformResponse{}, false, true
+	}
+	return WaveformResponse{
+		TrackID:    trackID,
+		Duration:   overview.Duration(),
+		SampleRate: overview.SampleRate,
+		Resolution: overview.Resolution,
+		Peaks:      overview.Peaks,
+	}, true, false
+}
+
+func (a *API) shareDJWaveform(ctx context.Context, trackID string, source analysis.ResolvedSource) (djWaveformOutcome, error) {
+	if err := ctx.Err(); err != nil {
+		return djWaveformOutcome{}, err
+	}
+	key := trackID + "\x00" + source.Fingerprint
+	a.djWaveformMu.Lock()
+	if a.djWaveformFlights == nil {
+		a.djWaveformFlights = make(map[string]*djWaveformFlight)
+	}
+	f := a.djWaveformFlights[key]
+	if f == nil {
+		work, cancel := context.WithCancel(context.Background())
+		f = &djWaveformFlight{done: make(chan struct{}), cancel: cancel}
+		a.djWaveformFlights[key] = f
+		go func(f *djWaveformFlight) {
+			outcome := a.computeOrWaitDJWaveform(work, trackID, source)
+			cancel()
+			a.djWaveformMu.Lock()
+			f.outcome = outcome
+			if a.djWaveformFlights[key] == f {
+				delete(a.djWaveformFlights, key)
+			}
+			close(f.done)
+			a.djWaveformMu.Unlock()
+		}(f)
+	}
+	f.waiters++
+	a.djWaveformMu.Unlock()
+
+	select {
+	case <-f.done:
+		if err := ctx.Err(); err != nil {
+			return djWaveformOutcome{}, err
+		}
+		return f.outcome, nil
+	case <-ctx.Done():
+		a.djWaveformMu.Lock()
+		if a.djWaveformFlights[key] == f {
+			f.waiters--
+			if f.waiters == 0 {
+				delete(a.djWaveformFlights, key)
+				f.cancel()
+			}
+		}
+		a.djWaveformMu.Unlock()
+		return djWaveformOutcome{}, ctx.Err()
+	}
+}
+
+func (a *API) computeOrWaitDJWaveform(ctx context.Context, trackID string, source analysis.ResolvedSource) djWaveformOutcome {
+	const (
+		initialBackoff = 50 * time.Millisecond
+		maxBackoff     = 400 * time.Millisecond
+	)
 	// Read again after winning ownership: a previous owner may have published
 	// between the initial miss and this claim. Waiters never open the audio.
 	var token string
+	backoff := initialBackoff
 	for {
-		artifact, artifactErr := a.db.GetTrackAnalysisArtifactBounded(trackID, waveformartifact.Kind, waveformartifact.FormatVersion, waveformartifact.AlgorithmVersion, waveformartifact.MaxBytes)
-		if artifactErr == nil && artifact.SourceFingerprint == source.Fingerprint && source.Fingerprint != "" && artifact.Encoding == waveformartifact.Encoding && artifact.Provenance == "measured" {
-			if overview, err := waveformartifact.Decode(artifact.Data); err == nil {
-				current, resolveErr := a.resolveAnalysisSource(r.Context(), trackID)
-				if resolveErr != nil || current.Fingerprint != source.Fingerprint {
-					if token != "" {
-						_ = a.db.ReleaseWaveformLease(trackID, token)
-					}
-					respondError(w, 409, "Track source changed while reading waveform")
-					return
-				}
-				if token != "" {
-					_ = a.db.ReleaseWaveformLease(trackID, token)
-				}
-				respondJSON(w, WaveformResponse{TrackID: trackID, Duration: overview.Duration(), SampleRate: overview.SampleRate, Resolution: overview.Resolution, Peaks: overview.Peaks})
-				return
+		if resp, ok, conflict := a.tryCachedDJWaveform(ctx, trackID, source.Fingerprint); conflict {
+			if token != "" {
+				_ = a.db.ReleaseWaveformLease(trackID, token)
 			}
+			return djWaveformOutcome{status: 409, errMsg: "Track source changed while reading waveform"}
+		} else if ok {
+			if token != "" {
+				_ = a.db.ReleaseWaveformLease(trackID, token)
+			}
+			return djWaveformOutcome{status: http.StatusOK, response: resp}
 		}
 		if token != "" {
 			break
 		}
 		var claimed bool
+		var err error
 		token, claimed, err = a.db.ClaimWaveformLease(trackID, source.Fingerprint)
 		if err != nil {
-			respondError(w, 500, "Waveform coordination failed")
-			return
+			return djWaveformOutcome{status: 500, errMsg: "Waveform coordination failed"}
 		}
 		if claimed {
 			continue
 		}
+		wait := backoff*3/4 + rand.N(backoff/2+1)
+		timer := time.NewTimer(wait)
 		select {
-		case <-r.Context().Done():
-			return
-		case <-time.After(25 * time.Millisecond):
+		case <-ctx.Done():
+			timer.Stop()
+			return djWaveformOutcome{status: http.StatusRequestTimeout, errMsg: "Waveform request canceled"}
+		case <-timer.C:
 		}
-		current, resolveErr := a.resolveAnalysisSource(r.Context(), trackID)
+		backoff *= 2
+		if backoff > maxBackoff {
+			backoff = maxBackoff
+		}
+		current, resolveErr := a.resolveAnalysisSource(ctx, trackID)
 		if resolveErr != nil || current.Fingerprint != source.Fingerprint {
-			respondError(w, 409, "Track source changed during waveform generation")
-			return
+			return djWaveformOutcome{status: 409, errMsg: "Track source changed during waveform generation"}
 		}
 	}
-	ctx, stop := maintainWaveformLease(r.Context(), a.db, trackID, source.Fingerprint, token)
+
+	leaseCtx, stop := maintainWaveformLease(ctx, a.db, trackID, source.Fingerprint, token)
 	defer func() { stop(); _ = a.db.ReleaseWaveformLease(trackID, token) }()
-	overview, decodeErr := analysis.GenerateWaveformOverviewWithOpener(ctx, waveformDecoders(), source.Name, source.Open, analysis.DefaultWaveformResolution)
-	waveform, err := djWaveformFromOverview(overview, decodeErr, source.Name)
+	leaderSource, err := a.resolveAnalysisSource(leaseCtx, trackID)
+	if err != nil || leaderSource.Fingerprint != source.Fingerprint || leaseCtx.Err() != nil {
+		return djWaveformOutcome{status: 409, errMsg: "Track source changed during waveform generation"}
+	}
+	overview, decodeErr := analysis.GenerateWaveformOverviewWithOpener(leaseCtx, waveformDecoders(), leaderSource.Name, leaderSource.Open, analysis.DefaultWaveformResolution)
+	waveform, err := djWaveformFromOverview(overview, decodeErr, leaderSource.Name)
 	if err != nil {
 		if errors.Is(err, errClientWaveformRequired) {
-			capErr := audio.NewWaveformCapabilityError(source.Name)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnprocessableEntity)
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"error":      "Waveform will be generated by the client for this audio format",
-				"capability": capErr,
-			})
-			return
+			capErr := audio.NewWaveformCapabilityError(leaderSource.Name)
+			return djWaveformOutcome{
+				status:     http.StatusUnprocessableEntity,
+				errMsg:     "Waveform will be generated by the client for this audio format",
+				capability: capErr,
+			}
 		}
-		respondError(w, 500, "Waveform generation failed")
-		return
+		return djWaveformOutcome{status: 500, errMsg: "Waveform generation failed"}
 	}
-	current, err := a.resolveAnalysisSource(ctx, trackID)
-	if err != nil || current.Fingerprint != source.Fingerprint || ctx.Err() != nil {
-		respondError(w, 409, "Track source changed during waveform generation")
-		return
+	current, err := a.resolveAnalysisSource(leaseCtx, trackID)
+	if err != nil || current.Fingerprint != source.Fingerprint || leaseCtx.Err() != nil {
+		return djWaveformOutcome{status: 409, errMsg: "Track source changed during waveform generation"}
 	}
 	encoded, err := waveformartifact.Encode(overview)
 	if err != nil {
-		respondError(w, 500, "Waveform validation failed")
-		return
+		return djWaveformOutcome{status: 500, errMsg: "Waveform validation failed"}
 	}
 	if err = a.db.PublishWaveformLease(token, db.TrackAnalysisArtifact{ID: trackID + ":" + waveformartifact.AlgorithmVersion, SongID: trackID, Kind: waveformartifact.Kind, FormatVersion: waveformartifact.FormatVersion, AlgorithmVersion: waveformartifact.AlgorithmVersion, Encoding: waveformartifact.Encoding, Provenance: "measured", SourceFingerprint: source.Fingerprint, Data: encoded}); err != nil {
 		logger.API("DJ waveform: artifact persistence failed for %s", trackID)
-		respondError(w, 409, "Waveform ownership changed during generation")
-		return
+		return djWaveformOutcome{status: 409, errMsg: "Waveform ownership changed during generation"}
 	}
 
-	current, err = a.resolveAnalysisSource(ctx, trackID)
-	if err != nil || current.Fingerprint != source.Fingerprint || ctx.Err() != nil {
-		respondError(w, 409, "Track source changed during waveform generation")
-		return
+	current, err = a.resolveAnalysisSource(leaseCtx, trackID)
+	if err != nil || current.Fingerprint != source.Fingerprint || leaseCtx.Err() != nil {
+		return djWaveformOutcome{status: 409, errMsg: "Track source changed during waveform generation"}
 	}
-	respondJSON(w, WaveformResponse{
-		TrackID:    trackID,
-		Duration:   waveform.Duration,
-		SampleRate: waveform.SampleRate,
-		Resolution: waveform.Resolution,
-		Peaks:      waveform.Peaks,
-	})
+	return djWaveformOutcome{
+		status: http.StatusOK,
+		response: WaveformResponse{
+			TrackID:    trackID,
+			Duration:   waveform.Duration,
+			SampleRate: waveform.SampleRate,
+			Resolution: waveform.Resolution,
+			Peaks:      waveform.Peaks,
+		},
+	}
 }
 
 // getDJHotCues returns hot cue points for a track.

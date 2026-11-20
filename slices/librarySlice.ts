@@ -34,7 +34,7 @@ import { backendService } from '../services/backendService';
 import { libraryOperationsV2 } from '../services/libraryOperationsV2';
 import api, { ApiAlbumMetadata, ApiArtistMetadata } from '../services/api';
 import { Playlist, Song, AlbumMetadata, ArtistMetadata } from '../types';
-import { LibraryIndex } from '../lib/libraryIndex';
+import { compareLibraryText, LibraryIndex } from '../lib/libraryIndex';
 import { libraryV2, LibraryResnapshotRequired } from '../services/libraryV2';
 
 function mapCachedArtistMetadata(entries: ApiArtistMetadata[]): Record<string, ArtistMetadata> {
@@ -60,6 +60,8 @@ function mapCachedArtistMetadata(entries: ApiArtistMetadata[]): Record<string, A
 }
 
 const SCAN_LIBRARY_REFRESH_INTERVAL_MS = 3000;
+const IDLE_MIX_DEBOUNCE_MS = 400;
+const SCAN_MIX_DEBOUNCE_MS = 1500;
 
 export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = (set, get) => {
   const libraryIndex = new LibraryIndex();
@@ -75,10 +77,11 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
 
   const scheduleMixes = () => {
     if (mixTimer !== undefined) return;
+    const delay = get().isScanning ? SCAN_MIX_DEBOUNCE_MS : IDLE_MIX_DEBOUNCE_MS;
     mixTimer = setTimeout(() => {
       mixTimer = undefined;
       set({ smartMixes: generateSmartMixes(get().songs) });
-    }, 400);
+    }, delay);
   };
 
   const loadCatalog = async (onFirstPage?: (songs: Song[]) => void) => {
@@ -296,10 +299,10 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       // Only re-sort if new songs were actually added
       const updatedSongs = hasNew
         ? Array.from(songMap.values()).sort((a, b) => {
-            if (a.album !== b.album) return a.album.localeCompare(b.album);
+            if (a.album !== b.album) return compareLibraryText(a.album, b.album);
             if (a.discNumber !== b.discNumber) return (a.discNumber || 0) - (b.discNumber || 0);
             if (a.trackNumber !== b.trackNumber) return (a.trackNumber || 0) - (b.trackNumber || 0);
-            return a.title.localeCompare(b.title);
+            return compareLibraryText(a.title, b.title);
           })
         : state.songs;
       

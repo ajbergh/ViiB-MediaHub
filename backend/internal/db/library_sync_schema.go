@@ -85,6 +85,21 @@ func (d *DB) ensureLibrarySyncSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_song_search_genre ON song_search(genre);
 	CREATE INDEX IF NOT EXISTS idx_song_search_file_path ON song_search(file_path);
 	CREATE INDEX IF NOT EXISTS idx_playlists_search_name ON playlists(lower(name));
+	CREATE VIRTUAL TABLE IF NOT EXISTS song_artist_fts USING fts5(song_id UNINDEXED, artist, album_artist, tokenize='trigram');
+	CREATE TABLE IF NOT EXISTS song_search_meta (id INTEGER PRIMARY KEY CHECK (id = 1), artist_fts_ready INTEGER NOT NULL DEFAULT 0);
+	INSERT OR IGNORE INTO song_search_meta (id, artist_fts_ready) VALUES (1, 0);
+	CREATE TRIGGER IF NOT EXISTS song_search_fts_insert AFTER INSERT ON song_search BEGIN
+		INSERT INTO song_artist_fts(rowid, song_id, artist, album_artist)
+		VALUES (NEW.rowid, NEW.song_id, NEW.artist, NEW.album_artist);
+	END;
+	CREATE TRIGGER IF NOT EXISTS song_search_fts_update AFTER UPDATE OF song_id, artist, album_artist ON song_search BEGIN
+		DELETE FROM song_artist_fts WHERE rowid = OLD.rowid;
+		INSERT INTO song_artist_fts(rowid, song_id, artist, album_artist)
+		VALUES (NEW.rowid, NEW.song_id, NEW.artist, NEW.album_artist);
+	END;
+	CREATE TRIGGER IF NOT EXISTS song_search_fts_delete AFTER DELETE ON song_search BEGIN
+		DELETE FROM song_artist_fts WHERE rowid = OLD.rowid;
+	END;
 	CREATE TRIGGER IF NOT EXISTS songs_sync_insert AFTER INSERT ON songs BEGIN
 		UPDATE library_state SET revision = revision + 1 WHERE id = 1;
 		INSERT INTO library_changes(revision, song_id, operation, changed_at)
@@ -116,18 +131,51 @@ func (d *DB) ensureLibrarySyncSchema() error {
 	if err != nil {
 		return fmt.Errorf("backfill library search index: %w", err)
 	}
+
+	var ftsReady int
+	if err := d.conn.QueryRow(`SELECT artist_fts_ready FROM song_search_meta WHERE id = 1`).Scan(&ftsReady); err != nil {
+		return fmt.Errorf("read library search fts state: %w", err)
+	}
+	if ftsReady == 0 {
+		tx, err := d.conn.Begin()
+		if err != nil {
+			return fmt.Errorf("begin library search fts backfill: %w", err)
+		}
+		defer tx.Rollback()
+		if _, err := tx.Exec(`DELETE FROM song_artist_fts`); err != nil {
+			return fmt.Errorf("clear library search fts: %w", err)
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO song_artist_fts(rowid, song_id, artist, album_artist)
+			SELECT rowid, song_id, artist, album_artist FROM song_search
+		`); err != nil {
+			return fmt.Errorf("backfill library search fts: %w", err)
+		}
+		if _, err := tx.Exec(`UPDATE song_search_meta SET artist_fts_ready = 1 WHERE id = 1`); err != nil {
+			return fmt.Errorf("mark library search fts ready: %w", err)
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit library search fts backfill: %w", err)
+		}
+	}
 	return nil
 }
 
 // RebuildLibrarySearchIndex is the explicit repair path. Routine API requests
 // only ensure the schema once and never rewrite the complete search table.
 func (d *DB) RebuildLibrarySearchIndex() error {
+	if err := d.EnsureLibrarySyncSchema(); err != nil {
+		return err
+	}
 	tx, err := d.conn.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	if _, err := tx.Exec(`DELETE FROM song_search`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM song_artist_fts`); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`
@@ -137,6 +185,9 @@ func (d *DB) RebuildLibrarySearchIndex() error {
 		       lower(COALESCE(genre, '')), lower(COALESCE(file_path, ''))
 		FROM songs
 	`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE song_search_meta SET artist_fts_ready = 1 WHERE id = 1`); err != nil {
 		return err
 	}
 	return tx.Commit()
