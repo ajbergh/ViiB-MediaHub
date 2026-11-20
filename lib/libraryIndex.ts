@@ -3,6 +3,57 @@
 import { Song } from '../types';
 import { LibraryChange } from '../services/libraryV2';
 
+interface CatalogSongChange {
+  before?: Song;
+  after?: Song;
+}
+
+interface CatalogDelta {
+  previous: WeakRef<Song[]>;
+  changes: CatalogSongChange[];
+  orderChanged: boolean;
+}
+
+export const catalogDeltas = new WeakMap<Song[], CatalogDelta>();
+
+export function patchCatalogSong(songs: Song[], id: string, patch: Partial<Song>): Song[] {
+  const index = songs.findIndex(song => song.id === id);
+  if (index < 0) return songs;
+  const before = songs[index];
+  const after = { ...before, ...patch };
+  if (sameSong(before, after)) return songs;
+  const updated = songs.slice();
+  updated[index] = after;
+  catalogDeltas.set(updated, { previous: new WeakRef(songs), changes: [{ before, after }], orderChanged: false });
+  return updated;
+}
+
+// An optimistic patch and a server delta can share the same base snapshot.
+// Express the server result relative to the array currently shown by the store.
+export function rebaseCatalogDelta(songs: Song[], current: Song[]) {
+  const delta = catalogDeltas.get(songs);
+  const local = catalogDeltas.get(current);
+  const base = delta?.previous.deref();
+  if (!delta || !local || !base || local.orderChanged || local.previous.deref() !== base) return;
+
+  const byId = new Map(delta.changes.map(change => [change.after?.id ?? change.before?.id, change]));
+  for (const change of local.changes) {
+    const id = change.after?.id ?? change.before?.id;
+    const incoming = byId.get(id);
+    byId.set(id, { before: change.after, after: incoming ? incoming.after : change.before });
+  }
+  catalogDeltas.set(songs, { ...delta, previous: new WeakRef(current), changes: Array.from(byId.values()) });
+}
+
+export function affectsSmartMixes({ before, after }: CatalogSongChange): boolean {
+  if (!before || !after) return true;
+  const oldGenres = before.genre ?? [];
+  const newGenres = after.genre ?? [];
+  return before.playCount !== after.playCount || before.lastPlayed !== after.lastPlayed ||
+    before.addedAt !== after.addedAt || before.year !== after.year ||
+    oldGenres.length !== newGenres.length || oldGenres.some((genre, index) => genre !== newGenres[index]);
+}
+
 export const compareLibraryText = new Intl.Collator().compare;
 
 /**
@@ -76,8 +127,10 @@ export class LibraryIndex {
     let requiresSort = false;
     let updated = false;
     const deleted = new Set<string>();
+    const priorSongs = new Map<string, Song | undefined>();
 
     for (const change of changes) {
+      if (!priorSongs.has(change.songId)) priorSongs.set(change.songId, this.songsById.get(change.songId));
       const song = change.operation === 'delete' ? undefined : upsertById.get(change.songId);
       if (!song) {
         if (this.songsById.delete(change.songId)) {
@@ -102,7 +155,16 @@ export class LibraryIndex {
     } else if (deleted.size > 0) {
       this.orderedIds = this.orderedIds.filter(id => !deleted.has(id));
     }
-    if (updated || deleted.size > 0) this.snapshot = this.readSongs();
+    if (updated || deleted.size > 0) {
+      const previous = this.snapshot;
+      this.snapshot = this.readSongs();
+      catalogDeltas.set(this.snapshot, {
+        previous: new WeakRef(previous),
+        orderChanged: requiresSort || deleted.size > 0,
+        changes: Array.from(priorSongs, ([id, before]) => ({ before, after: this.songsById.get(id) }))
+          .filter(({ before, after }) => before !== after),
+      });
+    }
 
     return this.toArray();
   }

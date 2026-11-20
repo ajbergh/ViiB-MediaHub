@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/featurecontract"
-	"io"
 	"math"
 	"time"
 
@@ -473,20 +472,9 @@ func DecodeBounded(data []byte, maxBytes int64) (Result, error) {
 	if maxBytes <= 0 {
 		return Result{}, errors.New("energy artifact decoded size limit must be positive")
 	}
-	reader, err := gzip.NewReader(bytes.NewReader(data))
+	decoded, err := readBoundedStructure(data, maxBytes)
 	if err != nil {
 		return Result{}, err
-	}
-	decoded, readErr := io.ReadAll(io.LimitReader(reader, maxBytes+1))
-	closeErr := reader.Close()
-	if readErr != nil {
-		return Result{}, readErr
-	}
-	if closeErr != nil {
-		return Result{}, closeErr
-	}
-	if int64(len(decoded)) > maxBytes {
-		return Result{}, errors.New("energy artifact exceeds decoded size limit")
 	}
 	var result Result
 	if err := json.Unmarshal(decoded, &result); err != nil {

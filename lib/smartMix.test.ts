@@ -9,11 +9,51 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('react-router', () => ({ useNavigate: () => vi.fn() }));
 
 import { generateSmartMixes } from './smartMix';
+import { affectsSmartMixes, catalogDeltas, patchCatalogSong } from './libraryIndex';
 import { HomeContent, useHomeContent } from '../components/home/useHomeContent';
-import { useStore } from '../store';
+import { useAlbums, useArtists, useStore } from '../store';
 import { HomeLayoutVariant, Song } from '../types';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+it('preserves derived groups on playback changes and updates only the affected artwork', async () => {
+  (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+  const previous = useStore.getState().songs;
+  const initial = makeSyntheticLibrary(4);
+  const host = document.createElement('div');
+  const root = createRoot(host);
+  let albums!: ReturnType<typeof useAlbums>;
+  let artists!: ReturnType<typeof useArtists>;
+  function Reader() {
+    albums = useAlbums();
+    artists = useArtists();
+    return null;
+  }
+
+  try {
+    useStore.setState({ songs: initial });
+    await act(async () => root.render(React.createElement(Reader)));
+    const originalAlbums = albums;
+    const originalArtists = artists;
+
+    const played = patchCatalogSong(initial, initial[0].id, { playCount: 99, lastPlayed: Date.now() });
+    expect(catalogDeltas.get(played)?.changes.some(affectsSmartMixes)).toBe(true);
+    await act(async () => useStore.setState({ songs: played }));
+    expect(albums).toBe(originalAlbums);
+    expect(artists).toBe(originalArtists);
+
+    const artwork = patchCatalogSong(played, initial[0].id, { coverUrl: '/updated-cover' });
+    expect(catalogDeltas.get(artwork)?.changes.some(affectsSmartMixes)).toBe(false);
+    await act(async () => useStore.setState({ songs: artwork }));
+    expect(albums.find(album => album.name === initial[0].album)?.coverUrl).toBe('/updated-cover');
+    expect(artists.find(artist => artist.name === initial[0].albumArtist)?.imageUrl).toBe('/updated-cover');
+    expect(albums.find(album => album.name === initial[1].album)).toBe(originalAlbums.find(album => album.name === initial[1].album));
+    expect(artists.find(artist => artist.name === initial[2].artist)).toBe(originalArtists.find(artist => artist.name === initial[2].artist));
+  } finally {
+    await act(async () => root.unmount());
+    useStore.setState({ songs: previous });
+  }
+});
 
 function makeSyntheticLibrary(count: number, now = Date.now()): Song[] {
   const genresPool = [

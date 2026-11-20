@@ -1029,6 +1029,14 @@ func TestProviderPrecedenceMatchesDetailListAndMixNextOffline(t *testing.T) {
 	if listed == nil || listed.BPM == nil || *listed.BPM != 125 || listed.BPMSource != db.EffectiveBPMSpotify || listed.KeyTonic == nil || *listed.KeyTonic != 9 || listed.KeyMode == nil || *listed.KeyMode != "minor" || listed.KeySource != db.EffectiveKeyManual {
 		t.Fatalf("list provider precedence = %+v", listed)
 	}
+	var orderingRows []TrackAnalysisFeatureResponse
+	if err := json.NewDecoder(get("/analysis?id=candidate&summary=1&projection=ordering").Body).Decode(&orderingRows); err != nil {
+		t.Fatal(err)
+	}
+	if len(orderingRows) != 1 || orderingRows[0].BPM == nil || *orderingRows[0].BPM != *listed.BPM ||
+		orderingRows[0].BPMSource != listed.BPMSource || orderingRows[0].KeySource != listed.KeySource {
+		t.Fatalf("ordering projection changed scalar precedence: %+v", orderingRows)
+	}
 	var recommendations TransitionRecommendationsResponse
 	if err := json.NewDecoder(get("/analysis/source/recommendations?minBpm=129&maxBpm=131").Body).Decode(&recommendations); err != nil {
 		t.Fatal(err)
@@ -2123,6 +2131,20 @@ func TestV2TrackAnalysisFeaturesScalarsOnly(t *testing.T) {
 	}
 	if !sumRows[0].StructureAvailable || sumRows[0].IntegratedLUFSBS1770 == nil || len(sumRows[0].EffectiveFields) != 1 || sumRows[0].EffectiveFields[0].Key != "time_signature" {
 		t.Fatalf("summary=1 /analysis lost contract: %+v", sumRows[0])
+	}
+
+	for _, projection := range []string{"ordering", "loudness"} {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/analysis?id=a-current&summary=1&projection="+projection, nil))
+		var projected []TrackAnalysisFeatureResponse
+		if err := json.NewDecoder(recorder.Body).Decode(&projected); err != nil || recorder.Code != http.StatusOK || len(projected) != 1 {
+			t.Fatalf("%s response: status=%d rows=%+v err=%v", projection, recorder.Code, projected, err)
+		}
+		row := projected[0]
+		if row.StructureAvailable || (row.IntegratedLUFSBS1770 != nil) != (projection == "loudness") ||
+			(row.TruePeakDBTP != nil) != (projection == "loudness") || row.BPM == nil || *row.BPM != *sumRows[0].BPM {
+			t.Fatalf("unexpected %s projection: %+v", projection, row)
+		}
 	}
 }
 

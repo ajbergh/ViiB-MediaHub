@@ -1543,12 +1543,13 @@ export const api = {
     if (!response.ok) await handleResponse<void>(response);
   },
 
-  async getTrackAnalysisFeatures(songIds?: string[], options?: { summary?: boolean; scalarsOnly?: boolean; signal?: AbortSignal }): Promise<TrackAnalysisFeature[]> {
+  async getTrackAnalysisFeatures(songIds?: string[], options?: { summary?: boolean; scalarsOnly?: boolean; projection?: 'ordering' | 'loudness'; signal?: AbortSignal }): Promise<TrackAnalysisFeature[]> {
     if (songIds?.length === 0) return [];
     const params = new URLSearchParams();
     songIds?.forEach(id => params.append("id", id));
     if (options?.summary) params.set("summary", "1");
     if (options?.scalarsOnly) params.set("scalarsOnly", "1");
+    if (options?.projection) params.set("projection", options.projection);
     const query = params.toString();
     const response = await fetch(`${API_BASE}/v2/analysis${query ? "?" + query : ""}`, { cache: 'no-store', signal: options?.signal });
     return handleResponse<TrackAnalysisFeature[]>(response);
@@ -1557,12 +1558,13 @@ export const api = {
   async getTrackAnalysisFeaturesPage(
     cursor?: string,
     limit = 500,
-    options?: { summary?: boolean; scalarsOnly?: boolean; signal?: AbortSignal },
+    options?: { summary?: boolean; scalarsOnly?: boolean; projection?: 'ordering' | 'loudness'; signal?: AbortSignal },
   ): Promise<{ items: TrackAnalysisFeature[]; nextCursor?: string; hasMore: boolean }> {
     const params = new URLSearchParams({ paged: '1', limit: String(limit) });
     if (cursor) params.set('after', cursor);
     if (options?.summary) params.set('summary', '1');
     if (options?.scalarsOnly) params.set('scalarsOnly', '1');
+    if (options?.projection) params.set('projection', options.projection);
     const response = await fetch(`${API_BASE}/v2/analysis?${params.toString()}`, { cache: 'no-store', signal: options?.signal });
     const payload = await handleResponse<TrackAnalysisFeature[] | { items?: TrackAnalysisFeature[]; features?: TrackAnalysisFeature[]; nextCursor?: string; hasMore?: boolean }>(response);
     if (Array.isArray(payload)) {

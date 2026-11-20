@@ -17,7 +17,8 @@
 const WAVEFORM_RESOLUTION = 1200; // Number of peaks to generate
 const OVERVIEW_RESOLUTION = 200;  // Downsampled for overview strip (saves memory/CPU)
 const WAVEFORM_CACHE_MAX = 10;    // Max cached waveforms (oldest-insertion eviction)
-const PEAK_BIN_CHUNK_SIZE = 120;  // Check AbortSignal between bounded peak-bin chunks
+const PEAK_SAMPLE_CHUNK_SIZE = 262_144;
+const PEAK_FRAME_BUDGET_MS = 6;
 
 // Bounded insertion-ordered waveform cache to avoid regenerating peaks for previously loaded tracks
 const waveformCache = new Map<string, { peaks: number[]; overview: number[] }>();
@@ -159,8 +160,7 @@ export async function generateClientWaveform(
       console.log(`🎵 clientWaveform: Decoded audio - ${audioBuffer.duration.toFixed(2)}s, ${audioBuffer.numberOfChannels} channels, ${audioBuffer.sampleRate}Hz`);
       onProgress?.(0.5);
 
-      // Compute peaks directly across channels in bounded chunks with zero full-length copy
-      peaks = calculateAudioBufferPeaks(audioBuffer, WAVEFORM_RESOLUTION, signal);
+      peaks = await calculateAudioBufferPeaksAsync(audioBuffer, WAVEFORM_RESOLUTION, signal);
       throwIfAborted(signal);
       onProgress?.(0.9);
     } finally {
@@ -199,6 +199,33 @@ export function calculateAudioBufferPeaks(
   resolution: number = WAVEFORM_RESOLUTION,
   signal?: AbortSignal
 ): number[] {
+  const work = calculatePeakChunks(audioBuffer, resolution);
+  for (;;) {
+    throwIfAborted(signal);
+    const step = work.next();
+    if (step.done) return step.value;
+  }
+}
+
+export async function calculateAudioBufferPeaksAsync(
+  audioBuffer: AudioBuffer,
+  resolution: number = WAVEFORM_RESOLUTION,
+  signal?: AbortSignal,
+): Promise<number[]> {
+  const work = calculatePeakChunks(audioBuffer, resolution);
+  let deadline = performance.now() + PEAK_FRAME_BUDGET_MS;
+  for (;;) {
+    throwIfAborted(signal);
+    const step = work.next();
+    if (step.done) return step.value;
+    if (performance.now() >= deadline) {
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      deadline = performance.now() + PEAK_FRAME_BUDGET_MS;
+    }
+  }
+}
+
+function* calculatePeakChunks(audioBuffer: AudioBuffer, resolution: number): Generator<void, number[]> {
   const numChannels = audioBuffer.numberOfChannels;
   const length = audioBuffer.length;
   const peaks = new Array<number>(resolution);
@@ -217,75 +244,75 @@ export function calculateAudioBufferPeaks(
 
   if (numChannels === 1) {
     const ch0 = channels[0];
-    for (let chunkStart = 0; chunkStart < resolution; chunkStart += PEAK_BIN_CHUNK_SIZE) {
-      throwIfAborted(signal);
-      const chunkEnd = Math.min(chunkStart + PEAK_BIN_CHUNK_SIZE, resolution);
-      for (let i = chunkStart; i < chunkEnd; i++) {
-        const start = i * samplesPerPeak;
-        const end = Math.min(start + samplesPerPeak, length);
-        const count = end - start;
-        if (count <= 0) {
-          peaks[i] = 0;
-          continue;
-        }
-        let sumSquares = 0;
-        let maxAbs = 0;
-        for (let j = start; j < end; j++) {
+    for (let i = 0; i < resolution; i++) {
+      const start = i * samplesPerPeak;
+      const end = Math.min(start + samplesPerPeak, length);
+      const count = end - start;
+      if (count <= 0) {
+        peaks[i] = 0;
+        continue;
+      }
+      let sumSquares = 0;
+      let maxAbs = 0;
+      for (let j = start; j < end;) {
+        const chunkEnd = Math.min(j + PEAK_SAMPLE_CHUNK_SIZE, end);
+        for (; j < chunkEnd; j++) {
           const sample = ch0[j];
           sumSquares += sample * sample;
           const abs = sample < 0 ? -sample : sample;
           if (abs > maxAbs) maxAbs = abs;
         }
-        const rms = Math.sqrt(sumSquares / count);
-        const peak = (rms + maxAbs) * 0.5;
-        peaks[i] = peak;
-        if (peak > maxPeak) maxPeak = peak;
+        yield;
       }
+      const rms = Math.sqrt(sumSquares / count);
+      const peak = (rms + maxAbs) * 0.5;
+      peaks[i] = peak;
+      if (peak > maxPeak) maxPeak = peak;
     }
   } else if (numChannels === 2) {
     const ch0 = channels[0];
     const ch1 = channels[1];
-    for (let chunkStart = 0; chunkStart < resolution; chunkStart += PEAK_BIN_CHUNK_SIZE) {
-      throwIfAborted(signal);
-      const chunkEnd = Math.min(chunkStart + PEAK_BIN_CHUNK_SIZE, resolution);
-      for (let i = chunkStart; i < chunkEnd; i++) {
-        const start = i * samplesPerPeak;
-        const end = Math.min(start + samplesPerPeak, length);
-        const count = end - start;
-        if (count <= 0) {
-          peaks[i] = 0;
-          continue;
-        }
-        let sumSquares = 0;
-        let maxAbs = 0;
-        for (let j = start; j < end; j++) {
+    for (let i = 0; i < resolution; i++) {
+      const start = i * samplesPerPeak;
+      const end = Math.min(start + samplesPerPeak, length);
+      const count = end - start;
+      if (count <= 0) {
+        peaks[i] = 0;
+        continue;
+      }
+      let sumSquares = 0;
+      let maxAbs = 0;
+      for (let j = start; j < end;) {
+        const chunkEnd = Math.min(j + PEAK_SAMPLE_CHUNK_SIZE / 2, end);
+        for (; j < chunkEnd; j++) {
           const sample = (ch0[j] + ch1[j]) * 0.5;
           sumSquares += sample * sample;
           const abs = sample < 0 ? -sample : sample;
           if (abs > maxAbs) maxAbs = abs;
         }
-        const rms = Math.sqrt(sumSquares / count);
-        const peak = (rms + maxAbs) * 0.5;
-        peaks[i] = peak;
-        if (peak > maxPeak) maxPeak = peak;
+        yield;
       }
+      const rms = Math.sqrt(sumSquares / count);
+      const peak = (rms + maxAbs) * 0.5;
+      peaks[i] = peak;
+      if (peak > maxPeak) maxPeak = peak;
     }
   } else {
     const invChannels = 1 / numChannels;
-    for (let chunkStart = 0; chunkStart < resolution; chunkStart += PEAK_BIN_CHUNK_SIZE) {
-      throwIfAborted(signal);
-      const chunkEnd = Math.min(chunkStart + PEAK_BIN_CHUNK_SIZE, resolution);
-      for (let i = chunkStart; i < chunkEnd; i++) {
-        const start = i * samplesPerPeak;
-        const end = Math.min(start + samplesPerPeak, length);
-        const count = end - start;
-        if (count <= 0) {
-          peaks[i] = 0;
-          continue;
-        }
-        let sumSquares = 0;
-        let maxAbs = 0;
-        for (let j = start; j < end; j++) {
+    const chunkSize = Math.max(1, Math.floor(PEAK_SAMPLE_CHUNK_SIZE / numChannels));
+    for (let i = 0; i < resolution; i++) {
+      const start = i * samplesPerPeak;
+      const end = Math.min(start + samplesPerPeak, length);
+      const count = end - start;
+      if (count <= 0) {
+        peaks[i] = 0;
+        continue;
+      }
+      let sumSquares = 0;
+      let maxAbs = 0;
+      for (let j = start; j < end;) {
+        const chunkEnd = Math.min(j + chunkSize, end);
+        for (; j < chunkEnd; j++) {
           let sample = 0;
           for (let ch = 0; ch < numChannels; ch++) {
             sample += channels[ch][j];
@@ -295,11 +322,12 @@ export function calculateAudioBufferPeaks(
           const abs = sample < 0 ? -sample : sample;
           if (abs > maxAbs) maxAbs = abs;
         }
-        const rms = Math.sqrt(sumSquares / count);
-        const peak = (rms + maxAbs) * 0.5;
-        peaks[i] = peak;
-        if (peak > maxPeak) maxPeak = peak;
+        yield;
       }
+      const rms = Math.sqrt(sumSquares / count);
+      const peak = (rms + maxAbs) * 0.5;
+      peaks[i] = peak;
+      if (peak > maxPeak) maxPeak = peak;
     }
   }
 

@@ -397,6 +397,9 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 	songIDs := query["id"]
 	summary := query.Get("summary") == "1"
 	scalarsOnly := query.Get("scalarsOnly") == "1"
+	projection := query.Get("projection")
+	includeStructure := projection != "ordering" && projection != "loudness"
+	includeLoudness := projection != "ordering"
 	paged := query.Get("paged") == "1"
 	if len(songIDs) > 100 {
 		respondError(w, http.StatusBadRequest, "at most 100 track IDs may be requested")
@@ -485,15 +488,20 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	structureMetadata, err := a.listTrackAnalysisArtifactMetadataForSongs(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion, targetSongIDs)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
+	var structureMetadata, loudnessMetadata []db.TrackAnalysisArtifactMetadata
+	if includeStructure {
+		structureMetadata, err = a.listTrackAnalysisArtifactMetadataForSongs(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion, targetSongIDs)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
-	loudnessMetadata, err := a.listTrackAnalysisArtifactMetadataForSongs(features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion, targetSongIDs)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, err.Error())
-		return
+	if includeLoudness {
+		loudnessMetadata, err = a.listTrackAnalysisArtifactMetadataForSongs(features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion, targetSongIDs)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 	analysisBySongID := make(map[string]db.TrackAnalysis, len(analyses))
 	for _, analysis := range analyses {
@@ -688,37 +696,33 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 
 // currentAnalysisSourceFingerprints resolves many current identities without
 // issuing a database read per song or opening remote media streams. Local
-// identity uses the same path/hash/size/mtime contract as ResolveLocalSource;
-// Plex identity comes from one cached catalog/source metadata snapshot.
+// identity uses the same path/hash/size/mtime contract as ResolveLocalSource.
+// Each batch reads only the requested songs and their Plex source identities.
 func (a *API) currentAnalysisSourceFingerprints(songIDs []string) (map[string]string, error) {
 	current := make(map[string]string, len(songIDs))
 	if len(songIDs) == 0 {
 		return current, nil
 	}
-	plexSources, err := a.db.ListPlexTrackSources()
-	if err != nil {
-		return nil, err
-	}
-	const sourceBatchSize = 200
+	const sourceBatchSize = 500
 	for start := 0; start < len(songIDs); start += sourceBatchSize {
 		end := start + sourceBatchSize
 		if end > len(songIDs) {
 			end = len(songIDs)
 		}
-		songs, err := a.db.GetSongsByIDs(songIDs[start:end])
+		identities, err := a.db.ListAnalysisSourceIdentities(songIDs[start:end])
 		if err != nil {
 			return nil, err
 		}
-		for _, song := range songs {
-			if plexTrack, exists := plexSources[song.ID]; exists {
+		for _, identity := range identities {
+			if plexTrack := identity.Plex; plexTrack.SourceID != "" {
 				if plexTrack.Available && strings.TrimSpace(plexTrack.MediaKey) != "" {
-					current[song.ID] = plexAnalysisFingerprint(plexTrack)
+					current[identity.SongID] = plexAnalysisFingerprint(plexTrack)
 				}
 				continue
 			}
-			resolved, err := analysis.ResolveLocalSongSource(song)
+			resolved, err := analysis.ResolveLocalSongSource(db.Song{ID: identity.SongID, FilePath: identity.FilePath, FileHash: identity.FileHash})
 			if err == nil {
-				current[song.ID] = resolved.Fingerprint
+				current[identity.SongID] = resolved.Fingerprint
 			}
 		}
 	}
@@ -761,24 +765,7 @@ func trackStructureAvailable(analysis db.TrackAnalysis, currentFingerprint strin
 		currentFingerprint == "" || currentFingerprint != analysis.SourceFingerprint || payloadFingerprint == "" || payloadFingerprint != artifact.SourceFingerprint || len(data) == 0 {
 		return false
 	}
-	result, err := features.DecodeBounded(data, features.MaxStructureStatusArtifactBytes)
-	if err != nil || len(result.Sections) == 0 {
-		return false
-	}
-	for _, section := range result.Sections {
-		if math.IsNaN(section.Start) || math.IsInf(section.Start, 0) || section.Start < 0 ||
-			math.IsNaN(section.End) || math.IsInf(section.End, 0) || section.End <= section.Start ||
-			math.IsNaN(section.Energy) || math.IsInf(section.Energy, 0) || section.Energy < 0 || section.Energy > 1 ||
-			math.IsNaN(section.Confidence) || math.IsInf(section.Confidence, 0) || section.Confidence < 0 || section.Confidence > 1 {
-			return false
-		}
-		switch section.Label {
-		case features.StructureIntro, features.StructureBuild, features.StructureDrop, features.StructureBreakdown, features.StructureOutro, features.StructureUnknown:
-		default:
-			return false
-		}
-	}
-	return true
+	return features.InspectStructureBounded(data, features.MaxStructureStatusArtifactBytes).ValidSections
 }
 
 func decodeCurrentBS1770Artifact(analysis db.TrackAnalysis, currentFingerprint string, artifact db.TrackAnalysisArtifact) (features.BS1770Result, bool) {
@@ -1851,16 +1838,20 @@ func (a *API) getTransitionRecommendationsV2(w http.ResponseWriter, r *http.Requ
 					if !exists || payloadFingerprint == "" || payloadFingerprint != artifact.SourceFingerprint {
 						return nil
 					}
+					transitionMetadata, matches := metadataByID[candidateID]
+					if !matches {
+						if features.InspectStructureBounded(data, features.MaxStructureStatusArtifactBytes).Decodable {
+							candidatesBeforeFilters++
+							checkedSourceIDs = append(checkedSourceIDs, candidateID)
+						}
+						return nil
+					}
 					candidate, decodeErr := features.DecodeBounded(data, features.MaxStructureStatusArtifactBytes)
 					if decodeErr != nil {
 						return nil // a corrupt candidate must not make the deck unavailable
 					}
 					candidatesBeforeFilters++
 					checkedSourceIDs = append(checkedSourceIDs, candidateID)
-					transitionMetadata, matches := metadataByID[candidateID]
-					if !matches {
-						return nil
-					}
 					song := songByID[candidateID]
 					score, scoreErr := features.ScoreTransitionWithMetadata(source, candidate, sourceMeta, transitionMetadata, intent)
 					if scoreErr != nil {

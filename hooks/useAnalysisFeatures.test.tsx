@@ -114,16 +114,14 @@ it('loads all pages and removes rows omitted from a full refresh', async () => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   useStore.setState(s => ({ spotifySessionGeneration: s.spotifySessionGeneration + 1 }));
 
+  let finishSecondPage!: (response: Awaited<ReturnType<typeof api.getTrackAnalysisFeaturesPage>>) => void;
   const pageFetch = vi.spyOn(api, 'getTrackAnalysisFeaturesPage')
     .mockResolvedValueOnce({
       items: [{ songId: 'p1', bpm: 120 } as TrackAnalysisFeature],
       nextCursor: 'cursor-1',
       hasMore: true,
     })
-    .mockResolvedValueOnce({
-      items: [{ songId: 'p2', bpm: 128 } as TrackAnalysisFeature],
-      hasMore: false,
-    })
+    .mockImplementationOnce(() => new Promise(resolve => { finishSecondPage = resolve; }))
     .mockResolvedValueOnce({
       items: [{ songId: 'p2', bpm: 130 } as TrackAnalysisFeature],
       hasMore: false,
@@ -142,6 +140,8 @@ it('loads all pages and removes rows omitted from a full refresh', async () => {
     expect(pageFetch).toHaveBeenCalledTimes(2);
     expect(pageFetch).toHaveBeenNthCalledWith(1, undefined, 500, expect.objectContaining({ summary: true }));
     expect(pageFetch).toHaveBeenNthCalledWith(2, 'cursor-1', 500, expect.objectContaining({ summary: true }));
+    expect(rootElement.textContent).toBe('loading:-:-');
+    await act(async () => finishSecondPage({ items: [{ songId: 'p2', bpm: 128 } as TrackAnalysisFeature], hasMore: false }));
     expect(rootElement.textContent).toBe('loaded:120:128');
     window.dispatchEvent(new CustomEvent('library_updated', { detail: { source: 'full_refresh' } }));
     await act(async () => vi.advanceTimersByTimeAsync(100));
@@ -179,6 +179,40 @@ it('retries every unpublished analysis delta after a later chunk fails', async (
     await act(async () => vi.advanceTimersByTimeAsync(100));
     expect(fetch.mock.calls.slice(3).map(([songIds]) => songIds)).toEqual([ids.slice(0, 100), ids.slice(100)]);
     expect(rootElement.textContent).toBe('loaded:130:130');
+  } finally {
+    await act(async () => root.unmount());
+  }
+});
+
+it('skips playback invalidation and fetches changed offscreen rows when they enter the viewport', async () => {
+  vi.useFakeTimers();
+  (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+  useStore.setState(s => ({ spotifySessionGeneration: s.spotifySessionGeneration + 1 }));
+  const catalog = vi.spyOn(api, 'getTrackAnalysisFeaturesPage').mockResolvedValue({
+    items: ['a', 'b'].map(songId => ({ songId, bpm: 120 }) as TrackAnalysisFeature), hasMore: false,
+  });
+  const viewport = vi.spyOn(api, 'getTrackAnalysisFeatures').mockResolvedValue([{ songId: 'b', bpm: 130 } as TrackAnalysisFeature]);
+  const host = document.createElement('div');
+  const root = createRoot(host);
+  function Reader({ songId }: { songId?: string }) {
+    const { rows } = useAnalysisFeatures({ songIds: songId ? [songId] : undefined, projection: 'ordering' });
+    return <span>{songId && rows.get(songId)?.bpm}</span>;
+  }
+
+  try {
+    await act(async () => root.render(<Reader />));
+    await act(async () => vi.advanceTimersByTimeAsync(100));
+    expect(catalog).toHaveBeenCalledExactlyOnceWith(undefined, 500, expect.objectContaining({ projection: 'ordering' }));
+    await act(async () => root.render(<Reader songId="a" />));
+    window.dispatchEvent(new CustomEvent('library_updated', { detail: { songIds: ['a'], analysisSongIds: [] } }));
+    window.dispatchEvent(new CustomEvent('library_updated', { detail: { songIds: ['b'], analysisSongIds: ['b'] } }));
+    await act(async () => vi.advanceTimersByTimeAsync(100));
+    expect(viewport).not.toHaveBeenCalled();
+
+    await act(async () => root.render(<Reader songId="b" />));
+    await act(async () => vi.advanceTimersByTimeAsync(100));
+    expect(viewport).toHaveBeenCalledExactlyOnceWith(['b'], expect.objectContaining({ projection: 'ordering' }));
+    expect(host.textContent).toBe('130');
   } finally {
     await act(async () => root.unmount());
   }
@@ -224,9 +258,7 @@ it('benchmarks sorting 50,000 synthetic tracks: sortByTextKey and LibraryIndex v
   expect(collatorSorted).toHaveLength(count);
   expect(keySorted).toHaveLength(count);
   expect(indexed).toHaveLength(count);
-  for (let i = 1; i < keySorted.length; i++) {
-    expect(keySorted[i]).toBe(collatorSorted[i]);
-  }
+  expect(keySorted.every((song, index) => song === collatorSorted[index])).toBe(true);
   console.info(
     `[50k sort benchmark] sortByTextKey=${precomputedMs.toFixed(1)}ms, Intl.Collator=${collatorMs.toFixed(1)}ms, LibraryIndex=${indexMs.toFixed(1)}ms, localeCompare(5k)=${localeSampleMs.toFixed(1)}ms`,
   );

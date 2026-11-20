@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   calculateAudioBufferPeaks,
+  calculateAudioBufferPeaksAsync,
   clearWaveformCache,
   generateClientWaveform,
 } from './clientWaveform';
@@ -157,7 +158,18 @@ describe('lib/clientWaveform', () => {
     expect(closeSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('benchmarks 6-minute stereo 48kHz peak calculation with minimal heap overhead', () => {
+  it('yields to scheduled cancellation during peak extraction', async () => {
+    const channel = new Float32Array(300_000).fill(0.5);
+    const controller = new AbortController();
+    let now = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => now += 10);
+    setTimeout(() => controller.abort(), 0);
+
+    await expect(calculateAudioBufferPeaksAsync(makeFakeAudioBuffer([channel]), 1, controller.signal))
+      .rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('benchmarks 6-minute stereo 48kHz peak calculation without a PCM copy', () => {
     const sampleRate = 48000;
     const durationSec = 360; // 6 minutes
     const length = sampleRate * durationSec; // 17,280,000 samples/channel
@@ -170,26 +182,21 @@ describe('lib/clientWaveform', () => {
     }
     const buffer = makeFakeAudioBuffer([left, right], sampleRate);
 
-    const memBefore = typeof process !== 'undefined' && typeof process.memoryUsage === 'function'
-      ? process.memoryUsage().heapUsed
-      : 0;
+    const Float32Spy = vi.fn(Float32Array);
+    vi.stubGlobal('Float32Array', Float32Spy);
     const t0 = performance.now();
     const peaks = calculateAudioBufferPeaks(buffer, 1200);
     const elapsedMs = performance.now() - t0;
-    const memAfter = typeof process !== 'undefined' && typeof process.memoryUsage === 'function'
-      ? process.memoryUsage().heapUsed
-      : 0;
-    const heapDeltaBytes = memAfter - memBefore;
 
     console.info(
-      `[benchmark] 6-min stereo 48kHz (${length.toLocaleString()} samples/ch): ${elapsedMs.toFixed(2)}ms, heapDelta=${heapDeltaBytes.toLocaleString()} bytes`,
+      `[benchmark] 6-min stereo 48kHz (${length.toLocaleString()} samples/ch): ${elapsedMs.toFixed(2)}ms`,
     );
 
     expect(peaks).toHaveLength(1200);
     expect(Math.max(...peaks)).toBeCloseTo(1, 5);
     expect(Math.min(...peaks)).toBeGreaterThanOrEqual(0);
     expect(elapsedMs).toBeLessThan(2000);
-    // Old mixChannels allocated ~69MB Float32Array; zero-copy path should allocate negligible JS heap (< 2MB)
-    expect(heapDeltaBytes).toBeLessThan(2 * 1024 * 1024);
+    expect(Float32Spy).not.toHaveBeenCalled();
+    expect(buffer.copyFromChannel).not.toHaveBeenCalled();
   });
 });

@@ -761,19 +761,10 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
     }
   }, [textFilteredSongs, needsFullAnalysis, sortKey, sortDirection]);
 
-  const visibleSongIds = useMemo(() => {
-    if (needsFullAnalysis || nonAnalysisSortedSongs.length === 0) return [];
-    const isInitialWindow = visibleRange.startIndex === 0 && visibleRange.endIndex === 99;
-    const rawStart = isInitialWindow ? 0 : Math.max(0, visibleRange.startIndex - 30);
-    const rawEnd = isInitialWindow ? 100 : visibleRange.endIndex + 31;
-    const start = rawStart < nonAnalysisSortedSongs.length ? rawStart : 0;
-    const end = rawStart < nonAnalysisSortedSongs.length ? rawEnd : 100;
-    return nonAnalysisSortedSongs.slice(start, end).map(song => song.id);
-  }, [needsFullAnalysis, nonAnalysisSortedSongs, visibleRange]);
-
-  const { rows: analysisBySongID, status: analysisListState, retry: retryAnalysis } = useAnalysisFeatures({
-    songIds: visibleSongIds,
-    fullLoad: needsFullAnalysis,
+  const catalogProjection = sortKey === 'lufs' || sortKey === 'truePeak' ? 'loudness' : 'ordering';
+  const { rows: analysisBySongID, status: catalogAnalysisStatus, retry: retryAnalysis } = useAnalysisFeatures({
+    enabled: needsFullAnalysis,
+    projection: catalogProjection,
     paged: true,
   });
 
@@ -802,7 +793,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
   ]);
   // A previously published snapshot is safe for ordering while the fields it reads match.
   const sortAnalysis = useMemo(() => sortRevision ? analysisBySongID : undefined, [sortRevision, sortKey, energyFiltered, scoreMetric]);
-  const sortAnalysisStatus = sortKey === 'analysis' ? analysisListState : 'loaded';
+  const sortAnalysisStatus = sortKey === 'analysis' ? catalogAnalysisStatus : 'loaded';
 
   const filteredSongs = useMemo(() => {
     if (!needsFullAnalysis) return nonAnalysisSortedSongs;
@@ -880,6 +871,21 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
         });
     }
   }, [needsFullAnalysis, nonAnalysisSortedSongs, textFilteredSongs, sortKey, sortDirection, sortAnalysis, sortAnalysisStatus, energyMin, energyMax, scoreMetric, scoreMin, scoreMax, scoreOrder, scoreNow]);
+
+  const viewportProjection = columnVisibility.structureStatus ? undefined :
+    columnVisibility.lufs || columnVisibility.truePeak ? 'loudness' : 'ordering';
+  const fetchViewport = !needsFullAnalysis || viewportProjection === undefined ||
+    (viewportProjection === 'loudness' && catalogProjection === 'ordering');
+  const visibleSongIds = useMemo(() => {
+    if (!fetchViewport || !filteredSongs.length) return [];
+    const initial = visibleRange.startIndex === 0 && visibleRange.endIndex === 99;
+    const start = initial ? 0 : Math.max(0, visibleRange.startIndex - 30);
+    const end = initial ? 100 : visibleRange.endIndex + 31;
+    return (start < filteredSongs.length ? filteredSongs.slice(start, end) : filteredSongs.slice(0, 100)).map(song => song.id);
+  }, [fetchViewport, filteredSongs, visibleRange]);
+  const { rows: viewportAnalysis, status: viewportAnalysisStatus } = useAnalysisFeatures({ enabled: fetchViewport, songIds: visibleSongIds, projection: viewportProjection });
+  const rowAnalysis = fetchViewport ? viewportAnalysis : analysisBySongID;
+  const analysisListState = needsFullAnalysis ? catalogAnalysisStatus : viewportAnalysisStatus;
 
   const handleSort = useCallback((key: SortKey) => {
     if (sortKey === key) {
@@ -1168,10 +1174,10 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                   onLoadToDeck={handleLoadToDeck}
                   trackColor={trackColorMap.get(song.id)}
                   onSetTrackColor={handleSetTrackColor}
-                  analysis={analysisBySongID.get(song.id)}
+                  analysis={rowAnalysis.get(song.id)}
                   analysisListState={analysisListState}
                   stemStatus={song.stemStatus}
-                  keyCompatibility={computeKeyCompat(analysisBySongID.get(song.id)?.key)}
+                  keyCompatibility={computeKeyCompat(rowAnalysis.get(song.id)?.key)}
                   columnVisibility={columnVisibility}
                   columnWidths={columnWidths}
                   scoreMetric={scoreMetric}

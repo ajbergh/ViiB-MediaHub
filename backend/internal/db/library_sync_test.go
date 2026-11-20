@@ -89,6 +89,44 @@ func TestLibrarySnapshotAndChanges(t *testing.T) {
 	}
 }
 
+func TestPlaybackDeltaLeavesSearchAndAnalysisUntouched(t *testing.T) {
+	database := openLibrarySyncTestDB(t)
+	song := testLibrarySong("song", "Track", "local.wav")
+	if err := database.SaveSong(&song); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.conn.Exec(`CREATE TABLE search_writes (song_id TEXT);
+		CREATE TRIGGER count_search_update AFTER UPDATE ON song_search BEGIN
+			INSERT INTO search_writes VALUES (NEW.song_id);
+		END;`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpdatePlayCount(song.ID); err != nil {
+		t.Fatal(err)
+	}
+	var writes int
+	if err := database.conn.QueryRow(`SELECT count(*) FROM search_writes`).Scan(&writes); err != nil || writes != 0 {
+		t.Fatalf("playback wrote %d search rows, err=%v", writes, err)
+	}
+	song.Artist = "Changed Performer"
+	song.FileHash = "changed"
+	if err := database.SaveSong(&song); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.RecordSongLibraryChange(song.ID); err != nil {
+		t.Fatal(err)
+	}
+	page, err := database.GetLibraryChanges(0, 20)
+	if err != nil || len(page.Changes) != 4 || !page.Changes[0].AnalysisChanged || page.Changes[1].AnalysisChanged ||
+		!page.Changes[2].AnalysisChanged || !page.Changes[3].AnalysisChanged {
+		t.Fatalf("unexpected analysis invalidations: %+v, err=%v", page.Changes, err)
+	}
+	result, err := database.SearchLibrary("performer", 5)
+	if err != nil || len(result.Artists) != 1 || result.Artists[0].Name != song.Artist {
+		t.Fatalf("changed artist was not indexed: %+v, err=%v", result.Artists, err)
+	}
+}
+
 func TestSearchLibraryUsesBackfilledIndex(t *testing.T) {
 	database := openLibrarySyncTestDB(t)
 	song := testLibrarySong("search", "Northern Lights", filepath.Join(t.TempDir(), "northern.flac"))

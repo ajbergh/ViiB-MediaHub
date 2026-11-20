@@ -131,8 +131,7 @@ func missingPreparationWithLookup(
 		"local_energy":    localEnergyAvailable,
 		"local_amplitude": waveformAvailable,
 		"local_features": artifactValid(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion, features.Encoding, func(b []byte) bool {
-			_, e := features.DecodeCurrentBounded(b, features.MaxStructureStatusArtifactBytes)
-			return e == nil
+			return features.InspectStructureBounded(b, features.MaxStructureStatusArtifactBytes).Native
 		}),
 		"local_loudness": loudnessAvailable,
 		"local_beatgrid": artifactValid(beatgrid.ArtifactKind, beatgrid.FormatVersion, beatgrid.AlgorithmVersion, beatgrid.Encoding, func(b []byte) bool { _, e := beatgrid.Decode(b); return e == nil }),

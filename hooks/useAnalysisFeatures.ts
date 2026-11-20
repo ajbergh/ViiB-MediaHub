@@ -7,6 +7,7 @@ import type { AnalysisListLoadState } from '../lib/analysisReadiness';
 export interface UseAnalysisFeaturesOptions {
   enabled?: boolean;
   scalarsOnly?: boolean;
+  projection?: 'ordering' | 'loudness';
   songIds?: readonly string[];
   fullLoad?: boolean;
   paged?: boolean;
@@ -54,7 +55,7 @@ class AnalysisRows {
     return fields.reduce((revision, field) => Math.max(revision, this.revisions[field] ?? 0), 0);
   }
 
-  update(ids: string[], features: TrackAnalysisFeature[], invalidated: ReadonlySet<string>, full: boolean) {
+  update(ids: string[], features: TrackAnalysisFeature[], invalidated: ReadonlySet<string>) {
     const buckets = new Map(this.buckets);
     const changed = new Map<number, Map<string, TrackAnalysisFeature>>();
     const edit = (id: string) => {
@@ -75,20 +76,16 @@ class AnalysisRows {
 
     const revisions = { ...this.revisions };
     const revision = ++orderingRevision;
-    if (full) {
-      for (const field of orderingFields) revisions[field] = revision;
-    } else {
-      const touched = new Set([...ids, ...features.map(feature => feature.songId)]);
-      for (const id of touched) {
-        const bucket = changed.get(this.bucket(id));
-        if (!bucket) continue;
-        const before = this.get(id);
-        const after = bucket.get(id);
-        for (const field of orderingFields) {
-          if (!Object.is(before?.[field], after?.[field]) &&
-              (field !== 'providerScores' || JSON.stringify(before?.providerScores) !== JSON.stringify(after?.providerScores))) {
-            revisions[field] = revision;
-          }
+    const touched = new Set([...ids, ...features.map(feature => feature.songId)]);
+    for (const id of touched) {
+      const bucket = changed.get(this.bucket(id));
+      if (!bucket) continue;
+      const before = this.get(id);
+      const after = bucket.get(id);
+      for (const field of orderingFields) {
+        if (!Object.is(before?.[field], after?.[field]) &&
+            (field !== 'providerScores' || JSON.stringify(before?.providerScores) !== JSON.stringify(after?.providerScores))) {
+          revisions[field] = revision;
         }
       }
     }
@@ -96,7 +93,8 @@ class AnalysisRows {
   }
 }
 
-type DetailMode = 'scalars' | 'full';
+type DetailMode = 'scalars' | 'ordering' | 'loudness' | 'full';
+const detailRank = { none: 0, scalars: 1, ordering: 2, loudness: 3, full: 4 } as const;
 
 interface SubscriberRequest {
   mode: DetailMode;
@@ -113,6 +111,7 @@ let fullRefreshMode: 'none' | DetailMode = 'none';
 let fullRefreshPaged = false;
 let loadedFullMode: 'none' | DetailMode = 'none';
 const loadedIds = new Map<string, DetailMode>();
+const explicitCoverageIds = new Set<string>();
 const pendingIds = new Map<string, DetailMode>();
 const inFlightIds = new Map<string, DetailMode>();
 let inFlightInvalidated = new Set<string>();
@@ -120,18 +119,28 @@ let inFlightFullInvalidated = false;
 const subscribers = new Map<number, SubscriberRequest>();
 let nextSubscriberId = 0;
 let running: AbortController | undefined;
+let catalogRunning = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let listening = false;
 const listeners = new Set<() => void>();
 
 function coversMode(existing: 'none' | DetailMode | undefined, needed: DetailMode): boolean {
-  return existing === 'full' || (existing === 'scalars' && needed === 'scalars');
+  return detailRank[existing ?? 'none'] >= detailRank[needed];
 }
 
 function maxMode(a: 'none' | DetailMode, b: DetailMode): DetailMode;
 function maxMode(a: DetailMode | undefined, b: DetailMode): DetailMode;
 function maxMode(a: 'none' | DetailMode | undefined, b: DetailMode): DetailMode {
-  return a === 'full' || b === 'full' ? 'full' : 'scalars';
+  return a && a !== 'none' && coversMode(a, b) ? a : b;
+}
+
+function hasCoverage(id: string, mode: DetailMode) {
+  return coversMode(loadedIds.get(id), mode) || (!explicitCoverageIds.has(id) && coversMode(loadedFullMode, mode));
+}
+
+function requestOptions(mode: DetailMode, signal: AbortSignal) {
+  return { summary: true, signal, ...(mode === 'scalars' ? { scalarsOnly: true } :
+    mode === 'full' ? {} : { projection: mode }) };
 }
 
 function enqueuePendingId(id: string, mode: DetailMode) {
@@ -147,7 +156,7 @@ function enqueueActiveSubscribers() {
       }
     } else {
       for (const id of sub.songIds) {
-        if (!coversMode(loadedFullMode, sub.mode) && !coversMode(loadedIds.get(id), sub.mode)) {
+        if (!hasCoverage(id, sub.mode)) {
           enqueuePendingId(id, sub.mode);
         }
       }
@@ -188,42 +197,48 @@ function hasFullSubscriber(): boolean {
   return false;
 }
 
+function requestedModeForSong(id: string): DetailMode | undefined {
+  let mode: DetailMode | undefined;
+  for (const sub of subscribers.values()) {
+    if (sub.fullLoad || sub.songIdSet.has(id)) mode = maxMode(mode, sub.mode);
+  }
+  return mode;
+}
+
+function stopUnusedCatalog() {
+  if (hasFullSubscriber()) return;
+  fullRefreshMode = 'none';
+  fullRefreshPaged = false;
+  if (catalogRunning) running?.abort();
+}
+
 function invalidate(ids?: string[]) {
   if (!ids) {
     loadedFullMode = 'none';
     loadedIds.clear();
+    explicitCoverageIds.clear();
     pendingIds.clear();
     if (running) inFlightFullInvalidated = true;
-    if (subscribers.size === 0 || hasFullSubscriber()) {
-      fullRefreshMode = 'full';
-      for (const sub of subscribers.values()) {
-        if (sub.fullLoad && sub.paged) fullRefreshPaged = true;
-      }
-    }
+    fullRefreshMode = 'none';
+    fullRefreshPaged = false;
     enqueueActiveSubscribers();
   } else {
     for (const id of ids) {
       loadedIds.delete(id);
+      if (loadedFullMode !== 'none') explicitCoverageIds.add(id);
       if (running) inFlightInvalidated.add(id);
-      let required: DetailMode | undefined;
-      if (loadedFullMode !== 'none') {
-        required = loadedFullMode;
-      }
-      for (const sub of subscribers.values()) {
-        if (sub.fullLoad || sub.songIdSet.has(id)) {
-          required = maxMode(required, sub.mode);
-        }
-      }
-      if (required && fullRefreshMode === 'none') {
+      const required = requestedModeForSong(id);
+      if (required && !coversMode(fullRefreshMode, required)) {
         enqueuePendingId(id, required);
       }
     }
-    if (pendingIds.size > 1000 && (loadedFullMode !== 'none' || hasFullSubscriber())) {
-      fullRefreshMode = 'full';
+    if (pendingIds.size > 1000 && hasFullSubscriber()) {
       for (const sub of subscribers.values()) {
-        if (sub.fullLoad && sub.paged) fullRefreshPaged = true;
+        if (sub.fullLoad) {
+          fullRefreshMode = maxMode(fullRefreshMode, sub.mode);
+          if (sub.paged) fullRefreshPaged = true;
+        }
       }
-      pendingIds.clear();
     }
   }
   if (fullRefreshMode !== 'none' || pendingIds.size > 0) {
@@ -237,99 +252,114 @@ async function refresh() {
   const fullMode = fullRefreshMode;
   const all = fullMode !== 'none';
   const usePaged = fullRefreshPaged;
-  const batchEntries = all ? [] : [...pendingIds.entries()];
+  const batchEntries: [string, DetailMode][] = [];
   fullRefreshMode = 'none';
   fullRefreshPaged = false;
-  pendingIds.clear();
+  for (const id of pendingIds.keys()) {
+    const mode = requestedModeForSong(id);
+    if (all && mode && !coversMode(fullMode, mode)) continue;
+    pendingIds.delete(id);
+    if (!all && mode && !hasCoverage(id, mode)) batchEntries.push([id, mode]);
+  }
+  if (!all && !batchEntries.length) return;
   inFlightIds.clear();
   inFlightInvalidated = new Set<string>();
   inFlightFullInvalidated = false;
 
-  const fullBatchIds: string[] = [];
-  const scalarBatchIds: string[] = [];
+  const batches = new Map<DetailMode, string[]>();
   for (const [id, mode] of batchEntries) {
     inFlightIds.set(id, mode);
-    if (mode === 'full') fullBatchIds.push(id);
-    else scalarBatchIds.push(id);
+    const batch = batches.get(mode);
+    if (batch) batch.push(id);
+    else batches.set(mode, [id]);
   }
   const controller = new AbortController();
   running = controller;
+  catalogRunning = all;
   let failed = false;
   const current = () => running === controller && snapshot.generation === generation && useStore.getState().spotifySessionGeneration === generation;
+  const superseded = () => controller.signal.aborted || !current() || inFlightFullInvalidated || fullRefreshMode !== 'none';
+
+  // A cheaper catalog projection can arrive after a richer viewport request.
+  // Keep its artifact fields only while the existing detail is still current.
+  const preserveDetails = (feature: TrackAnalysisFeature, mode: DetailMode) => {
+    const cachedMode = loadedIds.get(feature.songId);
+    if (!cachedMode || coversMode(mode, cachedMode)) return feature;
+    const cached = snapshot.rows.get(feature.songId);
+    if (!cached) return feature;
+    if (cached.sourceFingerprint !== feature.sourceFingerprint) {
+      loadedIds.delete(feature.songId);
+      return feature;
+    }
+    if (mode === 'scalars') return cached;
+    return {
+      ...feature,
+      structureAvailable: cached.structureAvailable,
+      ...(mode === 'ordering' ? { integratedLufsBs1770: cached.integratedLufsBs1770, truePeakDbtp: cached.truePeakDbtp } : {}),
+    };
+  };
 
   try {
     if (all) {
-      const options = fullMode === 'scalars'
-        ? { summary: true, scalarsOnly: true, signal: controller.signal }
-        : { summary: true, signal: controller.signal };
-
+      const options = requestOptions(fullMode, controller.signal);
+      const features: TrackAnalysisFeature[] = [];
       if (usePaged && typeof api.getTrackAnalysisFeaturesPage === 'function') {
+        if (snapshot.status !== 'loading') publish({ ...snapshot, status: 'loading' });
         let cursor: string | undefined;
-        let hasMore = true;
-        const seenIds = new Set<string>();
-        while (hasMore) {
+        for (;;) {
           const page = await api.getTrackAnalysisFeaturesPage(cursor, 500, options);
-          if (!current() || inFlightFullInvalidated || fullRefreshMode !== 'none') return;
-          const invalidated = new Set<string>([...inFlightInvalidated, ...pendingIds.keys()]);
-          for (const feature of page.items) {
-            seenIds.add(feature.songId);
-            if (!invalidated.has(feature.songId)) {
-              loadedIds.set(feature.songId, maxMode(loadedIds.get(feature.songId), fullMode));
-            }
-          }
-          hasMore = Boolean(page.hasMore && page.nextCursor && page.nextCursor !== cursor);
+          if (superseded()) return;
+          features.push(...page.items);
+          if (!page.hasMore) break;
+          if (!page.nextCursor || page.nextCursor === cursor) throw new Error('Analysis cursor did not advance');
           cursor = page.nextCursor;
-          const removedIds: string[] = [];
-          if (!hasMore) {
-            for (const row of snapshot.rows.values()) {
-              if (!seenIds.has(row.songId) && !invalidated.has(row.songId)) {
-                removedIds.push(row.songId);
-                loadedIds.delete(row.songId);
-              }
-            }
-            loadedFullMode = maxMode(loadedFullMode, fullMode);
-          }
-          const nextRows = snapshot.rows.update(removedIds, page.items, invalidated, false);
-          publish({ generation, rows: nextRows, status: hasMore ? 'loading' : 'loaded' });
         }
       } else {
-        const features = await api.getTrackAnalysisFeatures(undefined, options);
-        if (!current() || inFlightFullInvalidated || fullRefreshMode !== 'none') return;
-        const invalidated = new Set<string>([...inFlightInvalidated, ...pendingIds.keys()]);
-        const nextRows = emptyAnalysisRows.update([], features, invalidated, true);
-        loadedFullMode = maxMode(loadedFullMode, fullMode);
-        for (const feature of features) {
-          if (!invalidated.has(feature.songId)) {
-            loadedIds.set(feature.songId, maxMode(loadedIds.get(feature.songId), fullMode));
-          }
-        }
-        publish({ generation, rows: nextRows, status: 'loaded' });
+        for (const feature of await api.getTrackAnalysisFeatures(undefined, options)) features.push(feature);
+        if (superseded()) return;
       }
+      const removedIds: string[] = [];
+      // Viewport requests can be queued during pagination without invalidating the catalog data.
+      const invalidated = inFlightInvalidated;
+      const seen = new Set(features.map(feature => feature.songId));
+      for (const row of snapshot.rows.values()) {
+        if (!seen.has(row.songId) && !invalidated.has(row.songId)) {
+          removedIds.push(row.songId);
+          loadedIds.delete(row.songId);
+        }
+      }
+      const nextRows = snapshot.rows.update(removedIds, features.map(feature => preserveDetails(feature, fullMode)), invalidated);
+      loadedFullMode = maxMode(loadedFullMode, fullMode);
+      for (const id of explicitCoverageIds) {
+        if (!invalidated.has(id) && coversMode(fullMode, loadedFullMode)) explicitCoverageIds.delete(id);
+      }
+      for (const [id, mode] of pendingIds) {
+        if (hasCoverage(id, mode) && !invalidated.has(id)) pendingIds.delete(id);
+      }
+      publish({ generation, rows: nextRows, status: 'loaded' });
     } else {
       const features: TrackAnalysisFeature[] = [];
-      const fullOptions = { summary: true, signal: controller.signal };
-      const scalarOptions = { summary: true, scalarsOnly: true, signal: controller.signal };
-
-      for (let start = 0; start < fullBatchIds.length; start += 100) {
-        const chunk = fullBatchIds.slice(start, start + 100);
-        features.push(...await api.getTrackAnalysisFeatures(chunk, fullOptions));
-        if (!current() || inFlightFullInvalidated || fullRefreshMode !== 'none') return;
-      }
-      for (let start = 0; start < scalarBatchIds.length; start += 100) {
-        const chunk = scalarBatchIds.slice(start, start + 100);
-        features.push(...await api.getTrackAnalysisFeatures(chunk, scalarOptions));
-        if (!current() || inFlightFullInvalidated || fullRefreshMode !== 'none') return;
+      for (const [mode, ids] of batches) {
+        const options = requestOptions(mode, controller.signal);
+        for (let start = 0; start < ids.length; start += 100) {
+          const chunk = await api.getTrackAnalysisFeatures(ids.slice(start, start + 100), options);
+          if (superseded()) return;
+          features.push(...chunk.map(feature => preserveDetails(feature, mode)));
+        }
       }
 
       const invalidated = new Set<string>([...inFlightInvalidated, ...pendingIds.keys()]);
       for (const [id, mode] of batchEntries) {
-        if (!invalidated.has(id)) loadedIds.set(id, maxMode(loadedIds.get(id), mode));
+        if (!invalidated.has(id)) {
+          loadedIds.set(id, maxMode(loadedIds.get(id), mode));
+          if (coversMode(mode, loadedFullMode === 'none' ? mode : loadedFullMode)) explicitCoverageIds.delete(id);
+        }
       }
-      const nextRows = snapshot.rows.update(batchEntries.map(([id]) => id), features, invalidated, false);
+      const nextRows = snapshot.rows.update(batchEntries.map(([id]) => id), features, invalidated);
       publish({ generation, rows: nextRows, status: 'loaded' });
     }
   } catch {
-    if (current()) {
+    if (current() && !controller.signal.aborted) {
       failed = true;
       if (all) {
         fullRefreshMode = maxMode(fullRefreshMode, fullMode);
@@ -348,15 +378,18 @@ async function refresh() {
       inFlightInvalidated.clear();
       inFlightFullInvalidated = false;
       running = undefined;
+      catalogRunning = false;
       if (!failed && (fullRefreshMode !== 'none' || pendingIds.size > 0)) schedule();
+      else if (!failed && controller.signal.aborted && snapshot.status === 'loading') publish({ ...snapshot, status: 'loaded' });
     }
   }
 }
 
 function onLibraryUpdate(event: Event) {
-  const detail = (event as CustomEvent<{ source?: string; songId?: string; songIds?: string[] }>).detail;
+  const detail = (event as CustomEvent<{ source?: string; songId?: string; songIds?: string[]; analysisSongIds?: string[] }>).detail;
   if (detail?.source === 'full_refresh') invalidate();
-  if (detail?.songIds?.length) invalidate(detail.songIds);
+  if (detail?.analysisSongIds) invalidate(detail.analysisSongIds);
+  else if (detail?.songIds?.length) invalidate(detail.songIds);
   else if (detail?.songId) invalidate([detail.songId]);
 }
 
@@ -366,8 +399,12 @@ function retry() {
     fullRefreshMode = 'full';
   } else {
     enqueueActiveSubscribers();
-    if (fullRefreshMode === 'none' && pendingIds.size === 0 && hasFullSubscriber()) {
-      fullRefreshMode = 'full';
+    if (fullRefreshMode === 'none' && pendingIds.size === 0) {
+      for (const sub of subscribers.values()) {
+        if (!sub.fullLoad) continue;
+        fullRefreshMode = maxMode(fullRefreshMode, sub.mode);
+        fullRefreshPaged ||= sub.paged;
+      }
     }
   }
   schedule();
@@ -380,7 +417,7 @@ export function useAnalysisFeatures(optionsOrEnabled: boolean | UseAnalysisFeatu
   const songIds = isObj ? optionsOrEnabled.songIds : undefined;
   const fullLoad = isObj ? (optionsOrEnabled.fullLoad ?? songIds === undefined) : true;
   const paged = isObj ? Boolean(optionsOrEnabled.paged ?? fullLoad) : false;
-  const mode: DetailMode = scalarsOnly ? 'scalars' : 'full';
+  const mode: DetailMode = scalarsOnly ? 'scalars' : (isObj ? optionsOrEnabled.projection ?? 'full' : 'full');
   const songIdsKey = useMemo(() => (songIds ? songIds.join('\u0000') : ''), [songIds]);
   const subId = useMemo(() => ++nextSubscriberId, []);
 
@@ -389,11 +426,13 @@ export function useAnalysisFeatures(optionsOrEnabled: boolean | UseAnalysisFeatu
 
   useEffect(() => () => {
     subscribers.delete(subId);
+    stopUnusedCatalog();
   }, [subId]);
 
   useEffect(() => {
     if (!enabled) {
       subscribers.delete(subId);
+      stopUnusedCatalog();
       return;
     }
     if (!listening) {
@@ -409,14 +448,17 @@ export function useAnalysisFeatures(optionsOrEnabled: boolean | UseAnalysisFeatu
       songIds: currentIds,
       songIdSet: new Set(currentIds),
     });
+    if (!fullLoad) stopUnusedCatalog();
 
     if (snapshot.generation !== generation) {
       running?.abort();
       running = undefined;
+      catalogRunning = false;
       clearTimeout(timer);
       timer = undefined;
       loadedFullMode = 'none';
       loadedIds.clear();
+      explicitCoverageIds.clear();
       fullRefreshMode = 'none';
       fullRefreshPaged = false;
       pendingIds.clear();
@@ -440,7 +482,7 @@ export function useAnalysisFeatures(optionsOrEnabled: boolean | UseAnalysisFeatu
       }
     } else {
       for (const id of currentIds) {
-        if (coversMode(loadedFullMode, mode) || coversMode(loadedIds.get(id), mode)) continue;
+        if (hasCoverage(id, mode)) continue;
         if (coversMode(inFlightIds.get(id), mode) && !inFlightInvalidated.has(id)) continue;
         enqueuePendingId(id, mode);
       }

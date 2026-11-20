@@ -22,7 +22,7 @@
 
 import { useMemo } from 'react';
 import { splitArtistNames } from './lib/artistNames';
-import { compareLibraryText } from './lib/libraryIndex';
+import { catalogDeltas, compareLibraryText } from './lib/libraryIndex';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { deduplicatingPersistStorage } from './lib/deduplicatingPersistStorage';
@@ -133,52 +133,89 @@ export const useStore = create<AppState>()(
 
 type DerivedAlbum = Album & { plexBacked?: boolean };
 
+function groupSongs(songs: AppState['songs'], keys: (song: AppState['songs'][number]) => string[]) {
+  const groups = new Map<string, AppState['songs']>();
+  for (const song of songs) {
+    for (const key of keys(song)) {
+      const members = groups.get(key);
+      if (members) members.push(song);
+      else groups.set(key, [song]);
+    }
+  }
+  return groups;
+}
+
+function updateStableGroups(
+  songs: AppState['songs'],
+  previous: AppState['songs'] | null,
+  groups: Map<string, AppState['songs']>,
+  keys: (song: AppState['songs'][number]) => string[],
+  changed: (before: AppState['songs'][number], after: AppState['songs'][number]) => boolean,
+) {
+  const delta = catalogDeltas.get(songs);
+  if (!delta || delta.previous.deref() !== previous || delta.orderChanged) return null;
+  const replacements = new Map<string, AppState['songs'][number]>();
+  const affected = new Set<string>();
+  for (const { before, after } of delta.changes) {
+    if (!before || !after) return null;
+    if (!changed(before, after)) continue;
+    const oldKeys = keys(before);
+    const newKeys = keys(after);
+    if (oldKeys.length !== newKeys.length || oldKeys.some((key, index) => key !== newKeys[index])) return null;
+    replacements.set(after.id, after);
+    for (const key of newKeys) affected.add(key);
+  }
+  for (const key of affected) {
+    const members = groups.get(key)!;
+    groups.set(key, members.map(song => replacements.get(song.id) ?? song));
+  }
+  return affected;
+}
+
+const albumArtist = (song: AppState['songs'][number]) => song.albumArtist || song.artist || 'Unknown Artist';
+const albumGroupKeys = (song: AppState['songs'][number]) => [`${song.album}::${albumArtist(song)}`];
 let cachedAlbumsSongsRef: AppState['songs'] | null = null;
 let cachedAlbumsResult: DerivedAlbum[] = [];
+let albumGroups = new Map<string, AppState['songs']>();
+let albumSummaries = new Map<string, DerivedAlbum>();
+
+function summarizeAlbum(songs: AppState['songs']): DerivedAlbum {
+  const first = songs[0];
+  const album: DerivedAlbum = {
+    name: first.album || 'Unknown Album', artist: albumArtist(first), songCount: songs.length,
+    coverUrl: first.coverUrl, addedAt: first.addedAt || 0, plexBacked: isPlexSourcePath(first.path),
+  };
+  for (let i = 1; i < songs.length; i++) {
+    const song = songs[i];
+    album.addedAt = Math.max(album.addedAt || 0, song.addedAt || 0);
+    if (isPlexSourcePath(song.path)) {
+      if (!album.plexBacked || (song.coverUrl && (!album.coverUrl || isAuthoritativePlexArtwork(song.coverUrl)))) {
+        album.coverUrl = song.coverUrl;
+      }
+      album.plexBacked = true;
+    } else if (!album.plexBacked && !album.coverUrl && song.coverUrl) {
+      album.coverUrl = song.coverUrl;
+    }
+  }
+  return album;
+}
 
 const computeAlbums = (songs: AppState['songs']): DerivedAlbum[] => {
   if (songs === cachedAlbumsSongsRef) {
     return cachedAlbumsResult;
   }
 
-  const albumsMap = new Map<string, DerivedAlbum>();
-
-  for (let i = 0; i < songs.length; i++) {
-    const song = songs[i];
-    const artist = song.albumArtist || song.artist || 'Unknown Artist';
-    const key = `${song.album}::${artist}`;
-    const plexBacked = isPlexSourcePath(song.path);
-    const existing = albumsMap.get(key);
-    if (existing) {
-      existing.songCount += 1;
-      existing.addedAt = Math.max(existing.addedAt || 0, song.addedAt || 0);
-      if (plexBacked) {
-        // Once a logical album has a Plex source, Plex's artwork decision is
-        // authoritative. The first Plex row deliberately clears a local cover
-        // if PMS has no artwork; later Plex rows may supply that PMS cover.
-        if (!existing.plexBacked) {
-          existing.coverUrl = song.coverUrl;
-        } else if (song.coverUrl && (!existing.coverUrl || isAuthoritativePlexArtwork(song.coverUrl))) {
-          existing.coverUrl = song.coverUrl;
-        }
-        existing.plexBacked = true;
-      } else if (!existing.plexBacked && !existing.coverUrl && song.coverUrl) {
-        existing.coverUrl = song.coverUrl;
-      }
-      continue;
-    }
-    albumsMap.set(key, {
-      name: song.album || 'Unknown Album',
-      artist,
-      songCount: 1,
-      coverUrl: song.coverUrl,
-      addedAt: song.addedAt || 0,
-      plexBacked,
-    });
-  }
-
+  const affected = updateStableGroups(songs, cachedAlbumsSongsRef, albumGroups, albumGroupKeys, (a, b) =>
+    a.album !== b.album || albumArtist(a) !== albumArtist(b) || a.coverUrl !== b.coverUrl ||
+    a.addedAt !== b.addedAt || a.path !== b.path);
   cachedAlbumsSongsRef = songs;
-  cachedAlbumsResult = Array.from(albumsMap.values()).sort(
+  if (affected?.size === 0) return cachedAlbumsResult;
+  if (!affected) {
+    albumGroups = groupSongs(songs, albumGroupKeys);
+    albumSummaries = new Map();
+  }
+  for (const key of affected ?? albumGroups.keys()) albumSummaries.set(key, summarizeAlbum(albumGroups.get(key)!));
+  cachedAlbumsResult = Array.from(albumSummaries.values()).sort(
     (a, b) =>
       (b.addedAt || 0) - (a.addedAt || 0) ||
       compareLibraryText(a.name, b.name) ||
@@ -187,86 +224,53 @@ const computeAlbums = (songs: AppState['songs']): DerivedAlbum[] => {
   return cachedAlbumsResult;
 };
 
-export const useAlbums = () => {
-  const songs = useStore((state) => state.songs);
-  return useMemo(() => computeAlbums(songs), [songs]);
-};
+export const useAlbums = () => useStore(state => computeAlbums(state.songs));
 
 let cachedArtistsSongsRef: AppState['songs'] | null = null;
 let cachedArtistsResult: Artist[] = [];
+let artistGroups = new Map<string, AppState['songs']>();
+let artistSummaries = new Map<string, Artist>();
+const artistGroupKeys = (song: AppState['songs'][number]) => splitArtistNames(song.artist);
 
-type ArtistAccumulator = {
-  artist: Artist;
-  lastAlbum: string;
-  albums: Set<string> | null;
-};
+function summarizeArtist(name: string, members: AppState['songs']): Artist {
+  const firstAlbum = members[0].album;
+  let albums: Set<string> | undefined;
+  let imageUrl = members[0].coverUrl;
+  for (const song of members) {
+    if (song.album !== firstAlbum) (albums ??= new Set([firstAlbum])).add(song.album);
+    if (!imageUrl && song.coverUrl) imageUrl = song.coverUrl;
+  }
+  return { name, songCount: members.length, albumCount: albums?.size ?? 1, imageUrl };
+}
 
 const computeArtists = (songs: AppState['songs']): Artist[] => {
   if (songs === cachedArtistsSongsRef) {
     return cachedArtistsResult;
   }
 
-  const artistMap = new Map<string, ArtistAccumulator>();
-  const splitCache = new Map<string, string[]>();
-
-  for (let i = 0; i < songs.length; i++) {
-    const song = songs[i];
-    const credit = song.artist;
-    let artistNames = splitCache.get(credit);
-    if (!artistNames) {
-      artistNames = splitArtistNames(credit);
-      splitCache.set(credit, artistNames);
-    }
-
-    for (let j = 0; j < artistNames.length; j++) {
-      const artistName = artistNames[j];
-      let entry = artistMap.get(artistName);
-      if (!entry) {
-        entry = {
-          artist: {
-            name: artistName,
-            songCount: 1,
-            albumCount: 1,
-            imageUrl: song.coverUrl,
-          },
-          lastAlbum: song.album,
-          albums: null,
-        };
-        artistMap.set(artistName, entry);
-      } else {
-        entry.artist.songCount++;
-        if (song.album !== entry.lastAlbum) {
-          if (entry.albums === null) {
-            entry.albums = new Set([entry.lastAlbum, song.album]);
-          } else {
-            entry.albums.add(song.album);
-          }
-          entry.artist.albumCount = entry.albums.size;
-        }
-        if (!entry.artist.imageUrl && song.coverUrl) {
-          entry.artist.imageUrl = song.coverUrl;
-        }
-      }
-    }
-  }
-
-  const artists: Artist[] = [];
-  for (const entry of artistMap.values()) {
-    artists.push(entry.artist);
-  }
-  artists.sort((a, b) => b.songCount - a.songCount);
-
+  const affected = updateStableGroups(songs, cachedArtistsSongsRef, artistGroups, artistGroupKeys,
+    (a, b) => a.artist !== b.artist || a.album !== b.album || a.coverUrl !== b.coverUrl);
   cachedArtistsSongsRef = songs;
-  cachedArtistsResult = artists;
+  if (affected?.size === 0) return cachedArtistsResult;
+  if (!affected) {
+    const splitCache = new Map<string, string[]>();
+    artistGroups = groupSongs(songs, song => {
+      let names = splitCache.get(song.artist);
+      if (!names) {
+        names = artistGroupKeys(song);
+        splitCache.set(song.artist, names);
+      }
+      return names;
+    });
+    artistSummaries = new Map();
+  }
+  for (const key of affected ?? artistGroups.keys()) artistSummaries.set(key, summarizeArtist(key, artistGroups.get(key)!));
+  cachedArtistsResult = Array.from(artistSummaries.values()).sort((a, b) => b.songCount - a.songCount);
   return cachedArtistsResult;
 };
 
-const emptyArtistSongs: AppState['songs'] = [];
-
-export const useArtists = (enabled = true) => {
-  const songs = useStore(state => enabled ? state.songs : emptyArtistSongs);
-  return useMemo(() => computeArtists(songs), [songs]);
-};
+const emptyArtists: Artist[] = [];
+export const useArtists = (enabled = true) => useStore(state => enabled ? computeArtists(state.songs) : emptyArtists);
 
 let cachedCoversAlbumsRef: DerivedAlbum[] | null = null;
 let cachedCoversResult: Record<string, string> = {};

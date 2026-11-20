@@ -9,7 +9,7 @@ import { Playlist, Song } from '../types';
 const API_V2_BASE = '/api/v2';
 const REQUEST_TIMEOUT_MS = 15_000;
 export interface LibrarySnapshotPage { revision: number; songs: ApiSong[]; nextCursor?: string; hasMore: boolean; }
-export interface LibraryChange { revision: number; songId: string; operation: 'upsert' | 'delete'; changedAt: number; }
+export interface LibraryChange { revision: number; songId: string; operation: 'upsert' | 'delete'; changedAt: number; analysisChanged?: boolean; }
 export interface LibraryChangePage { fromRevision: number; toRevision: number; changes: LibraryChange[]; songs: ApiSong[]; hasMore: boolean; }
 export interface LibrarySearchAlbum { name: string; artist: string; songCount: number; coverPath?: string; }
 export interface LibrarySearchArtist { name: string; songCount: number; albumCount: number; }

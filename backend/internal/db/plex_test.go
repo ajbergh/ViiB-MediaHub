@@ -104,6 +104,11 @@ func TestPlexSyncAddUpdateRemoveAndOfflineRetention(t *testing.T) {
 	if err != nil || first.Title != "First" || first.FilePath != "plex://machine-test/2/1" {
 		t.Fatalf("unexpected first song: %#v err=%v", first, err)
 	}
+	identities, err := database.ListAnalysisSourceIdentities([]string{"missing", first.ID})
+	if err != nil || len(identities) != 1 || identities[0].SongID != first.ID || identities[0].Plex.MachineID != machineID ||
+		identities[0].Plex.RatingKey != "1" || !identities[0].Plex.Available || identities[0].Plex.UpdatedAt != 100 {
+		t.Fatalf("unexpected scoped identities: %+v err=%v", identities, err)
+	}
 
 	updatedTrack := plexFixture(sourceID, libraryID, machineID, "1", "First (Remastered)", 200)
 	added, updated, removed, err = database.SyncPlexLibrary(sourceID, libraryID, []PlexCatalogTrack{updatedTrack})

@@ -191,7 +191,7 @@ func (d *DB) GetLibraryChanges(since int64, limit int) (LibraryChangePage, error
 		return LibraryChangePage{}, ErrLibraryResnapshotRequired
 	}
 	rows, err := tx.Query(`
-		SELECT revision, song_id, operation, changed_at
+		SELECT revision, song_id, operation, changed_at, analysis_changed
 		FROM library_changes WHERE revision > ?
 		ORDER BY revision LIMIT ?`, since, limit+1)
 	if err != nil {
@@ -202,7 +202,7 @@ func (d *DB) GetLibraryChanges(since int64, limit int) (LibraryChangePage, error
 	changes := make([]LibraryChange, 0, limit+1)
 	for rows.Next() {
 		var change LibraryChange
-		if err := rows.Scan(&change.Revision, &change.SongID, &change.Operation, &change.ChangedAt); err != nil {
+		if err := rows.Scan(&change.Revision, &change.SongID, &change.Operation, &change.ChangedAt, &change.AnalysisChanged); err != nil {
 			return LibraryChangePage{}, err
 		}
 		changes = append(changes, change)

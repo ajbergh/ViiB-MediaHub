@@ -907,6 +907,40 @@ func (d *DB) ListPlexTrackSources() (map[string]PlexTrackSource, error) {
 	return sources, rows.Err()
 }
 
+// AnalysisSourceIdentity contains only the catalog fields needed to qualify analysis.
+type AnalysisSourceIdentity struct {
+	SongID, FilePath, FileHash string
+	Plex                       PlexTrackSource
+}
+
+func (d *DB) ListAnalysisSourceIdentities(songIDs []string) ([]AnalysisSourceIdentity, error) {
+	if len(songIDs) == 0 {
+		return nil, nil
+	}
+	if err := d.EnsurePlexSchema(); err != nil {
+		return nil, err
+	}
+	rows, err := d.conn.Query(`SELECT songs.id, songs.file_path, COALESCE(songs.file_hash, ''),
+		COALESCE(p.id, ''), COALESCE(t.machine_identifier, ''), COALESCE(t.rating_key, ''),
+		COALESCE(t.media_key, ''), COALESCE(t.updated_at, 0), COALESCE(p.available, 0)
+		FROM songs LEFT JOIN plex_tracks t ON t.song_id=songs.id LEFT JOIN plex_sources p ON p.id=t.source_id
+		WHERE COALESCE(songs.ignored, 0)=0 AND songs.id IN (`+strings.TrimSuffix(strings.Repeat("?,", len(songIDs)), ",")+`)`, analysisSongArgs(nil, songIDs)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	identities := make([]AnalysisSourceIdentity, 0, len(songIDs))
+	for rows.Next() {
+		var identity AnalysisSourceIdentity
+		p := &identity.Plex
+		if err := rows.Scan(&identity.SongID, &identity.FilePath, &identity.FileHash, &p.SourceID, &p.MachineID, &p.RatingKey, &p.MediaKey, &p.UpdatedAt, &p.Available); err != nil {
+			return nil, err
+		}
+		identities = append(identities, identity)
+	}
+	return identities, rows.Err()
+}
+
 // RemovePlexSource deletes only ViiB's cached catalog/configuration rows. It
 // performs no network request and can never delete or modify media on PMS.
 func (d *DB) RemovePlexSource(sourceID string) error {

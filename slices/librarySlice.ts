@@ -34,7 +34,7 @@ import { backendService } from '../services/backendService';
 import { libraryOperationsV2 } from '../services/libraryOperationsV2';
 import api, { ApiAlbumMetadata, ApiArtistMetadata } from '../services/api';
 import { Playlist, Song, AlbumMetadata, ArtistMetadata } from '../types';
-import { compareLibraryText, LibraryIndex } from '../lib/libraryIndex';
+import { affectsSmartMixes, catalogDeltas, compareLibraryText, LibraryIndex, patchCatalogSong, rebaseCatalogDelta } from '../lib/libraryIndex';
 import { libraryV2, LibraryResnapshotRequired } from '../services/libraryV2';
 
 function mapCachedArtistMetadata(entries: ApiArtistMetadata[]): Record<string, ArtistMetadata> {
@@ -98,14 +98,17 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
     }
   };
 
-  const publishCatalog = (songs: Song[], songIds?: string[]) => {
+  const publishCatalog = (songs: Song[], songIds?: string[], analysisSongIds?: string[]) => {
     if (songs !== get().songs) {
+      rebaseCatalogDelta(songs, get().songs);
+      const delta = catalogDeltas.get(songs);
+      const refreshMixes = !delta || delta.previous.deref() !== get().songs || delta.orderChanged || delta.changes.some(affectsSmartMixes);
       set({ songs });
-      scheduleMixes();
+      if (refreshMixes) scheduleMixes();
     }
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("library_updated", {
-        detail: songIds ? { source: "library_delta", revision, songIds } : { source: "full_refresh" },
+        detail: songIds ? { source: "library_delta", revision, songIds, analysisSongIds } : { source: "full_refresh" },
       }));
     }
   };
@@ -250,7 +253,11 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
           const delta = await libraryV2.getChanges(revision);
           revision = delta.revision;
           if (delta.changes.length) {
-            publishCatalog(libraryIndex.apply(delta.changes, delta.songs), [...new Set(delta.changes.map(change => change.songId))]);
+            publishCatalog(
+              libraryIndex.apply(delta.changes, delta.songs),
+              [...new Set(delta.changes.map(change => change.songId))],
+              [...new Set(delta.changes.filter(change => change.analysisChanged !== false).map(change => change.songId))],
+            );
           }
         } catch (error) {
           if (error instanceof LibraryResnapshotRequired || forceRecovery || Date.now() - lastLegacyRead >= SCAN_LIBRARY_REFRESH_INTERVAL_MS) {
@@ -478,27 +485,17 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
      * - When backend is not available: update IndexedDB via libraryService
      */
     recordPlay: (songId) => {
-      const { backendAvailable } = get();
-      set((state) => {
-          const updatedSongs = state.songs.map(s => {
-              if (s.id === songId) {
-                  const updated = {
-                      ...s,
-                      playCount: (s.playCount || 0) + 1,
-                      lastPlayed: Date.now()
-                  };
-                  // Persist the play count
-                  if (backendAvailable) {
-                      backendService.recordPlay(songId).catch(e => console.error('Failed to record play on backend:', e));
-                  } else {
-                      libraryService.saveSongs([updated]);
-                  }
-                  return updated;
-              }
-              return s;
-          });
-          return { songs: updatedSongs };
-      });
+      const { backendAvailable, songs } = get();
+      const song = songs.find(item => item.id === songId);
+      if (!song) return;
+      const patch = { playCount: (song.playCount || 0) + 1, lastPlayed: Date.now() };
+      set({ songs: patchCatalogSong(songs, songId, patch) });
+      scheduleMixes();
+      if (backendAvailable) {
+          backendService.recordPlay(songId).catch(e => console.error('Failed to record play on backend:', e));
+      } else {
+          libraryService.saveSongs([{ ...song, ...patch }]);
+      }
   },
 
   /**
@@ -530,9 +527,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       console.log(`🔧 Fixing duration for "${song.title}": ${song.duration.toFixed(1)}s → ${duration.toFixed(1)}s`);
       
       set((state) => ({
-          songs: state.songs.map(s => 
-              s.id === songId ? { ...s, duration } : s
-          )
+          songs: patchCatalogSong(state.songs, songId, { duration }),
       }));
       
       // Persist to backend
@@ -571,11 +566,12 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
           await libraryService.saveSongs([updatedSong]);
       }
       set((state) => ({
-          songs: state.songs.map(s => s.id === songId ? { ...s, ...patch } : s),
+          songs: patchCatalogSong(state.songs, songId, patch),
           currentSong: state.currentSong?.id === songId ? { ...state.currentSong, ...patch } : state.currentSong,
           queue: state.queue.map(s => s.id === songId ? { ...s, ...patch } : s),
           songInfoModalSong: state.songInfoModalSong?.id === songId ? { ...state.songInfoModalSong, ...patch } : state.songInfoModalSong,
       }));
+      if (affectsSmartMixes({ before: existing, after: updatedSong })) scheduleMixes();
   },
 
   fetchArtistMetadata: async (artistName) => {
@@ -972,9 +968,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
           // library array see the update; retain all unaffected song identities.
           set((state) => ({
               likedSongIds: newLikedIds,
-              songs: state.songs.map(song => song.id === songId
-                  ? { ...song, liked: result.liked, likedAt: result.liked ? Date.now() : undefined }
-                  : song),
+              songs: patchCatalogSong(state.songs, songId, { liked: result.liked, likedAt: result.liked ? Date.now() : undefined }),
           }));
 
           console.log(`${result.liked ? '❤️' : '💔'} Song ${songId} ${result.liked ? 'liked' : 'unliked'}`);
