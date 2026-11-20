@@ -46,6 +46,29 @@ func TestDarwinQuickScanReconcilesSymlinkedRoots(t *testing.T) {
 	if err := database.SaveFileMetadataCache(db.FileMetadataCache{FilePath: missing, FileSize: 10, Mtime: 1}); err != nil {
 		t.Fatal(err)
 	}
+	legacyPath := filepath.Join(alias, "legacy.wav")
+	writeTestWAV(t, legacyPath)
+	info, err := os.Stat(legacyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SaveFileMetadataCache(db.FileMetadataCache{
+		FilePath: legacyPath, FileSize: info.Size(), Mtime: info.ModTime().UnixMilli(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := computeMediaFingerprint(legacyPath, info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.SaveSong(&db.Song{ID: "legacy", FilePath: legacyPath, FileHash: fingerprint}); err != nil {
+		t.Fatal(err)
+	}
+	canonicalLegacyPath := filepath.Join(scanRoot, "legacy.wav")
+	id, err := database.ResolveSongIdentity(canonicalLegacyPath, fingerprint, "new-id")
+	if err != nil || id != "legacy" {
+		t.Fatalf("resolved legacy identity = %q, %v", id, err)
+	}
 
 	scanner := New(database, filepath.Join(root, "data"))
 	defer scanner.Close()
@@ -60,4 +83,18 @@ func TestDarwinQuickScanReconcilesSymlinkedRoots(t *testing.T) {
 			t.Fatalf("scan %d reported %+v", attempt+1, changes)
 		}
 	}
+
+	if err := os.Remove(legacyPath); err != nil {
+		t.Fatal(err)
+	}
+	result, err := scanner.QuickStartup()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range result.ChangedFiles {
+		if change.Path == legacyPath && change.ChangeType == ChangeTypeDeleted {
+			return
+		}
+	}
+	t.Fatalf("legacy path deletion missing from %+v", result.ChangedFiles)
 }

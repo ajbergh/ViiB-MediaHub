@@ -188,7 +188,10 @@ func TestEnsureDownloadDirIsScannedDoesNotMistakeNestedRootForCoverage(t *testin
 
 func newDownloadRescanTestScanner(t *testing.T) (*Scanner, *db.DB, string) {
 	t.Helper()
-	tempDir := t.TempDir()
+	tempDir, err := resolveScanRoot(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	database, err := db.New(filepath.Join(tempDir, "test.db"))
 	if err != nil {
 		t.Fatalf("open database: %v", err)

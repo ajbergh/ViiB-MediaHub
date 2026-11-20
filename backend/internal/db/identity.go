@@ -6,6 +6,8 @@ import (
 	"database/sql"
 	"errors"
 	"os"
+	"path/filepath"
+	"runtime"
 )
 
 // ResolveSongIdentity preserves the logical song ID when a file is rescanned or
@@ -27,8 +29,15 @@ func (d *DB) ResolveSongIdentity(filePath, fingerprint, proposedID string) (stri
 		if err == nil {
 			// Reuse identity only for a confirmed move. If the old path still exists,
 			// this is a duplicate copy and must receive its own logical ID.
-			if _, statErr := os.Stat(previousPath); errors.Is(statErr, os.ErrNotExist) {
+			_, statErr := os.Stat(previousPath)
+			if errors.Is(statErr, os.ErrNotExist) {
 				return id, nil
+			}
+			if runtime.GOOS == "darwin" && statErr == nil {
+				if resolved, err := filepath.EvalSymlinks(previousPath); err == nil && resolved == filePath {
+					// Preserve the identity when a previous scan stored the symlink alias.
+					return id, nil
+				}
 			}
 			return proposedID, nil
 		}

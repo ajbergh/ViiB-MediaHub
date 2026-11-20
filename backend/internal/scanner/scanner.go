@@ -883,10 +883,16 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 	}()
 	var songs []db.Song
 	var scannedPaths []string
-	ignoredPathSet := make(map[string]struct{})
+	ignoredPathsByScanPath := make(map[string][]string)
 	if ignoredPaths, err := s.db.GetIgnoredFilePaths(); err == nil {
 		for _, ignoredPath := range ignoredPaths {
-			ignoredPathSet[filepath.Clean(ignoredPath)] = struct{}{}
+			cleanPath := filepath.Clean(ignoredPath)
+			ignoredPathsByScanPath[cleanPath] = append(ignoredPathsByScanPath[cleanPath], cleanPath)
+			if runtime.GOOS == "darwin" {
+				if resolved, err := filepath.EvalSymlinks(cleanPath); err == nil && resolved != cleanPath {
+					ignoredPathsByScanPath[resolved] = append(ignoredPathsByScanPath[resolved], cleanPath)
+				}
+			}
 		}
 	}
 	fileCount := 0
@@ -914,8 +920,13 @@ func (s *Scanner) ScanFolderWithPaths(folderPath string) (*ScanResult, []string,
 		if !supportedExtensions[ext] {
 			return nil
 		}
-		if _, ignored := ignoredPathSet[filepath.Clean(path)]; ignored {
+		if ignoredPaths := ignoredPathsByScanPath[filepath.Clean(path)]; len(ignoredPaths) > 0 {
 			scannedPaths = append(scannedPaths, path)
+			for _, ignoredPath := range ignoredPaths {
+				if ignoredPath != filepath.Clean(path) {
+					scannedPaths = append(scannedPaths, ignoredPath)
+				}
+			}
 			return nil
 		}
 
