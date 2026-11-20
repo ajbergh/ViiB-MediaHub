@@ -20,6 +20,7 @@
 import { useEffect, useRef } from 'react';
 import { useArtists, useStore } from '../store';
 import api from '../services/api';
+import { spotifyCooldownRemaining } from '../services/spotifyBackend';
 import type { Album } from '../types';
 
 type VisibleAlbum = Album & { plexBacked?: boolean };
@@ -64,6 +65,8 @@ export function useBackgroundEnrichment() {
         };
         const processNextAlbum = async () => {
             if (!current()) return;
+            const cooldown = spotifyCooldownRemaining();
+            if (cooldown > 0) { schedule(cooldown + 1000); return; }
             if (processingRef.current) { schedule(1000); return; }
             processingRef.current = true;
             
@@ -135,18 +138,30 @@ export function useBackgroundEnrichment() {
                 return;
             }
 
-            const artist = artistsToProcess[currentIndex++];
+            const cooldown = spotifyCooldownRemaining();
+            if (cooldown > 0) {
+                artistTimerRef.current = setTimeout(processNextArtist, cooldown + 1000);
+                return;
+            }
+
+            const artist = artistsToProcess[currentIndex];
             console.log(`🔄 Background enrichment: checking artist "${artist.name}"`);
-            await fetchArtistMetadata(artist.name);
+            try {
+                await fetchArtistMetadata(artist.name);
+            } catch (error) {
+                console.warn('Background artist enrichment error:', error);
+            }
+            // Metadata actions may consume errors. The shared transport deadline
+            // still pauses both workers and preserves the artist for a later retry.
+            if (spotifyCooldownRemaining() === 0) currentIndex++;
 
             if (!cancelled && useStore.getState().spotifyConnected && useStore.getState().spotifySessionGeneration === generation && currentIndex < artistsToProcess.length) {
-                artistTimerRef.current = setTimeout(processNextArtist, 500);
+                artistTimerRef.current = setTimeout(processNextArtist, Math.max(10000, spotifyCooldownRemaining() + 1000));
             }
         };
 
-        // Preserve the former Artists-page startup delay while allowing this
-        // work to continue regardless of the active route.
-        artistTimerRef.current = setTimeout(processNextArtist, 2000);
+        // Leave room for initial profile and browsing requests before enrichment.
+        artistTimerRef.current = setTimeout(processNextArtist, 10000);
 
         return () => {
             cancelled = true;

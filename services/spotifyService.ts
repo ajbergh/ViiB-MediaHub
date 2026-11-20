@@ -234,6 +234,7 @@ export const SpotifyService = {
             'user-read-email',
             'user-read-private',
             'user-library-read',
+            'user-top-read',
             'user-read-playback-state',
             'user-modify-playback-state',
             'playlist-read-private'
@@ -560,12 +561,12 @@ export const SpotifyService = {
         }, options.signal);
     },
 
-    async getRecentlyPlayed(limit: number = 20): Promise<any> {
+    async getRecentlyPlayed(limit: number = 50, offset: number = 0): Promise<any> {
         return enqueue(async () => {
             const store = useStore.getState();
 
             try {
-                const res = await backendSpotifyFetch(`${API_BASE}/me/player/recently-played?limit=${limit}`);
+                const res = await backendSpotifyFetch(`${API_BASE}/me/player/recently-played?limit=${limit}${offset ? `&offset=${offset}` : ''}`);
 
                 if (res.status === 429) {
                     const retryAfter = res.headers.get('Retry-After');

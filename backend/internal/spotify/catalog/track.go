@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/spotify/auth"
 )
@@ -142,6 +143,9 @@ func (c *Client) track(ctx context.Context, token auth.Token, ct, id string, alb
 	}
 	album, ok := albums[albumID]
 	if !ok {
+		album, ok = c.cachedTrackAlbum(albumID)
+	}
+	if !ok {
 		full, err := c.Album(ctx, token, AlbumQuery{ID: albumID, Limit: 1})
 		if err != nil {
 			return nil, err
@@ -167,4 +171,44 @@ func (c *Client) track(ctx context.Context, token auth.Token, ct, id string, alb
 	}
 	track.Album = album
 	return track, nil
+}
+
+type cachedTrackAlbum struct {
+	summary AlbumSummary
+	expires time.Time
+}
+
+// Track hydration can share validated parent albums for the lifetime of this
+// account-scoped client. Album browsing still reads Spotify for current pages.
+func (c *Client) rememberTrackAlbum(album AlbumSummary) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return
+	}
+	if c.trackAlbums == nil {
+		c.trackAlbums = make(map[string]cachedTrackAlbum)
+	}
+	if _, exists := c.trackAlbums[album.ID]; !exists && len(c.trackAlbums) == 64 {
+		var oldestID string
+		var oldest time.Time
+		for id, entry := range c.trackAlbums {
+			if oldestID == "" || entry.expires.Before(oldest) {
+				oldestID, oldest = id, entry.expires
+			}
+		}
+		delete(c.trackAlbums, oldestID)
+	}
+	c.trackAlbums[album.ID] = cachedTrackAlbum{summary: album, expires: c.now().Add(5 * time.Minute)}
+}
+
+func (c *Client) cachedTrackAlbum(id string) (AlbumSummary, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, ok := c.trackAlbums[id]
+	if !ok || !c.now().Before(entry.expires) {
+		delete(c.trackAlbums, id)
+		return AlbumSummary{}, false
+	}
+	return entry.summary, true
 }

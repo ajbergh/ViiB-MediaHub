@@ -1,4 +1,8 @@
+import { SpotifyAccountViews } from '../components/SpotifyAccountViews';
+import { backendSpotifyFetch } from '../services/spotifyBackend';
+import { parseSpotifyLink } from '../lib/spotifyLinks';
 import { SpotifyAccountNotice } from '../components/SpotifyAccountNotice';
+import { SpotifyRecents } from '../components/SpotifyRecents';
 import { savedLibraryDownloadOrigins, savedLibraryDownloadState } from '../lib/spotifyDownloadOrigins';
 /**
  * ViiB MediaHub - Spotify Page
@@ -39,6 +43,12 @@ import { ContextMenuType } from '../types';
 import { Button } from '../components/ui/Button';
 import { TextInput } from '../components/ui/TextInput';
 import { CardSizeSlider } from '../components/ui/CardSizeSlider';
+
+const spotifyTabs = [
+    ['search', 'Search'], ['recent', 'Recently Played'], ['albums', 'Saved Albums'],
+    ['playlists', 'Saved Playlists'], ['account', 'Spotify Account'],
+] as const;
+type SpotifyTab = typeof spotifyTabs[number][0];
 
 const getSpotifyProfileWithTimeout = async () => {
     const controller = new AbortController();
@@ -86,7 +96,7 @@ export const Spotify: React.FC = () => {
     const [isRestoringSession, setIsRestoringSession] = useState(() => !useStore.getState().spotifyConnected);
 
     // Tab State - initialize from persisted store
-    const [activeTab, setActiveTabLocal] = useState<'search' | 'recent' | 'albums' | 'playlists'>(spotifyActiveTab);
+    const [activeTab, setActiveTabLocal] = useState<SpotifyTab>(spotifyActiveTab);
 
     // Search State - initialize from persisted store
     const [inputValue, setInputValue] = useState(spotifySearchQuery);
@@ -106,7 +116,7 @@ export const Spotify: React.FC = () => {
     const [searchResultTab, setSearchResultTab] = useState<'tracks' | 'albums' | 'artists' | 'playlists'>('tracks');
     
     // Wrapper to persist tab changes
-    const setActiveTab = (tab: 'search' | 'recent' | 'albums' | 'playlists') => {
+    const setActiveTab = (tab: SpotifyTab) => {
         setActiveTabLocal(tab);
         setSpotifyActiveTab(tab);
     };
@@ -118,10 +128,34 @@ export const Spotify: React.FC = () => {
         setSpotifySearchResults(nextResults);
     };
 
+    const [libraryFilter, setLibraryFilter] = useState('');
+    const [librarySort, setLibrarySort] = useState<'saved' | 'name'>('saved');
+    const libraryRows = (items: any[], isAlbum: boolean) => {
+        const filter = libraryFilter.trim().toLocaleLowerCase();
+        const visible = items.filter(item => {
+            const entry = isAlbum ? item?.album : item;
+            const text = [entry?.name, entry?.owner?.display_name, ...(entry?.artists ?? []).map((artist: {name: string}) => artist.name)];
+            return entry?.id && text.some(value => value?.toLocaleLowerCase().includes(filter));
+        });
+        return librarySort === 'name'
+            ? visible.sort((a, b) => (isAlbum ? a.album : a).name.localeCompare((isAlbum ? b.album : b).name))
+            : visible;
+    };
+
     // Library loading UI state
     const [isLoadingLibrary, setIsLoadingLibrary] = useState(false);
     const [libraryLoadError, setLibraryLoadError] = useState('');
+    const [libraryUnavailable, setLibraryUnavailable] = useState(false);
     const [libraryReload, setLibraryReload] = useState(0);
+    const [libraryRetryAt, setLibraryRetryAt] = useState(0);
+    const [libraryRetrySeconds, setLibraryRetrySeconds] = useState(0);
+    useEffect(() => {
+        const update = () => setLibraryRetrySeconds(Math.max(0, Math.ceil((libraryRetryAt - Date.now()) / 1000)));
+        update();
+        if (!libraryRetryAt) return;
+        const timer = setInterval(update, 1000);
+        return () => clearInterval(timer);
+    }, [libraryRetryAt]);
 
     const [loadingMoreLibrary, setLoadingMoreLibrary] = useState(false);
     const [libraryPageError, setLibraryPageError] = useState('');
@@ -133,6 +167,7 @@ export const Spotify: React.FC = () => {
         setLoadingMoreLibrary(false);
         setLibraryPageError('');
         setLibraryLoadError('');
+        setLibraryRetryAt(0);
         return () => { libraryRequest.current++; libraryBusy.current = false; };
     }, [activeTab, spotifySessionGeneration]);
 
@@ -272,6 +307,8 @@ export const Spotify: React.FC = () => {
                 state.spotifyCacheGeneration === spotifySessionGeneration
             ) {
                 setSpotifyResultsLocal(state.spotifySearchResults);
+                const link = parseSpotifyLink(trimmedQuery);
+                if (link) setSearchResultTab(`${link.type}s` as typeof searchResultTab);
                 setHasMore(['albums', 'playlists', 'tracks', 'artists'].some(category => Boolean(state.spotifySearchResults[category]?.next)));
                 setIsSearching(false);
                 return () => { active = false; controller.abort(); };
@@ -290,6 +327,16 @@ export const Spotify: React.FC = () => {
                     setIsSearching(false);
                 };
                 try {
+                    const link = parseSpotifyLink(trimmedQuery);
+                    if (link) {
+                        const response = await backendSpotifyFetch(`/${link.type}s/${link.id}`, controller.signal);
+                        if (!response.ok) throw new SpotifyApiError('Spotify link could not be resolved', response.status);
+                        const entity = await response.json();
+                        if (!current()) return;
+                        setSearchResultTab(`${link.type}s` as typeof searchResultTab);
+                        publishResults({[`${link.type}s`]: {items: [entity], next: null}});
+                        return;
+                    }
                     const results = await SpotifyService.search(debouncedQuery, ['album', 'playlist', 'track', 'artist'], 20, 0, {
                         signal: controller.signal,
                         onCatalogResults: publishResults,
@@ -375,7 +422,7 @@ export const Spotify: React.FC = () => {
 
     // Load library data when tabs change
     useEffect(() => {
-        if (!spotifyConnected || activeTab === 'search') return;
+        if (!spotifyConnected || activeTab === 'search' || activeTab === 'account') return;
         const alreadyLoaded =
             (activeTab === 'recent' && Boolean(recentlyPlayed)) ||
             (activeTab === 'albums' && Boolean(savedAlbums)) ||
@@ -391,6 +438,7 @@ export const Spotify: React.FC = () => {
         const loadLibraryData = async () => {
             setIsLoadingLibrary(true);
             setLibraryLoadError('');
+            setLibraryUnavailable(false);
             try {
                 if (activeTab === 'recent' && !recentlyPlayed) {
                     const data = await SpotifyService.getRecentlyPlayed(50);
@@ -404,12 +452,17 @@ export const Spotify: React.FC = () => {
                 }
             } catch (error) {
                 if (!current()) return;
+                const unavailable = activeTab === 'recent' && error instanceof SpotifyApiError && error.statusCode === 501;
+                setLibraryUnavailable(unavailable);
                 setLibraryLoadError(error instanceof SpotifyRateLimitError
                     ? `Spotify is rate limiting this request. Try again in ${error.retryAfter} seconds.`
                     : error instanceof SpotifyAuthError
                         ? 'Please reconnect to Spotify to load this view.'
-                        : 'Spotify could not load this view. Try again later.');
+                        : unavailable
+                            ? 'Recently Played is unavailable with Spotify browser sign-in. Search and saved libraries are still available.'
+                            : 'Spotify could not load this view. Try again later.');
                 if (error instanceof SpotifyRateLimitError) {
+                    setLibraryRetryAt(Date.now() + (error.retryAfter || 60) * 1000);
                     addLog('warn', `Rate limited. Try again in ${error.retryAfter} seconds`);
                 } else if (error instanceof SpotifyAuthError) {
                     addLog('error', 'Authentication failed. Please reconnect to Spotify.');
@@ -461,9 +514,13 @@ export const Spotify: React.FC = () => {
                 track.album?.name || 'Unknown Album',
                 Math.floor(track.duration_ms / 1000)
             );
-            addLog('success', `Download queued: ${track.name}`);
+            const message = `Download queued: ${track.name}`;
+            addLog('success', message);
+            showToast({type: 'success', message});
         } catch (error) {
-            addLog('error', `Failed to queue download: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            const message = error instanceof Error ? error.message : 'Could not queue download.';
+            addLog('error', message);
+            showToast({type: 'error', message});
         } finally {
             setDownloadingTracks(prev => {
                 const newSet = new Set(prev);
@@ -484,9 +541,13 @@ export const Spotify: React.FC = () => {
                 album.name,
                 album.artists?.[0]?.name || 'Unknown Artist'
             );
-            addLog('success', `Album download queued: ${album.name}`);
+            const message = `Album download queued: ${album.name}`;
+            addLog('success', message);
+            showToast({type: 'success', message});
         } catch (error) {
-            addLog('error', `Failed to queue album download: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            const message = error instanceof Error ? error.message : 'Could not queue album download.';
+            addLog('error', message);
+            showToast({type: 'error', message});
         } finally {
             setDownloadingAlbums(prev => {
                 const newSet = new Set(prev);
@@ -507,9 +568,13 @@ export const Spotify: React.FC = () => {
                 playlist.name,
                 playlist.owner?.display_name || 'Unknown Owner'
             );
-            addLog('success', `Playlist download queued: ${playlist.name}`);
+            const message = `Playlist download queued: ${playlist.name}`;
+            addLog('success', message);
+            showToast({type: 'success', message});
         } catch (error) {
-            addLog('error', `Failed to queue playlist download: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            const message = error instanceof Error ? error.message : 'Could not queue playlist download.';
+            addLog('error', message);
+            showToast({type: 'error', message});
         } finally {
             setDownloadingPlaylists(prev => {
                 const newSet = new Set(prev);
@@ -521,11 +586,11 @@ export const Spotify: React.FC = () => {
 
 
     // Play a single Spotify track via streaming
-    const handlePlayTrack = (track: any, allTracks?: any[]) => {
+    const handlePlayTrack = (track: any, allTracks?: any[], queueIndex?: number) => {
         if (mediaDisabled) return;
         const song = spotifyTrackToSong(track);
         const context = allTracks ? spotifyTracksToSongs(allTracks) : undefined;
-        playSong(song, context);
+        playSong(song, context, undefined, queueIndex);
         addLog('info', ` Streaming: ${track.name}`);
     };
 
@@ -836,58 +901,44 @@ export const Spotify: React.FC = () => {
 
             {/* Tabs */}
             <div className="flex items-center gap-2 mb-8 border-b border-surface-border">
-                <div className="flex gap-2 flex-1">
-                <Button
-                    variant="ghost"
-                    onClick={() => setActiveTab('search')}
-                    className={`rounded-none px-6 py-3 font-bold text-base transition-all duration-200 border-b-2 hover:bg-transparent ${
-                        activeTab === 'search'
-                            ? 'border-brand text-brand'
-                            : 'border-transparent text-text-secondary hover:text-text-main'
-                    }`}
-                >
-                    <div className="flex items-center gap-2">
-                        <SearchIcon size={18} />
-                        Search
-                    </div>
-                </Button>
-                <Button
-                    variant="ghost"
-                    onClick={() => setActiveTab('recent')}
-                    className={`rounded-none px-6 py-3 font-bold text-base transition-all duration-200 border-b-2 hover:bg-transparent ${
-                        activeTab === 'recent'
-                            ? 'border-brand text-brand'
-                            : 'border-transparent text-text-secondary hover:text-text-main'
-                    }`}
-                >
-                    Recently Played
-                </Button>
-                <Button
-                    variant="ghost"
-                    onClick={() => setActiveTab('albums')}
-                    className={`rounded-none px-6 py-3 font-bold text-base transition-all duration-200 border-b-2 hover:bg-transparent ${
-                        activeTab === 'albums'
-                            ? 'border-brand text-brand'
-                            : 'border-transparent text-text-secondary hover:text-text-main'
-                    }`}
-                >
-                    Saved Albums
-                </Button>
-                <Button
-                    variant="ghost"
-                    onClick={() => setActiveTab('playlists')}
-                    className={`rounded-none px-6 py-3 font-bold text-base transition-all duration-200 border-b-2 hover:bg-transparent ${
-                        activeTab === 'playlists'
-                            ? 'border-brand text-brand'
-                            : 'border-transparent text-text-secondary hover:text-text-main'
-                    }`}
-                >
-                    Saved Playlists
-                </Button>
+                <div role="tablist" aria-label="Spotify sections" className="flex flex-wrap gap-2 flex-1">
+                    {spotifyTabs.map(([tab, label], index) => (
+                        <Button key={tab} id={`spotify-tab-${tab}`} role="tab" aria-selected={activeTab === tab}
+                            aria-controls="spotify-panel" tabIndex={activeTab === tab ? 0 : -1}
+                            variant="ghost" onClick={() => setActiveTab(tab)}
+                            onKeyDown={event => {
+                                const count = spotifyTabs.length;
+                                const next = {ArrowLeft: (index + count - 1) % count, ArrowRight: (index + 1) % count, Home: 0, End: count - 1}[event.key];
+                                if (next === undefined) return;
+                                event.preventDefault();
+                                const target = spotifyTabs[next][0];
+                                setActiveTab(target);
+                                document.getElementById(`spotify-tab-${target}`)?.focus();
+                            }}
+                            className={`rounded-none px-4 py-3 font-bold border-b-2 ${activeTab === tab ? 'border-brand text-brand' : 'border-transparent text-text-secondary'}`}>
+                            {label}
+                        </Button>
+                    ))}
                 </div>
                 {showCardSizeSlider && <CardSizeSlider value={cardCols} onChange={handleCardColsChange} />}
             </div>
 
+            <div id="spotify-panel" role="tabpanel" aria-labelledby={`spotify-tab-${activeTab}`}>
+            {activeTab === 'account' && <SpotifyAccountViews key={spotifySessionGeneration} generation={spotifySessionGeneration} />}
+            {(activeTab === 'albums' || activeTab === 'playlists') && (
+                <div className="mb-6 flex flex-wrap items-center gap-3">
+                    <TextInput type="search" aria-label="Filter loaded saved items" placeholder="Filter loaded items"
+                        value={libraryFilter} onChange={event => setLibraryFilter(event.target.value)} />
+                    <label className="flex items-center gap-2 text-sm text-text-secondary">
+                        Sort by
+                        <select className="rounded bg-surface-1 p-2 text-text-main" value={librarySort}
+                            onChange={event => setLibrarySort(event.target.value === 'name' ? 'name' : 'saved')}>
+                            <option value="saved">Spotify order</option>
+                            <option value="name">Name</option>
+                        </select>
+                    </label>
+                </div>
+            )}
             {/* Search Section */}
             {activeTab === 'search' && (
                 <>
@@ -896,6 +947,7 @@ export const Spotify: React.FC = () => {
                             <TextInput
                                 type="text"
                                 placeholder="Search Spotify for songs, albums, or playlists..."
+                                aria-description="Search by name or paste a Spotify link"
                                 value={inputValue}
                                 onChange={(e) => setInputValue(e.target.value)}
                                 onKeyDown={(e) => {
@@ -1312,8 +1364,12 @@ export const Spotify: React.FC = () => {
 
             {activeTab !== 'search' && libraryLoadError && (
                 <div className="py-4 flex flex-col items-center gap-3">
-                    <p role="alert">{libraryLoadError}</p>
-                    <Button onClick={() => setLibraryReload(value => value + 1)}>Retry library request</Button>
+                    <p role="alert">{libraryRetryAt
+                        ? libraryRetrySeconds > 0
+                            ? `Spotify is rate limiting requests. Try again in ${libraryRetrySeconds} ${libraryRetrySeconds === 1 ? 'second' : 'seconds'}.`
+                            : 'Spotify cooldown has ended. You can retry now.'
+                        : libraryLoadError}</p>
+                    {!libraryUnavailable && <Button disabled={libraryRetrySeconds > 0} onClick={() => { setLibraryRetryAt(0); setLibraryReload(value => value + 1); }}>Retry library request</Button>}
                 </div>
             )}
 
@@ -1324,6 +1380,8 @@ export const Spotify: React.FC = () => {
                         <div className="flex items-center justify-center py-20">
                             <Loader2 className="animate-spin text-brand" size={48} />
                         </div>
+                    ) : recentlyPlayed?.source === 'webplayer_recents' ? (
+                        <SpotifyRecents data={recentlyPlayed} disabled={mediaDisabled} onPlay={handlePlayTrack} onQueue={handleAddTrackToQueue} onDownload={handleDownloadTrack} downloadedIds={downloadedSpotifyIds} downloadingIds={downloadingTracks}/>
                     ) : recentlyPlayed?.items && recentlyPlayed.items.length > 0 ? (
                         <div className="bg-surface-1 rounded-xl overflow-hidden">
                             {recentlyPlayed.items.map((item: any, idx: number) => {
@@ -1428,7 +1486,7 @@ export const Spotify: React.FC = () => {
                         </div>
                     ) : savedAlbums?.items && savedAlbums.items.length > 0 ? (
                         <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}>
-                            {savedAlbums.items.filter((item: any) => item?.album?.id).map((item: any, index: number) => (
+                            {libraryRows(savedAlbums.items, true).map((item: any, index: number) => (
                                 <div
                                     key={`${item.album.id}:${index}`}
                                     onClick={() => navigate(`/spotify/album/${item.album.id}`, { state: savedLibraryDownloadState('saved_albums', item.album.id, spotifySessionGeneration) })}
@@ -1505,6 +1563,9 @@ export const Spotify: React.FC = () => {
                             <p>No saved albums</p>
                         </div>
                     )}
+                    {libraryFilter.trim() && savedAlbums?.items?.length > 0 && libraryRows(savedAlbums.items, true).length === 0 && (
+                        <p role="status" className="py-8 text-center text-text-secondary">No loaded albums match this filter.</p>
+                    )}
                     {libraryPagingControls(savedAlbums)}
                 </div>
             )}
@@ -1518,7 +1579,7 @@ export const Spotify: React.FC = () => {
                         </div>
                     ) : savedPlaylists?.items && savedPlaylists.items.length > 0 ? (
                         <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}>
-                            {savedPlaylists.items.filter((playlist: any) => playlist?.id).map((playlist: any, index: number) => (
+                            {libraryRows(savedPlaylists.items, false).map((playlist: any, index: number) => (
                                 <div
                                     key={`${playlist.id}:${index}`}
                                     onClick={() => navigate(`/spotify/playlist/${playlist.id}`, { state: savedLibraryDownloadState('saved_playlists', playlist.id, spotifySessionGeneration) })}
@@ -1595,9 +1656,13 @@ export const Spotify: React.FC = () => {
                             <p>No saved playlists</p>
                         </div>
                     )}
+                    {libraryFilter.trim() && savedPlaylists?.items?.length > 0 && libraryRows(savedPlaylists.items, false).length === 0 && (
+                        <p role="status" className="py-8 text-center text-text-secondary">No loaded playlists match this filter.</p>
+                    )}
                     {libraryPagingControls(savedPlaylists)}
                 </div>
             )}
+            </div>
         </div>
     );
 };

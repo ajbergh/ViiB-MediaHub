@@ -615,7 +615,18 @@ func (a *API) retireSpotifyAccount() error {
 	}
 	return a.db.PurgeSpotifyMetadata()
 }
+
+var errSpotifyRecentsUnavailable = errors.New("Spotify history is unavailable")
+
 func respondSpotifySessionError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errSpotifyRecentsUnavailable) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotImplemented)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error": "Spotify history is unavailable", "code": "spotify_recents_unavailable",
+		})
+		return
+	}
 	status := http.StatusServiceUnavailable
 	if errors.Is(err, catalog.ErrInvalidQuery) {
 		status = http.StatusBadRequest

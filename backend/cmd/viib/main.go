@@ -160,6 +160,16 @@ func main() {
 	logger.Main("=== ViiB MediaHub Starting ===")
 	logger.Main("Using data directory: %s", *dataDir)
 
+	// Find available port
+	logCrash("CHECKPOINT: Before port binding")
+	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *port))
+	if err != nil {
+		logCrash(fmt.Sprintf("ERROR: Failed to bind to port: %v", err))
+		log.Fatal("Failed to bind to port:", err)
+	}
+	logCrash("CHECKPOINT: Port bound")
+	defer listener.Close()
+
 	logCrash("CHECKPOINT: Before database init")
 
 	// Initialize database
@@ -195,15 +205,6 @@ func main() {
 	srv := server.New(apiHandler, distFS)
 	logCrash("CHECKPOINT: Server created")
 	logger.Main("Server created")
-
-	// Find available port
-	logCrash("CHECKPOINT: Before port binding")
-	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *port))
-	if err != nil {
-		logCrash(fmt.Sprintf("ERROR: Failed to bind to port: %v", err))
-		log.Fatal("Failed to bind to port:", err)
-	}
-	logCrash("CHECKPOINT: Port bound")
 
 	actualPort := listener.Addr().(*net.TCPAddr).Port
 	serverURL := fmt.Sprintf("http://127.0.0.1:%d", actualPort)

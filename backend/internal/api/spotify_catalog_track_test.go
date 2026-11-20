@@ -86,7 +86,7 @@ func TestCookieCatalogTrackSingleBatchAndDownloadURL(t *testing.T) {
 	w = httptest.NewRecorder()
 	a.spotifyProxy(w, httptest.NewRequest("GET", "/spotify/proxy?path=tracks&ids="+id+","+missing+","+second+","+id, nil))
 	var batch catalog.TracksResult
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &batch) != nil || len(batch.Tracks) != 4 || batch.Tracks[0].ID != id || batch.Tracks[1] != nil || batch.Tracks[2].ID != second || batch.Tracks[3].ID != id || tracks != 4 || albums != 2 || mints != 1 {
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &batch) != nil || len(batch.Tracks) != 4 || batch.Tracks[0].ID != id || batch.Tracks[1] != nil || batch.Tracks[2].ID != second || batch.Tracks[3].ID != id || tracks != 4 || albums != 1 || mints != 1 {
 		t.Fatal("batch order, nulls or metadata reuse failed", w.Code, tracks, albums, mints)
 	}
 	for _, query := range []string{"tracks/bad", "tracks&ids=", "tracks&ids=" + id + ",", "tracks&ids=" + strings.Repeat(id+",", 50) + id, "tracks/" + id + "&market=bad"} {
@@ -114,6 +114,9 @@ func TestCookieCatalogTrackSingleBatchAndDownloadURL(t *testing.T) {
 	}
 	if date := a.spotifyTrackEditionDate(t.Context(), id); date != "2020-03-04" {
 		t.Fatalf("download-worker release date=%q", date)
+	}
+	if albums != 1 {
+		t.Fatalf("download and playback metadata repeated the parent lookup: %d requests", albums)
 	}
 }
 func TestCookieCatalogTrackErrorsAndCooldown(t *testing.T) {

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 func connectedProxyFixture(t *testing.T) *API {
@@ -20,6 +22,7 @@ func connectedProxyFixture(t *testing.T) *API {
 	}
 	return a
 }
+
 func TestSpotifyProxyResponseContract(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -50,7 +53,7 @@ func TestSpotifyProxyResponseContract(t *testing.T) {
 				return &http.Response{StatusCode: tc.status, Header: http.Header{"Retry-After": []string{"31"}}, Body: io.NopCloser(strings.NewReader(tc.body))}, nil
 			})}
 			w := httptest.NewRecorder()
-			a.spotifyProxy(w, httptest.NewRequest("GET", "/proxy?path=me/player/recently-played", nil))
+			a.spotifyProxy(w, httptest.NewRequest("GET", "/proxy?path=me/player", nil))
 			if w.Code != tc.want || calls != 1 {
 				t.Fatalf("status %d want %d calls %d", w.Code, tc.want, calls)
 			}
@@ -101,7 +104,7 @@ func TestSpotifyProxyCancelsActiveRequest(t *testing.T) {
 	w := httptest.NewRecorder()
 	returned := make(chan struct{})
 	go func() {
-		a.spotifyProxy(w, httptest.NewRequest("GET", "/proxy?path=me/player/recently-played", nil).WithContext(ctx))
+		a.spotifyProxy(w, httptest.NewRequest("GET", "/proxy?path=me/player", nil).WithContext(ctx))
 		close(returned)
 	}()
 	select {
@@ -118,5 +121,38 @@ func TestSpotifyProxyCancelsActiveRequest(t *testing.T) {
 	<-cancelled
 	if w.Code != 503 || strings.Contains(w.Body.String(), "fixture-") {
 		t.Fatal("cancellation returned success or credentials")
+	}
+}
+
+func TestSpotifyAccountReadUsesFixedResources(t *testing.T) {
+	a := connectedProxyFixture(t)
+	calls := 0
+	a.spotifyHTTPClient = &http.Client{Transport: sessionTransport(func(r *http.Request) (*http.Response, error) {
+		calls++
+		if r.Method != http.MethodGet || r.URL.Host != "api.spotify.com" || r.URL.Path != "/v1/me/top/artists" ||
+			r.URL.RawQuery != "limit=20&offset=20&time_range=short_term" {
+			t.Fatalf("unexpected Spotify request: %s %s", r.Method, r.URL)
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"items":[]}`))}, nil
+	})}
+	router := chi.NewRouter()
+	router.Get("/account/{view}", a.spotifyAccountRead)
+	for _, tc := range []struct {
+		url    string
+		status int
+	}{
+		{"/account/top-artists?path=me/player&offset=20&time_range=short_term", 200},
+		{"/account/top-tracks?time_range=invalid", 400},
+		{"/account/liked?offset=-1", 400},
+		{"/account/unknown", 404},
+	} {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, tc.url, nil))
+		if w.Code != tc.status {
+			t.Fatalf("%s: got %d, want %d", tc.url, w.Code, tc.status)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("got %d upstream requests, want one", calls)
 	}
 }

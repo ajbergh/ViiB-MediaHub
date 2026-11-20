@@ -248,6 +248,15 @@ func main() {
 	logger.Main("Data directory: %s", *dataDir)
 	logger.Main("Debug mode: %v", *debug)
 
+	// Start HTTP server on specified or random available port
+	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *port))
+	if err != nil {
+		logger.Main("Failed to bind to port: %v", err)
+		fmt.Fprintf(os.Stderr, "Failed to bind to port: %v\n", err)
+		os.Exit(1)
+	}
+	defer listener.Close()
+
 	// Initialize database
 	dbPath := filepath.Join(*dataDir, "library.db")
 	database, err := db.New(dbPath)
@@ -271,14 +280,6 @@ func main() {
 	if err != nil {
 		logger.Main("Failed to access embedded frontend: %v", err)
 		fmt.Fprintf(os.Stderr, "Failed to access embedded frontend: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Start HTTP server on specified or random available port
-	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *port))
-	if err != nil {
-		logger.Main("Failed to bind to port: %v", err)
-		fmt.Fprintf(os.Stderr, "Failed to bind to port: %v\n", err)
 		os.Exit(1)
 	}
 

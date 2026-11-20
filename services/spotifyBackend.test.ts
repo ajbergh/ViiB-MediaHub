@@ -38,6 +38,7 @@ describe('backend Spotify session boundary', () => {
         expect(fetchMock).toHaveBeenCalledTimes(1);
     });
     it('preserves reconnect, rate-limit and playlist fallback outcomes', async () => {
+        vi.useFakeTimers();
         const mock=vi.fn().mockResolvedValueOnce(new Response('{}',{status:401})).mockResolvedValueOnce(new Response('{}',{status:429,headers:{'Retry-After':'28'}})).mockResolvedValueOnce(new Response('{}',{status:403}));
         vi.stubGlobal('fetch',mock);
         await expect(backendSpotifyFetch('/me')).rejects.toBeInstanceOf(SpotifyAuthError);
@@ -45,9 +46,24 @@ describe('backend Spotify session boundary', () => {
         expect(useStore.getState().spotifyConnected).toBe(false);
         useStore.getState().setSpotifyConnected(true);
         await expect(backendSpotifyFetch('/search?q=music')).rejects.toMatchObject({retryAfter:28});
+        await expect(backendSpotifyFetch('/playlists/id')).rejects.toMatchObject({retryAfter:28});
+        expect(mock).toHaveBeenCalledTimes(2);
+        await vi.advanceTimersByTimeAsync(28000);
         const denied=await backendSpotifyFetch('/playlists/id');
         expect(denied.status).toBe(403);
         expect(mock).toHaveBeenCalledTimes(3);
+    });
+    it('honors HTTP-date cooldowns across resources without sending more requests', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-11-20T12:00:00Z'));
+        const mock = vi.fn().mockResolvedValueOnce(new Response('{}', {status:429, headers:{'Retry-After':'Fri, 20 Nov 2026 12:01:30 GMT'}})).mockResolvedValue(new Response('{}'));
+        vi.stubGlobal('fetch', mock);
+        await expect(backendSpotifyFetch('/search?q=artist')).rejects.toMatchObject({retryAfter:90});
+        await vi.advanceTimersByTimeAsync(30000);
+        await expect(backendSpotifyFetch('/me/player/recently-played')).rejects.toMatchObject({retryAfter:60});
+        expect(mock).toHaveBeenCalledTimes(1);
+        await vi.advanceTimersByTimeAsync(60000);
+        expect((await backendSpotifyFetch('/me/player/recently-played')).ok).toBe(true);
     });
     it('connects, probes status and disconnects only through the backend',async()=>{
         const mock=vi.fn(async(_target: string, _init?: RequestInit)=>new Response(JSON.stringify({provider:'webplayer',connected:true,authRequired:false,message:''}),{status:200}));
@@ -88,6 +104,17 @@ describe('backend Spotify session boundary', () => {
         expect(resources).toContain('me/albums');
         expect(resources).toContain('me/playlists');
         expect(resources).toContain('me/player/recently-played');
+    });
+    it('loads browser history through the backend catalog adapter', async () => {
+        vi.useFakeTimers();
+        const mock = vi.fn(async (_target: string) => new Response(JSON.stringify({source:'webplayer_recents', items:[]})));
+        vi.stubGlobal('fetch', mock);
+        await expect(SpotifyService.getRecentlyPlayed(50,100)).resolves.toMatchObject({source:'webplayer_recents'});
+        expect(mock).toHaveBeenCalledTimes(1);
+        const url = new URL(mock.mock.calls[0][0], 'http://local');
+        expect(url.searchParams.get('path')).toBe('me/player/recently-played');
+        expect(url.searchParams.get('offset')).toBe('100');
+        await vi.runAllTimersAsync();
     });
 });
 

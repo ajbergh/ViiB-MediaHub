@@ -93,10 +93,13 @@ export const SpotifyAlbumDetail: React.FC = () => {
     setIsDownloading(true);
     try {
       await api.downloadAlbum(album.id, album.name, album.artists[0]?.name || 'Unknown Artist', downloadOrigins);
-      addLog('success', `Started download for album: ${album.name}`);
+      const message = `Album download queued: ${album.name}`;
+      addLog('success', message);
+      useStore.getState().showToast({type: 'success', message});
     } catch (err) {
-      console.error('Download failed:', err);
-      addLog('error', 'Failed to start album download');
+      const message = err instanceof Error ? err.message : 'Could not queue album download.';
+      addLog('error', message);
+      useStore.getState().showToast({type: 'error', message});
     } finally {
       setIsDownloading(false);
     }

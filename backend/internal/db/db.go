@@ -2202,7 +2202,7 @@ func (d *DB) AddDownloads(downloads []*SpotifyDownload) ([]string, error) {
 	if len(downloads) == 0 {
 		return []string{}, nil
 	}
-	tx, err := d.conn.Begin()
+	tx, err := d.beginSpotifyWriteTx()
 	if err != nil {
 		return nil, err
 	}

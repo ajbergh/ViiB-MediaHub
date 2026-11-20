@@ -23,13 +23,12 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$projectRoot = Split-Path -Parent $PSScriptRoot
 
 # ============================================================================
 # Preflight Checks
 # ============================================================================
 
-Write-Host "Stopping any existing running Viib MediaHub Process..." -ForegroundColor Cyan
-Get-Process -Name "ViiB-MediaHub" -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.Id -Force }; Start-Sleep -Seconds 1
 Write-Host "Building ViiB MediaHub for Wails..." -ForegroundColor Cyan
 
 Write-Host "`nChecking prerequisites..." -ForegroundColor Cyan
@@ -101,7 +100,6 @@ if (-not (Get-Command gcc -ErrorAction SilentlyContinue)) {
 # Setup Paths
 # ============================================================================
 
-$projectRoot = Split-Path -Parent $PSScriptRoot
 $wailsDir = Join-Path $projectRoot "backend\cmd\wails"
 $distSource = Join-Path $projectRoot "dist"
 $distDest = Join-Path $wailsDir "frontend\dist"
@@ -228,6 +226,13 @@ $finalOutputDir = Join-Path $projectRoot "build"
 $finalOutputPath = Join-Path $finalOutputDir "ViiB-MediaHub.exe"
 
 if (Test-Path $wailsOutputPath) {
+    $runningOutput = Get-Process -Name "ViiB-MediaHub" -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -eq $finalOutputPath }
+    if ($runningOutput) {
+        $runningOutput | Stop-Process
+        $runningOutput | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
+    }
+
     if (-not (Test-Path $finalOutputDir)) {
         New-Item -ItemType Directory -Path $finalOutputDir -Force | Out-Null
     }

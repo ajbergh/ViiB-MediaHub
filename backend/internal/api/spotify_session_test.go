@@ -159,7 +159,7 @@ func TestCookieRequestRefreshOnceOriginIsolationAndRateLimit(t *testing.T) {
 				}
 				return &http.Response{StatusCode: responseStatus, Header: http.Header{"Retry-After": []string{"31"}}, Body: io.NopCloser(strings.NewReader("{}"))}, nil
 			})}
-			response, err := a.doSpotifyRequest(context.Background(), "GET", "https://api.spotify.com/v1/me/player/recently-played?limit=1", nil, "")
+			response, err := a.doSpotifyRequest(context.Background(), "GET", "https://api.spotify.com/v1/me/player", nil, "")
 			if status == 401 {
 				if !errors.Is(err, spotifyauth.ErrAuthenticationRequired) || requests != 2 {
 					t.Fatalf("rejection: %v calls=%d", err, requests)
@@ -223,7 +223,7 @@ func TestCookieAccountChangeCancelsInFlightRequests(t *testing.T) {
 	})}
 	finished := make(chan error, 1)
 	go func() {
-		_, err := a.doSpotifyRequest(context.Background(), "GET", "https://api.spotify.com/v1/me/player/recently-played?limit=1", nil, "")
+		_, err := a.doSpotifyRequest(context.Background(), "GET", "https://api.spotify.com/v1/me/player", nil, "")
 		finished <- err
 	}()
 	<-entered

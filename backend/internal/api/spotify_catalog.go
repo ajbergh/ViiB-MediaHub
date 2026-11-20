@@ -48,6 +48,12 @@ func (a *API) cookieSpotifyCatalog(ctx context.Context, runtime *spotifyAuthRunt
 	var request func(spotifyauth.Token) (any, error)
 	if target.Path == "/v1/me" {
 		request = func(token spotifyauth.Token) (any, error) { return client.Profile(ctx, token) }
+	} else if catalog.RecentsPath(target.Path) {
+		query, err := catalog.ParseRecentsQuery(target.Query())
+		if err != nil {
+			return nil, err
+		}
+		request = func(token spotifyauth.Token) (any, error) { return client.Recents(ctx, token, query) }
 	} else if id, batch, ok := catalog.TrackPath(target.Path); ok {
 		ids, err := catalog.ParseTrackQuery(id, batch, target.Query())
 		if err != nil {
@@ -114,13 +120,13 @@ func (a *API) cookieSpotifyCatalog(ctx context.Context, runtime *spotifyAuthRunt
 	}
 	result, err := request(token)
 	var upstream *catalog.HTTPError
-	if errors.As(err, &upstream) && upstream.Status == 401 && (upstream.Stage == "profile" || upstream.Stage == "search" || upstream.Stage == "album" || upstream.Stage == "artist" || upstream.Stage == "playlist" || upstream.Stage == "library" || upstream.Stage == "track") {
+	if errors.As(err, &upstream) && upstream.Status == 401 && (upstream.Stage == "profile" || upstream.Stage == "search" || upstream.Stage == "album" || upstream.Stage == "artist" || upstream.Stage == "playlist" || upstream.Stage == "library" || upstream.Stage == "track" || upstream.Stage == "recents" || upstream.Stage == "liked_tracks") {
 		client.InvalidateClientToken()
 		token, err = runtime.Refresh(ctx, spotifyauth.WebAPI, token)
 		if err == nil {
 			result, err = request(token)
 		}
-		if errors.As(err, &upstream) && upstream.Status == 401 && (upstream.Stage == "profile" || upstream.Stage == "search" || upstream.Stage == "album" || upstream.Stage == "artist" || upstream.Stage == "playlist" || upstream.Stage == "library" || upstream.Stage == "track") {
+		if errors.As(err, &upstream) && upstream.Status == 401 && (upstream.Stage == "profile" || upstream.Stage == "search" || upstream.Stage == "album" || upstream.Stage == "artist" || upstream.Stage == "playlist" || upstream.Stage == "library" || upstream.Stage == "track" || upstream.Stage == "recents" || upstream.Stage == "liked_tracks") {
 			runtime.rejectWebAPISession(ctx)
 			return nil, spotifyauth.ErrAuthenticationRequired
 		}
@@ -130,7 +136,13 @@ func (a *API) cookieSpotifyCatalog(ctx context.Context, runtime *spotifyAuthRunt
 	}
 	if err != nil {
 		code, stage, status := spotifyCatalogDiagnostic(err)
+		if catalog.RecentsPath(target.Path) && stage == "catalog" {
+			stage = "recents"
+		}
 		logger.API("Spotify catalog failure: code=%s stage=%s upstream_status=%d", code, stage, status)
+		if catalog.RecentsPath(target.Path) && errors.Is(err, catalog.ErrSchema) {
+			return nil, errSpotifyRecentsUnavailable
+		}
 		if errors.As(err, &upstream) {
 			if upstream.Status == 403 || upstream.Status == 404 {
 				return catalogJSONResponse(upstream.Status, map[string]string{"error": "Spotify catalog request denied"})

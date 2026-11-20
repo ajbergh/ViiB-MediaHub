@@ -249,7 +249,7 @@ export interface SpotifySlice {
   spotifySearchQuery: string;
   spotifyLastSearchedQuery: string;
   spotifySearchResults: any | null;
-  spotifyActiveTab: 'search' | 'recent' | 'albums' | 'playlists';
+  spotifyActiveTab: 'search' | 'recent' | 'albums' | 'playlists' | 'account';
   spotifyRecentlyPlayed: any | null;
   spotifySavedAlbums: any | null;
   spotifySavedPlaylists: any | null;
@@ -264,7 +264,7 @@ export interface SpotifySlice {
   setSpotifySearchQuery: (query: string) => void;
   setSpotifyLastSearchedQuery: (query: string) => void;
   setSpotifySearchResults: (results: any | null) => void;
-  setSpotifyActiveTab: (tab: 'search' | 'recent' | 'albums' | 'playlists') => void;
+  setSpotifyActiveTab: (tab: 'search' | 'recent' | 'albums' | 'playlists' | 'account') => void;
   setSpotifyRecentlyPlayed: (data: any | null) => void;
   setSpotifySavedAlbums: (data: any | null) => void;
   setSpotifySavedPlaylists: (data: any | null) => void;

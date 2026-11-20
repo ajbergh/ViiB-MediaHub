@@ -17,7 +17,7 @@ func spotifyCatalogDiagnostic(err error) (code, stage string, status int) {
 	if errors.As(err, &upstream) {
 		code, status = "upstream_http", upstream.Status
 		switch upstream.Stage {
-		case "client_token", "profile", "search", "album", "artist", "playlist", "library", "track":
+		case "client_token", "profile", "search", "album", "artist", "playlist", "library", "track", "recents", "liked_tracks":
 			stage = upstream.Stage
 		}
 		return

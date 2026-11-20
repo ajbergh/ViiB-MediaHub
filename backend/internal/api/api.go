@@ -281,6 +281,7 @@ func (a *API) Routes() chi.Router {
 	r.Get("/spotify/playlists/{id}/scrape", a.spotifyGetPlaylistByScraping) // Get first-party playlist details via scraping
 	r.Get("/spotify/me", a.spotifyGetUserProfile)
 	r.Get("/spotify/proxy", a.spotifyProxy)
+	r.Get("/spotify/account/{view}", a.spotifyAccountRead)
 	r.Post("/spotify/proxy", a.spotifyProxy)
 	r.Get("/spotify/analysis/status", a.getSpotifyAnalysisStatus)
 	r.Get("/spotify/analysis/{trackID}", a.getSpotifyAnalysisCache)
