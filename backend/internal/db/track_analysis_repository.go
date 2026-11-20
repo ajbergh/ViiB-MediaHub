@@ -363,10 +363,25 @@ func getTrackAnalysis(executor preparationExecutor, songID string) (TrackAnalysi
 	return scanTrackAnalysis(row)
 }
 
+// Build the same keyed filter for the related analysis tables using bound IDs.
+func analysisSongFilter(prefix string, ids []string) string {
+	if len(ids) == 0 {
+		return ""
+	}
+	return prefix + "song_id IN (" + strings.Repeat("?,", len(ids)-1) + "?)"
+}
+
+func analysisSongArgs(args []any, ids []string) []any {
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	return args
+}
+
 // ListTrackAnalysis returns the current scalar record for every analyzed
 // song. It is intentionally one ordered query so library consumers do not
 // issue one database read per visible row.
-func (d *DB) ListTrackAnalysis() ([]TrackAnalysis, error) {
+func (d *DB) ListTrackAnalysis(songIDs ...string) ([]TrackAnalysis, error) {
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return nil, err
 	}
@@ -375,7 +390,7 @@ func (d *DB) ListTrackAnalysis() ([]TrackAnalysis, error) {
 		bpm, bpm_confidence, bpm_alt_candidate, tempo_stability, tempo_kind, bpm_source,
 		key_tonic, key_mode, key_confidence, key_source, camelot_key, open_key,
 		energy_level, energy_level_confidence, energy_algorithm_version,
-		analyzed_at, error_code, error_message, local_scalar_json, spotify_bindings_json, COALESCE((SELECT value FROM settings WHERE key='spotify_metadata_active_context'),'') FROM track_analysis ORDER BY song_id`)
+		analyzed_at, error_code, error_message, local_scalar_json, spotify_bindings_json, COALESCE((SELECT value FROM settings WHERE key='spotify_metadata_active_context'),'') FROM track_analysis`+analysisSongFilter(" WHERE ", songIDs)+` ORDER BY song_id`, analysisSongArgs(nil, songIDs)...)
 	if err != nil {
 		return nil, err
 	}
@@ -503,12 +518,12 @@ func (d *DB) ListTrackAnalysisArtifacts(kind string, formatVersion int, algorith
 
 // ListTrackAnalysisArtifactMetadata returns current-version artifact identity
 // without materializing compressed payload BLOBs for every library track.
-func (d *DB) ListTrackAnalysisArtifactMetadata(kind string, formatVersion int, algorithmVersion string) ([]TrackAnalysisArtifactMetadata, error) {
+func (d *DB) ListTrackAnalysisArtifactMetadata(kind string, formatVersion int, algorithmVersion string, songIDs ...string) ([]TrackAnalysisArtifactMetadata, error) {
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return nil, err
 	}
 	rows, err := d.conn.Query(`SELECT id, song_id, kind, format_version, algorithm_version, encoding, provenance, source_fingerprint, created_at, LENGTH(data)
-		FROM track_analysis_artifacts WHERE kind = ? AND format_version = ? AND algorithm_version = ? ORDER BY song_id`, kind, formatVersion, algorithmVersion)
+		FROM track_analysis_artifacts WHERE kind = ? AND format_version = ? AND algorithm_version = ?`+analysisSongFilter(" AND ", songIDs)+` ORDER BY song_id`, analysisSongArgs([]any{kind, formatVersion, algorithmVersion}, songIDs)...)
 	if err != nil {
 		return nil, err
 	}
@@ -801,12 +816,12 @@ func (d *DB) GetTrackAnalysisOverride(songID string) (TrackAnalysisOverride, err
 
 // ListTrackAnalysisOverrides returns every manual override keyed by song ID.
 // Pair it with ListTrackAnalysis when rendering a library-wide feature map.
-func (d *DB) ListTrackAnalysisOverrides() (map[string]TrackAnalysisOverride, error) {
+func (d *DB) ListTrackAnalysisOverrides(songIDs ...string) (map[string]TrackAnalysisOverride, error) {
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return nil, err
 	}
 	rows, err := d.conn.Query(`SELECT song_id, bpm, bpm_source_fingerprint, key_source_fingerprint, key_tonic, key_mode, beatgrid_artifact_id, bpm_locked, key_locked, beatgrid_locked, updated_at
-		FROM track_analysis_overrides`)
+		FROM track_analysis_overrides`+analysisSongFilter(" WHERE ", songIDs), analysisSongArgs(nil, songIDs)...)
 	if err != nil {
 		return nil, err
 	}

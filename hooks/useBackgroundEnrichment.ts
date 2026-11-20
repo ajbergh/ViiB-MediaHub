@@ -30,7 +30,7 @@ export function useBackgroundEnrichment() {
     const backendAvailable = useStore(state => state.backendAvailable);
     const generation = useStore(state => state.spotifySessionGeneration);
     const spotifyConnected = useStore(state => state.spotifyConnected);
-    const artists = useArtists();
+    const artists = useArtists(backendAvailable && spotifyConnected);
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const artistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const processingRef = useRef(false);
@@ -48,32 +48,25 @@ export function useBackgroundEnrichment() {
             processingRef.current = true;
             
             try {
-                // Get unchecked albums from backend
-                const unchecked = await api.getUncheckedAlbumMetadata();
-                const expired = await api.getExpiredAlbumMetadata();
+                const album = await api.getNextAlbumMetadata();
                 if (!current()) return;
-                
-                // Combine and pick the first one
-                const albumsToProcess = [...unchecked, ...expired];
-                
-                if (albumsToProcess.length === 0) {
+
+                if (!album) {
                     // No albums to process, check again in 60 seconds
                     if (current()) timerRef.current = setTimeout(processNextAlbum, 60000);
                     return;
                 }
                 
-                // Process one album
-                const album = albumsToProcess[0];
                 console.log(`🔄 Background enrichment: checking "${album.albumName}" by ${album.artistName}`);
                 
                 await fetchAlbumMetadata(album.albumName, album.artistName);
                 
                 // Wait 5 seconds before processing next album (rate limiting)
-                timerRef.current = setTimeout(processNextAlbum, 5000);
+                if (current()) timerRef.current = setTimeout(processNextAlbum, 5000);
             } catch (error) {
                 console.warn('Background enrichment error:', error);
                 // On error, wait longer before retrying
-                timerRef.current = setTimeout(processNextAlbum, 30000);
+                if (current()) timerRef.current = setTimeout(processNextAlbum, 30000);
             } finally {
                 processingRef.current = false;
             }

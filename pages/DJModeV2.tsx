@@ -23,6 +23,7 @@ import React, { useEffect, useLayoutEffect, useState, useCallback, useRef } from
 import { useStore } from '../store';
 import { syncUnavailableReason } from '../lib/djMixerControls';
 import { useDJAudioEngineActions, useDJAudioEngineSync } from '../hooks/useDJAudioEngine';
+import { getDJAudioEngine } from '../lib/djAudio';
 import { DJTopBar, type DJUpperView } from '../components/dj/v2/DJTopBar';
 import { DJSplitWaveform, DJWaveformLane } from '../components/dj/v2/DJSplitWaveform';
 import type { WaveformOrientation } from '../components/dj/v2/waveform/canvasWaveformRenderer';
@@ -149,6 +150,7 @@ const DJModeV2Inner: React.FC = () => {
 
   // Zero-rerender store→engine sync (crossfader, volumes, EQ, tempo, cue, headphone, keylock)
   useDJAudioEngineSync();
+  useEffect(() => { getDJAudioEngine().prioritizeScratch(djActiveDeck); }, [djActiveDeck]);
 
   // Stable action callbacks — no store subscriptions, no sync effects
   const {

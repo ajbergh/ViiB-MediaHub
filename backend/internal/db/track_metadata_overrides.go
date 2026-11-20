@@ -66,11 +66,11 @@ func (d *DB) SetTrackMetadataOverrideIfSourceCurrent(song, key, fp string, value
 }
 
 // ListTrackMetadataOverrides is one bounded scalar read for library assembly.
-func (d *DB) ListTrackMetadataOverrides() (map[string][]ScalarCandidate, error) {
+func (d *DB) ListTrackMetadataOverrides(songIDs ...string) (map[string][]ScalarCandidate, error) {
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return nil, err
 	}
-	rows, err := d.conn.Query(`SELECT song_id,field_key,value_json,source_fingerprint,updated_at FROM track_metadata_overrides ORDER BY song_id,field_key`)
+	rows, err := d.conn.Query(`SELECT song_id,field_key,value_json,source_fingerprint,updated_at FROM track_metadata_overrides`+analysisSongFilter(" WHERE ", songIDs)+` ORDER BY song_id,field_key`, analysisSongArgs(nil, songIDs)...)
 	if err != nil {
 		return nil, err
 	}

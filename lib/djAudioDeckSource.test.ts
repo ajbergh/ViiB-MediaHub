@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const state = {
+  djActiveDeck: 'A' as 'A' | 'B',
   djDeckA: { tempo: 1, loop: { start: 2, end: 4, enabled: true, pendingIn: null }, beatGrid: [0, 0.5, 1], beatGridOffset: 0, beatGridSource: 'manual', beatGridLocked: true, effectiveBpm: 120, originalBpm: 120 },
   djDeckB: { tempo: 1, loop: { start: 0, end: 0, enabled: false, pendingIn: null }, beatGrid: [0, 0.5, 1], beatGridOffset: 0, beatGridSource: 'manual', beatGridLocked: true, effectiveBpm: 120, originalBpm: 120 },
   djMixer: { quantize: false, slipModeA: false, slipModeB: false, crossfaderCurve: 'constant-power' },
@@ -32,6 +33,33 @@ function fakeSource(position = 3.9) {
 
 describe('DJAudioEngine DeckSource integration', () => {
   afterEach(() => { vi.restoreAllMocks(); });
+
+  it('prepares scratch audio one deck at a time and starts with the active deck', async () => {
+    vi.useFakeTimers();
+    const engine = new DJAudioEngine();
+    Object.assign(engine, { audioContext: { audioWorklet: {} }, deckAudioUrls: { A: '/a', B: '/b' } });
+    const previous = state.djActiveDeck;
+    state.djActiveDeck = 'B';
+    let finish!: () => void;
+    const prepare = vi.spyOn(engine as unknown as {
+      prepareScratchAudio: (deck: 'A' | 'B', url: string, generation: number) => Promise<void>;
+    }, 'prepareScratchAudio').mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }))
+      .mockResolvedValue(undefined);
+    try {
+      engine.prioritizeScratch('A');
+      engine.prioritizeScratch('B');
+      await vi.advanceTimersByTimeAsync(100);
+      expect(prepare.mock.calls.map(([deck]) => deck)).toEqual(['B']);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(prepare).toHaveBeenCalledTimes(1);
+      finish();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(prepare.mock.calls.map(([deck]) => deck)).toEqual(['B', 'A']);
+    } finally {
+      state.djActiveDeck = previous;
+      vi.useRealTimers();
+    }
+  });
 
   it('applies the selected curve to the actual crossfader gain nodes at the current position', () => {
     const engine = new DJAudioEngine();

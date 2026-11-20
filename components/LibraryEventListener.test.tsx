@@ -10,11 +10,9 @@ vi.mock('../store', () => ({ useStore: Object.assign(
   (selector: any) => selector(mocks.state),
   { getState: () => mocks.state, subscribe: () => () => {}, setState: (patch: any) => Object.assign(mocks.state, patch) },
 ) }));
-vi.mock('../lib/smartMix', () => ({ generateSmartMixes: () => [] }));
 vi.mock('../services/eventStreamURL', () => ({ getEventStreamURL: async (url: string) => url }));
 vi.mock('../services/libraryV2', () => ({
-  LibraryResnapshotRequired: class extends Error {},
-  libraryV2: { getSnapshot: async () => ({ songs: [], revision: 1 }), getChanges: mocks.getChanges, eventURL: () => '/revisions' },
+  libraryV2: { eventURL: () => '/revisions' },
 }));
 import LibraryEventListener from './LibraryEventListener';
 
@@ -33,9 +31,13 @@ it('holds scan loading until the completion event has synchronized the catalog',
   }
   vi.stubGlobal('EventSource', FakeEventSource);
   let finish!: (value: any) => void;
-  mocks.getChanges.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  mocks.getChanges.mockImplementation(async () => {
+    const delta: any = await new Promise(resolve => { finish = resolve; });
+    mocks.state.songs = delta.songs;
+  });
   mocks.state = {
     backendAvailable: true, songs: [], isScanning: true,
+    getLibraryRevision: () => 1, syncLibraryCatalog: mocks.getChanges,
     setScanning: (value: boolean) => { mocks.state.isScanning = value; },
     setScanProgress: vi.fn(), refreshLibrary: vi.fn().mockResolvedValue(undefined),
     setEnrichmentStatus: vi.fn(), addLog: vi.fn(),

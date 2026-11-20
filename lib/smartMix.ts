@@ -21,17 +21,52 @@
 
 import { Song, SmartMix } from '../types';
 
+const MIX_SIZE = 50;
+
+function topSongIds(songs: Song[], compare: (a: Song, b: Song) => number, include: (song: Song) => boolean = () => true): string[] {
+    const top: Song[] = [];
+    for (const song of songs) {
+        if (!include(song) || (top.length === MIX_SIZE && compare(song, top[MIX_SIZE - 1]) >= 0)) continue;
+        let low = 0;
+        let high = top.length;
+        while (low < high) {
+            const middle = Math.floor((low + high) / 2);
+            if (compare(song, top[middle]) < 0) high = middle;
+            else low = middle + 1;
+        }
+        if (low < MIX_SIZE) top.splice(low, 0, song);
+        if (top.length > MIX_SIZE) top.pop();
+    }
+    return top.map(song => song.id);
+}
+
+function sampleSongIds(songs: Song[], include: (song: Song) => boolean): string[] {
+    const sample: string[] = [];
+    let seen = 0;
+    for (const song of songs) {
+        if (!include(song)) continue;
+        seen++;
+        if (sample.length < MIX_SIZE) sample.push(song.id);
+        else {
+            const slot = Math.floor(Math.random() * seen);
+            if (slot < MIX_SIZE) sample[slot] = song.id;
+        }
+    }
+    for (let i = sample.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [sample[i], sample[j]] = [sample[j], sample[i]];
+    }
+    return sample;
+}
+
 export const generateSmartMixes = (songs: Song[]): SmartMix[] => {
     const now = Date.now();
     const daysAgo = (days: number) => now - (days * 24 * 60 * 60 * 1000);
     const mixes: SmartMix[] = [];
 
     // 1. Heavy Rotation: Most played recently
-    const heavyRotationIds = [...songs]
-        .filter(s => (s.playCount || 0) > 0 && (s.lastPlayed || 0) > daysAgo(90))
-        .sort((a, b) => (b.playCount || 0) - (a.playCount || 0))
-        .slice(0, 50)
-        .map(s => s.id);
+    const heavyRotationIds = topSongIds(songs, (a, b) => (b.playCount || 0) - (a.playCount || 0),
+        song => (song.playCount || 0) > 0 && (song.lastPlayed || 0) > daysAgo(90));
 
     // Only add if we have enough data or just show empty state later
     mixes.push({
@@ -45,12 +80,9 @@ export const generateSmartMixes = (songs: Song[]): SmartMix[] => {
     });
 
     // 2. Rediscover Favorites: High play count but old lastPlayed
-    const rediscoverIds = [...songs]
-        .filter(s => (s.playCount || 0) > 2 && (s.lastPlayed || 0) < daysAgo(30))
-        .sort((a, b) => (b.playCount || 0) - (a.playCount || 0))
-        .slice(0, 50)
-        .map(s => s.id);
-    
+    const rediscoverIds = topSongIds(songs, (a, b) => (b.playCount || 0) - (a.playCount || 0),
+        song => (song.playCount || 0) > 2 && (song.lastPlayed || 0) < daysAgo(30));
+
     mixes.push({
         id: 'rediscover',
         name: 'Rediscover Favorites',
@@ -62,10 +94,7 @@ export const generateSmartMixes = (songs: Song[]): SmartMix[] => {
     });
 
     // 3. Fresh Finds: Recently added
-    const freshFindsIds = [...songs]
-        .sort((a, b) => b.addedAt - a.addedAt)
-        .slice(0, 50)
-        .map(s => s.id);
+    const freshFindsIds = topSongIds(songs, (a, b) => b.addedAt - a.addedAt);
 
     mixes.push({
         id: 'fresh-finds',
@@ -79,15 +108,11 @@ export const generateSmartMixes = (songs: Song[]): SmartMix[] => {
 
     // 4. Chill Acoustic Evening: Genre based
     const chillKeywords = ['acoustic', 'folk', 'jazz', 'lo-fi', 'singer-songwriter', 'chill', 'ambient', 'piano', 'classical'];
-    const chillIds = [...songs]
-        .filter(s => {
-            if (!s.genre || s.genre.length === 0) return false;
-            const genres = s.genre.join(' ').toLowerCase();
-            return chillKeywords.some(k => genres.includes(k));
-        })
-        .sort(() => 0.5 - Math.random()) // Shuffle
-        .slice(0, 50)
-        .map(s => s.id);
+    const chillIds = sampleSongIds(songs, s => {
+        if (!s.genre || s.genre.length === 0) return false;
+        const genres = s.genre.join(' ').toLowerCase();
+        return chillKeywords.some(k => genres.includes(k));
+    });
     
     mixes.push({
         id: 'chill-acoustic',
@@ -101,18 +126,14 @@ export const generateSmartMixes = (songs: Song[]): SmartMix[] => {
 
     // 5. 90s Alternative Mix: Year + Genre
     const altKeywords = ['rock', 'alternative', 'grunge', 'indie', 'punk'];
-    const ninetiesIds = [...songs]
-        .filter(s => {
-            const is90s = s.year && s.year >= 1990 && s.year <= 1999;
-            if (!is90s) return false;
-            // If year matches, check genre if available
-            if (!s.genre || s.genre.length === 0) return true; 
-            const genres = s.genre.join(' ').toLowerCase();
-            return altKeywords.some(k => genres.includes(k));
-        })
-        .sort(() => 0.5 - Math.random())
-        .slice(0, 50)
-        .map(s => s.id);
+    const ninetiesIds = sampleSongIds(songs, s => {
+        const is90s = s.year && s.year >= 1990 && s.year <= 1999;
+        if (!is90s) return false;
+        // If year matches, check genre if available
+        if (!s.genre || s.genre.length === 0) return true;
+        const genres = s.genre.join(' ').toLowerCase();
+        return altKeywords.some(k => genres.includes(k));
+    });
 
     mixes.push({
         id: '90s-alt',
@@ -126,15 +147,11 @@ export const generateSmartMixes = (songs: Song[]): SmartMix[] => {
 
     // 6. High Energy Workout: Upbeat genres
     const workoutKeywords = ['pop', 'dance', 'electronic', 'hip hop', 'rock', 'metal', 'techno', 'house', 'drum and bass', 'edm', 'workout', 'energy', 'upbeat'];
-    const workoutIds = [...songs]
-        .filter(s => {
-            if (!s.genre || s.genre.length === 0) return false;
-            const genres = s.genre.join(' ').toLowerCase();
-            return workoutKeywords.some(k => genres.includes(k));
-        })
-        .sort(() => 0.5 - Math.random())
-        .slice(0, 50)
-        .map(s => s.id);
+    const workoutIds = sampleSongIds(songs, s => {
+        if (!s.genre || s.genre.length === 0) return false;
+        const genres = s.genre.join(' ').toLowerCase();
+        return workoutKeywords.some(k => genres.includes(k));
+    });
 
     if (workoutIds.length > 5) {
         mixes.push({
@@ -150,15 +167,11 @@ export const generateSmartMixes = (songs: Song[]): SmartMix[] => {
 
     // 7. Focus Mode: Instrumental and calm
     const focusKeywords = ['instrumental', 'soundtrack', 'ambient', 'classical', 'jazz', 'lo-fi', 'study', 'focus', 'piano', 'score', 'cinematic'];
-    const focusIds = [...songs]
-        .filter(s => {
-            if (!s.genre || s.genre.length === 0) return false;
-            const genres = s.genre.join(' ').toLowerCase();
-            return focusKeywords.some(k => genres.includes(k));
-        })
-        .sort(() => 0.5 - Math.random())
-        .slice(0, 50)
-        .map(s => s.id);
+    const focusIds = sampleSongIds(songs, s => {
+        if (!s.genre || s.genre.length === 0) return false;
+        const genres = s.genre.join(' ').toLowerCase();
+        return focusKeywords.some(k => genres.includes(k));
+    });
 
     if (focusIds.length > 5) {
         mixes.push({

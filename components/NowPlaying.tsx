@@ -109,6 +109,12 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
 
     if (!currentSong) return null;
 
+    const lowPower = !!audioSettings.lowPowerVisuals;
+    const visualsActive = isPlaying && audioSettings.visualizerEnabled;
+    const artworkVisualizer = visualsActive && showVisualizerOverlay && audioSettings.visualizerMode !== "OFF";
+    const fullscreenVisualizer = visualsActive && !artworkVisualizer && audioSettings.visualizerFullscreenEnabled && audioSettings.visualizerBackgroundMode !== "OFF";
+    const lightweightMode = audioSettings.visualizerMode === "WAVE" ? "WAVE" : "SPECTRUM";
+
     const coverUrl = currentSong.coverUrl || albumCovers[currentSong.album];
     
     // Check if current track is a streaming Spotify track (not downloaded)
@@ -168,20 +174,26 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
         <div className="fixed inset-0 z-[100] bg-surface-0 text-text-main flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-10 duration-300 motion-reduce:animate-none motion-reduce:transition-none">
             {/* Dynamic Background */}
             <div 
-                className="absolute inset-0 z-0 opacity-30 blur-3xl scale-110 pointer-events-none transition-all duration-1000 motion-reduce:transition-none"
+                className={lowPower ? "absolute inset-0 z-0 bg-surface-1 pointer-events-none" : "absolute inset-0 z-0 opacity-30 blur-3xl scale-110 pointer-events-none transition-all duration-1000 motion-reduce:transition-none"}
                 style={{ 
-                    background: coverUrl ? `${cssUrl(coverUrl)} center/cover` : generateGradient(currentSong.album),
+                    background: lowPower ? undefined : coverUrl ? `${cssUrl(coverUrl)} center/cover` : generateGradient(currentSong.album),
                 }}
             />
             
-            {/* Visualizer Layer */}
-            <div className="absolute inset-0 z-0 opacity-40">
-                <Visualizer mode={audioSettings.visualizerMode} barColor={VIIB_COLOR_VALUES.visualizerMuted} />
-            </div>
+            {visualsActive && !artworkVisualizer && !fullscreenVisualizer && (audioSettings.visualizerMode === "SPECTRUM" || audioSettings.visualizerMode === "WAVE") && (
+                <div className="absolute inset-0 z-0 opacity-40">
+                    <Visualizer mode={audioSettings.visualizerMode} lowPower={lowPower} barColor={VIIB_COLOR_VALUES.visualizerMuted} />
+                </div>
+            )}
 
             {/* Fullscreen Background Visualizer - Behind all UI when enabled */}
             {/* Uses separate visualizerBackgroundMode so it can differ from album art overlay */}
-            {audioSettings.visualizerFullscreenEnabled && audioSettings.visualizerBackgroundMode !== 'OFF' && isPlaying && (
+            {fullscreenVisualizer && lowPower && (
+                <div className="absolute inset-0 z-[1] opacity-30 pointer-events-none">
+                    <Visualizer mode={lightweightMode} lowPower />
+                </div>
+            )}
+            {fullscreenVisualizer && !lowPower && (
                 <>
                     {audioSettings.visualizerBackgroundMode === 'MILKDROP' ? (
                         <MilkdropVisualizer
@@ -206,7 +218,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                 </>
             )}
 
-            <div className="absolute inset-0 z-0 bg-surface-0/70 backdrop-blur-[60px] pointer-events-none"></div>
+            <div className={lowPower ? "absolute inset-0 z-0 bg-surface-0/40 pointer-events-none" : "absolute inset-0 z-0 bg-surface-0/70 backdrop-blur-[60px] pointer-events-none"}></div>
 
             {/* Header - Hidden in party mode unless mouse active */}
             <div className={`relative z-10 flex items-center justify-between p-6 md:p-8 transition-opacity duration-300 ${
@@ -303,7 +315,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                                 style={{
                                     // Legacy visualizers: album art dims, visualizer at full opacity
                                     // Milkdrop: album art stays full, visualizer dims
-                                    opacity: showVisualizerOverlay && audioSettings.visualizerMode !== 'OFF' && audioSettings.visualizerMode !== 'MILKDROP' && isPlaying
+                                    opacity: artworkVisualizer && (lowPower || audioSettings.visualizerMode !== 'MILKDROP')
                                         ? (audioSettings.visualizerArtworkOpacity ?? 30) / 100
                                         : 1
                                 }}
@@ -315,7 +327,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                                     background: generateGradient(currentSong.album),
                                     // Legacy visualizers: album art dims, visualizer at full opacity
                                     // Milkdrop: album art stays full, visualizer dims
-                                    opacity: showVisualizerOverlay && audioSettings.visualizerMode !== 'OFF' && audioSettings.visualizerMode !== 'MILKDROP' && isPlaying
+                                    opacity: artworkVisualizer && (lowPower || audioSettings.visualizerMode !== 'MILKDROP')
                                         ? (audioSettings.visualizerArtworkOpacity ?? 30) / 100
                                         : 1
                                 }}
@@ -324,35 +336,18 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                             </div>
                          )}
                          
-                         {/* Album Art Visualizer Overlay - WebGL modes with Canvas 2D fallback */}
-                         {/* Legacy visualizers: render at full opacity over dimmed album art */}
-                         {audioSettings.visualizerMode !== 'MILKDROP' && (
-                             <div 
-                                className="absolute inset-0 transition-opacity duration-300"
-                                style={{ 
-                                    opacity: showVisualizerOverlay && audioSettings.visualizerMode !== 'OFF' && isPlaying
-                                        ? 1
-                                        : 0
-                                }}
-                             >
-                                <WebGLVisualizer 
-                                    mode={audioSettings.visualizerMode}
-                                    isActive={showVisualizerOverlay && audioSettings.visualizerMode !== 'OFF' && isPlaying}
-                                />
-                             </div>
-                         )}
-                         
-                         {/* Milkdrop Visualizer Overlay - WebGL mode */}
-                         {/* Milkdrop: visualizer opacity is reduced to let album art show through */}
-                         {audioSettings.visualizerMode === 'MILKDROP' && showVisualizerOverlay && isPlaying && (
-                             <MilkdropVisualizer
-                                settings={milkdropSettings}
-                                isActive={true}
-                                onPresetChange={setMilkdropPreset}
-                                onPresetsLoaded={setMilkdropPresetKeys}
-                                className="transition-opacity duration-300"
-                                style={{ opacity: 1 - ((audioSettings.visualizerArtworkOpacity ?? 30) / 100) }}
-                             />
+                         {artworkVisualizer && (
+                            <div className="absolute inset-0 pointer-events-none">
+                                {lowPower ? (
+                                    <Visualizer mode={lightweightMode} lowPower />
+                                ) : audioSettings.visualizerMode === "MILKDROP" ? (
+                                    <MilkdropVisualizer settings={milkdropSettings} isActive
+                                        onPresetChange={setMilkdropPreset} onPresetsLoaded={setMilkdropPresetKeys}
+                                        style={{ opacity: 1 - ((audioSettings.visualizerArtworkOpacity ?? 30) / 100) }} />
+                                ) : (
+                                    <WebGLVisualizer mode={audioSettings.visualizerMode} isActive />
+                                )}
+                            </div>
                          )}
                     </div>
                     

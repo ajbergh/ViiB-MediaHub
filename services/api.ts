@@ -66,6 +66,12 @@ export interface SpotifyBrowserLoginStatus { id: string; state: 'pending' | 'con
 
 const API_BASE = '/api';
 
+function notifyTrackAnalysisChange(songId: string): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('library_updated', { detail: { source: 'analysis', songId } }));
+  }
+}
+
 /**
  * Standard error response from backend
  */
@@ -1026,6 +1032,10 @@ export const api = {
    * 
    * @returns Promise with albums needing Spotify check
    */
+  async getNextAlbumMetadata(): Promise<ApiAlbumMetadata | null> {
+    return handleResponse(await fetch(API_BASE + "/albums/metadata/next", { cache: "no-store" }));
+  },
+
   async getUncheckedAlbumMetadata(): Promise<ApiAlbumMetadata[]> {
     const response = await fetch(`${API_BASE}/albums/metadata/unchecked`);
     return handleResponse<ApiAlbumMetadata[]>(response);
@@ -1484,7 +1494,9 @@ export const api = {
       headers: { 'Content-Type': 'application/json', 'If-Match': JSON.stringify(sourceFingerprint) },
       body: JSON.stringify({ bpm }),
     });
-    return handleResponse<TrackAnalysisFeature>(response);
+    const feature = await handleResponse<TrackAnalysisFeature>(response);
+    notifyTrackAnalysisChange(trackId);
+    return feature;
   },
 
   async resetTrackBPM(trackId: string, sourceFingerprint: string): Promise<TrackAnalysisFeature> {
@@ -1492,7 +1504,9 @@ export const api = {
       method: 'DELETE',
       headers: { 'If-Match': JSON.stringify(sourceFingerprint) },
     });
-    return handleResponse<TrackAnalysisFeature>(response);
+    const feature = await handleResponse<TrackAnalysisFeature>(response);
+    notifyTrackAnalysisChange(trackId);
+    return feature;
   },
 
   async updateTrackKey(trackId: string, key: { tonic: number; mode: 'major' | 'minor' }, sourceFingerprint: string): Promise<TrackAnalysisFeature> {
@@ -1501,12 +1515,16 @@ export const api = {
       headers: { 'Content-Type': 'application/json', 'If-Match': JSON.stringify(sourceFingerprint) },
       body: JSON.stringify(key),
     });
-    return handleResponse<TrackAnalysisFeature>(response);
+    const feature = await handleResponse<TrackAnalysisFeature>(response);
+    notifyTrackAnalysisChange(trackId);
+    return feature;
   },
 
   async resetTrackKey(trackId: string, sourceFingerprint: string): Promise<TrackAnalysisFeature> {
     const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/key`, { method: 'DELETE', headers: { 'If-Match': JSON.stringify(sourceFingerprint) } });
-    return handleResponse<TrackAnalysisFeature>(response);
+    const feature = await handleResponse<TrackAnalysisFeature>(response);
+    notifyTrackAnalysisChange(trackId);
+    return feature;
   },
 
   async updateTrackMetadataField(trackId: string, field: 'time_signature' | 'local_energy_level', value: number, sourceFingerprint: string): Promise<void> {
@@ -1525,8 +1543,13 @@ export const api = {
     if (!response.ok) await handleResponse<void>(response);
   },
 
-  async getTrackAnalysisFeatures(): Promise<TrackAnalysisFeature[]> {
-    const response = await fetch(`${API_BASE}/v2/analysis`, { cache: 'no-store' });
+  async getTrackAnalysisFeatures(songIds?: string[], options?: { summary?: boolean; signal?: AbortSignal }): Promise<TrackAnalysisFeature[]> {
+    if (songIds?.length === 0) return [];
+    const params = new URLSearchParams();
+    songIds?.forEach(id => params.append("id", id));
+    if (options?.summary) params.set("summary", "1");
+    const query = params.toString();
+    const response = await fetch(`${API_BASE}/v2/analysis${query ? "?" + query : ""}`, { cache: 'no-store', signal: options?.signal });
     return handleResponse<TrackAnalysisFeature[]>(response);
   },
 

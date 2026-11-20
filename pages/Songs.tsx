@@ -32,8 +32,7 @@ import { ListHeader, PageHeader } from '../components/ui/Page';
 import { SongColumnMenu } from '../components/SongColumnMenu';
 import { SONG_COLUMNS, SongColumnId, SONG_COLUMNS_STORAGE_KEY, loadSongColumns, songColumnValue } from '../lib/songColumns';
 import { getCamelotColor } from '../lib/camelotColors';
-import { api } from '../services/api';
-import { TrackAnalysisFeature } from '../services/trackAnalysisContracts';
+import { useAnalysisFeatures } from '../hooks/useAnalysisFeatures';
 
 const songGridClass = 'grid grid-cols-[36px_minmax(0,1fr)_52px_36px] md:grid-cols-[var(--song-columns)] md:min-w-[var(--song-min-width)] gap-2 md:gap-4';
 
@@ -218,7 +217,6 @@ export const Songs: React.FC = () => {
   const [sortBy, setSortBy] = useState<SongSortOption>('recent');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [columns, setColumns] = useState<SongColumnId[]>(loadSongColumns);
-  const [analysis, setAnalysis] = useState<Record<string, TrackAnalysisFeature>>({});
   const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -230,22 +228,7 @@ export const Songs: React.FC = () => {
     try { localStorage.setItem(SONG_COLUMNS_STORAGE_KEY, JSON.stringify(columns)); } catch { /* Keep the active layout when storage is unavailable. */ }
   }, [columns]);
   const needsAnalysis = columns.some(id => ['bpm', 'key', 'camelot', 'energy'].includes(id));
-  useEffect(() => {
-    if (!needsAnalysis) return;
-    let active = true;
-    let generation = 0;
-    const refresh = async () => {
-      const current = ++generation;
-      try {
-        const features = await api.getTrackAnalysisFeatures();
-        if (active && current === generation) setAnalysis(Object.fromEntries(features.map(feature => [feature.songId, feature])));
-      } catch { if (active && current === generation) setAnalysis({}); }
-    };
-    void refresh();
-    window.addEventListener('library_updated', refresh);
-    window.addEventListener('enrichment_complete', refresh);
-    return () => { active = false; window.removeEventListener('library_updated', refresh); window.removeEventListener('enrichment_complete', refresh); };
-  }, [needsAnalysis, songs.length]);
+  const { rows: analysis } = useAnalysisFeatures(needsAnalysis);
   const visibleColumns = SONG_COLUMNS.filter(column => columns.includes(column.id));
   const gridStyle = {
     '--song-columns': ['36px', 'minmax(220px, 4fr)', ...visibleColumns.map(column => column.width), '64px', '40px'].join(' '),

@@ -18,6 +18,28 @@ func (*poolTestReader) Close() error { return nil }
 func poolTestAsset(size int64, closes *atomic.Int32) *streamAsset {
 	return &streamAsset{size: size, contentType: "audio/ogg", newReader: func() (io.ReadSeekCloser, error) { return &poolTestReader{bytes.NewReader([]byte("0123456789"))}, nil }, close: func() { closes.Add(1) }}
 }
+
+func TestMP3StreamAssetPoolReusesLongRendition(t *testing.T) {
+	pool := newMP3StreamAssetPool()
+	defer pool.close()
+	var closes atomic.Int32
+	key := streamAssetKey{track: "long-track", quality: "high", generation: 1, mp3: true}
+	first, release, err := pool.acquire(t.Context(), key, func() (*streamAsset, error) {
+		return poolTestAsset(24<<20, &closes), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	second, release, err := pool.acquire(t.Context(), key, func() (*streamAsset, error) {
+		t.Fatal("a later byte range initiated another conversion")
+		return nil, nil
+	})
+	if err != nil || second != first || closes.Load() != 0 {
+		t.Fatalf("asset was lost between range requests: %v", err)
+	}
+	release()
+}
 func TestStreamAssetReuseHasIndependentReaders(t *testing.T) {
 	pool := newStreamAssetPool()
 	defer pool.close()

@@ -1383,6 +1383,15 @@ export const Settings: React.FC = () => {
                     </div>
                 )}
 
+                <label className="flex items-center justify-between gap-4">
+                    <span>
+                        <span className="block font-medium text-text-main">Low-power visuals</span>
+                        <span className="block text-sm text-text-subtle">Use a lightweight visualizer and a static background.</span>
+                    </span>
+                    <input type="checkbox" className="accent-brand" checked={!!audioSettings.lowPowerVisuals}
+                        onChange={event => useStore.getState().setLowPowerVisuals(event.target.checked)} />
+                </label>
+
                 {/* Visualizer Overlay Settings - Show when visualizer is not OFF */}
                 {audioSettings.visualizerMode !== 'OFF' && (
                     <div className="space-y-4 pl-4 ml-4 border-l-2 border-surface-hover">

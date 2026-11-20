@@ -36,6 +36,9 @@ func (d *DB) PublishTrackPreparation(p TrackPreparationPublication) error {
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return err
 	}
+	if err := d.EnsureLibrarySyncSchema(); err != nil {
+		return err
+	}
 	if len(p.Artifacts) > 16 || len(p.Capabilities) > 64 {
 		return errors.New("preparation publication too large")
 	}
@@ -154,6 +157,9 @@ func (d *DB) PublishTrackPreparation(p TrackPreparationPublication) error {
 		}
 	}
 	if err := putTrackCapabilityStatusesTx(tx, p.Capabilities); err != nil {
+		return err
+	}
+	if err := recordSongLibraryChangeTx(tx, p.Analysis.SongID); err != nil {
 		return err
 	}
 	return tx.Commit()

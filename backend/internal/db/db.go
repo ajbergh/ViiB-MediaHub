@@ -2945,6 +2945,25 @@ func (d *DB) GetAlbumsNeedingMetadata() ([]AlbumMetadata, error) {
 	return results, nil
 }
 
+// NextAlbumNeedingMetadata returns the next unchecked or expired album.
+func (d *DB) NextAlbumNeedingMetadata(expirationDays int) (*AlbumMetadata, error) {
+	expiry := time.Now().AddDate(0, 0, -expirationDays).Unix()
+	var album AlbumMetadata
+	err := d.conn.QueryRow(`SELECT album_key, album_name, artist_name FROM (
+		SELECT album_key, album_name, artist_name FROM album_metadata WHERE spotify_checked = 0
+		UNION ALL
+		SELECT album_key, album_name, artist_name FROM album_metadata
+		WHERE spotify_checked = 1 AND spotify_found = 0 AND fetched_at < ?
+	) LIMIT 1`, expiry).Scan(&album.AlbumKey, &album.AlbumName, &album.ArtistName)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &album, nil
+}
+
 // ResetAlbumSpotifyCheck resets the spotify_checked flag for an album to force re-fetch
 func (d *DB) ResetAlbumSpotifyCheck(albumKey string) error {
 	_, err := d.conn.Exec(`

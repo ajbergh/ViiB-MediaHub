@@ -14,10 +14,6 @@ function songSortKey(song: Song): string {
   ].join('\u0000').toLocaleLowerCase();
 }
 
-function compareSongs(a: Song, b: Song): number {
-  return songSortKey(a).localeCompare(songSortKey(b));
-}
-
 /**
  * Canonical renderer-side song index. Zustand continues to expose an array for
  * compatibility, while synchronization updates are applied by ID and only
@@ -25,57 +21,49 @@ function compareSongs(a: Song, b: Song): number {
  */
 export class LibraryIndex {
   private songsById = new Map<string, Song>();
+  private sortKeys = new Map<string, string>();
   private orderedIds: string[] = [];
 
   initialize(songs: Song[]): Song[] {
     this.songsById = new Map(songs.map(song => [song.id, song]));
-    this.orderedIds = [...this.songsById.values()].sort(compareSongs).map(song => song.id);
+    this.sortKeys = new Map([...this.songsById.values()].map(song => [song.id, songSortKey(song)]));
+    this.sortIds();
     return this.toArray();
   }
 
   apply(changes: LibraryChange[], upserts: Song[]): Song[] {
-    if (this.orderedIds.length === 0 && this.songsById.size === 0) {
-      this.initialize([]);
-    }
-
     const upsertById = new Map(upserts.map(song => [song.id, song]));
     let requiresSort = false;
     const deleted = new Set<string>();
 
     for (const change of changes) {
-      if (change.operation === 'delete') {
+      const song = change.operation === 'delete' ? undefined : upsertById.get(change.songId);
+      if (!song) {
         if (this.songsById.delete(change.songId)) {
+          this.sortKeys.delete(change.songId);
           deleted.add(change.songId);
         }
         continue;
       }
-
-      const song = upsertById.get(change.songId);
-      if (!song) {
-        if (this.songsById.delete(change.songId)) deleted.add(change.songId);
-        continue;
-      }
-      const previous = this.songsById.get(song.id);
-      if (!previous || songSortKey(previous) !== songSortKey(song)) {
+      const sortKey = songSortKey(song);
+      if (this.sortKeys.get(song.id) !== sortKey) {
+        this.sortKeys.set(song.id, sortKey);
         requiresSort = true;
       }
       this.songsById.set(song.id, song);
     }
 
-    if (deleted.size > 0) {
+    if (requiresSort) {
+      this.sortIds();
+    } else if (deleted.size > 0) {
       this.orderedIds = this.orderedIds.filter(id => !deleted.has(id));
     }
 
-    if (requiresSort) {
-      this.orderedIds = [...this.songsById.values()].sort(compareSongs).map(song => song.id);
-    } else {
-      // Append non-order-changing new IDs defensively; normally new membership
-      // always requiresSort because there is no previous value.
-      for (const id of this.songsById.keys()) {
-        if (!this.orderedIds.includes(id)) this.orderedIds.push(id);
-      }
-    }
     return this.toArray();
+  }
+
+  private sortIds(): void {
+    this.orderedIds = [...this.sortKeys.keys()].sort((a, b) => this.sortKeys.get(a)!.localeCompare(this.sortKeys.get(b)!));
   }
 
   toArray(): Song[] {
@@ -86,5 +74,3 @@ export class LibraryIndex {
     return this.songsById.size;
   }
 }
-
-export const libraryIndex = new LibraryIndex();

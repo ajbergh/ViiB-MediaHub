@@ -257,6 +257,12 @@ func TestV2TrackAnalysisFeaturesListsResolvedRecords(t *testing.T) {
 			}
 		}
 	}
+	scoped := httptest.NewRecorder()
+	(&API{db: database}).V2Routes().ServeHTTP(scoped, httptest.NewRequest(http.MethodGet, "/analysis?id=second&id=missing", nil))
+	var rows []TrackAnalysisFeatureResponse
+	if err := json.NewDecoder(scoped.Body).Decode(&rows); err != nil || scoped.Code != http.StatusOK || len(rows) != 1 || rows[0].SongID != "second" {
+		t.Fatalf("scoped feature list: status=%d rows=%+v err=%v", scoped.Code, rows, err)
+	}
 }
 
 func TestV2TrackAnalysisFeatureListReportsOnlyCurrentSettledStructure(t *testing.T) {

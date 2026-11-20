@@ -61,6 +61,7 @@ export interface PlayerSlice {
   reorderQueue: (fromIndex: number, toIndex: number) => void;
   playQueueItem: (index: number) => void;
   
+  setLowPowerVisuals: (enabled: boolean) => void;
   setVisualizerMode: (mode: VisualizerMode) => void;
   setVisualizerBackgroundMode: (mode: VisualizerMode) => void;
   setVisualizerArtworkOpacity: (opacity: number) => void;
@@ -177,6 +178,8 @@ export interface LibrarySlice {
   
   initLibrary: () => Promise<void>;
   refreshLibrary: () => Promise<void>;
+  syncLibraryCatalog: (recover?: boolean) => Promise<void>;
+  getLibraryRevision: () => number | null;
   addSongs: (newSongs: Song[]) => void;
   resetLibrary: () => Promise<void>;
   createPlaylist: (name: string, songIds?: string[]) => Promise<Playlist | void>;

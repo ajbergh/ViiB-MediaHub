@@ -4,19 +4,22 @@
 
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ state: {} as any, analysis: vi.fn(), play: vi.fn(), context: vi.fn(), info: vi.fn(), like: vi.fn() }));
-vi.mock('../store', () => ({ useStore: (selector?: any) => selector ? selector(mocks.state) : mocks.state, useAlbumCovers: () => ({}) }));
+vi.mock('../store', () => ({ useStore: Object.assign((selector?: any) => selector ? selector(mocks.state) : mocks.state, { getState: () => mocks.state }), useAlbumCovers: () => ({}) }));
 vi.mock('../services/api', () => ({ api: { getTrackAnalysisFeatures: mocks.analysis } }));
 vi.mock('react-router', () => ({ useNavigate: () => vi.fn() }));
 vi.mock('../components/LikeButton', () => ({ LikeButton: () => <button aria-label="Like" onClick={event => { event.stopPropagation(); mocks.like(); }}>Like</button> }));
 vi.mock('react-virtuoso', () => ({ Virtuoso: ({ data, itemContent, components, context }: any) => <><components.Header context={context}/>{data.map((song: any, index: number) => <React.Fragment key={song.id}>{itemContent(index, song)}</React.Fragment>)}</> }));
 import { Songs } from './Songs';
 import { DEFAULT_SONG_COLUMNS, SONG_COLUMNS_STORAGE_KEY } from '../lib/songColumns';
-afterEach(() => { localStorage.clear(); vi.clearAllMocks(); });
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => { localStorage.clear(); vi.clearAllMocks(); vi.useRealTimers(); });
+let generation = 0;
+const flushAnalysis = () => act(async () => vi.advanceTimersByTimeAsync(100));
 const setup = () => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
-  mocks.state = { songs: [
+  mocks.state = { spotifySessionGeneration: ++generation, songs: [
     { id: 'a', title: 'Alpha', artist: 'Artist', album: 'Album', bpm: 110, genre: ['Rock'], originalYear: 1995, duration: 180, addedAt: 1 },
     { id: 'b', title: 'Beta', artist: 'Artist', album: 'Album', duration: 240, addedAt: 0 },
   ], playSong: mocks.play, openContextMenu: mocks.context, openSongInfoModal: mocks.info };
@@ -43,6 +46,7 @@ it('opens from the header, aligns selected columns, preserves actions and prefer
     await act(async () => menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true })));
     expect(document.activeElement?.textContent?.trim()).toBe('Artist');
     await toggle('BPM'); await toggle('Key'); await toggle('Genre'); await toggle('Year'); await toggle('Energy');
+    await flushAnalysis();
     const row = container.querySelector<HTMLElement>('[data-song-id="a"]')!;
     expect(cells(header).map(cell => cell[0])).toEqual(cells(row).map(cell => cell[0]));
     expect(cells(row)).toEqual(expect.arrayContaining([['bpm', '123.5'], ['key', 'C minor'], ['genre', 'Rock'], ['year', '1995'], ['energy', '0']]));
@@ -71,9 +75,11 @@ it('uses metadata BPM and unknown Key if analysis fails, then refreshes when the
   const { root, container } = setup();
   try {
     await act(async () => root.render(<Songs/>));
+    await flushAnalysis();
     expect(container.querySelector('[data-song-id="a"] [data-column=bpm]')?.textContent).toBe('110');
     expect(container.querySelector('[data-song-id="a"] [data-column=key]')?.textContent).toBe('—');
-    await act(async () => window.dispatchEvent(new Event('library_updated')));
+    await act(async () => window.dispatchEvent(new CustomEvent('library_updated', { detail: { source: 'library_delta', songIds: ['a'] } })));
+    await flushAnalysis();
     expect(container.querySelector('[data-song-id="a"] [data-column=key]')?.textContent).toBe('D major');
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
@@ -85,8 +91,10 @@ it('refreshes Energy Level on a successful manual metadata event', async () => {
   const { root, container } = setup();
   try {
     await act(async () => root.render(<Songs/>));
+    await flushAnalysis();
     expect(container.querySelector('[data-song-id="a"] [data-column=energy]')?.textContent).toBe('4');
     await act(async () => window.dispatchEvent(new CustomEvent('library_updated', { detail: { source: 'manual_audio_metadata', songId: 'a', sourceFingerprint: 'fp', field: 'local_energy_level' } })));
+    await flushAnalysis();
     expect(container.querySelector('[data-song-id="a"] [data-column=energy]')?.textContent).toBe('9');
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
@@ -97,6 +105,7 @@ it('plays a filtered row using its displayed queue position', async () => {
   const { root, container } = setup();
   try {
     await act(async () => root.render(<Songs/>));
+    await flushAnalysis();
     const input = container.querySelector<HTMLInputElement>('input')!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Beta');
@@ -114,6 +123,7 @@ it('renders Camelot Key column values with their deterministic Camelot wheel col
   const { root, container } = setup();
   try {
     await act(async () => root.render(<Songs/>));
+    await flushAnalysis();
     const expected = getCamelotColor('5A')!;
     const badge = container.querySelector<HTMLElement>('[data-song-id="a"] [data-column="camelot"] span');
     expect(badge).not.toBeNull();

@@ -310,17 +310,24 @@ func (a *API) analysisSourceMatchesCurrent(songID, expectedFingerprint string) (
 }
 
 func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request) {
-	analyses, err := a.db.ListTrackAnalysis()
+	query := r.URL.Query()
+	songIDs := query["id"]
+	summary := query.Get("summary") == "1"
+	if len(songIDs) > 100 {
+		respondError(w, http.StatusBadRequest, "at most 100 track IDs may be requested")
+		return
+	}
+	analyses, err := a.db.ListTrackAnalysis(songIDs...)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	overrides, err := a.db.ListTrackAnalysisOverrides()
+	overrides, err := a.db.ListTrackAnalysisOverrides(songIDs...)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	manualFields, err := a.db.ListTrackMetadataOverrides()
+	manualFields, err := a.db.ListTrackMetadataOverrides(songIDs...)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "manual metadata unavailable")
 		return
@@ -332,12 +339,12 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 		overrides[song] = override
 	}
 
-	structureMetadata, err := a.db.ListTrackAnalysisArtifactMetadata(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion)
+	structureMetadata, err := a.db.ListTrackAnalysisArtifactMetadata(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion, songIDs...)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	loudnessMetadata, err := a.db.ListTrackAnalysisArtifactMetadata(features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion)
+	loudnessMetadata, err := a.db.ListTrackAnalysisArtifactMetadata(features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion, songIDs...)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -460,6 +467,16 @@ func (a *API) listTrackAnalysisFeaturesV2(w http.ResponseWriter, r *http.Request
 			feature := trackAnalysisFeatureResponseWithCurrentSource(analysis, overrides[analysis.SongID], currentFingerprints[analysis.SongID])
 			feature.EffectiveFields = db.ResolveAnalysisScalarFields(analysis, overrides[analysis.SongID], currentFingerprints[analysis.SongID], providerFields[analysis.SongID])
 			applyEffectiveScalarCompatibilityFields(&feature, feature.EffectiveFields)
+			if summary {
+				fields := feature.EffectiveFields
+				feature.EffectiveFields = nil
+				for _, field := range fields {
+					if field.Key == "time_signature" {
+						feature.EffectiveFields = []db.EffectiveScalar{field}
+						break
+					}
+				}
+			}
 			feature.ProviderScores = scoreSummaries[analysis.SongID]
 			feature.ProviderScoresUnverified = scoresUnverified && len(feature.ProviderScores) > 0
 			feature.StructureAvailable = readyStructureBySongID[analysis.SongID]

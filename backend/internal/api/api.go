@@ -300,6 +300,7 @@ func (a *API) Routes() chi.Router {
 	r.Get("/albums/metadata", a.getAllAlbumMetadata)
 	r.Get("/albums/metadata/expired", a.getExpiredAlbumMetadata)
 	r.Get("/albums/metadata/unchecked", a.getUncheckedAlbumMetadata)
+	r.Get("/albums/metadata/next", a.getNextAlbumMetadata)
 	r.Get("/albums/metadata/{key}", a.getAlbumMetadata)
 	r.Post("/albums/metadata", a.saveAlbumMetadata)
 	r.Post("/albums/metadata/batch", a.batchGetAlbumMetadata)
@@ -1674,6 +1675,15 @@ func (a *API) getUncheckedAlbumMetadata(w http.ResponseWriter, r *http.Request) 
 	}
 
 	respondJSON(w, metadata)
+}
+
+func (a *API) getNextAlbumMetadata(w http.ResponseWriter, r *http.Request) {
+	album, err := a.db.NextAlbumNeedingMetadata(30)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Unable to select the next album")
+		return
+	}
+	respondJSON(w, album)
 }
 
 // Artist metadata handlers

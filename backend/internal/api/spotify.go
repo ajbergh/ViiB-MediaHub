@@ -2018,6 +2018,7 @@ func (a *API) streamSpotifyTrack(w http.ResponseWriter, r *http.Request) {
 	requestID := uuid.New().String()
 
 	// Stream the track with specified quality
+	prepareStarted := time.Now()
 	openStream := streamer.StreamTrackWithQuality
 	if r.URL.Query().Get("format") == "mp3" {
 		openStream = streamer.StreamTrackAsMP3
@@ -2033,6 +2034,9 @@ func (a *API) streamSpotifyTrack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer stream.Close()
+	if stream.Info().ContentType == "audio/mpeg" {
+		logger.SpotifyStreamer("MP3 response ready after %s (method: %s, range: %t)", time.Since(prepareStarted).Round(time.Millisecond), r.Method, r.Header.Get("Range") != "")
+	}
 
 	// Get stream size for Range request support
 	// Seek to end to get total size

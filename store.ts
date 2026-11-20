@@ -232,8 +232,10 @@ const computeArtists = (songs: AppState['songs']): Artist[] => {
   return cachedArtistsResult;
 };
 
-export const useArtists = () => {
-  const songs = useStore((state) => state.songs);
+const emptyArtistSongs: AppState['songs'] = [];
+
+export const useArtists = (enabled = true) => {
+  const songs = useStore(state => enabled ? state.songs : emptyArtistSongs);
   return useMemo(() => computeArtists(songs), [songs]);
 };
 

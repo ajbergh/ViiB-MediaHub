@@ -1,4 +1,4 @@
-import { useAudioMetadataRevision } from '../../../hooks/useAudioMetadataRevision';
+import { useAnalysisFeatures } from '../../../hooks/useAnalysisFeatures';
 /**
  * ViiB MediaHub - DJ Library Browser V2 Component
  *
@@ -25,7 +25,7 @@ import { PROVIDER_SCORE_OPTIONS, usableProviderScore, providerScoreMatches, comp
 import { DJSaveResultsPlaylist } from './DJSaveResultsPlaylist';
 import { registerDJMidiLibrary } from '../../../lib/djMidiLibrary';
 import { CamelotChip } from './CamelotChip';
-import { api, type TrackAnalysisFeature } from '../../../services/api';
+import type { TrackAnalysisFeature } from '../../../services/api';
 import type { DeckId } from '../../../slices/djMixerSlice';
 import type { Song } from '../../../types';
 import {
@@ -533,7 +533,6 @@ const SortHeader: React.FC<{
 
 export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocusSearch = false }) => {
   const songs = useStore(state => state.songs);
-  const spotifySession = useStore(state => state.spotifySessionGeneration);
   const playlists = useStore(state => state.playlists);
   const djDeckATrack = useStore(state => state.djDeckA.track);
   const djDeckBTrack = useStore(state => state.djDeckB.track);
@@ -565,13 +564,8 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
   const [columnVisibility, setColumnVisibility] = useState<Record<OptionalColumn, boolean>>(loadColumnVisibility);
   const [columnWidths, setColumnWidths] = useState<Record<ResizableColumn, number>>(loadColumnWidths);
-  const [storedAnalysis, setAnalysisBySongID] = useState<Record<string, TrackAnalysisFeature>>({});
-  const [analysisSession, setAnalysisSession] = useState(spotifySession);
-  const analysisBySongID = analysisSession === spotifySession ? storedAnalysis : {};
-  const analysisSessionRef = useRef(spotifySession);
-  const [scoreNow,setScoreNow] = useState(Date.now);
-  const [analysisListState, setAnalysisListState] = useState<AnalysisListLoadState>('loading');
-  const [analysisRetry, setAnalysisRetry] = useState(0);
+  const { rows: analysisBySongID, status: analysisListState, retry: retryAnalysis } = useAnalysisFeatures();
+  const [scoreNow, setScoreNow] = useState(() => Date.now());
 
   // Re-evaluate cached score eligibility at the nearest expiry without fetching.
   useEffect(() => {
@@ -598,34 +592,6 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
     if (!activeKey || !songKey) return null;
     return getKeyCompatibility(activeKey, songKey);
   }, [activeKey]);
-
-  const { revision: metadataRevision, generation: metadataGeneration } = useAudioMetadataRevision();
-
-  // Library key/BPM data is durable and available before any deck is loaded;
-  // do not rebuild it from session-only deck state.
-  useEffect(() => {
-    let active = true;
-    const sessionChanged = analysisSessionRef.current !== spotifySession;
-    analysisSessionRef.current = spotifySession;
-    if (sessionChanged) { setAnalysisBySongID({}); setAnalysisSession(spotifySession); }
-    if (sessionChanged || metadataRevision === 0 || analysisRetry > 0) setAnalysisListState('loading');
-    const generation = spotifySession;
-    const requestGeneration = metadataGeneration.current;
-    api.getTrackAnalysisFeatures()
-      .then(features => {
-        if (!active || requestGeneration !== metadataGeneration.current || useStore.getState().spotifySessionGeneration !== generation) return;
-        setAnalysisBySongID(Object.fromEntries(features.map(feature => [feature.songId, feature])));
-        setAnalysisListState('loaded');
-      })
-      .catch(() => {
-        // Analysis is additive; legacy library rendering remains available.
-        if (active && requestGeneration === metadataGeneration.current && useStore.getState().spotifySessionGeneration === generation) {
-          // Keep the previous session-qualified display on a refresh failure.
-          setAnalysisListState('failed');
-        }
-      });
-    return () => { active = false; };
-  }, [spotifySession, metadataRevision, metadataGeneration, analysisRetry]);
 
   useEffect(() => {
     if (!autoFocusSearch) { resizeCleanupRef.current?.(); return; }
@@ -1000,7 +966,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
         {analysisListState === 'failed' && (
           <div role="status" className="flex items-center gap-2 px-3 py-2 text-xs text-[var(--dj-text-secondary)]">
             Analysis could not be refreshed.
-            <button type="button" onClick={() => setAnalysisRetry(value => value + 1)} className="rounded border border-white/10 px-2 py-1 text-[var(--dj-text-primary)]">Retry analysis</button>
+            <button type="button" onClick={retryAnalysis} className="rounded border border-white/10 px-2 py-1 text-[var(--dj-text-primary)]">Retry analysis</button>
           </div>
         )}
         {/* Search header */}

@@ -21,8 +21,7 @@ function Worker(){useBackgroundEnrichment();return null;}
 it('does not schedule another album after rejection during pending enrichment',async()=>{
  (globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;
  vi.useFakeTimers();
- vi.spyOn(api,'getUncheckedAlbumMetadata').mockResolvedValue([{albumName:'Album',artistName:'Artist'}] as any);
- vi.spyOn(api,'getExpiredAlbumMetadata').mockResolvedValue([]);
+ vi.spyOn(api,'getNextAlbumMetadata').mockResolvedValue({albumName:'Album',artistName:'Artist'} as any);
  let finish!:()=>void;
  const enrichment=vi.fn(()=>new Promise<void>(resolve=>{finish=resolve;}));
  useStore.setState({backendAvailable:true,fetchAlbumMetadata:enrichment});
@@ -34,5 +33,5 @@ it('does not schedule another album after rejection during pending enrichment',a
  await act(async()=>{useStore.getState().markSpotifyAuthRequired();finish();});
  await act(async()=>vi.advanceTimersByTimeAsync(120000));
  expect(enrichment).toHaveBeenCalledTimes(1);
- expect(api.getUncheckedAlbumMetadata).toHaveBeenCalledTimes(1);
+ expect(api.getNextAlbumMetadata).toHaveBeenCalledTimes(1);
 });

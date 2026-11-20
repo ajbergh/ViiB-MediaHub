@@ -100,6 +100,7 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
         gapless: false,
         normalization: false,
         visualizerMode: 'SPECTRUM',
+        lowPowerVisuals: false,
         visualizerEnabled: true,
         visualizerArtworkOpacity: 30,         // Show artwork at 30% when visualizer active
         visualizerFullscreenEnabled: true,    // Fullscreen background visualizer on by default
@@ -418,6 +419,12 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
             playSong(queue[index], queue, undefined, index);
         }
     },
+
+    setLowPowerVisuals: (enabled) => set(state => {
+        const audioSettings = { ...state.audioSettings, lowPowerVisuals: enabled };
+        saveAudioSettingsToBackend(audioSettings);
+        return { audioSettings };
+    }),
 
     setVisualizerMode: (mode) => {
         set((state) => {

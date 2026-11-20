@@ -73,6 +73,8 @@ export interface RetainedDeckSource {
   readonly deck: DeckId;
   readonly source: DeckSource;
   readonly trackId: string | null;
+  readonly audioURL: string | undefined;
+  readonly autoGainFactor: number;
   readonly position: number;
   readonly wasPlaying: boolean;
   readonly committedSource: DeckSource;
@@ -803,8 +805,8 @@ export class DJAudioEngine {
     const stemStatus = source.getStemStatus();
     if (stemStatus.mode !== 'stems') {
       const url = this.deckAudioUrls[deck];
-      if (url && generation === this.getDeckLoadGeneration(deck) && !this.scratchNodes[deck] && !this.scratchLoads[deck]) {
-        void this.prepareScratchAudio(deck, url, generation);
+      if (url && generation === this.getDeckLoadGeneration(deck) && !this.scratchNodes[deck] && !this.scratchLoads[deck] && !this.scratchQueue[deck]) {
+        this.queueScratchAudio(deck, url, generation);
       }
       return;
     }
@@ -910,6 +912,7 @@ export class DJAudioEngine {
     if (deck === 'A') this.loadedTrackIdA = null; else this.loadedTrackIdB = null;
 
     this.clearScratchAudio(deck);
+    this.resetAutoGain(deck);
     const audioUrl = track.url || `/api/audio/${track.id}`;
     this.deckAudioUrls[deck] = audioUrl;
     console.log(`🎧 DJ Audio: Loading track to Deck ${deck}: ${track.title}, URL: ${audioUrl}`);
@@ -934,64 +937,59 @@ export class DJAudioEngine {
 
     if (generation !== (deck === 'A' ? this.trackLoadGenerationA : this.trackLoadGenerationB)) return;
     if (deck === 'A') this.loadedTrackIdA = track.id; else this.loadedTrackIdB = track.id;
-    if (!(source instanceof StemDeckSource && source.getStemStatus().mode === 'stems')) void this.prepareScratchAudio(deck, audioUrl, generation);
+    if (!(source instanceof StemDeckSource && source.getStemStatus().mode === 'stems')) this.queueScratchAudio(deck, audioUrl, generation);
 
-    // Auto-gain: analyze track loudness and compute normalization factor
-    const storeState = useStore.getState();
-    const autoGainEnabled = deck === 'A' ? storeState.djMixer.autoGainA : storeState.djMixer.autoGainB;
-    if (autoGainEnabled) {
-      this.analyzeAutoGain(deck, audioUrl).catch(err => {
-        console.warn(`🎧 Auto-gain analysis failed for Deck ${deck}:`, err);
-      });
-    } else {
-      // Reset auto-gain factor when disabled
-      if (deck === 'A') this.autoGainFactorA = 1.0;
-      else this.autoGainFactorB = 1.0;
-    }
+    this.prepareAutoGain(deck, track, audioUrl, generation);
   }
 
-  /**
-   * Analyze track loudness for auto-gain normalization.
-   * Fetches audio data, decodes it, and computes peak/RMS to determine gain correction.
-   * Target: -3 dBFS peak (~0.71 linear) for consistent loudness across tracks.
-   */
-  private async analyzeAutoGain(deck: DeckId, audioUrl: string): Promise<void> {
-    if (!this.audioContext) return;
-    
+  private autoGainLoads: Partial<Record<DeckId, AbortController>> = {};
+
+  private resetAutoGain(deck: DeckId): void {
+    this.autoGainLoads[deck]?.abort();
+    delete this.autoGainLoads[deck];
+    this.setAutoGainFactor(deck, 1);
+  }
+
+  private prepareAutoGain(deck: DeckId, track: Song, audioUrl: string, generation: number): void {
+    const mixer = useStore.getState().djMixer;
+    if (!(deck === "A" ? mixer.autoGainA : mixer.autoGainB)) return;
+    if (typeof track.replayGainDb === "number" && Number.isFinite(track.replayGainDb)) {
+      const peakLimit = track.replayPeak && track.replayPeak > 0 ? 0.707 / track.replayPeak : 3;
+      this.setAutoGainFactor(deck, Math.min(3, peakLimit, 10 ** (track.replayGainDb / 20)));
+      return;
+    }
+    void this.analyzeAutoGain(deck, audioUrl, generation);
+  }
+
+  private setAutoGainFactor(deck: DeckId, factor: number): void {
+    if (this.getAutoGainFactor(deck) === factor) return;
+    if (deck === "A") this.autoGainFactorA = factor;
+    else this.autoGainFactorB = factor;
+    this.applyAutoGain(deck);
+  }
+
+  private async analyzeAutoGain(deck: DeckId, audioUrl: string, generation: number): Promise<void> {
+    const context = this.audioContext;
+    if (!context) return;
+    const controller = new AbortController();
+    this.autoGainLoads[deck] = controller;
+    const current = () => !controller.signal.aborted && context === this.audioContext && generation === this.getDeckLoadGeneration(deck);
     try {
-      const response = await fetch(audioUrl);
-      const arrayBuffer = await response.arrayBuffer();
-      const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
-      
-      // Find peak amplitude across all channels
+      const response = await fetch(audioUrl, { signal: controller.signal });
+      if (!response.ok) throw new Error("Unable to read audio for auto-gain");
+      const bytes = await response.arrayBuffer();
+      if (!current()) return;
+      const buffer = await context.decodeAudioData(bytes);
+      if (!current()) return;
       let peak = 0;
-      for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
-        const channelData = audioBuffer.getChannelData(ch);
-        for (let i = 0; i < channelData.length; i++) {
-          const abs = Math.abs(channelData[i]);
-          if (abs > peak) peak = abs;
-        }
+      for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+        for (const sample of buffer.getChannelData(channel)) peak = Math.max(peak, Math.abs(sample));
       }
-      
-      // Compute gain factor to normalize peak to target (-3 dBFS = 0.707)
-      const targetPeak = 0.707;
-      const gainFactor = peak > 0.01 ? Math.min(3.0, targetPeak / peak) : 1.0; // Cap at +9.5dB
-      
-      if (deck === 'A') {
-        this.autoGainFactorA = gainFactor;
-      } else {
-        this.autoGainFactorB = gainFactor;
-      }
-      
-      const gainDb = 20 * Math.log10(gainFactor);
-      console.log(`🎧 Auto-gain Deck ${deck}: peak=${peak.toFixed(3)}, factor=${gainFactor.toFixed(2)} (${gainDb.toFixed(1)}dB)`);
-      
-      // Apply auto-gain by adjusting the channel gain node
-      this.applyAutoGain(deck);
-    } catch (err) {
-      console.warn(`🎧 Auto-gain analysis error for Deck ${deck}:`, err);
-      if (deck === 'A') this.autoGainFactorA = 1.0;
-      else this.autoGainFactorB = 1.0;
+      this.setAutoGainFactor(deck, peak > 0.01 ? Math.min(3, 0.707 / peak) : 1);
+    } catch (error) {
+      if (current()) console.warn("DJ auto-gain unavailable", error);
+    } finally {
+      if (this.autoGainLoads[deck] === controller) delete this.autoGainLoads[deck];
     }
   }
 
@@ -1005,7 +1003,8 @@ export class DJAudioEngine {
     
     const storeState = useStore.getState();
     const deckState = deck === 'A' ? storeState.djDeckA : storeState.djDeckB;
-    const autoGainFactor = deck === 'A' ? this.autoGainFactorA : this.autoGainFactorB;
+    const enabled = deck === "A" ? storeState.djMixer.autoGainA : storeState.djMixer.autoGainB;
+    const autoGainFactor = enabled ? (deck === "A" ? this.autoGainFactorA : this.autoGainFactorB) : 1;
     
     const effectiveGain = deckState.volume * autoGainFactor;
     gainNode.gain.setValueAtTime(
@@ -1029,6 +1028,7 @@ export class DJAudioEngine {
     else { ++this.trackLoadGenerationB; this.activeTrackLoadGenerationB = null; }
     if (deck === 'A') this.loadedTrackIdA = null; else this.loadedTrackIdB = null;
     this.clearScratchAudio(deck);
+    this.resetAutoGain(deck);
     delete this.deckAudioUrls[deck];
     this.getDeckSource(deck)?.unload();
     this.reconcileLoopTicker();
@@ -1206,6 +1206,7 @@ export class DJAudioEngine {
     if (!gain) { this.discardPreparedTrack(prepared); return null; }
     const retained: RetainedDeckSource = {
       deck, source: current, trackId: this.getDeckLoadedTrackId(deck),
+      audioURL: this.deckAudioUrls[deck], autoGainFactor: this.getAutoGainFactor(deck),
       position: originalTransport?.position ?? current.getPosition(),
       wasPlaying: originalTransport?.wasPlaying ?? current.isPlaying(),
       committedSource: source, committedLoadGeneration: this.getDeckLoadGeneration(deck) + 1, state: 'retained',
@@ -1225,13 +1226,15 @@ export class DJAudioEngine {
       console.error(`Unable to connect prepared source for Deck ${deck}`, error);
       return null;
     }
+    this.resetAutoGain(deck);
     this.setActiveDeckSource(deck, source);
     this.bindDeckSourceListeners(deck, source);
     if (deck === 'A') { ++this.trackLoadGenerationA; this.loadedTrackIdA = prepared.track.id; }
     else { ++this.trackLoadGenerationB; this.loadedTrackIdB = prepared.track.id; }
     prepared.state = 'committed';
     this.deckAudioUrls[deck] = prepared.track.url || `/api/audio/${prepared.track.id}`;
-    if (!(source instanceof StemDeckSource && source.getStemStatus().mode === 'stems')) void this.prepareScratchAudio(deck, this.deckAudioUrls[deck]!, this.getDeckLoadGeneration(deck));
+    if (!(source instanceof StemDeckSource && source.getStemStatus().mode === 'stems')) this.queueScratchAudio(deck, this.deckAudioUrls[deck]!, this.getDeckLoadGeneration(deck));
+    this.prepareAutoGain(deck, prepared.track, this.deckAudioUrls[deck]!, this.getDeckLoadGeneration(deck));
     return retained;
   }
 
@@ -1265,13 +1268,21 @@ export class DJAudioEngine {
       this.discardRetainedDeckSource(retained);
       return false;
     }
+    this.clearScratchAudio(deck);
+    this.resetAutoGain(deck);
     this.setActiveDeckSource(deck, source);
     this.bindDeckSourceListeners(deck, source);
     source.seek(retained.position);
     if (deck === 'A') { ++this.trackLoadGenerationA; this.loadedTrackIdA = retained.trackId; }
     else { ++this.trackLoadGenerationB; this.loadedTrackIdB = retained.trackId; }
-    retained.state = 'restored';
+    retained.state = "restored";
+    if (retained.audioURL) this.deckAudioUrls[deck] = retained.audioURL;
+    else delete this.deckAudioUrls[deck];
     beforeResume?.();
+    this.setAutoGainFactor(deck, retained.autoGainFactor);
+    if (retained.audioURL && !(source instanceof StemDeckSource && source.getStemStatus().mode === "stems")) {
+      this.queueScratchAudio(deck, retained.audioURL, this.getDeckLoadGeneration(deck));
+    }
     current.dispose();
     if (retained.wasPlaying) void source.play().then(() => this.reconcileLoopTicker());
     return true;
@@ -1384,6 +1395,11 @@ export class DJAudioEngine {
   private scratchNodes: Partial<Record<DeckId, AudioWorkletNode>> = {};
   private scratchReady: Partial<Record<DeckId, boolean>> = {};
   private scratchLoads: Partial<Record<DeckId, AbortController>> = {};
+  private scratchQueue: Partial<Record<DeckId, { url: string; generation: number }>> = {};
+  private scratchBytes: Partial<Record<DeckId, number>> = {};
+  private scratchTimer: ReturnType<typeof setTimeout> | undefined;
+  private scratchPreparing = false;
+  private static readonly scratchBudget = 192 * 1024 * 1024;
   private scratchModule: Promise<void> | null = null;
   private scratchToken = 0;
   private deckAudioUrls: Partial<Record<DeckId, string>> = {};
@@ -1420,11 +1436,13 @@ export class DJAudioEngine {
     const stem = this.getStemDeckSource(deck);
     if (stem?.getStemStatus().mode === 'stems') return stem.canScratch() ? 'Scratch' : 'Scratch unavailable';
     if (this.scratchReady[deck]) return 'Scratch';
-    return this.scratchLoads[deck] || this.scratchNodes[deck] ? 'Preparing scratch…' : 'Scratch unavailable';
+    return this.scratchQueue[deck] || this.scratchLoads[deck] || this.scratchNodes[deck] ? 'Preparing scratch…' : 'Scratch unavailable';
   }
 
   private clearScratchAudio(deck: DeckId): void {
     this.endScratch(deck, 0, false);
+    delete this.scratchQueue[deck];
+    delete this.scratchBytes[deck];
     this.scratchLoads[deck]?.abort();
     delete this.scratchLoads[deck];
     this.scratchNodes[deck]?.port.close();
@@ -1433,9 +1451,52 @@ export class DJAudioEngine {
     this.scratchReady[deck] = false;
   }
 
+  /** Reconsider an unprepared deck when it becomes the active work surface. */
+  prioritizeScratch(deck: DeckId): void {
+    const url = this.deckAudioUrls[deck];
+    if (!url || this.scratchNodes[deck] || this.scratchLoads[deck] || this.scratchQueue[deck]
+      || this.getStemDeckSource(deck)?.getStemStatus().mode === "stems") return;
+    this.queueScratchAudio(deck, url, this.getDeckLoadGeneration(deck));
+  }
+
+  private queueScratchAudio(deck: DeckId, url: string, generation: number): void {
+    if (!this.audioContext?.audioWorklet) return;
+    this.scratchQueue[deck] = { url, generation };
+    this.scheduleScratchPreparation();
+  }
+
+  private scheduleScratchPreparation(): void {
+    if (this.scratchPreparing || this.scratchTimer !== undefined || (!this.scratchQueue.A && !this.scratchQueue.B)) return;
+    // Leave the playback load and transport controls a turn before decoding.
+    this.scratchTimer = setTimeout(async () => {
+      this.scratchTimer = undefined;
+      const selected = useStore.getState().djActiveDeck;
+      const deck: DeckId = this.scratchQueue[selected] ? selected : selected === "A" ? "B" : "A";
+      const request = this.scratchQueue[deck];
+      if (!request) return;
+      delete this.scratchQueue[deck];
+      this.scratchPreparing = true;
+      try { await this.prepareScratchAudio(deck, request.url, request.generation); }
+      finally {
+        this.scratchPreparing = false;
+        this.scheduleScratchPreparation();
+      }
+    }, 100);
+  }
+
   private async prepareScratchAudio(deck: DeckId, url: string, generation: number): Promise<void> {
     const context = this.audioContext;
-    if (!context?.audioWorklet) return;
+    if (!context?.audioWorklet || generation !== this.getDeckLoadGeneration(deck)) return;
+    const other: DeckId = deck === "A" ? "B" : "A";
+    let retained = this.scratchBytes[other] ?? 0;
+    const duration = this.getDuration(deck);
+    const estimatedBytes = Math.ceil(duration * context.sampleRate) * 2 * Float32Array.BYTES_PER_ELEMENT;
+    if (!Number.isFinite(estimatedBytes) || estimatedBytes <= 0 || estimatedBytes > DJAudioEngine.scratchBudget) return;
+    if (retained + estimatedBytes > DJAudioEngine.scratchBudget) {
+      if (useStore.getState().djActiveDeck !== deck || this.isPlaying(other) || this.isScratching(other)) return;
+      this.clearScratchAudio(other);
+      retained = 0;
+    }
     const controller = new AbortController();
     this.scratchLoads[deck] = controller;
     const current = () => !controller.signal.aborted && this.audioContext === context &&
@@ -1447,15 +1508,24 @@ export class DJAudioEngine {
       if (!current()) return;
       const response = await fetch(url, { signal: controller.signal });
       if (!response.ok) throw new Error(`Scratch audio: HTTP ${response.status}`);
-      const buffer = await context.decodeAudioData(await response.arrayBuffer());
+      const compressed = await response.arrayBuffer();
+      if (!current()) return;
+      const buffer = await context.decodeAudioData(compressed);
       if (!current()) return;
       const node = new AudioWorkletNode(context, 'vinyl-scratch', {
         numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [Math.min(2, buffer.numberOfChannels)],
       });
-      const channels = Array.from({ length: Math.min(2, buffer.numberOfChannels) }, (_, ch) => buffer.getChannelData(ch).slice());
+      const channelCount = Math.min(2, buffer.numberOfChannels);
+      const bytes = buffer.length * channelCount * Float32Array.BYTES_PER_ELEMENT;
+      if (retained + bytes > DJAudioEngine.scratchBudget) {
+        node.port.close();
+        return;
+      }
+      const channels = Array.from({ length: channelCount }, (_, ch) => buffer.getChannelData(ch).slice());
       node.port.postMessage({ type: 'load', channels }, channels.map(channel => channel.buffer));
       node.connect((deck === 'A' ? this.gainNodeA : this.gainNodeB)!);
       this.scratchNodes[deck] = node;
+      this.scratchBytes[deck] = bytes;
       node.port.onmessage = event => {
         if (this.scratchNodes[deck] === node) this.handleScratchMessage(deck, event.data);
       };
@@ -1466,6 +1536,7 @@ export class DJAudioEngine {
         node.disconnect();
         node.port.close();
         delete this.scratchNodes[deck];
+        delete this.scratchBytes[deck];
       };
     } catch (error) {
       if (current()) console.warn(`Scratch audio unavailable on Deck ${deck}`, error);
@@ -2951,6 +3022,10 @@ export class DJAudioEngine {
     ++this.trackLoadGenerationB;
     this.clearScratchAudio('A');
     this.clearScratchAudio('B');
+    this.resetAutoGain('A');
+    this.resetAutoGain('B');
+    clearTimeout(this.scratchTimer);
+    this.scratchTimer = undefined;
     this.scratchModule = null;
     // Stop animation loops
     if (this.animationFrameId) {

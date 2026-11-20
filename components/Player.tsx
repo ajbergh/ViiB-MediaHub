@@ -25,12 +25,11 @@
  * @module Player
  */
 
-import React, { useState } from 'react';
+import React, { lazy, Suspense, useState } from 'react';
 import { useStore } from '../store';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
 import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, ListMusic, Maximize2, Minimize2, Pin, PinOff, SlidersHorizontal, Loader2, AlertCircle, RefreshCw, Wifi, Moon, Info } from 'lucide-react';
 import { formatTime, generateGradient, getAudioFormatInfo } from '../utils';
-import { NowPlaying } from './NowPlaying';
 import { ContextMenuType, Song } from '../types';
 import { Visualizer } from './Visualizer';
 import { EqualizerPanel } from './Equalizer';
@@ -39,6 +38,8 @@ import { useMediaSession } from '../hooks/useMediaSession';
 import { Button } from './ui/Button';
 import { VIIB_COLOR_VALUES } from './ui/tokens';
 import { isNativeWindowRuntimeAvailable } from '../services/skinnyWindowService';
+
+const NowPlaying = lazy(() => import('./NowPlaying').then(module => ({ default: module.NowPlaying })));
 
 const skinnyDragStyle = { '--wails-draggable': 'drag' } as React.CSSProperties;
 const skinnyNoDragStyle = { '--wails-draggable': 'no-drag' } as React.CSSProperties;
@@ -51,6 +52,7 @@ type SkinnyPlayerProps = {
   isBuffering: boolean;
   volume: number;
   isVisualizerEnabled: boolean;
+  lowPowerVisuals?: boolean;
   isAlwaysOnTop: boolean;
   onPrevious: () => void;
   onTogglePlay: () => void;
@@ -70,6 +72,7 @@ const SkinnyPlayer: React.FC<SkinnyPlayerProps> = ({
   isBuffering,
   volume,
   isVisualizerEnabled,
+  lowPowerVisuals,
   isAlwaysOnTop,
   onPrevious,
   onTogglePlay,
@@ -181,7 +184,7 @@ const SkinnyPlayer: React.FC<SkinnyPlayerProps> = ({
 
         <div className="hidden h-8 w-20 flex-shrink-0 items-end pb-1 xl:flex" title="Spectrum Analyzer">
           {isVisualizerEnabled && (
-            <Visualizer mode="SPECTRUM" barColor={VIIB_COLOR_VALUES.playbackGreen} />
+            <Visualizer mode="SPECTRUM" active={isPlaying} lowPower={lowPowerVisuals} barColor={VIIB_COLOR_VALUES.playbackGreen} />
           )}
         </div>
 
@@ -273,6 +276,7 @@ export const Player: React.FC = () => {
           isBuffering={isBuffering}
           volume={volume}
           isVisualizerEnabled={audioSettings.visualizerEnabled}
+          lowPowerVisuals={audioSettings.lowPowerVisuals}
           isAlwaysOnTop={isSkinnyAlwaysOnTop}
           onPrevious={prevSong}
           onTogglePlay={togglePlay}
@@ -570,7 +574,7 @@ export const Player: React.FC = () => {
             {/* Mini Visualizer - Hidden on smaller screens */}
             <div className="hidden lg:flex w-20 h-8 mx-1 items-end opacity-90 pb-1" title="Spectrum Analyzer">
                 {audioSettings.visualizerEnabled && (
-                    <Visualizer mode="SPECTRUM" barColor={VIIB_COLOR_VALUES.playbackGreen} />
+                    <Visualizer mode="SPECTRUM" active={isPlaying && !isNowPlayingOpen} lowPower={audioSettings.lowPowerVisuals} barColor={VIIB_COLOR_VALUES.playbackGreen} />
                 )}
             </div>
 
@@ -609,11 +613,13 @@ export const Player: React.FC = () => {
         </div>
 
         {isNowPlayingOpen && (
+          <Suspense fallback={null}>
             <NowPlaying 
                 currentTime={currentTime} 
                 duration={duration} 
-                onSeek={seek} 
+                onSeek={seek}
             />
+          </Suspense>
         )}
         
         <EqualizerPanel />

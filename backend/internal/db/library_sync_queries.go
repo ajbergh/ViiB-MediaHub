@@ -31,6 +31,13 @@ func (d *DB) RecordSongLibraryChange(songID string) error {
 		return err
 	}
 	defer tx.Rollback()
+	if err := recordSongLibraryChangeTx(tx, songID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func recordSongLibraryChangeTx(tx *sql.Tx, songID string) error {
 	if _, err := tx.Exec(`UPDATE library_state SET revision = revision + 1 WHERE id = 1`); err != nil {
 		return err
 	}
@@ -38,7 +45,7 @@ func (d *DB) RecordSongLibraryChange(songID string) error {
 		SELECT revision, ?, 'upsert', ? FROM library_state WHERE id = 1`, songID, time.Now().UnixMilli()); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return nil
 }
 
 func clampPageLimit(limit, fallback, maximum int) int {
