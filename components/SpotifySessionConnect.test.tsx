@@ -6,6 +6,7 @@ import { createRoot, Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SpotifySessionConnect } from './SpotifySessionConnect';
 import { api } from '../services/api';
+import * as navigation from '../services/externalNavigation';
 import { useStore } from '../store';
 
 let root: Root | undefined;
@@ -15,7 +16,9 @@ afterEach(async () => {
     root = undefined;
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     useStore.getState().logoutSpotify();
+    useStore.getState().setSpotifyCredentials('', '');
 });
 async function render() {
     const host = document.createElement('div');
@@ -27,6 +30,43 @@ function button(host: HTMLElement, text: string) {
     return Array.from(host.querySelectorAll('button')).find(button => button.textContent === text)!;
 }
 describe('Spotify browser sign-in', () => {
+    const releaseClientId = (import.meta.env.VITE_SPOTIFY_CLIENT_ID ?? '').trim();
+    it.runIf(/^[a-f0-9]{32}$/i.test(releaseClientId))('opens desktop authorization directly when a release Client ID is configured', async () => {
+        vi.stubGlobal('go', {});
+        const authUrl = 'https://accounts.spotify.com/authorize';
+        const open = vi.spyOn(navigation, 'openExternalURL').mockResolvedValue();
+        const start = vi.spyOn(api, 'startSpotifyOAuthLogin').mockResolvedValue({ id: 'oauth', state: 'pending', authUrl });
+        vi.spyOn(api, 'getSpotifyBrowserLogin').mockResolvedValue({ id: 'oauth', state: 'failed' });
+        const host = await render();
+        expect(host.querySelector('input')).toBeNull();
+        await act(async () => button(host, 'Sign in with your default browser').click());
+        expect(start).toHaveBeenCalledWith(releaseClientId);
+        expect(open).toHaveBeenCalledWith(authUrl);
+    });
+
+    it('opens official authorization in the desktop system browser and reuses status polling', async () => {
+        vi.stubGlobal('go', {
+            main: { App: { GetServerURL: async () => 'http://127.0.0.1:34116' } },
+        });
+        const clientId = 'a'.repeat(32);
+        const authUrl = 'https://accounts.spotify.com/authorize';
+        useStore.getState().setSpotifyCredentials(clientId, '');
+        const open = vi.spyOn(navigation, 'openExternalURL').mockResolvedValue();
+        const start = vi.spyOn(api, 'startSpotifyOAuthLogin').mockResolvedValue({ id: 'oauth', state: 'pending', authUrl });
+        const capture = vi.spyOn(api, 'startSpotifyBrowserLogin');
+        vi.spyOn(api, 'getSpotifyBrowserLogin').mockResolvedValue({ id: 'oauth', state: 'connected' });
+        vi.spyOn(api, 'getSpotifyAuthStatus').mockResolvedValue({ provider: 'oauth', connected: true, authRequired: false, webApiOnly: true, message: '' });
+        const host = await render();
+        await act(async () => (button(host, 'Use your own Spotify Client ID') ?? button(host, 'Sign in with your default browser')).click());
+        expect(host.textContent).toContain('http://127.0.0.1:34116/callback');
+        await act(async () => button(host, 'Open Spotify authorization').click());
+        expect(start).toHaveBeenCalledWith(clientId);
+        expect(open).toHaveBeenCalledWith(authUrl);
+        expect(capture).not.toHaveBeenCalled();
+        expect(useStore.getState().spotifyConnected).toBe(true);
+        expect(useStore.getState().spotifyWebAPIOnly).toBe(true);
+    });
+
     it('shows reconnect state and never asks for a password or cookie', async () => {
         useStore.getState().markSpotifyAuthRequired();
         const host = await render();

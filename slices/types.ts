@@ -232,7 +232,8 @@ export interface LibrarySlice {
 
 export interface SpotifySlice {
   spotifyAccountProduct: 'premium' | 'free' | 'unknown';
-  setSpotifyAccountProduct: (product?: string) => void;
+  spotifyWebAPIOnly: boolean;
+  setSpotifyAccountProduct: (product?: string, webAPIOnly?: boolean) => void;
   spotifyConnected: boolean;
   spotifySessionGeneration: number;
   spotifyAuthRequired: boolean;

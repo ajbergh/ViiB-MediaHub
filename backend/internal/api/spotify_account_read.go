@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -8,14 +9,35 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+var errSpotifyAccountRequiresOAuth = errors.New("This Spotify view requires an OAuth connection.")
+
+var spotifyAccountPaths = map[string]string{
+	"liked": "me/tracks", "top-tracks": "me/top/tracks", "top-artists": "me/top/artists",
+	"devices": "me/player/devices", "queue": "me/player/queue",
+}
+
+// These public Web API routes have no verified Web Player adapter.
+func spotifyAccountRequiresOAuth(path string) bool {
+	for view, resource := range spotifyAccountPaths {
+		if view != "liked" && path == "/v1/"+resource {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *API) spotifyAccountCapabilities(w http.ResponseWriter, _ *http.Request) {
+	status := a.spotifyTokens().status()
+	w.Header().Set("Cache-Control", "no-store")
+	respondJSON(w, map[string]bool{
+		"oauthViews": status.Provider == "oauth" && status.Connected && !status.AuthRequired,
+	})
+}
+
 // spotifyAccountRead exposes specific account reads under the existing Spotify session.
 func (a *API) spotifyAccountRead(w http.ResponseWriter, r *http.Request) {
 	view := chi.URLParam(r, "view")
-	paths := map[string]string{
-		"liked": "me/tracks", "top-tracks": "me/top/tracks", "top-artists": "me/top/artists",
-		"devices": "me/player/devices", "queue": "me/player/queue",
-	}
-	path, ok := paths[view]
+	path, ok := spotifyAccountPaths[view]
 	if !ok {
 		respondError(w, http.StatusNotFound, "Unknown Spotify account view")
 		return

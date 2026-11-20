@@ -24,16 +24,31 @@ type AccountResponse = {
 };
 
 export function SpotifyAccountViews({generation}: {generation: number}) {
+    const [oauthViews, setOAuthViews] = useState<boolean | 'unavailable' | null>(null);
     const [view, setView] = useState<(typeof views)[number][0]>('liked');
     const [range, setRange] = useState('medium_term');
     const [offset, setOffset] = useState(0);
     const [retry, setRetry] = useState(0);
     const [page, setPage] = useState<AccountResponse | null>(null);
     const [error, setError] = useState('');
+    const canRead = view === 'liked' || oauthViews === true;
     const isTop = view === 'top-tracks' || view === 'top-artists';
     const [, label, path] = views.find(entry => entry[0] === view)!;
 
     useEffect(() => {
+        const controller = new AbortController();
+        void fetch('/api/spotify/account', {signal: controller.signal}).then(async response => {
+            if (!response.ok) throw new Error('Could not load Spotify capabilities');
+            const capabilities = await response.json();
+            if (!controller.signal.aborted) setOAuthViews(capabilities.oauthViews === true);
+        }).catch(() => {
+            if (!controller.signal.aborted) setOAuthViews('unavailable');
+        });
+        return () => controller.abort();
+    }, [generation, retry]);
+
+    useEffect(() => {
+        if (!canRead) return;
         const controller = new AbortController();
         setPage(null);
         setError('');
@@ -58,7 +73,7 @@ export function SpotifyAccountViews({generation}: {generation: number}) {
         }
         void read();
         return () => controller.abort();
-    }, [generation, isTop, offset, path, range, retry, view]);
+    }, [canRead, generation, isTop, offset, path, range, retry, view]);
 
     const entries = view === 'devices' ? page?.devices
         : view === 'queue' ? page?.queue
@@ -69,9 +84,9 @@ export function SpotifyAccountViews({generation}: {generation: number}) {
                 View
                 <select className="rounded bg-surface-1 p-2 text-text-main" value={view} onChange={event => {
                     const next = views.find(entry => entry[0] === event.target.value);
-                    if (next) { setPage(null); setOffset(0); setView(next[0]); }
+                    if (next && (next[0] === 'liked' || oauthViews === true)) { setPage(null); setOffset(0); setView(next[0]); }
                 }}>
-                    {views.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                    {views.map(([id, name]) => <option key={id} value={id} disabled={id !== 'liked' && oauthViews !== true}>{name}</option>)}
                 </select>
             </label>
             {isTop && <label className="flex items-center gap-2">
@@ -86,8 +101,10 @@ export function SpotifyAccountViews({generation}: {generation: number}) {
             </label>}
             <Button onClick={() => setRetry(value => value + 1)}>Refresh</Button>
         </div>
+        {oauthViews === 'unavailable' && <p role="status" className="text-text-secondary">Could not check Spotify account features. Try Refresh.</p>}
+        {oauthViews === false && <p className="text-text-secondary">Top items, Connect devices, and the Spotify queue require an OAuth connection.</p>}
         <h2 id="spotify-account-view" className="text-lg font-semibold">{label}</h2>
-        {error ? <p role="alert">{error}</p> : !page ? <p role="status">Loading {label}…</p> : <>
+        {!canRead ? null : error ? <p role="alert">{error}</p> : !page ? <p role="status">Loading {label}…</p> : <>
             {view === 'queue' && page.currently_playing && <p>Now playing: {page.currently_playing.name}</p>}
             {entries?.length ? <ol className="divide-y divide-surface-border">
                 {entries.map((entry, index) => <li key={`${index}:${entry?.id ?? ''}`} className="px-3 py-2">

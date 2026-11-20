@@ -117,12 +117,6 @@ func loadValidSpotifyCredentials(ctx context.Context, database *db.DB) (SpotifyC
 func (a *API) doSpotifyRequest(ctx context.Context, method, target string, body []byte, contentType string) (*http.Response, error) {
 	manager := a.spotifyTokens()
 	ctx, endRequest := manager.requestContext(ctx)
-	if ctx.Value(spotifyOwnerBootstrapKey{}) != true {
-		if err := manager.ensureMetadataOwner(ctx); err != nil {
-			endRequest()
-			return nil, err
-		}
-	}
 	// The response body owns cancellation once a request succeeds.
 	finished := false
 	defer func() {
@@ -131,13 +125,21 @@ func (a *API) doSpotifyRequest(ctx context.Context, method, target string, body 
 		}
 	}()
 	status := manager.status()
-	if status.Provider == "webplayer" {
+	cookieMode := status.Provider == "webplayer"
+	if cookieMode {
 		u, err := url.Parse(target)
 		if err != nil || u.Scheme != "https" || u.Host != "api.spotify.com" || u.User != nil {
 			return nil, spotifyauth.ErrDisabled
 		}
+		if spotifyAccountRequiresOAuth(u.Path) {
+			return nil, errSpotifyAccountRequiresOAuth
+		}
 	}
-	cookieMode := status.Provider == "webplayer"
+	if ctx.Value(spotifyOwnerBootstrapKey{}) != true {
+		if err := manager.ensureMetadataOwner(ctx); err != nil {
+			return nil, err
+		}
+	}
 	replaySafe := method == http.MethodGet || method == http.MethodHead
 	if !cookieMode && method == http.MethodGet {
 		if u, err := url.Parse(target); err == nil && u.Path == "/v1/search" {

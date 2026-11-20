@@ -43,6 +43,7 @@ type SpotifyCredentials struct {
 	OAuthState   string `json:"oauthState,omitempty"`
 	OAuthError   string `json:"oauthError,omitempty"`
 	RedirectURI  string `json:"redirectUri,omitempty"`
+	DesktopPKCE  bool   `json:"desktopPkce,omitempty"`
 }
 
 // DownloadResponse extends SpotifyDownload with extracted metadata fields.
@@ -145,6 +146,10 @@ func (a *API) getSpotifyCredentials(w http.ResponseWriter, r *http.Request) {
 	}
 
 	creds.ClientSecret = ""
+	if creds.DesktopPKCE {
+		respondJSON(w, map[string]string{"clientId": creds.ClientId, "redirectUri": creds.RedirectURI})
+		return
+	}
 	respondJSON(w, creds)
 }
 
@@ -1381,11 +1386,11 @@ func (a *API) getSpotifyAuthStatus(w http.ResponseWriter, r *http.Request) {
 		status.AuthRequired = true
 	}
 	product := "unknown"
-	if status.Connected && !status.AuthRequired {
+	if status.Connected && !status.AuthRequired && !status.WebAPIOnly {
 		product = a.spotifyAccountProduct(r.Context(), r.URL.Query().Get("refreshProduct") == "true")
 	}
 	status = a.spotifyTokens().status()
-	if !status.Connected || status.AuthRequired {
+	if !status.Connected || status.AuthRequired || status.WebAPIOnly {
 		product = "unknown"
 	}
 	respondJSON(w, struct {

@@ -38,6 +38,7 @@ type spotifySessionStatus struct {
 	Provider        string `json:"provider"`
 	Connected       bool   `json:"connected"`
 	AuthRequired    bool   `json:"authRequired"`
+	WebAPIOnly      bool   `json:"webApiOnly,omitempty"`
 	Message         string `json:"message"`
 	TokenExpiresAt  int64  `json:"tokenExpiresAt,omitempty"`
 	TokenIssueCount uint64 `json:"tokenIssueCount,omitempty"`
@@ -309,15 +310,17 @@ func (s *spotifyAuthRuntime) status() spotifySessionStatus {
 		return status
 	}
 	connected := false
+	webAPIOnly := false
 	reauthMsg := s.reauthMessage
 	if !s.closed && !s.invalid.Load() && s.lifetime.Err() == nil {
 		if creds, err := readSpotifyCredentials(s.database); err == nil {
 			connected = creds.AccessToken != ""
+			webAPIOnly = creds.DesktopPKCE
 		} else if errors.Is(err, crypto.ErrReauthRequired) && reauthMsg == "" {
 			reauthMsg = "Stored Spotify credentials could not be decrypted after an application move or key change; please sign in to Spotify again."
 		}
 	}
-	return spotifySessionStatus{Provider: "oauth", Connected: connected, AuthRequired: !connected, Message: reauthMsg}
+	return spotifySessionStatus{Provider: "oauth", Connected: connected, AuthRequired: !connected, WebAPIOnly: webAPIOnly, Message: reauthMsg}
 }
 
 // withPlayback serializes token-to-session preparation with account retirement.
@@ -619,6 +622,10 @@ func (a *API) retireSpotifyAccount() error {
 var errSpotifyRecentsUnavailable = errors.New("Spotify history is unavailable")
 
 func respondSpotifySessionError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errSpotifyAccountRequiresOAuth) {
+		respondError(w, http.StatusForbidden, errSpotifyAccountRequiresOAuth.Error())
+		return
+	}
 	if errors.Is(err, errSpotifyRecentsUnavailable) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotImplemented)
@@ -655,8 +662,26 @@ func (s *spotifyAuthRuntime) withAccount(ctx context.Context, commit func() erro
 // Explicit OAuth saves represent a new login selection. Automatic token renewal
 // uses its separate persistence path and keeps the current metadata lifetime.
 func (s *spotifyAuthRuntime) replaceOAuthCredentials(raw string) error {
+	s.cancelBrowserLogin("", false)
+	return s.replaceOAuthCredentialsGuarded(raw, nil)
+}
+
+func (s *spotifyAuthRuntime) replaceOAuthCredentialsGuarded(raw string, guard func() (func(bool), error)) error {
 	s.changeMu.Lock()
 	defer s.changeMu.Unlock()
+	committed := false
+	if guard != nil {
+		finish, err := guard()
+		if err != nil {
+			return err
+		}
+		defer func() { finish(committed) }()
+	}
+	defer func() {
+		if committed && s.onConnected != nil {
+			s.onConnected()
+		}
+	}()
 	s.beginRetirement()
 	s.mediaMu.Lock()
 	defer s.mediaMu.Unlock()
@@ -697,6 +722,8 @@ func (s *spotifyAuthRuntime) replaceOAuthCredentials(raw string) error {
 	s.provider = nil
 	s.cookieMode = false
 	s.invalid.Store(false)
+	s.reauthMessage = ""
 	s.manager = spotifyOAuthManager(s.database)
+	committed = true
 	return nil
 }

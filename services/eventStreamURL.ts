@@ -28,13 +28,32 @@ function getWailsServerURL(): Promise<string | null> {
   const getServerURL = runtimeWindow?.go?.main?.App?.GetServerURL;
   if (!getServerURL) return Promise.resolve(null);
 
-  serverURLPromise = getServerURL()
-    .then(url => url.trim().replace(/\/$/, '') || null)
-    .catch(error => {
-      console.warn('Unable to resolve the local API server for event streaming:', error);
-      return null;
-    });
-  return serverURLPromise;
+  const resolution = resolveWailsServerURL(getServerURL).then(url => {
+    if (!url && serverURLPromise === resolution) serverURLPromise = undefined;
+    return url;
+  });
+  serverURLPromise = resolution;
+  return resolution;
+}
+
+async function resolveWailsServerURL(getServerURL: () => Promise<string>): Promise<string | null> {
+  const read = async () => {
+    const address = (await getServerURL()).trim();
+    if (!address) return null;
+    const url = new URL(address);
+    return url.protocol === 'http:' && url.hostname === '127.0.0.1' ? url.origin : null;
+  };
+
+  const first = await read().catch(() => null);
+  if (first) return first;
+
+  // Give a briefly unavailable native bridge time to recover before creating
+  // the audio source or EventSource with the asset-server URL.
+  await new Promise(resolve => setTimeout(resolve, 100));
+  return read().catch(error => {
+    console.warn('Unable to resolve the local API server for event streaming:', error);
+    return null;
+  });
 }
 
 export async function getEventStreamURL(path: string): Promise<string> {

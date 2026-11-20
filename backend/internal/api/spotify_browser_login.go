@@ -17,14 +17,16 @@ import (
 )
 
 type spotifyBrowserLoginStatus struct {
-	ID      string `json:"id"`
-	State   string `json:"state"`
-	Message string `json:"message,omitempty"`
+	ID              string `json:"id"`
+	State           string `json:"state"`
+	Message         string `json:"message,omitempty"`
+	BrowserRequired bool   `json:"browserRequired,omitempty"`
 }
 type spotifyBrowserLogin struct {
 	status  spotifyBrowserLoginStatus
 	cancel  context.CancelFunc
 	account context.Context
+	oauth   *spotifyOAuthAttempt
 }
 
 // Independent from account locks so capture/provider I/O can be canceled even
@@ -79,22 +81,7 @@ func (s *spotifyAuthRuntime) runBrowserLogin(ctx context.Context, op *spotifyBro
 	cookie, err := capture(ctx)
 	if err == nil {
 		stage = "validation_or_commit"
-		err = s.connectGuarded(ctx, cookie, func() (func(bool), error) {
-			s.login.mu.Lock()
-			s.mu.RLock()
-			currentAccount := s.lifetime == op.account && !s.closed
-			s.mu.RUnlock()
-			if !currentAccount || s.login.closed || s.login.operation != op || op.status.State != "pending" || ctx.Err() != nil {
-				s.login.mu.Unlock()
-				return nil, context.Canceled
-			}
-			return func(committed bool) {
-				if committed {
-					op.status.State = "connected"
-				}
-				s.login.mu.Unlock()
-			}, nil
-		})
+		err = s.connectGuarded(ctx, cookie, s.browserLoginCommit(ctx, op))
 	}
 	cookie = ""
 	s.login.mu.Lock()
@@ -143,7 +130,8 @@ func (s *spotifyAuthRuntime) runBrowserLogin(ctx context.Context, op *spotifyBro
 	case errors.Is(err, context.Canceled):
 		op.status.State = "canceled"
 	case errors.Is(err, spotifyauth.ErrLoginBrowserUnavailable):
-		op.status.Message = "Install Chrome, Chromium or Microsoft Edge to sign in."
+		op.status.Message = "Install Chrome, Chromium or Microsoft Edge to use Web Player sign-in."
+		op.status.BrowserRequired = true
 	case errors.Is(err, spotifyauth.ErrLoginProfileCleanup):
 		op.status.Message = "Could not remove the temporary sign-in profile. Try again."
 	case errors.Is(err, spotifyauth.ErrAuthenticationRequired):
@@ -167,6 +155,25 @@ func (s *spotifyAuthRuntime) browserLoginStatus(id string) (spotifyBrowserLoginS
 		return spotifyBrowserLoginStatus{}, false
 	}
 	return s.login.operation.status, true
+}
+
+func (s *spotifyAuthRuntime) browserLoginCommit(ctx context.Context, op *spotifyBrowserLogin) func() (func(bool), error) {
+	return func() (func(bool), error) {
+		s.login.mu.Lock()
+		s.mu.RLock()
+		currentAccount := s.lifetime == op.account && !s.closed
+		s.mu.RUnlock()
+		if !currentAccount || s.login.closed || s.login.operation != op || op.status.State != "pending" || ctx.Err() != nil {
+			s.login.mu.Unlock()
+			return nil, context.Canceled
+		}
+		return func(committed bool) {
+			if committed {
+				op.status.State = "connected"
+			}
+			s.login.mu.Unlock()
+		}, nil
+	}
 }
 func (a *API) startSpotifyBrowserLogin(w http.ResponseWriter, r *http.Request) {
 	if !spotifyLoginRequestAllowed(r) {

@@ -68,6 +68,7 @@ type API struct {
 	spotifyAuthMu          sync.Mutex
 	spotifyHooksOnce       sync.Once
 	spotifyAuth            *spotifyAuthRuntime
+	spotifyOAuthCallback   string
 	spotifyAnalysisMu      sync.RWMutex
 	spotifyAnalysis        *spotifyrefresh.Service
 	spotifyAnalysisClosed  bool
@@ -281,6 +282,7 @@ func (a *API) Routes() chi.Router {
 	r.Get("/spotify/playlists/{id}/scrape", a.spotifyGetPlaylistByScraping) // Get first-party playlist details via scraping
 	r.Get("/spotify/me", a.spotifyGetUserProfile)
 	r.Get("/spotify/proxy", a.spotifyProxy)
+	r.Get("/spotify/account", a.spotifyAccountCapabilities)
 	r.Get("/spotify/account/{view}", a.spotifyAccountRead)
 	r.Post("/spotify/proxy", a.spotifyProxy)
 	r.Get("/spotify/analysis/status", a.getSpotifyAnalysisStatus)
@@ -292,6 +294,7 @@ func (a *API) Routes() chi.Router {
 	r.Get("/spotify/auth/status", a.getSpotifyAuthStatus)
 	r.Post("/spotify/auth/refresh", a.refreshSpotifyAuth)
 	r.Post("/spotify/auth/browser-login", a.startSpotifyBrowserLogin)
+	r.Post("/spotify/auth/oauth-login", a.startSpotifyOAuthLogin)
 	r.Get("/spotify/auth/browser-login/{id}", a.getSpotifyBrowserLogin)
 	r.Delete("/spotify/auth/browser-login/{id}", a.cancelSpotifyBrowserLogin)
 	r.Post("/spotify/auth/session", a.connectSpotifySession)

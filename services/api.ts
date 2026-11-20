@@ -56,13 +56,14 @@ export interface SpotifySessionStatus {
   provider: 'oauth' | 'webplayer';
   connected: boolean;
   authRequired: boolean;
+  webApiOnly?: boolean;
   message: string;
   product?: 'premium' | 'free' | 'unknown';
   canStream?: boolean;
   canDownload?: boolean;
 }
 
-export interface SpotifyBrowserLoginStatus { id: string; state: 'pending' | 'connected' | 'canceled' | 'failed'; message?: string }
+export interface SpotifyBrowserLoginStatus { id: string; state: 'pending' | 'connected' | 'canceled' | 'failed'; message?: string; browserRequired?: boolean }
 
 const API_BASE = '/api';
 
@@ -602,6 +603,13 @@ export const api = {
 
   async startSpotifyBrowserLogin(): Promise<SpotifyBrowserLoginStatus> {
     return handleResponse<SpotifyBrowserLoginStatus>(await fetch(API_BASE + '/spotify/auth/browser-login', { method: 'POST', headers: { 'Content-Type': 'application/json' } }));
+  },
+  async startSpotifyOAuthLogin(clientId: string): Promise<SpotifyBrowserLoginStatus & { authUrl: string }> {
+    return handleResponse<SpotifyBrowserLoginStatus & { authUrl: string }>(await fetch(API_BASE + '/spotify/auth/oauth-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId }),
+    }));
   },
   async getSpotifyBrowserLogin(id: string): Promise<SpotifyBrowserLoginStatus> {
     return handleResponse<SpotifyBrowserLoginStatus>(await fetch(API_BASE + '/spotify/auth/browser-login/' + encodeURIComponent(id)));

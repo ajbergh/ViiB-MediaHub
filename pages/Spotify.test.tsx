@@ -136,6 +136,22 @@ async function tab(label: string) {
     await act(async () => button!.click());
 }
 
+it.each([false, true])('offers account views according to OAuth capability %s', async oauthViews => {
+    const requests = vi.fn(async (url: string) => new Response(JSON.stringify(
+        url === '/api/spotify/account' ? {oauthViews} : {items: []},
+    )));
+    vi.stubGlobal('fetch', requests);
+    await mount();
+    await tab('Spotify Account');
+    const views = host.querySelector<HTMLSelectElement>('select')!;
+    expect(views.querySelector<HTMLOptionElement>('option[value="liked"]')!.disabled).toBe(false);
+    expect([...views.options].slice(1).every(option => option.disabled === !oauthViews)).toBe(true);
+    expect(requests.mock.calls.map(([url]) => url)).toEqual([
+        '/api/spotify/account', '/api/spotify/account/liked?offset=0&path=me%2Ftracks',
+    ]);
+    if (!oauthViews) expect(host.textContent).toContain('require an OAuth connection');
+});
+
 it.each(['free', 'unknown'])('keeps %s metadata search and library available while disabling media', async product => {
     const play = vi.fn(), queue = vi.fn();
     useStore.setState({ playSong: play, addToQueue: queue });

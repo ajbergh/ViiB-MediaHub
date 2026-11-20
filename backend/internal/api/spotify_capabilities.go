@@ -130,6 +130,10 @@ func (a *API) requireSpotifyMedia(w http.ResponseWriter, r *http.Request) bool {
 		respondError(w, http.StatusUnauthorized, "Sign in to Spotify to continue")
 		return false
 	}
+	if status.WebAPIOnly {
+		respondError(w, http.StatusForbidden, "Connect through Spotify Web Player to stream or download in ViiB.")
+		return false
+	}
 	switch a.spotifyAccountProduct(r.Context()) {
 	case "premium":
 		return true
