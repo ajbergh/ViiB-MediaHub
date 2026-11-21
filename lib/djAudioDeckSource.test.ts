@@ -61,6 +61,20 @@ describe('DJAudioEngine DeckSource integration', () => {
     }
   });
 
+  it('prepares buffered playback from the resolved Plex deck URL', async () => {
+    const engine = new DJAudioEngine();
+    const { source } = fakeSource();
+    const audioURL = 'http://127.0.0.1:34115/api/audio/plex_song';
+    source.load.mockResolvedValue(audioURL);
+    Object.assign(engine, { deckSourceA: source });
+    const queue = vi.spyOn(engine as unknown as {
+      queueScratchAudio: (deck: 'A' | 'B', url: string, generation: number) => void;
+    }, 'queueScratchAudio').mockImplementation(() => {});
+
+    await engine.loadTrack('A', { id: 'plex_song', source: 'plex', title: 'Plex', url: '/api/audio/plex_song' } as never);
+    expect(queue).toHaveBeenCalledWith('A', audioURL, engine.getDeckLoadGeneration('A'));
+  });
+
   it.each(['A', 'B'] as const)('scratches and resumes Deck %s independently of the other deck', async deck => {
     const engine = new DJAudioEngine();
     const decks = { A: fakeSource(5), B: fakeSource(8) };

@@ -1,7 +1,8 @@
 /** Tests and fixtures for single Track Deck Source behavior. */
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SingleTrackDeckSource } from './singleTrackDeckSource';
+import { resetEventStreamURLCacheForTests } from '../services/eventStreamURL';
 
 class FakeAudio {
   crossOrigin = '';
@@ -53,6 +54,11 @@ function sourceFixture() {
 }
 
 describe('SingleTrackDeckSource', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    resetEventStreamURLCacheForTests();
+  });
+
   it('wraps a quarter beat on the audio clock and preserves key lock when changing tempo', async () => {
     const { audio, context, nodes, source } = sourceFixture();
     audio.readyState = 3;
@@ -111,6 +117,24 @@ describe('SingleTrackDeckSource', () => {
     audio.error = { message: 'decode failed' } as MediaError;
     audio.emit('error');
     await expect(failed).rejects.toThrow('Failed to load track: Bad - decode failed');
+  });
+
+  it('uses the native HTTP endpoint for Plex on macOS', async () => {
+    vi.stubGlobal('navigator', { userAgent: 'Macintosh; Mac OS X' });
+    vi.stubGlobal('window', {
+      location: { protocol: 'wails:', hostname: 'wails' },
+      go: { main: { App: { GetServerURL: vi.fn().mockResolvedValue('http://127.0.0.1:34115') } } },
+    });
+    const { audio, source } = sourceFixture();
+    audio.readyState = 3;
+    const track = { id: 'plex_song', title: 'Plex', source: 'plex', url: '/api/audio/plex_song' } as const;
+
+    await expect(source.load(track as never)).resolves.toBe('http://127.0.0.1:34115/api/audio/plex_song');
+    expect(audio.src).toBe('http://127.0.0.1:34115/api/audio/plex_song');
+    await expect(source.load({ ...track, source: undefined } as never))
+      .resolves.toBe('http://127.0.0.1:34115/api/audio/plex_song');
+    await expect(source.load({ ...track, id: 'local', source: 'local', url: '/api/audio/local' } as never))
+      .resolves.toBe('/api/audio/local');
   });
 
   it('provides playback, seek, tempo, key lock, state, event, and disposal behavior', async () => {

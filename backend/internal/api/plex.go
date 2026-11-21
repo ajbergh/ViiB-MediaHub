@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ajbergh/viib-mediahub/internal/audio"
 	"github.com/ajbergh/viib-mediahub/internal/crypto"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
@@ -816,13 +817,18 @@ func (a *API) proxyPlexSourceAsset(w http.ResponseWriter, r *http.Request, sourc
 		if w.Header().Get("Accept-Ranges") == "" {
 			w.Header().Set("Accept-Ranges", "bytes")
 		}
-		// WebKit needs an audio MIME type to select its Ogg decoder for Plex
-		// streams. PMS can serve these parts as generic binary data.
-		if strings.EqualFold(input.container, "ogg") {
-			contentType, _, _ := strings.Cut(w.Header().Get("Content-Type"), ";")
-			switch strings.ToLower(strings.TrimSpace(contentType)) {
-			case "", "application/octet-stream", "application/ogg":
-				w.Header().Set("Content-Type", "audio/ogg")
+		// Some Plex servers label audio as generic binary. WebKit uses the
+		// media type to select a decoder, including for initial range probes.
+		contentType, _, _ := strings.Cut(w.Header().Get("Content-Type"), ";")
+		contentType = strings.ToLower(strings.TrimSpace(contentType))
+		container := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(input.container)), ".")
+		if contentType == "" || contentType == "application/octet-stream" ||
+			(contentType == "application/ogg" && (container == "ogg" || container == "oga")) {
+			if container == "mp4" {
+				container = "m4a"
+			}
+			if format, ok := audio.LookupFormatCapability("." + container); ok {
+				w.Header().Set("Content-Type", format.MIMETypes[0])
 			}
 		}
 	}

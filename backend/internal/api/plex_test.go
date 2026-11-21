@@ -163,6 +163,37 @@ func TestPlexAudioProxyUsesOggMIMETypeForGenericResponses(t *testing.T) {
 	}
 }
 
+func TestPlexAudioProxyLabelsGenericFLACAndMP4Ranges(t *testing.T) {
+	for _, test := range []struct{ container, upstreamMIME, wantMIME string }{
+		{"FLAC", "application/octet-stream", "audio/flac"},
+		{"mp4", "application/octet-stream", "audio/mp4"},
+		{"flac", "audio/x-flac", "audio/x-flac"},
+		{"unknown", "application/octet-stream", "application/octet-stream"},
+	} {
+		t.Run(test.container+"/"+test.upstreamMIME, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", test.upstreamMIME)
+				http.ServeContent(w, r, "music", time.Time{}, strings.NewReader("123456"))
+			}))
+			defer upstream.Close()
+
+			database, handler, track := setupPlexProxyTest(t, upstream.URL, "/audio", "token", true)
+			track.Container = test.container
+			if _, _, _, err := database.SyncPlexLibrary(track.SourceID, track.LibraryID, []db.PlexCatalogTrack{track}); err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest(http.MethodGet, "/api/audio/"+track.SongID, nil)
+			req.Header.Set("Range", "bytes=0-1")
+			rec := httptest.NewRecorder()
+			handler.ServeAudioSourceAware(rec, req)
+			if rec.Code != http.StatusPartialContent || rec.Header().Get("Content-Type") != test.wantMIME ||
+				rec.Header().Get("Content-Range") != "bytes 0-1/6" || rec.Body.String() != "12" {
+				t.Fatalf("unexpected Plex response: status=%d headers=%v body=%q", rec.Code, rec.Header(), rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestPlexAudioProxyCreatesDirectPlayDecisionAfterPMS503(t *testing.T) {
 	const token = "decision-token"
 	var mediaRequests, decisionRequests int

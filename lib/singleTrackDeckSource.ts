@@ -3,6 +3,8 @@
 import type { Song } from '../types';
 import type { DeckSource, ScratchEvent } from './deckSource';
 import { BufferedDeckTransport } from './bufferedDeckTransport';
+import { getEventStreamURL } from '../services/eventStreamURL';
+import { isMacOSWails } from './webglSafety';
 
 export class SingleTrackDeckSource implements DeckSource {
   readonly outputNode: GainNode;
@@ -44,9 +46,13 @@ export class SingleTrackDeckSource implements DeckSource {
     this.loop = { start: 0, end: 0, enabled: false };
     this.cancelLoad();
     const generation = ++this.loadGeneration;
-    const url = track.url || `/api/audio/${track.id}`;
+    let url = track.url || `/api/audio/${track.id}`;
     this.audio.pause();
     this.audio.currentTime = 0;
+    if (isMacOSWails() && (track.source === 'plex' || track.id.startsWith('plex_'))) {
+      url = await getEventStreamURL(`/api/audio/${encodeURIComponent(track.id)}`);
+      if (generation !== this.loadGeneration) throw new DOMException('Track load superseded', 'AbortError');
+    }
     this.audio.src = url;
 
     await new Promise<void>((resolve, reject) => {

@@ -67,6 +67,7 @@ export interface PreparedDeckTrack {
   readonly source: StemDeckSource;
   readonly expectedSource: DeckSource;
   readonly expectedLoadGeneration: number;
+  readonly audioURL: string;
   state: 'prepared' | 'committed' | 'discarded';
 }
 
@@ -919,11 +920,10 @@ export class DJAudioEngine {
 
     this.clearScratchAudio(deck);
     this.resetAutoGain(deck);
-    const audioUrl = track.url || `/api/audio/${track.id}`;
-    this.deckAudioUrls[deck] = audioUrl;
-    console.log(`🎧 DJ Audio: Loading track to Deck ${deck}: ${track.title}, URL: ${audioUrl}`);
-    const loadPromise = source.load(track);
-    try { await loadPromise; }
+    delete this.deckAudioUrls[deck];
+    console.log(`🎧 DJ Audio: Loading track to Deck ${deck}: ${track.title}`);
+    let audioUrl: string;
+    try { audioUrl = await source.load(track); }
     catch (error) {
       if (deck === 'A' && this.activeTrackLoadGenerationA === generation) this.activeTrackLoadGenerationA = null;
       if (deck === 'B' && this.activeTrackLoadGenerationB === generation) this.activeTrackLoadGenerationB = null;
@@ -943,6 +943,7 @@ export class DJAudioEngine {
 
     if (generation !== (deck === 'A' ? this.trackLoadGenerationA : this.trackLoadGenerationB)) return;
     if (deck === 'A') this.loadedTrackIdA = track.id; else this.loadedTrackIdB = track.id;
+    this.deckAudioUrls[deck] = audioUrl;
     if (!(source instanceof StemDeckSource && source.getStemStatus().mode === 'stems')) this.queueScratchAudio(deck, audioUrl, generation);
 
     this.prepareAutoGain(deck, track, audioUrl, generation);
@@ -1152,16 +1153,13 @@ export class DJAudioEngine {
     const context = this.audioContext;
     const expectedSource = this.getDeckSource(deck);
     if (!context || !expectedSource) throw new Error('Audio engine is not initialized');
-    const prepared: PreparedDeckTrack = {
-      deck, track, source: this.createPreparedSource(context), expectedSource,
-      expectedLoadGeneration: this.getDeckLoadGeneration(deck), state: 'prepared',
-    };
+    const source = this.createPreparedSource(context);
+    const expectedLoadGeneration = this.getDeckLoadGeneration(deck);
     try {
-      await prepared.source.load(track);
-      return prepared;
+      const audioURL = await source.load(track);
+      return { deck, track, source, expectedSource, expectedLoadGeneration, audioURL, state: 'prepared' };
     } catch (error) {
-      prepared.state = 'discarded';
-      prepared.source.dispose();
+      source.dispose();
       throw error;
     }
   }
@@ -1238,7 +1236,7 @@ export class DJAudioEngine {
     if (deck === 'A') { ++this.trackLoadGenerationA; this.loadedTrackIdA = prepared.track.id; }
     else { ++this.trackLoadGenerationB; this.loadedTrackIdB = prepared.track.id; }
     prepared.state = 'committed';
-    this.deckAudioUrls[deck] = prepared.track.url || `/api/audio/${prepared.track.id}`;
+    this.deckAudioUrls[deck] = prepared.audioURL;
     if (!(source instanceof StemDeckSource && source.getStemStatus().mode === 'stems')) this.queueScratchAudio(deck, this.deckAudioUrls[deck]!, this.getDeckLoadGeneration(deck));
     this.prepareAutoGain(deck, prepared.track, this.deckAudioUrls[deck]!, this.getDeckLoadGeneration(deck));
     return retained;
