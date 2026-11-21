@@ -345,6 +345,10 @@ func (a *API) startPlexAuth(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, crypto.ErrReauthRequired) {
 			// Starting a fresh PIN sign-in replaces unreadable legacy credentials.
 			credentials = plex.Credentials{ServerTokens: map[string]string{}}
+			if resetErr := a.db.ResetPlexCredentials(); resetErr != nil {
+				respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_reset_failed", "Failed to reset unreadable Plex authentication state", true)
+				return
+			}
 		} else {
 			respondPlexAPIMessage(w, r, http.StatusInternalServerError, "plex_auth_state_failed", "Failed to load Plex authentication state", true)
 			return

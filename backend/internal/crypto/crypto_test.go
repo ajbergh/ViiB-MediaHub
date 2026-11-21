@@ -268,6 +268,41 @@ func TestUnresolvableLegacyV1ReportsErrReauthRequired(t *testing.T) {
 	}
 }
 
+func TestKeyStoreResetAllowsFreshCredentialsAfterMasterKeyFailure(t *testing.T) {
+	dir := useTempKeyStore(t)
+	store, err := NewKeyStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Encrypt("old-secret"); err != nil {
+		t.Fatal(err)
+	}
+
+	keyPath := filepath.Join(dir, masterKeyFileName)
+	if err := os.WriteFile(keyPath, []byte(keyFileWrapPrefix+"bm90LXRoZS1tYXN0ZXIta2V5"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	store.key = nil
+	if _, err := store.Encrypt("still-old-secret"); err == nil {
+		t.Fatal("expected unreadable master key to require reauthentication")
+	}
+
+	if err := store.Reset(); err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := store.Encrypt("fresh-secret")
+	if err != nil {
+		t.Fatalf("encrypt after credential reset: %v", err)
+	}
+	plaintext, _, _, err := store.DecryptAndUpgrade(fresh)
+	if err != nil {
+		t.Fatalf("decrypt fresh credential: %v", err)
+	}
+	if plaintext != "fresh-secret" {
+		t.Fatalf("fresh credential = %q", plaintext)
+	}
+}
+
 func TestEncryptionDeterminism(t *testing.T) {
 	useTempKeyStore(t)
 	// Each encryption should produce different ciphertext (due to random nonce)
@@ -294,4 +329,3 @@ func min(a, b int) int {
 	}
 	return b
 }
-

@@ -17,6 +17,16 @@ import (
 
 const PlexCredentialsSettingKey = "plex_credentials"
 
+// ResetPlexCredentials discards unreadable credential-key state and clears the
+// stored Plex credential payload so a fresh PIN sign-in can be saved.
+func (d *DB) ResetPlexCredentials() error {
+	if err := d.credentialKeys.Reset(); err != nil {
+		return err
+	}
+	_, err := d.conn.Exec(upsertSettingSQL, PlexCredentialsSettingKey, "")
+	return err
+}
+
 type plexSchemaResult struct{ err error }
 
 var plexSchemaMu sync.Mutex
