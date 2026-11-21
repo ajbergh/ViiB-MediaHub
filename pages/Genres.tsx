@@ -148,7 +148,7 @@ export const Genres: React.FC = () => {
             {filteredGenres.length}{searchQuery ? ` of ${genres.length}` : ''} categories in your library
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <CardSizeSlider listAtMinimum value={cardCols} onChange={handleCardColsChange} />
           <div className="relative">
             <Button
@@ -203,11 +203,10 @@ export const Genres: React.FC = () => {
       </div>
 
       {/* Genre Grid */}
-      <div className="flex-1 overflow-y-auto px-6 md:px-8 pb-24 pt-2">
+      <div className="flex-1 overflow-y-auto px-6 md:px-8 pb-24 pt-2" style={{ '--card-cols': listView ? 1 : cardCols } as React.CSSProperties}>
         {listView && <LibraryListHeader title="Genre" detail="Top artists" stats="Tracks" />}
         <div
-          className={listView ? 'grid gap-0' : 'grid gap-4'}
-          style={{ gridTemplateColumns: `repeat(${listView ? 1 : cardCols}, minmax(0, 1fr))` }}
+          className={listView ? 'grid grid-cols-1 gap-0' : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-[repeat(var(--card-cols,4),minmax(0,1fr))] gap-4'}
         >
           {filteredGenres.map((genre, index) => {
             const hasValidCover = Boolean(genre.coverUrl && !failedCovers[genre.coverUrl]);
@@ -241,12 +240,12 @@ export const Genres: React.FC = () => {
                   )}
                 </div>
 
-                <div className="flex items-center gap-2 opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200">
+                <div className="flex items-center gap-2 opacity-100 md:opacity-0 translate-y-0 md:translate-y-1 md:group-hover:opacity-100 md:group-hover:translate-y-0 md:group-focus-within:opacity-100 md:group-focus-within:translate-y-0 transition-all duration-200">
                   <button
                     type="button"
                     aria-label={`Play ${genre.name}`}
                     onClick={(e) => handlePlayGenre(e, genre.name, false)}
-                    className="w-9 h-9 bg-brand text-surface-0 rounded-full hover:bg-brand-hover flex items-center justify-center shadow-lg hover:scale-105 transition-all"
+                    className="w-9 h-9 shrink-0 bg-brand text-surface-0 rounded-full hover:bg-brand-hover flex items-center justify-center shadow-lg hover:scale-105 transition-all"
                     title="Play Genre"
                   >
                     <Play size={16} className="fill-current ml-0.5" />
@@ -255,7 +254,7 @@ export const Genres: React.FC = () => {
                     type="button"
                     aria-label={`Shuffle ${genre.name}`}
                     onClick={(e) => handlePlayGenre(e, genre.name, true)}
-                    className="w-9 h-9 bg-surface-0/60 backdrop-blur-sm text-text-main rounded-full hover:bg-surface-0/80 flex items-center justify-center shadow-lg hover:scale-105 transition-all"
+                    className="w-9 h-9 shrink-0 bg-surface-0/60 backdrop-blur-sm text-text-main rounded-full hover:bg-surface-0/80 flex items-center justify-center shadow-lg hover:scale-105 transition-all"
                     title="Shuffle Genre"
                   >
                     <Shuffle size={15} />

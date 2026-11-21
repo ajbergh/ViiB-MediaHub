@@ -6,8 +6,9 @@
  * @module components/dj/v2/DJAudioSetup
  */
 
-import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { Headphones, RefreshCw, Volume2 } from 'lucide-react';
+import React, { memo, useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Headphones, RefreshCw, Volume2, X } from 'lucide-react';
 import { getDJAudioEngine } from '../../../lib/djAudio';
 import type { DJOutputMode } from '../../../lib/djOutputRouting';
 import { useStore } from '../../../store';
@@ -38,6 +39,7 @@ function supportsMediaElementSink(): boolean {
 
 export const DJAudioSetup: React.FC<DJAudioSetupProps> = memo(({ onClose }) => {
   const engine = getDJAudioEngine();
+  const titleId = useId();
   const saved = useStore.getState().audioSettings;
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [mode, setMode] = useState<DJOutputMode>(engine.initialized ? engine.getOutputMode() : saved.djOutputMode || 'separate');
@@ -55,6 +57,17 @@ export const DJAudioSetup: React.FC<DJAudioSetupProps> = memo(({ onClose }) => {
     const timer = window.setInterval(() => setDiagnostics(engine.getOutputDiagnostics()), 1000);
     return () => { window.clearInterval(timer); engine.stopOutputTest(); };
   }, [engine]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [onClose]);
 
   const testChannel = async (channel: number) => {
     setError(null);
@@ -178,25 +191,30 @@ export const DJAudioSetup: React.FC<DJAudioSetupProps> = memo(({ onClose }) => {
     }
   }, [engine, headphoneDeviceId]);
 
-  return (
+  const modal = (
     <div className='fixed inset-0 z-[100] bg-black/60 flex items-center justify-center' onClick={onClose}>
       <div
-        className='bg-[var(--dj-surface-2)] border border-[var(--dj-border-light)] rounded-lg w-[620px] max-h-[82vh] flex flex-col shadow-2xl'
+        className='bg-[var(--dj-surface-2)] border border-[var(--dj-border-light)] rounded-lg w-[min(620px,calc(100vw-2rem))] max-h-[82vh] flex flex-col shadow-2xl'
         onClick={e => e.stopPropagation()}
         role='dialog'
         aria-modal='true'
-        aria-label='Audio setup'
+        aria-labelledby={titleId}
       >
         <div className='flex items-center justify-between px-4 py-3 border-b border-[var(--dj-border-light)]'>
           <div className='flex items-center gap-2'>
-            <Volume2 size={16} className='text-[var(--dj-info)]' />
-            <span className='text-sm font-bold text-[var(--dj-text-primary)]'>Audio Setup</span>
+            <Volume2 size={16} className='text-[var(--dj-info)]' aria-hidden='true' />
+            <h2 id={titleId} className='text-sm font-bold text-[var(--dj-text-primary)]'>Audio Setup</h2>
             <span className='text-[12px] bg-[color-mix(in_srgb,var(--dj-info)_20%,transparent)] text-[var(--dj-info)] px-1.5 py-0.5 rounded'>
               {outputOptions.length} output option(s)
             </span>
           </div>
-          <button onClick={onClose} className='text-[var(--dj-text-secondary)] hover:text-[var(--dj-text-secondary)] text-lg' aria-label='Close audio setup'>
-            x
+          <button
+            type='button'
+            onClick={onClose}
+            className='p-1 rounded text-[var(--dj-text-secondary)] hover:text-[var(--dj-text-primary)] transition-colors'
+            aria-label='Close audio setup'
+          >
+            <X size={16} aria-hidden='true' />
           </button>
         </div>
 
@@ -345,7 +363,7 @@ export const DJAudioSetup: React.FC<DJAudioSetupProps> = memo(({ onClose }) => {
             disabled={loading}
             className={`${buttonBase} bg-[var(--dj-surface-3)] text-[var(--dj-text-secondary)] border-[var(--dj-border-light)] hover:bg-[var(--dj-border)] hover:text-[var(--dj-text-primary)] disabled:opacity-50 flex items-center gap-1.5`}
           >
-            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} aria-hidden='true' />
             Refresh
           </button>
           <button
@@ -358,6 +376,8 @@ export const DJAudioSetup: React.FC<DJAudioSetupProps> = memo(({ onClose }) => {
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modal, document.body) : modal;
 });
 
 DJAudioSetup.displayName = 'DJAudioSetup';

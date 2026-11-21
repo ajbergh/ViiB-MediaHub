@@ -18,6 +18,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { X, Moon, Clock, Music, Timer, Plus, Minus } from 'lucide-react';
 import { useStore } from '../store';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { VIIB } from './ui/tokens';
 
 interface SleepTimerProps {
     isOpen: boolean;
@@ -244,7 +245,7 @@ export const SleepTimer: React.FC<SleepTimerProps & {
 
     return (
         <div
-            className="fixed inset-0 z-[900] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200 motion-reduce:animate-none motion-reduce:transition-none"
+            className={`fixed inset-0 ${VIIB.zIndex.popover} flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200 motion-reduce:animate-none motion-reduce:transition-none`}
             onClick={onClose}
         >
             <div
@@ -297,7 +298,7 @@ export const SleepTimer: React.FC<SleepTimerProps & {
                                 </div>
                                 <button
                                     onClick={cancelTimer}
-                                    className="px-4 py-2 bg-error/20 text-error rounded-lg text-sm font-medium hover:bg-error/30 transition-colors"
+                                    className="px-4 py-2 bg-error text-surface-0 rounded-lg text-sm font-semibold hover:brightness-110 transition-all"
                                 >
                                     Cancel
                                 </button>

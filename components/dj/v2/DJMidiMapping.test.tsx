@@ -20,10 +20,28 @@ it.each([
   const host = document.createElement('div'); const root = createRoot(host);
   try {
     await act(async () => root.render(<DJMidiMapping onClose={() => {}} />));
-    expect(host.querySelector('[data-testid="controller-profile-experimental"]')?.textContent).toContain(status);
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.body.querySelector('[data-testid="controller-profile-experimental"]')?.textContent).toContain(status);
   } finally { await act(async () => root.unmount()); midi.destroy(); localStorage.clear(); vi.unstubAllGlobals(); }
 });
 import { getDJMidiService } from '../../../lib/djMidi';
+
+it('closes on Escape and exposes accessible dialog attributes', async () => {
+  (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+  localStorage.clear();
+  const midi = getDJMidiService();
+  const onClose = vi.fn();
+  const host = document.createElement('div'); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<DJMidiMapping onClose={onClose} />));
+    const dialog = document.body.querySelector('[role="dialog"]');
+    expect(dialog?.getAttribute('aria-modal')).toBe('true');
+    const labelledBy = dialog?.getAttribute('aria-labelledby');
+    expect(labelledBy && document.getElementById(labelledBy)?.textContent).toContain('MIDI Controller Mapping');
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    expect(onClose).toHaveBeenCalledOnce();
+  } finally { await act(async () => root.unmount()); midi.destroy(); localStorage.clear(); vi.unstubAllGlobals(); }
+});
 
 it('learns the same physical pad as independent actions in two banks and restores the automatic preset', async () => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -37,15 +55,15 @@ it('learns the same physical pad as independent actions in two banks and restore
   const container = document.createElement('div');
   const root = createRoot(container);
   const click = async (label: string) => {
-    const button = Array.from(container.querySelectorAll('button')).find(button => button.textContent === label)!;
+    const button = Array.from(document.body.querySelectorAll('button')).find(button => button.textContent === label)!;
     await act(async () => button.click());
   };
   const selectBank = async (value: string) => {
-    const select = container.querySelector<HTMLSelectElement>('[aria-label="Mapping bank"]')!;
+    const select = document.body.querySelector<HTMLSelectElement>('[aria-label="Mapping bank"]')!;
     await act(async () => { select.value = value; select.dispatchEvent(new Event('change', { bubbles: true })); });
   };
   const learn = async (label: string) => {
-    const row = Array.from(container.querySelectorAll('tr')).find(row => row.textContent?.includes(label))!;
+    const row = Array.from(document.body.querySelectorAll('tr')).find(row => row.textContent?.includes(label))!;
     await act(async () => Array.from(row.querySelectorAll('button')).find(button => button.textContent === 'Learn')!.click());
     await act(async () => input.onmidimessage?.({ data: new Uint8Array([0x94, 0x14, 127]) } as MIDIMessageEvent));
   };
@@ -61,7 +79,7 @@ it('learns the same physical pad as independent actions in two banks and restore
     ]);
     expect(JSON.parse(localStorage.getItem('viib-dj-midi-mappings')!)).toHaveLength(2);
     await selectBank('A0'); await click('Hot Cues');
-    expect(container.textContent).toContain('Ch5 Note20');
+    expect(document.body.textContent).toContain('Ch5 Note20');
     await click('Restore preset');
     expect(midi.getMappings().every(mapping => mapping.builtIn)).toBe(true);
   } finally {

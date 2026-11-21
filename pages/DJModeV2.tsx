@@ -38,7 +38,7 @@ import { DJLibraryDrawer, type DJLibraryDrawerHandle } from '../components/dj/v2
 import { useDJShortcuts } from '../components/dj/v2/hooks/useDJShortcuts';
 import { createLogger } from '../services/loggerService';
 import type { DeckId, DeckEQ, DJLayoutMode } from '../slices/djMixerSlice';
-import { useIsDJReady } from '../hooks/useMediaQuery';
+import { BREAKPOINTS, useIsDJReady, useMediaQuery } from '../hooks/useMediaQuery';
 import { DJUnsupportedWidth } from '../components/dj/DJUnsupportedWidth';
 import { DJFullscreenGate } from '../components/dj/DJFullscreenGate';
 import { useAnalysisPlaybackPressure } from '../hooks/useAnalysisPlaybackPressure';
@@ -485,8 +485,8 @@ const DJModeV2Inner: React.FC = () => {
 // The application shell also renders on playback ticks. Preserve the DJ tree's
 // narrow subscriptions across that parent boundary.
 export const DJModeV2: React.FC = React.memo(() => {
-  const ready = useIsDJReady();
-  if (!ready) return <DJUnsupportedWidth minWidth={1440} variant="v2" />;
+  const supportsScaledGate = useMediaQuery(BREAKPOINTS.lg);
+  if (!supportsScaledGate) return <DJUnsupportedWidth minWidth={1024} variant="v2" />;
   return (
     <DJFullscreenGate>
       <DJModeV2Inner />

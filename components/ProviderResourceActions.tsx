@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { spotifyReference, type SpotifyReferenceEndpoint } from '../services/spotifyReference';
 import { useStore } from '../store';
+import { Button } from './ui/Button';
 
 export function ProviderResourceActions({ songId, fingerprint, session, onReload }: { songId: string; fingerprint: string; session: number; onReload: () => void }) {
   const connected = useStore(state => state.spotifyConnected);
@@ -35,9 +36,9 @@ export function ProviderResourceActions({ songId, fingerprint, session, onReload
   };
   return <div className="space-y-2">
     <div className="flex flex-wrap gap-2">
-	  <button type="button" className="rounded border border-surface-border px-3 py-1 disabled:opacity-50" disabled={!connected || !recording || visible?.busy} onClick={() => void refresh('audio_attributes_v2')}>Refresh audio attributes V2</button>
-      <button type="button" className="rounded border border-surface-border px-3 py-1 disabled:opacity-50" disabled={!connected || !recording || visible?.busy} onClick={() => void refresh('audio_features')}>Refresh audio features</button>
-      <button type="button" className="rounded border border-surface-border px-3 py-1 disabled:opacity-50" disabled={!connected || !recording || visible?.busy} onClick={() => void refresh('audio_analysis')}>Refresh detailed analysis</button>
+      <Button size="sm" variant="secondary" disabled={!connected || !recording || visible?.busy} onClick={() => void refresh('audio_attributes_v2')}>Refresh audio attributes V2</Button>
+      <Button size="sm" variant="secondary" disabled={!connected || !recording || visible?.busy} onClick={() => void refresh('audio_features')}>Refresh audio features</Button>
+      <Button size="sm" variant="secondary" disabled={!connected || !recording || visible?.busy} onClick={() => void refresh('audio_analysis')}>Refresh detailed analysis</Button>
     </div>
     {!connected ? <p>Connect to Spotify in Settings to refresh.</p> : link && !recording ? <p>A current recording link is required to refresh.</p> : null}
     {visible?.message && <p role="status">{visible.message}</p>}

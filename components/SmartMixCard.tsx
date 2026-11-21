@@ -54,9 +54,8 @@ export const SmartMixCard: React.FC<SmartMixCardProps> = ({
 
   return (
     <div
-      className="group relative w-44 flex-shrink-0 cursor-pointer snap-start rounded-lg bg-transparent p-3 transition-colors hover:bg-surface-hover"
-      onClick={onClick}
       onContextMenu={onContextMenu}
+      className="group relative w-44 flex-shrink-0 snap-start rounded-lg bg-transparent p-3 transition-colors hover:bg-surface-hover"
     >
       {/* Square Cover Artwork with Spotify Mix Badge and Play Button */}
       <div
@@ -73,22 +72,28 @@ export const SmartMixCard: React.FC<SmartMixCardProps> = ({
           {mix.name}
         </h3>
 
-        {/* Play Button - Appears on Hover */}
+        {/* Play Button - Visible on Touch/Keyboard Focus and Hover */}
         <button
           type="button"
           onClick={handlePlayClick}
-          className="absolute bottom-2 right-2 flex h-11 w-11 translate-y-2 items-center justify-center rounded-full bg-brand text-surface-0 opacity-0 shadow-xl transition-all group-hover:translate-y-0 group-hover:opacity-100 hover:scale-105 hover:bg-brand-hover"
+          className="absolute bottom-2 right-2 z-10 flex h-11 w-11 translate-y-0 items-center justify-center rounded-full bg-brand text-surface-0 opacity-100 shadow-xl transition-all md:translate-y-2 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100 md:group-focus-within:translate-y-0 md:group-focus-within:opacity-100 hover:scale-105 hover:bg-brand-hover focus-visible:translate-y-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
           aria-label={`Play ${mix.name}`}
         >
-          <Play size={20} className="ml-0.5 fill-current" />
+          <Play size={20} className="ml-0.5 fill-current" aria-hidden="true" />
         </button>
       </div>
 
-      {/* Title & Description */}
-      <h4 className="truncate text-sm font-semibold text-text-main">{mix.name}</h4>
-      <p className="mt-1 line-clamp-2 text-xs text-text-secondary">
-        {mix.description}
-      </p>
+      {/* Primary card navigation button */}
+      <button
+        type="button"
+        onClick={onClick}
+        className="block w-full cursor-pointer rounded text-left focus-visible:outline-none after:absolute after:inset-0 after:rounded-lg focus-visible:after:ring-2 focus-visible:after:ring-brand/70"
+      >
+        <span className="block truncate text-sm font-semibold text-text-main">{mix.name}</span>
+        <span className="mt-1 line-clamp-2 block text-xs text-text-secondary">
+          {mix.description}
+        </span>
+      </button>
     </div>
   );
 };

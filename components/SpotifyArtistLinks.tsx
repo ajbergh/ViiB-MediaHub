@@ -13,7 +13,7 @@ export const SpotifyArtistLinks: React.FC<{
                     <Link
                         to={'/spotify/artist/' + encodeURIComponent(artist.id)}
                         onClick={(event) => event.stopPropagation()}
-                        className="hover:underline"
+                        className="inline-flex items-center min-h-[28px] hover:underline"
                     >
                         {artist.name}
                     </Link>

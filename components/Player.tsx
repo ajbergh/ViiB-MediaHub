@@ -153,33 +153,39 @@ const SkinnyPlayer: React.FC<SkinnyPlayerProps> = ({
 
         <div className="hidden min-w-[180px] flex-[1.4] items-center gap-2 text-[11px] text-text-secondary md:flex" style={skinnyNoDragStyle}>
           <span className="w-9 text-right font-mono">{formatTime(currentTime)}</span>
-          <input
-            type="range"
-            min="0"
-            max={duration || 100}
-            value={currentTime}
-            disabled={!hasSong}
-            onChange={(event) => onSeek(Number(event.target.value))}
-            aria-label="Seek position"
-            aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration)}`}
-            className="h-1 w-full cursor-pointer appearance-none rounded-lg bg-surface-slider disabled:cursor-default [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-text-main"
-          />
+          <div className="relative flex-1 h-6 flex items-center">
+            <div className="w-full h-1 rounded-lg bg-surface-slider pointer-events-none" />
+            <input
+              type="range"
+              min="0"
+              max={duration || 100}
+              value={currentTime}
+              disabled={!hasSong}
+              onChange={(event) => onSeek(Number(event.target.value))}
+              aria-label="Seek position"
+              aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration)}`}
+              className="absolute inset-0 h-6 w-full cursor-pointer appearance-none bg-transparent disabled:cursor-default [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-text-main"
+            />
+          </div>
           <span className="w-9 font-mono">{formatTime(duration)}</span>
         </div>
 
-        <div className="hidden w-28 flex-shrink-0 items-center gap-2 sm:flex" style={skinnyNoDragStyle}>
-          <Volume2 size={17} className="text-text-secondary" aria-hidden="true" />
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            value={volume}
-            onChange={(event) => onVolumeChange(Number(event.target.value))}
-            aria-label="Volume"
-            aria-valuetext={`${Math.round(volume * 100)} percent`}
-            className="h-1 w-full cursor-pointer appearance-none rounded-lg bg-surface-slider [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-text-main"
-          />
+        <div className="hidden min-w-[64px] w-24 lg:w-28 flex-shrink-0 items-center gap-2 sm:flex" style={skinnyNoDragStyle}>
+          <Volume2 size={17} className="text-text-secondary shrink-0" aria-hidden="true" />
+          <div className="relative flex-1 h-6 flex items-center">
+            <div className="w-full h-1 rounded-lg bg-surface-slider pointer-events-none" />
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={volume}
+              onChange={(event) => onVolumeChange(Number(event.target.value))}
+              aria-label="Volume"
+              aria-valuetext={`${Math.round(volume * 100)} percent`}
+              className="absolute inset-0 h-6 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-text-main"
+            />
+          </div>
         </div>
 
         <div className="hidden h-8 w-20 flex-shrink-0 items-end pb-1 xl:flex" title="Spectrum Analyzer">
@@ -225,6 +231,7 @@ const SkinnyPlayer: React.FC<SkinnyPlayerProps> = ({
 
 export const Player: React.FC = () => {
   const currentSong = useStore(state => state.currentSong);
+  const songs = useStore(state => state.songs);
   const isPlaying = useStore(state => state.isPlaying);
   const togglePlay = useStore(state => state.togglePlay);
   const nextSong = useStore(state => state.nextSong);
@@ -312,7 +319,7 @@ export const Player: React.FC = () => {
       return (
           <>
             {audioElements}
-            <div className="h-[84px] bg-surface-0 px-4 grid grid-cols-3 items-center z-50 relative gap-4 select-none">
+            <div className="h-[84px] bg-surface-0 px-3 md:px-4 grid grid-cols-[1fr_auto] md:grid-cols-3 items-center z-50 relative gap-2 md:gap-4 select-none">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-12 h-12 rounded bg-surface-2 flex items-center justify-center flex-shrink-0 border border-surface-border">
                   <ListMusic size={18} className="text-text-subtle" aria-hidden="true" />
@@ -320,21 +327,39 @@ export const Player: React.FC = () => {
                 <span className="text-xs md:text-sm text-text-subtle truncate">Select a song to start listening</span>
               </div>
 
-              <div className="flex flex-col items-center gap-1.5 opacity-45 pointer-events-none" aria-hidden="true">
-                <div className="flex items-center gap-5">
-                  <Shuffle size={16} className="text-text-subtle" />
-                  <SkipBack size={18} className="text-text-subtle fill-current" />
-                  <div className="w-8 h-8 rounded-full bg-text-secondary/40 text-surface-0 flex items-center justify-center">
-                    <Play size={16} className="fill-current ml-0.5" />
+              <div className="flex items-center gap-2">
+                <div className="flex flex-col items-center gap-1.5 opacity-45 pointer-events-none" aria-hidden="true">
+                  <div className="flex items-center gap-3 md:gap-5">
+                    <Shuffle size={16} className="hidden md:block text-text-subtle" />
+                    <SkipBack size={18} className="text-text-subtle fill-current" />
+                    <div className="w-8 h-8 rounded-full bg-text-secondary/40 text-surface-0 flex items-center justify-center">
+                      <Play size={16} className="fill-current ml-0.5" />
+                    </div>
+                    <SkipForward size={18} className="text-text-subtle fill-current" />
+                    <Repeat size={16} className="hidden md:block text-text-subtle" />
                   </div>
-                  <SkipForward size={18} className="text-text-subtle fill-current" />
-                  <Repeat size={16} className="text-text-subtle" />
+                  <div className="w-full max-w-md flex items-center justify-center gap-2 text-[11px] text-text-subtle font-mono">
+                    <span>0:00</span>
+                    <div className="h-1 w-20 sm:w-44 md:w-64 rounded-full bg-surface-3" />
+                    <span>0:00</span>
+                  </div>
                 </div>
-                <div className="w-full max-w-md flex items-center justify-center gap-2 text-[11px] text-text-subtle font-mono">
-                  <span>0:00</span>
-                  <div className="h-1 w-64 rounded-full bg-surface-3" />
-                  <span>0:00</span>
-                </div>
+                <Button
+                  onClick={() => setQueueOpen(!isQueueOpen)}
+                  title="Queue"
+                  aria-label={`Queue, ${queue.length} ${queue.length === 1 ? 'track' : 'tracks'}`}
+                  aria-pressed={isQueueOpen}
+                  aria-expanded={isQueueOpen}
+                  variant="ghost"
+                  className={`md:hidden relative overflow-visible rounded-full p-2 ${isQueueOpen ? 'text-brand bg-surface-2/60' : 'text-text-secondary hover:text-text-main'}`}
+                >
+                  <ListMusic size={18} aria-hidden="true" />
+                  {queue.length > 0 && (
+                    <div aria-hidden="true" className="absolute top-0 right-0 min-w-[16px] h-[16px] px-1 bg-brand text-surface-0 text-[9px] leading-none font-bold rounded-full flex items-center justify-center shadow-sm border border-surface-0">
+                      {queue.length}
+                    </div>
+                  )}
+                </Button>
               </div>
 
               <div className="hidden md:flex items-center justify-end gap-2">
@@ -355,12 +380,17 @@ export const Player: React.FC = () => {
                   aria-pressed={isQueueOpen}
                   aria-expanded={isQueueOpen}
                   variant="ghost"
-                  className={`relative rounded-full p-2 ${isQueueOpen ? 'text-brand' : 'text-text-secondary hover:text-text-main'}`}
+                  className={`relative overflow-visible rounded-full p-2 ${isQueueOpen ? 'text-brand' : 'text-text-secondary hover:text-text-main'}`}
                 >
                   <ListMusic size={18} aria-hidden="true" />
+                  {queue.length > 0 && (
+                    <div aria-hidden="true" className="absolute top-0 right-0 min-w-[16px] h-[16px] px-1 bg-brand text-surface-0 text-[9px] leading-none font-bold rounded-full flex items-center justify-center shadow-sm border border-surface-0">
+                      {queue.length}
+                    </div>
+                  )}
                 </Button>
-                <div className="flex items-center gap-2 w-28 opacity-50 pointer-events-none" aria-hidden="true">
-                  <Volume2 size={18} className="text-text-subtle" />
+                <div className="flex items-center gap-2 min-w-[64px] w-24 lg:w-32 opacity-50 pointer-events-none" aria-hidden="true">
+                  <Volume2 size={18} className="text-text-subtle shrink-0" />
                   <div className="h-1 w-full rounded-full bg-surface-3" />
                 </div>
               </div>
@@ -373,7 +403,7 @@ export const Player: React.FC = () => {
   return (
     <>
         {audioElements}
-        <div className="h-[84px] bg-surface-0 px-3 md:px-4 grid grid-cols-[1fr_auto_1fr] md:grid-cols-3 items-center z-50 relative gap-2 md:gap-4">
+        <div className="h-[84px] bg-surface-0 px-3 md:px-4 grid grid-cols-[1fr_auto] md:grid-cols-3 items-center z-50 relative gap-2 md:gap-4">
         {/* Song Info */}
         <div className="flex items-center gap-3 min-w-0">
             <div 
@@ -399,7 +429,10 @@ export const Player: React.FC = () => {
             </span>
             <span 
                 className="text-text-secondary text-xs truncate hover:underline hover:text-text-main cursor-pointer hidden sm:block"
-                onContextMenu={(e) => openContextMenu(e, ContextMenuType.ARTIST, { name: currentSong.artist })}
+                onContextMenu={(e) => openContextMenu(e, ContextMenuType.ARTIST, {
+                    name: currentSong.artist,
+                    songCount: songs.filter(s => s.artist === currentSong.artist).length,
+                })}
             >
                 {currentSong.artist}
             </span>
@@ -441,8 +474,15 @@ export const Player: React.FC = () => {
 
         {/* Controls */}
         <div className="flex flex-col items-center gap-1.5">
-            <div className="flex items-center gap-3 md:gap-5">
-            <Button variant="ghost" className="hidden md:inline-flex rounded-full p-1.5 text-text-secondary hover:text-text-main" title="Shuffle" aria-label="Shuffle">
+            <div className="flex items-center gap-2 sm:gap-3 md:gap-5">
+            <Button
+                variant="ghost"
+                disabled
+                aria-disabled="true"
+                className="hidden md:inline-flex rounded-full p-1.5 text-text-secondary hover:text-text-main"
+                title="Not yet available"
+                aria-label="Shuffle (Not yet available)"
+            >
                 <Shuffle size={16} />
             </Button>
             <Button onClick={prevSong} variant="ghost" className="rounded-full p-1.5 text-text-secondary hover:text-text-main" aria-label="Previous track">
@@ -475,8 +515,31 @@ export const Player: React.FC = () => {
             <Button onClick={nextSong} variant="ghost" className="rounded-full p-1.5 text-text-secondary hover:text-text-main" aria-label="Next track">
                 <SkipForward size={19} className="fill-current" />
             </Button>
-            <Button variant="ghost" className="hidden md:inline-flex rounded-full p-1.5 text-text-secondary hover:text-text-main" title="Repeat" aria-label="Repeat">
+            <Button
+                variant="ghost"
+                disabled
+                aria-disabled="true"
+                className="hidden md:inline-flex rounded-full p-1.5 text-text-secondary hover:text-text-main"
+                title="Not yet available"
+                aria-label="Repeat (Not yet available)"
+            >
                 <Repeat size={16} />
+            </Button>
+            <Button
+                onClick={() => setQueueOpen(!isQueueOpen)}
+                title="Queue"
+                aria-label={`Queue, ${queue.length} ${queue.length === 1 ? 'track' : 'tracks'}`}
+                aria-pressed={isQueueOpen}
+                aria-expanded={isQueueOpen}
+                variant="ghost"
+                className={`md:hidden relative overflow-visible rounded-full p-2 ${isQueueOpen ? 'text-accent-green bg-surface-2/60' : 'text-text-secondary hover:text-text-main'}`}
+            >
+                <ListMusic size={18} aria-hidden="true" />
+                {queue.length > 0 && (
+                    <div aria-hidden="true" className="absolute top-0 right-0 min-w-[16px] h-[16px] px-1 bg-brand text-surface-0 text-[9px] leading-none font-bold rounded-full flex items-center justify-center shadow-sm border border-surface-0">
+                        {queue.length}
+                    </div>
+                )}
             </Button>
             </div>
             
@@ -502,11 +565,12 @@ export const Player: React.FC = () => {
                     )}
                 </div>
             ) : (
-                <div className="flex-1 relative h-4 flex items-center">
+                <div className="flex-1 relative h-6 flex items-center">
+                    <div className="w-full h-1 bg-surface-slider rounded-lg pointer-events-none" />
                     {/* Buffer progress background for streaming tracks */}
                     {currentSong?.isStreaming && bufferProgress < 100 && (
                         <div 
-                            className="absolute h-1 bg-accent-green/20 rounded-lg transition-all duration-300"
+                            className="absolute top-1/2 -translate-y-1/2 left-0 h-1 bg-accent-green/20 rounded-lg transition-all duration-300 pointer-events-none"
                             style={{ width: `${bufferProgress}%` }}
                         />
                     )}
@@ -523,7 +587,7 @@ export const Player: React.FC = () => {
                         aria-valuemax={duration || 100}
                         aria-valuenow={currentTime}
                         aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration)}`}
-                        className="w-full h-1 bg-surface-slider rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-text-main hover:[&::-webkit-slider-thumb]:scale-110 relative z-10"
+                        className="absolute inset-0 w-full h-6 bg-transparent appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-text-main hover:[&::-webkit-slider-thumb]:scale-110 z-10"
                     />
                 </div>
             )}
@@ -603,29 +667,32 @@ export const Player: React.FC = () => {
                 aria-pressed={isQueueOpen}
                 aria-expanded={isQueueOpen}
                 variant="ghost"
-                className={`relative rounded-full p-2 ${isQueueOpen ? 'text-accent-green bg-surface-2/60' : ''}`}
+                className={`relative overflow-visible rounded-full p-2 ${isQueueOpen ? 'text-accent-green bg-surface-2/60' : ''}`}
             >
                 <ListMusic size={20} aria-hidden="true" />
                 {queue.length > 0 && (
-                    <div aria-hidden="true" className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-brand text-surface-0 text-[10px] leading-none font-bold rounded-full flex items-center justify-center shadow-sm border border-surface-0">
+                    <div aria-hidden="true" className="absolute top-0 right-0 min-w-[16px] h-[16px] px-1 bg-brand text-surface-0 text-[9px] leading-none font-bold rounded-full flex items-center justify-center shadow-sm border border-surface-0">
                         {queue.length}
                     </div>
                 )}
             </Button>
 
-            <div className="flex items-center gap-2 w-32 group">
-                <Volume2 size={20} aria-hidden="true" className="text-text-secondary group-hover:text-text-main" />
-                <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    value={volume}
-                    onChange={(e) => setVolume(parseFloat(e.target.value))}
-                    aria-label="Volume"
-                    aria-valuetext={`${Math.round(volume * 100)} percent`}
-                    className="w-full h-1 bg-surface-slider rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-text-main opacity-60 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
-                />
+            <div className="flex items-center gap-2 min-w-[64px] w-24 lg:w-32 group">
+                <Volume2 size={20} aria-hidden="true" className="text-text-secondary group-hover:text-text-main shrink-0" />
+                <div className="flex-1 relative h-6 flex items-center">
+                    <div className="w-full h-1 bg-surface-slider rounded-lg pointer-events-none opacity-60 group-hover:opacity-100 transition-opacity" />
+                    <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={volume}
+                        onChange={(e) => setVolume(parseFloat(e.target.value))}
+                        aria-label="Volume"
+                        aria-valuetext={`${Math.round(volume * 100)} percent`}
+                        className="absolute inset-0 w-full h-6 bg-transparent appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-text-main opacity-60 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+                    />
+                </div>
             </div>
         </div>
         </div>

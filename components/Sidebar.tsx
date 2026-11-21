@@ -39,11 +39,11 @@ const SidebarItem = ({ to, icon: Icon, label, badge, collapsed, onNavigate }: Si
       aria-label={label}
       onClick={onNavigate}
       className={({ isActive }) =>
-        `group flex items-center gap-3 px-3 py-2 rounded-md text-[13px] font-semibold transition-colors duration-150 relative ${
+        `group flex items-center gap-3 px-3 py-1.5 rounded-md text-[13px] font-semibold transition-colors duration-150 relative ${
           isActive
             ? 'bg-surface-highlight text-text-main'
             : 'text-text-secondary hover:text-text-main hover:bg-surface-hover'
-        } ${collapsed ? 'justify-center px-2 py-2.5' : ''}`
+        } ${collapsed ? 'justify-center px-2 py-2' : ''}`
       }
     >
       {({ isActive }) => (
@@ -100,10 +100,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onMobileCl
 
   useEffect(() => {
     const controller = new AbortController();
-    void jobsV2.list('', controller.signal).then(({ jobs: listed }) => setJobs(listed)).catch(() => {
+    void jobsV2.list('', controller.signal).then(({ jobs: listed }) => {
+      setJobs(Array.isArray(listed) ? listed : []);
+    }).catch(() => {
       // Browser-only use does not have the durable job service.
     });
-    const unsubscribe = jobsV2.subscribe(setJobs);
+    const unsubscribe = jobsV2.subscribe((nextJobs) => {
+      setJobs(Array.isArray(nextJobs) ? nextJobs : []);
+    });
     return () => {
       controller.abort();
       unsubscribe();
@@ -143,8 +147,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onMobileCl
   const navContent = (
     <nav className="flex flex-col h-full gap-2" role="navigation" aria-label="Main navigation">
       {/* Top Primary Navigation Island */}
-      <div className={`bg-surface-1 ${isDJRoute || isMobile ? '' : 'md:rounded-lg'} px-2 py-2.5 flex-shrink-0`}>
-        <div className={`flex items-center mb-1.5 ${effectiveCollapsed ? 'flex-col gap-1.5 justify-center px-1' : 'justify-between px-2.5 py-1'}`}>
+      <div className={`bg-surface-1 ${isDJRoute || isMobile ? '' : 'md:rounded-lg'} px-2 py-2 flex-shrink-0`}>
+        <div className={`flex items-center mb-1 ${effectiveCollapsed ? 'flex-col gap-1.5 justify-center px-1' : 'justify-between px-2.5 py-0.5'}`}>
           <div className="flex items-center gap-2.5 min-w-0">
             <img
               src={SmallLogo}
@@ -160,7 +164,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onMobileCl
           {isMobile ? (
             <button
               onClick={onMobileClose}
-              className="p-1 rounded-md text-text-secondary hover:text-text-main hover:bg-surface-hover transition-colors"
+              className="min-w-[32px] min-h-[32px] inline-flex items-center justify-center rounded-md text-text-secondary hover:text-text-main hover:bg-surface-hover transition-colors"
               aria-label="Close navigation"
             >
               <X size={18} />
@@ -168,7 +172,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onMobileCl
           ) : (
             <button
               onClick={() => setCollapsed(!collapsed)}
-              className="p-1 rounded-md text-text-subtle hover:text-text-main hover:bg-surface-hover transition-colors"
+              className="min-w-[32px] min-h-[32px] inline-flex items-center justify-center rounded-md text-text-subtle hover:text-text-main hover:bg-surface-hover transition-colors"
               aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               title={collapsed ? 'Expand Your Library' : 'Collapse Your Library'}
             >
@@ -187,7 +191,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onMobileCl
       {/* Bottom Library & Tools Island */}
       <div className={`bg-surface-1 ${isDJRoute || isMobile ? '' : 'md:rounded-lg'} flex-1 flex flex-col min-h-0 overflow-hidden`}>
         {/* Library Header */}
-        <div className={`flex items-center gap-2.5 px-4 pt-3 pb-2 text-text-secondary flex-shrink-0 ${effectiveCollapsed ? 'justify-center px-2' : ''}`}>
+        <div className={`flex items-center gap-2.5 px-4 py-2.5 text-text-secondary flex-shrink-0 ${effectiveCollapsed ? 'justify-center px-2 py-2.5' : ''}`}>
           <Library size={18} className="flex-shrink-0" aria-hidden="true" />
           {!effectiveCollapsed && (
             <span className="text-[13px] font-bold tracking-tight text-text-secondary">
@@ -197,7 +201,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onMobileCl
         </div>
 
         {/* Scrollable Library Sections */}
-        <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-3">
+        <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-2">
           {/* Browse Library */}
           <div className="space-y-0.5">
             <SidebarItem to="/songs" icon={Music} label="Songs" collapsed={effectiveCollapsed} onNavigate={onMobileClose} />
@@ -349,8 +353,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onMobileCl
           aria-modal="true"
           aria-label="Main navigation"
           aria-hidden={!mobileOpen}
+          inert={mobileOpen ? undefined : true}
           className={`fixed top-0 left-0 bottom-0 z-50 w-64 max-w-[85vw] bg-surface-1 border-r border-surface-border flex flex-col shadow-2xl transition-transform duration-200 ease-out ${
-            mobileOpen ? 'translate-x-0' : '-translate-x-full'
+            mobileOpen ? 'translate-x-0 visible' : '-translate-x-full invisible'
           }`}
         >
           {navContent}

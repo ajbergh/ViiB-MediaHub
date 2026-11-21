@@ -64,18 +64,18 @@ export const DJFullscreenGate: React.FC<DJFullscreenGateProps> = ({ children }) 
 
         {/* Description */}
         <p id="djgate-desc" className="text-sm text-text-secondary leading-relaxed max-w-sm">
-          This panel needs at least a{' '}
+          This workstation is authored for a{' '}
           <strong className="text-text-main">1440px</strong>-wide viewport.
           Your current viewport is{' '}
           <strong className="text-text-main">{viewportW} × {viewportH}</strong>.
-          Enter fullscreen to unlock the full experience, or continue in the current
-          window size.
+          Enter fullscreen for maximum room, or continue in scaled mode in your
+          current window.
         </p>
 
         {/* Resolution chips */}
         <div className="flex gap-2 text-xs text-text-subtle">
           <span className="px-2 py-1 bg-surface-2 rounded">Current: {viewportW}×{viewportH}</span>
-          <span className="px-2 py-1 bg-surface-2 rounded">Minimum width: 1440px</span>
+          <span className="px-2 py-1 bg-surface-2 rounded">Recommended width: 1440px</span>
         </div>
 
         {/* Primary CTA */}

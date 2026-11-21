@@ -1,7 +1,7 @@
 /** Configures master and headphone audio-output devices for DJ playback. */
 
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, Headphones, Loader2, Speaker } from 'lucide-react';
+import { AlertTriangle, Headphones, Lightbulb, Loader2, Speaker } from 'lucide-react';
 import { useStore } from '../store';
 
 /**
@@ -83,7 +83,7 @@ export const AudioOutputSettings: React.FC = () => {
         return (
             <div className="pt-4 mt-4 border-t border-surface-hover">
                 <div className="flex items-center gap-3 text-text-subtle">
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                     <span>Loading audio devices...</span>
                 </div>
             </div>
@@ -94,7 +94,7 @@ export const AudioOutputSettings: React.FC = () => {
         return (
             <div className="pt-4 mt-4 border-t border-surface-hover">
                 <div className="flex items-center gap-3 text-amber-400">
-                    <AlertTriangle className="w-4 h-4" />
+                    <AlertTriangle className="w-4 h-4" aria-hidden="true" />
                     <span className="text-sm">Audio device permission required for DJ output routing</span>
                 </div>
             </div>
@@ -104,8 +104,8 @@ export const AudioOutputSettings: React.FC = () => {
     return (
         <div className="pt-4 mt-4 border-t border-surface-hover space-y-4">
             <div className="flex items-center gap-2 text-brand">
-                <Headphones size={16} />
-                <h3 className="font-medium text-text-main">DJ Mode Audio Output</h3>
+                <Headphones size={16} aria-hidden="true" />
+                <h3 className="text-base font-semibold text-text-main">DJ Mode Audio Output</h3>
             </div>
             <p className="text-sm text-text-subtle">
                 Configure separate audio outputs for DJ Mode. Main output goes to your speakers/PA,
@@ -117,20 +117,21 @@ export const AudioOutputSettings: React.FC = () => {
             ) : (
                 <div className="space-y-4">
                     {/* Main Output Device */}
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-surface-hover rounded-lg text-text-main">
-                                <Speaker size={18} />
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                            <div className="p-2 bg-surface-hover rounded-lg text-text-main shrink-0">
+                                <Speaker size={18} aria-hidden="true" />
                             </div>
-                            <div>
+                            <div className="min-w-0">
                                 <h4 className="font-medium text-text-main">Main Output (Live)</h4>
                                 <p className="text-xs text-text-subtle">Speakers or PA system for the audience</p>
                             </div>
                         </div>
                         <select
+                            aria-label="Main output device"
                             value={audioSettings.mainOutputDevice || ''}
                             onChange={(e) => setMainOutputDevice(e.target.value)}
-                            className="bg-surface-1 border border-surface-border rounded px-3 py-2 text-sm text-text-main focus:border-brand outline-none max-w-[250px]"
+                            className="w-full sm:w-auto sm:max-w-[250px] max-w-full bg-surface-1 border border-surface-border rounded px-3 py-2 text-sm text-text-main focus:border-brand outline-none"
                         >
                             <option value="">System Default</option>
                             {audioDevices.map(device => (
@@ -142,20 +143,21 @@ export const AudioOutputSettings: React.FC = () => {
                     </div>
 
                     {/* Headphone Output Device */}
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-surface-hover rounded-lg text-text-main">
-                                <Headphones size={18} />
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                            <div className="p-2 bg-surface-hover rounded-lg text-text-main shrink-0">
+                                <Headphones size={18} aria-hidden="true" />
                             </div>
-                            <div>
+                            <div className="min-w-0">
                                 <h4 className="font-medium text-text-main">Headphone Output (Cue)</h4>
                                 <p className="text-xs text-text-subtle">Preview next track while mixing</p>
                             </div>
                         </div>
                         <select
+                            aria-label="Headphone output device"
                             value={audioSettings.headphoneOutputDevice || ''}
                             onChange={(e) => setHeadphoneOutputDevice(e.target.value)}
-                            className="bg-surface-1 border border-surface-border rounded px-3 py-2 text-sm text-text-main focus:border-brand outline-none max-w-[250px]"
+                            className="w-full sm:w-auto sm:max-w-[250px] max-w-full bg-surface-1 border border-surface-border rounded px-3 py-2 text-sm text-text-main focus:border-brand outline-none"
                         >
                             <option value="">System Default</option>
                             {audioDevices.map(device => (
@@ -169,7 +171,7 @@ export const AudioOutputSettings: React.FC = () => {
                     {/* Warning if devices are the same */}
                     {audioSettings.mainOutputDevice === audioSettings.headphoneOutputDevice && (
                         <div className="flex items-center gap-2 text-amber-400 text-xs bg-amber-400/10 p-2 rounded">
-                            <AlertTriangle size={14} />
+                            <AlertTriangle size={14} className="shrink-0" aria-hidden="true" />
                             <span>
                                 Main and headphone outputs are the same device.
                                 For proper cueing, select different devices.
@@ -180,20 +182,23 @@ export const AudioOutputSettings: React.FC = () => {
                     {/* Warning if selected device no longer available */}
                     {audioSettings.mainOutputDevice && !isDeviceAvailable(audioSettings.mainOutputDevice) && (
                         <div className="flex items-center gap-2 text-red-400 text-xs bg-red-400/10 p-2 rounded">
-                            <AlertTriangle size={14} />
+                            <AlertTriangle size={14} className="shrink-0" aria-hidden="true" />
                             <span>Main output device no longer available. Please select a new device.</span>
                         </div>
                     )}
                     {audioSettings.headphoneOutputDevice && !isDeviceAvailable(audioSettings.headphoneOutputDevice) && (
                         <div className="flex items-center gap-2 text-red-400 text-xs bg-red-400/10 p-2 rounded">
-                            <AlertTriangle size={14} />
+                            <AlertTriangle size={14} className="shrink-0" aria-hidden="true" />
                             <span>Headphone output device no longer available. Please select a new device.</span>
                         </div>
                     )}
 
-                    <p className="text-xs text-text-subtle italic">
-                        💡 Tip: Connect a USB audio interface with multiple outputs for professional DJ setups.
-                        Changes take effect in DJ Mode when audio is next loaded.
+                    <p className="flex items-start gap-2 text-xs text-text-subtle italic">
+                        <Lightbulb size={14} className="shrink-0 text-brand mt-0.5" aria-hidden="true" />
+                        <span>
+                            Tip: Connect a USB audio interface with multiple outputs for professional DJ setups.
+                            Changes take effect in DJ Mode when audio is next loaded.
+                        </span>
                     </p>
                 </div>
             )}

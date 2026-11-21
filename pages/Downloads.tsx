@@ -26,6 +26,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import DirectDownloadDialog from '../components/DirectDownloadDialog';
 import { useStore } from '../store';
 import { Page, PageHeader } from '../components/ui/Page';
+import { Button } from '../components/ui/Button';
 import { getEventStreamURL } from '../services/eventStreamURL';
 
 export const Downloads: React.FC = () => {
@@ -268,7 +269,7 @@ export const Downloads: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="p-8 pb-32 flex flex-col items-center justify-center min-h-[60vh]">
+      <div className="p-4 md:p-8 pb-32 flex flex-col items-center justify-center min-h-[60vh]">
         <Loader2 className="animate-spin text-brand mb-4" size={48} />
         <p className="text-text-secondary">Loading downloads...</p>
       </div>
@@ -277,21 +278,32 @@ export const Downloads: React.FC = () => {
 
   if (hasError) {
     return (
-      <div className="p-8 pb-32 flex flex-col items-center justify-center min-h-[60vh]">
+      <div className="p-4 md:p-8 pb-32 flex flex-col items-center justify-center min-h-[60vh]">
         <div className="mb-6 opacity-20">
           <XCircle size={80} className="text-error" />
         </div>
         <h1 className="text-2xl font-bold mb-2">Unable to Load Downloads</h1>
-        <p className="text-text-subtle text-center max-w-sm">
+        <p className="text-text-subtle text-center max-w-sm mb-6">
           Could not connect to the backend. Make sure the server is running.
         </p>
+        <Button
+          variant="primary"
+          accent="brand"
+          leftIcon={<RotateCcw size={16} />}
+          onClick={() => {
+            setIsLoading(true);
+            void fetchDownloads().finally(() => setIsLoading(false));
+          }}
+        >
+          Retry
+        </Button>
       </div>
     );
   }
 
   if (downloads.length === 0) {
     return (
-      <div className="p-8 pb-32 flex flex-col items-center justify-center min-h-[60vh]">
+      <div className="p-4 md:p-8 pb-32 flex flex-col items-center justify-center min-h-[60vh]">
         <div className="w-16 h-16 rounded-full bg-surface-2 flex items-center justify-center mb-4 text-text-subtle">
           <Download size={32} />
         </div>
@@ -300,14 +312,15 @@ export const Downloads: React.FC = () => {
         <p className="text-text-secondary text-sm text-center max-w-sm mb-6">
           Download songs, albums, or playlists from Spotify to listen offline. Look for the download button on any track.
         </p>
-        <button
+        <Button
+          variant="primary"
+          accent="brand"
           disabled={mediaDisabled}
           onClick={() => setShowDirectDownload(true)}
-          className="px-6 py-2.5 bg-brand hover:bg-brand-hover text-surface-0 font-bold text-sm rounded-full transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          leftIcon={<Link2 size={18} />}
         >
-          <Link2 size={18} />
           Download from URL
-        </button>
+        </Button>
         <DirectDownloadDialog
           isOpen={showDirectDownload}
           onClose={() => setShowDirectDownload(false)}
@@ -333,20 +346,21 @@ export const Downloads: React.FC = () => {
     <Page>
       {/* Auth Required Banner */}
       {authRequired && (
-        <div className="mb-6 bg-warning/20 border border-warning/50 rounded-lg p-4 flex items-center justify-between">
+        <div className="mb-6 bg-warning/20 border border-warning/50 rounded-lg p-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <AlertTriangle className="text-warning" size={24} />
+            <AlertTriangle className="text-warning shrink-0" size={24} />
             <div>
               <p className="font-semibold text-warning">Spotify Session Expired</p>
               <p className="text-sm text-text-secondary">Please reconnect to Spotify to continue downloading.</p>
             </div>
           </div>
-          <button
+          <Button
+            variant="primary"
+            accent="discovery"
             onClick={handleReconnectSpotify}
-            className="px-4 py-2 bg-warning hover:bg-warning/90 text-surface-0 font-semibold rounded-lg transition-colors"
           >
             Reconnect to Spotify
-          </button>
+          </Button>
         </div>
       )}
 
@@ -360,49 +374,51 @@ export const Downloads: React.FC = () => {
         }
         subtitle="Manage your Spotify downloads"
         actions={
-          <div className="flex gap-2">
-          <button
+          <div className="flex flex-wrap gap-2">
+          <Button
+            variant="primary"
+            accent="brand"
             disabled={mediaDisabled}
-          onClick={() => setShowDirectDownload(true)}
-            className="px-4 py-2 bg-brand hover:bg-brand/90 text-white font-semibold rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => setShowDirectDownload(true)}
+            leftIcon={<Link2 size={18} />}
           >
-            <Link2 size={18} />
             Direct Download
-          </button>
+          </Button>
           {stats.failed > 0 && (
-            <button
+            <Button
+              variant="secondary"
               disabled={mediaDisabled}
               onClick={handleRetryAllFailed}
-              className="px-4 py-2 bg-surface-2 hover:bg-surface-3 text-text-secondary hover:text-brand rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              leftIcon={<RotateCcw size={18} />}
             >
-              <RotateCcw size={18} />
               Retry All Failed
-            </button>
+            </Button>
           )}
           {downloads.some(d => d.status === 'completed') && (
-            <button
+            <Button
+              variant="secondary"
               onClick={() => setConfirmDialog({ type: 'clearCompleted' })}
-              className="px-4 py-2 bg-surface-2 hover:bg-surface-3 text-text-secondary hover:text-success rounded-lg transition-colors flex items-center gap-2"
+              leftIcon={<CheckCircle size={18} />}
             >
-              <CheckCircle size={18} />
               Clear Completed
-            </button>
+            </Button>
           )}
           {downloads.some(d => d.status === 'queued') && (
-            <button
+            <Button
+              variant="secondary"
               onClick={() => setConfirmDialog({ type: 'clearQueue' })}
-              className="px-4 py-2 bg-surface-2 hover:bg-surface-3 text-text-secondary hover:text-error rounded-lg transition-colors flex items-center gap-2"
+              leftIcon={<Trash2 size={18} />}
+              className="hover:text-error"
             >
-              <Trash2 size={18} />
               Clear Queue
-            </button>
+            </Button>
           )}
           </div>
         }
       />
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="bg-surface-1 p-4 rounded-lg">
           <div className="flex items-center gap-2 text-brand mb-1">
             <Loader2 size={18} className="animate-spin" />
@@ -427,7 +443,7 @@ export const Downloads: React.FC = () => {
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex gap-2 mb-6 border-b border-surface-border">
+      <div className="flex flex-wrap gap-2 mb-6 border-b border-surface-border">
         <button
           onClick={() => setFilter('all')}
           className={`px-4 py-2 font-semibold transition-all border-b-2 ${
@@ -529,6 +545,12 @@ interface DownloadCardProps {
 
 const DownloadCard: React.FC<DownloadCardProps> = ({ download, onDelete, onRetry, onForceRestart }) => {
   const mediaDisabled = useStore(s => !s.spotifyConnected || s.spotifyAccountProduct !== 'premium');
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [download.artworkUrl]);
+
   const getStatusIcon = () => {
     switch (download.status) {
       case 'queued':
@@ -576,14 +598,15 @@ const DownloadCard: React.FC<DownloadCardProps> = ({ download, onDelete, onRetry
 
   return (
     <div className="bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-colors">
-      <div className="flex items-start gap-4">
+      <div className="flex items-start gap-3 sm:gap-4">
         {/* Album Artwork */}
         <div className="w-12 h-12 bg-surface-3 rounded flex items-center justify-center flex-shrink-0 overflow-hidden">
-          {download.artworkUrl ? (
+          {download.artworkUrl && !imgError ? (
             <img 
               src={download.artworkUrl} 
               alt={download.album || download.title}
               className="w-full h-full object-cover"
+              onError={() => setImgError(true)}
             />
           ) : (
             <Music className="text-text-muted" size={20} />
@@ -592,14 +615,14 @@ const DownloadCard: React.FC<DownloadCardProps> = ({ download, onDelete, onRetry
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-white truncate mb-1">{download.title}</h3>
+          <h3 className="font-semibold text-text-main truncate mb-1">{download.title}</h3>
           <p className="text-sm text-text-secondary truncate mb-1">{download.artist}</p>
           {download.album && (
             <p className="text-xs text-text-muted truncate mb-2">{download.album}</p>
           )}
           
           {/* Status */}
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
             {getStatusIcon()}
             <span className="text-sm font-medium">{getStatusText()}</span>
             <span className="text-xs text-text-muted">• {formatDate(download.addedAt)}</span>
@@ -633,14 +656,14 @@ const DownloadCard: React.FC<DownloadCardProps> = ({ download, onDelete, onRetry
 
           {/* File Path */}
           {download.status === 'completed' && download.filePath && (
-            <p className="text-xs text-text-muted mt-2 font-mono truncate">
+            <p className="text-xs text-text-muted mt-2 font-mono truncate" title={download.filePath}>
               {download.filePath}
             </p>
           )}
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 shrink-0">
           {/* Force Restart Button - for stuck transfers or conversions */}
           {(download.status === 'downloading' || download.status === 'converting') && (
             <button

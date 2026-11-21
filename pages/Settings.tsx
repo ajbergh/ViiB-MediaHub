@@ -35,7 +35,7 @@ import { SpotifyAccountNotice } from '../components/SpotifyAccountNotice';
 import { SpotifySessionConnect } from '../components/SpotifySessionConnect';
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router';
-import { Wifi, Volume2, HardDrive, Trash2, Terminal, XCircle, SlidersHorizontal, Activity, Layers, Sparkles, FolderOpen, Loader2, AlertTriangle, Plus, X, RefreshCw, Server, MonitorOff, BarChart3, Zap, Music, Headphones, Speaker, Copy, ShieldCheck, Wrench, FileArchive } from 'lucide-react';
+import { Wifi, Volume2, HardDrive, Trash2, Terminal, XCircle, SlidersHorizontal, Activity, Layers, Sparkles, FolderOpen, Loader2, AlertTriangle, Plus, X, RefreshCw, Server, MonitorOff, BarChart3, Zap, Music, Headphones, Speaker, Copy, ShieldCheck, Wrench, FileArchive, Calendar, Search } from 'lucide-react';
 import { useStore } from '../store';
 import { AudioOutputSettings } from '../components/AudioOutputSettings';
 import { HomeLayoutVariant, VisualizerMode, Song } from '../types';
@@ -43,6 +43,7 @@ import { parseSong } from '../metadata';
 import { api } from '../services/api';
 import { useStemLibraryScan } from '../hooks/useStemLibraryScan';
 import { Button } from '../components/ui/Button';
+import { ToggleSwitch } from '../components/ui/ToggleSwitch';
 import { Page } from '../components/ui/Page';
 import { TextInput } from '../components/ui/TextInput';
 import { isWailsEnvironment, SPOTIFY_DESKTOP_CALLBACK_URL } from '../utils';
@@ -851,95 +852,95 @@ export const Settings: React.FC = () => {
       />
 
       {/* Category Tabs Header */}
-      <div className="flex items-center gap-2 mb-8 flex-wrap pb-4 border-b border-surface-border">
+      <div className="flex items-center gap-1.5 mb-8 overflow-x-auto flex-nowrap no-scrollbar pb-4 border-b border-surface-border">
         <button
           type="button"
           onClick={() => setActiveTab('library')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
+          className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
             activeTab === 'library'
               ? 'bg-text-main text-surface-0 font-bold'
               : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-hover'
           }`}
         >
-          <FolderOpen size={15} />
+          <FolderOpen size={15} aria-hidden="true" />
           Library Sources
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('health')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
+          className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
             activeTab === 'health'
               ? 'bg-text-main text-surface-0 font-bold'
               : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-hover'
           }`}
         >
-          <ShieldCheck size={15} />
+          <ShieldCheck size={15} aria-hidden="true" />
           Library Operations
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('audio')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
+          className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
             activeTab === 'audio'
               ? 'bg-text-main text-surface-0 font-bold'
               : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-hover'
           }`}
         >
-          <Volume2 size={15} />
+          <Volume2 size={15} aria-hidden="true" />
           Playback & Audio
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('integrations')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
+          className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
             activeTab === 'integrations'
               ? 'bg-text-main text-surface-0 font-bold'
               : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-hover'
           }`}
         >
-          <Wifi size={15} />
+          <Wifi size={15} aria-hidden="true" />
           Integrations & Spotify
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('ai')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
+          className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
             activeTab === 'ai'
               ? 'bg-text-main text-surface-0 font-bold'
               : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-hover'
           }`}
         >
-          <Sparkles size={15} />
+          <Sparkles size={15} aria-hidden="true" />
           AI & Enrichment
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('appearance')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
+          className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
             activeTab === 'appearance'
               ? 'bg-text-main text-surface-0 font-bold'
               : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-hover'
           }`}
         >
-          <SlidersHorizontal size={15} />
+          <SlidersHorizontal size={15} aria-hidden="true" />
           Appearance & Now Playing
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('system')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
+          className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
             activeTab === 'system'
               ? 'bg-text-main text-surface-0 font-bold'
               : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-hover'
           }`}
         >
-          <Terminal size={15} />
+          <Terminal size={15} aria-hidden="true" />
           System & Logs
         </button>
       </div>
@@ -949,9 +950,9 @@ export const Settings: React.FC = () => {
         <div className="space-y-6 animate-in fade-in duration-200">
           {/* Library Management */}
           <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
-            <div className="flex items-center gap-3 mb-6 text-brand">
-                <FolderOpen size={20} />
-                <h2 className="text-card font-semibold text-text-main">Library Folders & Scanning</h2>
+            <div className="flex items-center gap-3 mb-6 text-brand flex-wrap">
+                <FolderOpen size={20} aria-hidden="true" />
+                <h2 className="text-lg font-bold text-text-main">Library Folders & Scanning</h2>
                 {backendAvailable ? (
                     <span className="flex items-center gap-1 text-xs bg-success/20 text-success px-2 py-1 rounded-full">
                         <Server size={12} /> Backend Connected
@@ -966,7 +967,7 @@ export const Settings: React.FC = () => {
             {/* Backend Mode - Folder Management */}
             {backendAvailable && (
                 <div className="mb-6">
-                    <h3 className="text-sm font-bold text-text-main mb-3">Music Folders</h3>
+                    <h3 className="text-base font-semibold text-text-main mb-3">Music Folders</h3>
                     <p className="text-sm text-text-secondary mb-4">
                         Add folders containing your music files. The backend will scan these folders for audio files.
                     </p>
@@ -979,7 +980,7 @@ export const Settings: React.FC = () => {
                             </div>
                         ) : (
                             scanFolders.map(folder => (
-                                <div key={folder.id} className="flex items-center justify-between bg-surface-1 p-3 rounded-lg border border-surface-border">
+                                <div key={folder.id} className="flex items-center justify-between gap-3 bg-surface-1 p-3 rounded-lg border border-surface-border">
                                     <div className="flex-1 min-w-0">
                                         <div className="font-mono text-sm text-text-main truncate">{folder.path}</div>
                                         <div className="text-xs text-text-subtle">
@@ -988,12 +989,13 @@ export const Settings: React.FC = () => {
                                     </div>
                                     <Button
                                         variant="ghost"
+                                        size="icon"
                                         onClick={() => removeScanFolder(folder.id)}
-                                        className="p-2 text-text-subtle hover:text-error"
+                                        className="text-text-subtle hover:text-error"
                                         title="Remove folder"
                                         aria-label="Remove folder"
                                     >
-                                        <X size={18} />
+                                        <X size={18} aria-hidden="true" />
                                     </Button>
                                 </div>
                             ))
@@ -1001,32 +1003,32 @@ export const Settings: React.FC = () => {
                     </div>
                     
                     {/* Add folder & Scan buttons */}
-                    <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap">
                         <Button
                             variant="secondary"
+                            size="sm"
                             onClick={openFolderBrowser}
-                            leftIcon={<Plus size={18} />}
-                            className="font-bold"
+                            leftIcon={<Plus size={16} aria-hidden="true" />}
                         >
                             Add Folder
                         </Button>
                         <Button
                             variant="secondary"
+                            size="sm"
                             onClick={startQuickScan}
                             disabled={isScanning || scanFolders.length === 0}
-                            leftIcon={isScanning ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
-                            className="font-bold"
+                            leftIcon={isScanning ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Zap size={16} aria-hidden="true" />}
                             title="Fast scan using signatures - detects new/changed/deleted files only"
                         >
                             Quick Scan
                         </Button>
                         <Button
                             variant="primary"
+                            size="sm"
                             accent="brand"
                             onClick={startBackendScan}
                             disabled={isScanning || scanFolders.length === 0}
-                            leftIcon={isScanning ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
-                            className="font-bold"
+                            leftIcon={isScanning ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={16} aria-hidden="true" />}
                             title="Performs a complete rescan of all configured folders"
                         >
                             {isScanning ? 'Rescanning...' : 'Full Rescan'}
@@ -1044,13 +1046,13 @@ export const Settings: React.FC = () => {
                         Import music from your local folders. Supported formats: MP3, OGG, FLAC, M4A.
                     </p>
                     
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4 flex-wrap">
                         <Button
                             variant="secondary"
+                            size="md"
                             onClick={handleScanClick}
                             disabled={isScanning}
-                            leftIcon={isScanning ? <Loader2 size={20} className="animate-spin" /> : <FolderOpen size={20} />}
-                            className="rounded-full py-3 px-6 font-bold"
+                            leftIcon={isScanning ? <Loader2 size={18} className="animate-spin" aria-hidden="true" /> : <FolderOpen size={18} aria-hidden="true" />}
                         >
                             {isScanning ? 'Scanning...' : 'Scan Local Directory'}
                         </Button>
@@ -1066,8 +1068,8 @@ export const Settings: React.FC = () => {
             {backendAvailable && (
                 <div className="mt-8 border-t border-surface-border pt-6" aria-label="Stem Library settings">
                     <div className="flex items-center gap-2 mb-2 text-text-main">
-                        <Layers size={18} className="text-brand" />
-                        <h3 className="text-sm font-bold">Stem Libraries</h3>
+                        <Layers size={18} className="text-brand" aria-hidden="true" />
+                        <h3 className="text-base font-semibold">Stem Libraries</h3>
                     </div>
                     <p className="text-sm text-text-secondary mb-4">
                         Choose separate roots for stem packages. You can organize them in Artist/Album subfolders; each named <code>.viibstems</code> folder is treated as one package. Adjacent packages beside a matching music file are also checked. Scanning validates packages for tracks already in your music library and never adds stem audio as songs. If a previous scan added package audio to Music Folders, run Full Rescan once to remove those old catalog entries.
@@ -1078,16 +1080,16 @@ export const Settings: React.FC = () => {
                         ) : stemLibraryLocations.map(location => (
                             <div key={location.id} className="flex items-center justify-between gap-3 bg-surface-1 p-3 rounded-lg border border-surface-border">
                                 <div className="min-w-0 flex-1 break-all font-mono text-sm text-text-main" title={location.path}>{location.path || 'Path unavailable'}</div>
-                                <Button variant="ghost" onClick={() => void removeStemLibraryLocation(location.path)} disabled={savingStemLocations} className="p-2 text-text-subtle hover:text-error" title="Remove Stem Library" aria-label={`Remove Stem Library ${location.path}`}>
-                                    <X size={18} />
+                                <Button variant="ghost" size="icon" onClick={() => void removeStemLibraryLocation(location.path)} disabled={savingStemLocations} className="text-text-subtle hover:text-error" title="Remove Stem Library" aria-label={`Remove Stem Library ${location.path}`}>
+                                    <X size={18} aria-hidden="true" />
                                 </Button>
                             </div>
                         ))}
                     </div>
-                    <div className="flex items-center gap-3 flex-wrap">
-                        <Button variant="secondary" onClick={openStemFolderBrowser} disabled={savingStemLocations} leftIcon={<Plus size={18} />} className="font-bold">Add Stem Library</Button>
-                        <Button variant="primary" accent="brand" onClick={() => void stemScan.start()} disabled={savingStemLocations || stemScan.starting || (stemScan.active && !stemScan.canPromote)} leftIcon={stemScan.starting || (stemScanJob?.status === 'running' && !stemScan.progressError) ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />} className="font-bold">{stemScan.starting ? 'Starting scan…' : stemScan.canPromote ? 'Run scan now' : 'Scan Stem Libraries'}</Button>
-                        {stemScan.active && <Button variant="secondary" onClick={() => void stemScan.cancel()} disabled={stemScan.canceling || stemScanJob?.status === 'canceling'}>Cancel scan</Button>}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <Button variant="secondary" size="sm" onClick={openStemFolderBrowser} disabled={savingStemLocations} leftIcon={<Plus size={16} aria-hidden="true" />}>Add Stem Library</Button>
+                        <Button variant="primary" size="sm" accent="brand" onClick={() => void stemScan.start()} disabled={savingStemLocations || stemScan.starting || (stemScan.active && !stemScan.canPromote)} leftIcon={stemScan.starting || (stemScanJob?.status === 'running' && !stemScan.progressError) ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={16} aria-hidden="true" />}>{stemScan.starting ? 'Starting scan…' : stemScan.canPromote ? 'Run scan now' : 'Scan Stem Libraries'}</Button>
+                        {stemScan.active && <Button variant="secondary" size="sm" onClick={() => void stemScan.cancel()} disabled={stemScan.canceling || stemScanJob?.status === 'canceling'}>Cancel scan</Button>}
                     </div>
                     {stemLibraryError && <p role="alert" className="text-sm text-error mt-3">{stemLibraryError}</p>}
                     {(stemScan.error || stemScan.progressError) && <p role="alert" className="text-sm text-error mt-3">{stemScan.error || stemScan.progressError}</p>}
@@ -1103,23 +1105,24 @@ export const Settings: React.FC = () => {
           {/* Library Maintenance */}
           <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
             <div className="flex items-center gap-3 mb-4 text-brand">
-                <Wrench size={20} />
+                <Wrench size={20} aria-hidden="true" />
                 <h2 className="text-lg font-bold text-text-main">Library Maintenance</h2>
             </div>
             {/* Genre Normalization */}
-            <div className="flex items-center justify-between bg-surface-1 p-4 rounded-lg">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface-1 p-4 rounded-xl border border-surface-highlight">
                 <div>
-                    <h3 className="text-sm text-text-secondary mb-1 font-bold">Genre Normalization</h3>
+                    <h3 className="text-base font-semibold text-text-main mb-1">Genre Normalization</h3>
                     <p className="text-xs text-text-subtle">
                         {normalizeGenresStatus || 'Fix inconsistent genre capitalization (e.g., "acid jazz" → "Acid Jazz").'}
                     </p>
                 </div>
                 <Button
                     variant="secondary"
+                    size="sm"
                     onClick={handleNormalizeGenres}
                     disabled={isNormalizingGenres}
-                    leftIcon={isNormalizingGenres ? <Loader2 size={16} className="animate-spin" /> : <SlidersHorizontal size={16} />}
-                    className="px-4 py-2 font-bold text-sm"
+                    leftIcon={isNormalizingGenres ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <SlidersHorizontal size={15} aria-hidden="true" />}
+                    className="self-start sm:self-auto"
                 >
                     {isNormalizingGenres ? 'Normalizing...' : 'Normalize Genres'}
                 </Button>
@@ -1129,19 +1132,20 @@ export const Settings: React.FC = () => {
           {/* Danger Zone */}
           <section className="rounded-xl border border-error/30 bg-error/5 p-6">
             <div className="flex items-center gap-2 mb-3">
-              <AlertTriangle size={18} className="text-error flex-shrink-0" />
-              <h3 className="text-sm font-bold text-error uppercase tracking-wider">Danger Zone</h3>
+              <AlertTriangle size={18} className="text-error flex-shrink-0" aria-hidden="true" />
+              <h2 className="text-sm font-bold text-error uppercase tracking-wider">Danger Zone</h2>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                  <h4 className="text-sm font-semibold text-text-main mb-1">Database &amp; Cache</h4>
+                  <h3 className="text-base font-semibold text-text-main mb-1">Database &amp; Cache</h3>
                   <p className="text-xs text-text-subtle">Clear local database to resolve indexing issues or reset app state.</p>
               </div>
               <Button
                   variant="secondary"
+                  size="sm"
                   onClick={() => setShowResetConfirm(true)}
-                  leftIcon={<Trash2 size={16} />}
-                  className="px-4 py-2 font-bold text-sm hover:bg-error/20 hover:text-error hover:border-error/50"
+                  leftIcon={<Trash2 size={15} aria-hidden="true" />}
+                  className="self-start sm:self-auto hover:bg-error/20 hover:text-error hover:border-error/50"
               >
                   Reset Library
               </Button>
@@ -1155,10 +1159,221 @@ export const Settings: React.FC = () => {
         <div className="space-y-6 animate-in fade-in duration-200">
           <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
             <div className="flex items-center gap-3 mb-6 text-brand">
-              <ShieldCheck size={20} />
+              <ShieldCheck size={20} aria-hidden="true" />
               <h2 className="text-lg font-bold text-text-main">Library Operations</h2>
             </div>
-            <LibraryOperationsPanel />
+            <div className="space-y-6">
+              <LibraryOperationsPanel />
+
+              <section className="rounded-xl border border-surface-highlight bg-surface-1 p-5">
+                <div className="mb-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <Sparkles className="text-brand" size={18} aria-hidden="true" />
+                    <h3 className="text-base font-semibold text-text-main">Metadata &amp; Enrichment Operations</h3>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setActiveTab('ai')}
+                    leftIcon={<Sparkles size={14} aria-hidden="true" />}
+                    className="self-start sm:self-auto"
+                  >
+                    Configure AI &amp; Enrichment
+                  </Button>
+                </div>
+                <p className="mb-4 text-sm text-text-secondary">
+                  Run library-changing enrichment and year maintenance here. Configure AI providers and enrichment sources in AI &amp; Enrichment.
+                </p>
+                <div className="space-y-4">
+                  {/* Unified AI Enrichment */}
+                  <div className="bg-surface-2 rounded-xl p-4 border-2 border-brand">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="px-2 py-0.5 text-xs font-bold bg-brand text-black rounded">RECOMMENDED</span>
+                      <h4 className="text-sm font-semibold text-text-main">Unified AI Enrichment</h4>
+                    </div>
+                    <p className="text-text-subtle text-sm mb-4">
+                      Enrich your entire library with genres, mood, energy, tempo, BPM, and original year detection
+                      in a <strong>single efficient operation</strong>.
+                    </p>
+
+                    <div className="flex flex-col gap-4">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="force-unified"
+                          checked={forceUnified}
+                          onChange={(e) => setForceUnified(e.target.checked)}
+                          disabled={isUnifiedEnriching}
+                          className="rounded border-surface-border bg-surface-3 text-brand focus:ring-brand"
+                        />
+                        <label htmlFor="force-unified" className="text-sm text-text-main cursor-pointer select-none">
+                          Force re-analyze all songs (overwrites existing metadata)
+                        </label>
+                      </div>
+
+                      <Button
+                        size="md"
+                        onClick={async () => {
+                          const hasLLMAccess = llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey);
+                          if (!hasLLMAccess) {
+                            alert("Please configure an AI Provider & Model in the AI & Enrichment tab first.");
+                            return;
+                          }
+
+                          setIsUnifiedEnriching(true);
+                          setUnifiedStatus('Connecting to unified enrichment service...');
+                          setUnifiedProgress(null);
+                          setEnrichmentStatus({
+                            isEnriching: true,
+                            totalSongs: 0,
+                            processedSongs: 0,
+                            currentBatch: 0,
+                            totalBatches: 0,
+                            message: 'Connecting to AI enrichment service…',
+                          });
+
+                          try {
+                            await api.enrichAllMetadataStream(forceUnified, (progress) => {
+                            setUnifiedStatus(progress.message);
+                            updateGlobalEnrichmentStatus(progress, 'AI metadata enrichment is running');
+
+                            if (progress.status === 'started' || progress.status === 'processing' || progress.status === 'batch_complete') {
+                              setUnifiedProgress({
+                                processedSongs: progress.processedSongs,
+                                totalSongs: progress.totalSongs,
+                                currentBatch: progress.currentBatch,
+                                totalBatches: progress.totalBatches,
+                              });
+                            }
+
+                            if (progress.status === 'complete') {
+                              setIsUnifiedEnriching(false);
+                              void refreshLibrary();
+                              window.dispatchEvent(new CustomEvent('enrichment_complete', { detail: progress }));
+                              setTimeout(() => setUnifiedProgress(null), 5000);
+                            }
+
+                            if (progress.status === 'batch_complete') {
+                              void refreshLibrary();
+                            }
+
+                            if (progress.status === 'error') {
+                              setIsUnifiedEnriching(false);
+                              setUnifiedProgress(null);
+                              setUnifiedStatus(`Error: ${progress.error || progress.message}`);
+                            }
+                            });
+                          } catch (error) {
+                            console.error('Failed to open metadata enrichment stream:', error);
+                            setIsUnifiedEnriching(false);
+                            setUnifiedProgress(null);
+                            setUnifiedStatus('Error: Unable to connect to the AI enrichment service');
+                          }
+                        }}
+                        disabled={isUnifiedEnriching || !(llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey))}
+                        variant={isUnifiedEnriching || !(llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey)) ? 'secondary' : 'primary'}
+                        accent="brand"
+                        leftIcon={isUnifiedEnriching ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Sparkles size={16} aria-hidden="true" />}
+                        className="self-start"
+                      >
+                        {isUnifiedEnriching ? 'Enriching Library...' : 'Enrich All Metadata'}
+                      </Button>
+
+                      {unifiedProgress && unifiedProgress.totalSongs > 0 && (
+                        <div className="w-full">
+                          <div className="flex justify-between text-xs text-text-subtle mb-1">
+                            <span>Batch {unifiedProgress.currentBatch} of {unifiedProgress.totalBatches}</span>
+                            <span>{unifiedProgress.processedSongs} / {unifiedProgress.totalSongs} songs</span>
+                          </div>
+                          <div className="w-full bg-surface-3 rounded-full h-2.5 overflow-hidden">
+                            <div
+                              className="bg-brand h-full rounded-full transition-all duration-300 ease-out"
+                              style={{
+                                width: `${Math.round((unifiedProgress.processedSongs / unifiedProgress.totalSongs) * 100)}%`
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {unifiedStatus && (
+                        <div className={`text-sm mt-2 ${
+                          unifiedStatus.startsWith('Error') ? 'text-error' :
+                          unifiedStatus.includes('complete') || unifiedStatus.startsWith('Success') ? 'text-success' :
+                          'text-text-subtle'
+                        }`}>
+                          {unifiedStatus}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Year Backfill & Remaster Detection */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-surface-2 rounded-xl p-4 border border-surface-border">
+                      <h4 className="text-sm font-semibold text-text-main mb-1">Year Data Backfill</h4>
+                      <p className="text-text-subtle text-xs mb-3">
+                        Populate missing song year values from album metadata release dates.
+                      </p>
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          setYearBackfillStatus('Backfilling years...');
+                          try {
+                            const result = await api.backfillSongYears();
+                            setYearBackfillStatus(`Success: ${result.message}`);
+                          } catch (err: unknown) {
+                            setYearBackfillStatus(`Error: ${err instanceof Error ? err.message : 'Failed to backfill years'}`);
+                          }
+                        }}
+                        variant="primary"
+                        accent="brand"
+                        leftIcon={<Calendar size={14} aria-hidden="true" />}
+                        className="self-start"
+                      >
+                        Backfill Song Years
+                      </Button>
+                      {yearBackfillStatus && (
+                        <div className={`text-xs mt-2 ${yearBackfillStatus.startsWith('Error') ? 'text-error' : 'text-success'}`}>
+                          {yearBackfillStatus}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="bg-surface-2 rounded-xl p-4 border border-surface-border">
+                      <h4 className="text-sm font-semibold text-text-main mb-1">Original Year Detection</h4>
+                      <p className="text-text-subtle text-xs mb-3">
+                        Detect songs with remaster dates vs original release years.
+                      </p>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={async () => {
+                            setRemasterStatus('Detecting remasters...');
+                            try {
+                              const result = await api.detectRemasters();
+                              setRemasterStatus(`Success: ${result.message}`);
+                            } catch (err: unknown) {
+                              setRemasterStatus(`Error: ${err instanceof Error ? err.message : 'Failed to detect remasters'}`);
+                            }
+                          }}
+                          variant="primary"
+                          accent="brand"
+                          leftIcon={<Search size={14} aria-hidden="true" />}
+                        >
+                          Detect Remasters
+                        </Button>
+                      </div>
+                      {remasterStatus && (
+                        <div className={`text-xs mt-2 ${remasterStatus.startsWith('Error') ? 'text-error' : 'text-success'}`}>
+                          {remasterStatus}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
           </section>
         </div>
       )}
@@ -1176,29 +1391,30 @@ export const Settings: React.FC = () => {
               {activeTab === 'audio' && (
                 <>
                 {/* Equalizer */}
-                <div className="flex items-center justify-between pb-4 border-b border-surface-hover">
-                    <div className="flex items-center gap-4">
-                        <div className="p-2 bg-surface-hover rounded-lg text-text-main">
-                            <SlidersHorizontal size={20} />
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-surface-hover">
+                    <div className="flex items-center gap-4 min-w-0">
+                        <div className="p-2 bg-surface-hover rounded-lg text-text-main shrink-0">
+                            <SlidersHorizontal size={20} aria-hidden="true" />
                         </div>
-                        <div>
-                            <h3 className="font-medium text-text-main">Equalizer</h3>
+                        <div className="min-w-0">
+                            <h3 className="text-base font-semibold text-text-main">Equalizer</h3>
                             <p className="text-sm text-text-subtle">Adjust frequency levels or choose a preset</p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                        <button 
+                    <div className="flex items-center gap-3 self-end sm:self-auto">
+                        <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={toggleEqPanel}
-                            className="text-sm font-bold text-brand hover:underline"
+                            className="text-brand"
                         >
                             Open Panel
-                        </button>
-                        <div 
-                            className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${audioSettings.eqEnabled ? 'bg-brand' : 'bg-surface-border'}`}
-                            onClick={() => setEqEnabled(!audioSettings.eqEnabled)}
-                        >
-                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${audioSettings.eqEnabled ? 'right-1' : 'left-1'}`}></div>
-                        </div>
+                        </Button>
+                        <ToggleSwitch
+                            checked={audioSettings.eqEnabled}
+                            onChange={setEqEnabled}
+                            aria-label="Enable Equalizer"
+                        />
                     </div>
                 </div>
                 </>
@@ -1207,20 +1423,21 @@ export const Settings: React.FC = () => {
               {activeTab === 'appearance' && (
                 <>
                 {/* Visualizer Mode */}
-                <div className="flex items-center justify-between pb-4 border-b border-surface-hover">
-                     <div className="flex items-center gap-4">
-                        <div className="p-2 bg-surface-hover rounded-lg text-text-main">
-                            <Activity size={20} />
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-surface-hover">
+                     <div className="flex items-center gap-4 min-w-0">
+                        <div className="p-2 bg-surface-hover rounded-lg text-text-main shrink-0">
+                            <Activity size={20} aria-hidden="true" />
                         </div>
-                        <div>
-                            <h3 className="font-medium text-text-main">Visualizer Style</h3>
+                        <div className="min-w-0">
+                            <h3 className="text-base font-semibold text-text-main">Visualizer Style</h3>
                             <p className="text-sm text-text-subtle">Choose appearance for Now Playing screen</p>
                         </div>
                     </div>
                     <select 
+                        aria-label="Visualizer Style"
                         value={audioSettings.visualizerMode}
                         onChange={(e) => setVisualizerMode(e.target.value as VisualizerMode)}
-                        className="bg-surface-1 border border-surface-border rounded px-3 py-2 text-sm text-text-main focus:border-brand outline-none"
+                        className="w-full sm:w-auto max-w-full bg-surface-1 border border-surface-border rounded px-3 py-2 text-sm text-text-main focus:border-brand outline-none"
                     >
                         <option value="OFF">Disabled</option>
                         <option value="WAVE">Waveform</option>
@@ -1239,48 +1456,48 @@ export const Settings: React.FC = () => {
 
                 {/* Milkdrop Settings - Only show when Milkdrop is selected */}
                 {audioSettings.visualizerMode === 'MILKDROP' && (
-                    <div className="pl-4 ml-4 border-l-2 border-surface-hover space-y-4">
+                    <div className="pl-4 ml-2 sm:ml-4 border-l-2 border-surface-hover space-y-4">
                         {/* Current Preset Display */}
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <h3 className="font-medium text-text-main">Current Preset</h3>
-                                <p className="text-sm text-text-subtle">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <div className="min-w-0">
+                                <h3 className="text-base font-semibold text-text-main">Current Preset</h3>
+                                <p className="text-sm text-text-subtle truncate">
                                     {milkdropSettings.currentPreset 
                                         ? milkdropSettings.currentPreset.replace(/_/g, ' ').replace(/\.milk$/i, '')
                                         : 'Random (auto-selected)'
                                     }
                                 </p>
                             </div>
-                            <span className="text-xs text-text-subtle">
+                            <span className="text-xs text-text-subtle shrink-0">
                                 {milkdropPresetKeys.length} presets available
                             </span>
                         </div>
 
                         {/* Auto-Cycle Toggle */}
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-3">
                             <div>
-                                <h3 className="font-medium text-text-main">Auto-Cycle Presets</h3>
+                                <h3 className="text-base font-semibold text-text-main">Auto-Cycle Presets</h3>
                                 <p className="text-sm text-text-subtle">Automatically switch presets over time</p>
                             </div>
-                            <div 
-                                className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${milkdropSettings.presetCycleEnabled ? 'bg-brand' : 'bg-surface-border'}`}
-                                onClick={() => setMilkdropSettings({ presetCycleEnabled: !milkdropSettings.presetCycleEnabled })}
-                            >
-                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${milkdropSettings.presetCycleEnabled ? 'right-1' : 'left-1'}`}></div>
-                            </div>
+                            <ToggleSwitch
+                                checked={milkdropSettings.presetCycleEnabled}
+                                onChange={(checked) => setMilkdropSettings({ presetCycleEnabled: checked })}
+                                aria-label="Auto-Cycle Presets"
+                            />
                         </div>
 
                         {/* Cycle Interval */}
                         {milkdropSettings.presetCycleEnabled && (
-                            <div className="flex items-center justify-between">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                 <div>
-                                    <h3 className="font-medium text-text-main">Cycle Interval</h3>
+                                    <h3 className="text-base font-semibold text-text-main">Cycle Interval</h3>
                                     <p className="text-sm text-text-subtle">Seconds between preset changes</p>
                                 </div>
                                 <select
+                                    aria-label="Cycle Interval"
                                     value={milkdropSettings.presetCycleInterval}
                                     onChange={(e) => setMilkdropSettings({ presetCycleInterval: parseInt(e.target.value) })}
-                                    className="bg-surface-1 border border-surface-border rounded px-3 py-2 text-sm text-text-main focus:border-brand outline-none"
+                                    className="w-full sm:w-auto max-w-full bg-surface-1 border border-surface-border rounded px-3 py-2 text-sm text-text-main focus:border-brand outline-none"
                                 >
                                     <option value={15}>15 seconds</option>
                                     <option value={30}>30 seconds</option>
@@ -1293,15 +1510,16 @@ export const Settings: React.FC = () => {
                         )}
 
                         {/* Blend Duration */}
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div>
-                                <h3 className="font-medium text-text-main">Blend Duration</h3>
+                                <h3 className="text-base font-semibold text-text-main">Blend Duration</h3>
                                 <p className="text-sm text-text-subtle">Transition time between presets</p>
                             </div>
                             <select
+                                aria-label="Blend Duration"
                                 value={milkdropSettings.blendDuration}
                                 onChange={(e) => setMilkdropSettings({ blendDuration: parseFloat(e.target.value) })}
-                                className="bg-surface-1 border border-surface-border rounded px-3 py-2 text-sm text-text-main focus:border-brand outline-none"
+                                className="w-full sm:w-auto max-w-full bg-surface-1 border border-surface-border rounded px-3 py-2 text-sm text-text-main focus:border-brand outline-none"
                             >
                                 <option value={0}>Instant</option>
                                 <option value={1}>1 second</option>
@@ -1313,15 +1531,16 @@ export const Settings: React.FC = () => {
                         </div>
 
                         {/* Quality Setting */}
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div>
-                                <h3 className="font-medium text-text-main">Quality</h3>
+                                <h3 className="text-base font-semibold text-text-main">Quality</h3>
                                 <p className="text-sm text-text-subtle">Rendering resolution (higher = more GPU usage)</p>
                             </div>
                             <select
+                                aria-label="Quality"
                                 value={milkdropSettings.quality}
                                 onChange={(e) => setMilkdropSettings({ quality: e.target.value as 'low' | 'medium' | 'high' })}
-                                className="bg-surface-1 border border-surface-border rounded px-3 py-2 text-sm text-text-main focus:border-brand outline-none"
+                                className="w-full sm:w-auto max-w-full bg-surface-1 border border-surface-border rounded px-3 py-2 text-sm text-text-main focus:border-brand outline-none"
                             >
                                 <option value="low">Low (640×480)</option>
                                 <option value="medium">Medium (720p)</option>
@@ -1349,12 +1568,12 @@ export const Settings: React.FC = () => {
 
                 {/* Visualizer Overlay Settings - Show when visualizer is not OFF */}
                 {audioSettings.visualizerMode !== 'OFF' && (
-                    <div className="space-y-4 pl-4 ml-4 border-l-2 border-surface-hover">
+                    <div className="space-y-4 pl-4 ml-2 sm:ml-4 border-l-2 border-surface-hover">
                         {/* Album Art Opacity */}
                         <div>
                             <div className="flex items-center justify-between mb-2">
                                 <div>
-                                    <h3 className="font-medium text-text-main">Album Art Opacity</h3>
+                                    <h3 className="text-base font-semibold text-text-main">Album Art Opacity</h3>
                                     <p className="text-sm text-text-subtle">Visibility of album artwork behind visualizer</p>
                                 </div>
                                 <span className="font-mono text-sm text-brand">{audioSettings.visualizerArtworkOpacity}%</span>
@@ -1371,17 +1590,16 @@ export const Settings: React.FC = () => {
                         </div>
 
                         {/* Fullscreen Background Visualizer Toggle */}
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-3">
                             <div>
-                                <h3 className="font-medium text-text-main">Fullscreen Background</h3>
+                                <h3 className="text-base font-semibold text-text-main">Fullscreen Background</h3>
                                 <p className="text-sm text-text-subtle">Show visualizer across entire Now Playing screen</p>
                             </div>
-                            <div 
-                                className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${audioSettings.visualizerFullscreenEnabled ? 'bg-brand' : 'bg-surface-border'}`}
-                                onClick={() => setVisualizerFullscreenEnabled(!audioSettings.visualizerFullscreenEnabled)}
-                            >
-                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${audioSettings.visualizerFullscreenEnabled ? 'right-1' : 'left-1'}`}></div>
-                            </div>
+                            <ToggleSwitch
+                                checked={audioSettings.visualizerFullscreenEnabled}
+                                onChange={setVisualizerFullscreenEnabled}
+                                aria-label="Fullscreen Background Visualizer"
+                            />
                         </div>
 
                         {/* Fullscreen Opacity - Only show when fullscreen is enabled */}
@@ -1389,7 +1607,7 @@ export const Settings: React.FC = () => {
                             <div>
                                 <div className="flex items-center justify-between mb-2">
                                     <div>
-                                        <h3 className="font-medium text-text-main">Background Opacity</h3>
+                                        <h3 className="text-base font-semibold text-text-main">Background Opacity</h3>
                                         <p className="text-sm text-text-subtle">Intensity of fullscreen visualizer</p>
                                     </div>
                                     <span className="font-mono text-sm text-brand">{audioSettings.visualizerFullscreenOpacity}%</span>
@@ -1416,11 +1634,11 @@ export const Settings: React.FC = () => {
                 <div>
                     <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-4">
-                            <div className="p-2 bg-surface-hover rounded-lg text-text-main">
-                                <Layers size={20} />
+                            <div className="p-2 bg-surface-hover rounded-lg text-text-main shrink-0">
+                                <Layers size={20} aria-hidden="true" />
                             </div>
                             <div>
-                                <h3 className="font-medium text-text-main">Crossfade</h3>
+                                <h3 className="text-base font-semibold text-text-main">Crossfade</h3>
                                 <p className="text-sm text-text-subtle">Overlap songs for smooth transitions</p>
                             </div>
                         </div>
@@ -1438,30 +1656,28 @@ export const Settings: React.FC = () => {
                 </div>
 
                 {/* Toggles */}
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-3">
                     <div>
-                        <h3 className="font-medium">Gapless Playback</h3>
+                        <h3 className="text-base font-semibold text-text-main">Gapless Playback</h3>
                         <p className="text-sm text-text-subtle">Eliminate silence between tracks</p>
                     </div>
-                    <div 
-                        className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${audioSettings.gapless ? 'bg-brand' : 'bg-surface-border'}`}
-                        onClick={() => setGapless(!audioSettings.gapless)}
-                    >
-                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${audioSettings.gapless ? 'right-1' : 'left-1'}`}></div>
-                    </div>
+                    <ToggleSwitch
+                        checked={audioSettings.gapless}
+                        onChange={setGapless}
+                        aria-label="Gapless Playback"
+                    />
                 </div>
 
-                 <div className="flex items-center justify-between">
+                 <div className="flex items-center justify-between gap-3">
                     <div>
-                        <h3 className="font-medium">Loudness Normalization</h3>
+                        <h3 className="text-base font-semibold text-text-main">Loudness Normalization</h3>
                         <p className="text-sm text-text-subtle">Adjust volume to the same level for all tracks</p>
                     </div>
-                    <div 
-                        className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${audioSettings.normalization ? 'bg-brand' : 'bg-surface-border'}`}
-                        onClick={() => setNormalization(!audioSettings.normalization)}
-                    >
-                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${audioSettings.normalization ? 'right-1' : 'left-1'}`}></div>
-                    </div>
+                    <ToggleSwitch
+                        checked={audioSettings.normalization}
+                        onChange={setNormalization}
+                        aria-label="Loudness Normalization"
+                    />
                 </div>
 
                 {/* DJ Audio Output Devices */}
@@ -1490,7 +1706,7 @@ export const Settings: React.FC = () => {
                     <p className="text-xs text-text-subtle mb-3">
                         Specify where Spotify downloads should be saved. Leave empty to use default location.
                     </p>
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                         <TextInput
                             id="spotify-download-path"
                             type="text"
@@ -1502,33 +1718,35 @@ export const Settings: React.FC = () => {
                             }}
                             placeholder="Default download folder"
                             disabled={savingDownloadPath}
-                            className="flex-1 px-4 py-3"
+                            className="flex-1 min-w-0"
                             inputClassName="font-mono text-sm"
                         />
-                        <Button
-                            variant="secondary"
-                            onClick={() => openFolderBrowserFor('downloads')}
-                            disabled={savingDownloadPath}
-                            className="py-3 px-4"
-                            title="Browse folders"
-                            aria-label="Browse folders"
-                        >
-                            <FolderOpen size={18} />
-                        </Button>
-                        {downloadPathSaved && (
-                            <span className="text-success text-sm font-bold">
-                                Saved!
-                            </span>
-                        )}
-                        <Button
-                            variant="primary"
-                            accent="brand"
-                            onClick={() => void saveDownloadPath(spotifyDownloadPath)}
-                            disabled={savingDownloadPath}
-                            className="py-3 px-6 rounded-lg text-sm font-bold"
-                        >
-                            Save
-                        </Button>
+                        <div className="flex items-center gap-2 shrink-0">
+                            <Button
+                                variant="secondary"
+                                size="md"
+                                onClick={() => openFolderBrowserFor('downloads')}
+                                disabled={savingDownloadPath}
+                                title="Browse folders"
+                                aria-label="Browse folders"
+                            >
+                                <FolderOpen size={16} aria-hidden="true" />
+                            </Button>
+                            {downloadPathSaved && (
+                                <span className="text-success text-sm font-bold">
+                                    Saved!
+                                </span>
+                            )}
+                            <Button
+                                variant="primary"
+                                size="md"
+                                accent="brand"
+                                onClick={() => void saveDownloadPath(spotifyDownloadPath)}
+                                disabled={savingDownloadPath}
+                            >
+                                Save
+                            </Button>
+                        </div>
                     </div>
                     {downloadPathError && !showFolderBrowser && (
                         <p role="alert" className="mt-2 text-sm text-error">{downloadPathError}</p>
@@ -1543,8 +1761,8 @@ export const Settings: React.FC = () => {
                     <p className="text-xs text-text-subtle mb-3">
                         Number of tracks to download simultaneously. Higher values may improve speed on fast connections.
                     </p>
-                    <div className="flex items-center gap-4">
-                        <div className="flex-1 flex items-center gap-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className="flex-1 min-w-[180px] flex items-center gap-4">
                             <input
                                 type="range"
                                 min={1}
@@ -1562,9 +1780,9 @@ export const Settings: React.FC = () => {
                         )}
                         <Button
                             variant="primary"
+                            size="md"
                             accent="brand"
                             onClick={handleSaveConcurrentDownloads}
-                            className="py-3 px-6 rounded-lg transition-colors text-sm font-bold"
                         >
                             Save
                         </Button>
@@ -1582,14 +1800,14 @@ export const Settings: React.FC = () => {
                     <p className="text-xs text-text-subtle mb-3">
                         Run a quick library scan after this many downloads finish. Use 0 to disable automatic scans. Converted files count after MP3 conversion completes.
                     </p>
-                    <div className="flex items-center gap-4">
+                    <div className="flex flex-wrap items-center gap-3">
                         <input
                             type="number"
                             min={0}
                             step={1}
                             value={downloadRescanThreshold}
                             onChange={(e) => setDownloadRescanThreshold(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                            className="w-24 bg-surface-1 border border-surface-3 rounded-lg px-4 py-3 text-text-main"
+                            className="w-24 bg-surface-1 border border-surface-3 rounded-lg px-3 py-2 text-sm text-text-main"
                             aria-label="Completed downloads before automatic quick scan"
                         />
                         {downloadRescanThresholdSaved && (
@@ -1597,9 +1815,9 @@ export const Settings: React.FC = () => {
                         )}
                         <Button
                             variant="primary"
+                            size="md"
                             accent="brand"
                             onClick={handleSaveDownloadRescanThreshold}
-                            className="py-3 px-6 rounded-lg transition-colors text-sm font-bold"
                         >
                             Save
                         </Button>
@@ -1609,24 +1827,19 @@ export const Settings: React.FC = () => {
 
             {/* Automatic Ogg to MP3 conversion */}
             {backendAvailable && (
-                <div className="mb-6 flex items-center justify-between bg-surface-1 p-4 rounded-lg">
-                    <div className="pr-6">
-                        <h3 className="text-sm text-text-main font-medium">Convert downloads to MP3</h3>
+                <div className="mb-6 flex items-center justify-between gap-4 bg-surface-1 p-4 rounded-xl border border-surface-highlight">
+                    <div>
+                        <h3 className="text-base font-semibold text-text-main">Convert downloads to MP3</h3>
                         <p className="text-xs text-text-subtle">
                             Automatically convert downloaded Ogg/Vorbis files to 320 kbps MP3 using the built-in converter. The Ogg file is removed only after conversion succeeds.
                         </p>
                     </div>
-                    <button
-                        type="button"
-                        role="switch"
-                        aria-checked={autoConvertOggToMp3}
-                        aria-label="Automatically convert downloaded Ogg files to MP3"
-                        onClick={handleToggleAutoConvertOgg}
+                    <ToggleSwitch
+                        checked={autoConvertOggToMp3}
+                        onChange={() => void handleToggleAutoConvertOgg()}
                         disabled={autoConvertOggSaving}
-                        className={`relative w-12 h-6 shrink-0 rounded-full transition-colors disabled:opacity-50 ${autoConvertOggToMp3 ? 'bg-brand' : 'bg-surface-3'}`}
-                    >
-                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${autoConvertOggToMp3 ? 'translate-x-7' : 'translate-x-1'}`} />
-                    </button>
+                        aria-label="Automatically convert downloaded Ogg files to MP3"
+                    />
                 </div>
             )}
 
@@ -1637,8 +1850,8 @@ export const Settings: React.FC = () => {
                     <p className="text-xs text-text-subtle mb-3">
                         Number of files to convert in parallel. These workers are separate from download slots; when possible, the automatic default leaves one logical CPU core available and is capped at four workers.
                     </p>
-                    <div className="flex items-center gap-4">
-                        <div className="flex-1 flex items-center gap-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className="flex-1 min-w-[180px] flex items-center gap-4">
                             <input
                                 type="range"
                                 min={1}
@@ -1655,10 +1868,10 @@ export const Settings: React.FC = () => {
                         )}
                         <Button
                             variant="primary"
+                            size="md"
                             accent="brand"
                             onClick={handleSaveConversionWorkers}
                             disabled={!autoConvertOggToMp3}
-                            className="py-3 px-6 rounded-lg transition-colors text-sm font-bold"
                         >
                             Save
                         </Button>
@@ -1692,51 +1905,52 @@ export const Settings: React.FC = () => {
                 
                 <SpotifyAccountNotice />
                 {/* Enable/Disable Streaming Toggle */}
-                <div className="flex items-center justify-between bg-surface-1 p-4 rounded-lg">
+                <div className="flex items-center justify-between gap-4 bg-surface-1 p-4 rounded-xl border border-surface-highlight">
                     <div>
-                        <h3 className="text-sm text-text-main font-medium">Enable Streaming</h3>
+                        <h3 className="text-base font-semibold text-text-main">Enable Streaming</h3>
                         <p className="text-xs text-text-subtle">Play Spotify tracks instantly without downloading</p>
                     </div>
-                    <button
+                    <ToggleSwitch
+                        checked={streamingEnabled && !spotifyMediaDisabled}
+                        onChange={() => setStreamingEnabled(!streamingEnabled)}
                         disabled={spotifyMediaDisabled}
                         aria-label="Enable Spotify streaming"
-                        onClick={() => setStreamingEnabled(!streamingEnabled)}
-                        className={`relative w-12 h-6 rounded-full transition-colors ${streamingEnabled && !spotifyMediaDisabled ? 'bg-brand' : 'bg-surface-3'}`}
-                    >
-                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${streamingEnabled && !spotifyMediaDisabled ? 'translate-x-7' : 'translate-x-1'}`} />
-                    </button>
+                    />
                 </div>
                 
                 {/* Streaming Quality Selector */}
-                <div className="bg-surface-1 p-4 rounded-lg">
+                <div className="bg-surface-1 p-4 rounded-xl border border-surface-highlight">
                     <div className="flex items-center justify-between mb-2">
                         <div>
-                            <h3 className="text-sm text-text-main font-medium">Streaming Quality</h3>
+                            <h3 className="text-base font-semibold text-text-main">Streaming Quality</h3>
                             <p className="text-xs text-text-subtle">Higher quality uses more bandwidth</p>
                         </div>
                     </div>
-                    <div className="flex gap-2 mt-3">
+                    <div className="flex flex-col sm:flex-row gap-2 mt-3">
                         <Button
+                            size="sm"
                             disabled={spotifyMediaDisabled}
                             onClick={() => setStreamingQuality('high')}
                             variant={streamingQuality === 'high' ? 'primary' : 'secondary'}
-                            className="flex-1 py-2 px-4 rounded-lg text-sm font-bold"
+                            className="flex-1"
                         >
                             High (320kbps)
                         </Button>
                         <Button
+                            size="sm"
                             disabled={spotifyMediaDisabled}
                             onClick={() => setStreamingQuality('medium')}
                             variant={streamingQuality === 'medium' ? 'primary' : 'secondary'}
-                            className="flex-1 py-2 px-4 rounded-lg text-sm font-bold"
+                            className="flex-1"
                         >
                             Medium (160kbps)
                         </Button>
                         <Button
+                            size="sm"
                             disabled={spotifyMediaDisabled}
                             onClick={() => setStreamingQuality('low')}
                             variant={streamingQuality === 'low' ? 'primary' : 'secondary'}
-                            className="flex-1 py-2 px-4 rounded-lg text-sm font-bold"
+                            className="flex-1"
                         >
                             Low (96kbps)
                         </Button>
@@ -1744,17 +1958,16 @@ export const Settings: React.FC = () => {
                 </div>
                 
                 {/* Prefer Local Playback Toggle */}
-                <div className="flex items-center justify-between bg-surface-1 p-4 rounded-lg">
+                <div className="flex items-center justify-between gap-4 bg-surface-1 p-4 rounded-xl border border-surface-highlight">
                     <div>
-                        <h3 className="text-sm text-text-main font-medium">Prefer Local Files</h3>
+                        <h3 className="text-base font-semibold text-text-main">Prefer Local Files</h3>
                         <p className="text-xs text-text-subtle">When enabled, downloaded tracks play locally instead of streaming</p>
                     </div>
-                    <button
-                        onClick={() => setPreferLocalPlayback(!preferLocalPlayback)}
-                        className={`relative w-12 h-6 rounded-full transition-colors ${preferLocalPlayback ? 'bg-brand' : 'bg-surface-3'}`}
-                    >
-                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${preferLocalPlayback ? 'translate-x-7' : 'translate-x-1'}`} />
-                    </button>
+                    <ToggleSwitch
+                        checked={preferLocalPlayback}
+                        onChange={setPreferLocalPlayback}
+                        aria-label="Prefer local files over streaming"
+                    />
                 </div>
                 
                 {/* Streaming Statistics */}
@@ -1976,20 +2189,19 @@ export const Settings: React.FC = () => {
         </div>
       )}
 
-      {/* TAB: AI & ENRICHMENT; the health branch below shares Library Operations metadata actions */}
-      {(activeTab === 'ai' || activeTab === 'health') && (
+      {/* TAB: AI & ENRICHMENT */}
+      {activeTab === 'ai' && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          {activeTab === 'ai' && (
-          <div className="bg-surface-2 rounded-xl p-6 border border-surface-border">
+          <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
             <div className="flex items-center gap-3 mb-6">
-              <Sparkles className="text-brand" size={24} />
-              <h2 className="text-xl font-bold text-text-main">AI & Metadata Enrichment</h2>
+              <Sparkles className="text-brand" size={20} aria-hidden="true" />
+              <h2 className="text-lg font-bold text-text-main">AI & Metadata Enrichment</h2>
             </div>
 
             <div className="space-y-6">
               {/* Chat and metadata provider settings */}
-              <div className="bg-surface-1 rounded-lg p-4 border border-surface-border">
-                <h3 className="text-lg font-bold text-text-main mb-2">AI Provider & Model</h3>
+              <div className="bg-surface-1 rounded-xl p-5 border border-surface-highlight">
+                <h3 className="text-base font-semibold text-text-main mb-2">AI Provider & Model</h3>
                 <p className="text-text-subtle text-sm mb-4">
                   Choose the chat model used for AI Smart Mix playlist generation and AI metadata enrichment.
                   Ollama runs locally (free, no API key), or use cloud providers for more powerful models.
@@ -2177,10 +2389,10 @@ export const Settings: React.FC = () => {
               </div>
 
               {/* Semantic Retrieval Index */}
-              <div className="bg-surface-1 rounded-lg p-4 border border-surface-border">
+              <div className="bg-surface-1 rounded-xl p-5 border border-surface-highlight">
                 <div className="flex items-start justify-between gap-4 mb-4">
                   <div>
-                    <h3 className="text-lg font-bold text-text-main mb-1">Smart Playlist Library</h3>
+                    <h3 className="text-base font-semibold text-text-main mb-1">Smart Playlist Library</h3>
                     <p className="text-text-subtle text-sm">
                       Music matching runs locally and works with any supported AI provider.
                     </p>
@@ -2268,8 +2480,8 @@ export const Settings: React.FC = () => {
               </div>
 
               {/* Enrichment Source Selection */}
-              <div className="bg-surface-1 rounded-lg p-4 border border-surface-border">
-                <h3 className="text-lg font-bold text-text-main mb-2">Metadata Enrichment Source</h3>
+              <div className="bg-surface-1 rounded-xl p-5 border border-surface-highlight">
+                <h3 className="text-base font-semibold text-text-main mb-2">Metadata Enrichment Source</h3>
                 <p className="text-text-subtle text-sm mb-4">
                   Choose which system to use for automatic metadata enrichment during library scans.
                   AI Smart Mix features will still use the configured AI provider regardless of this setting. Configure Last.FM credentials in Integrations &amp; Spotify before selecting a Last.FM option.
@@ -2348,7 +2560,7 @@ export const Settings: React.FC = () => {
                     />
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <Zap size={16} className="text-warning" />
+                        <Zap size={16} className="text-warning" aria-hidden="true" />
                         <span className="font-medium text-text-main">Hybrid Mode</span>
                         {enrichmentSource === 'hybrid' && (
                           <span className="text-xs bg-brand/20 text-brand px-2 py-0.5 rounded-full">Active</span>
@@ -2361,209 +2573,8 @@ export const Settings: React.FC = () => {
                   </label>
                 </div>
               </div>
-			  </div>
-			</div>
-          )}
-
-          {activeTab === 'health' && (
-            <section className="rounded-xl border border-surface-highlight bg-surface-1 p-5">
-              <div className="mb-2 flex items-center gap-3">
-                <Sparkles className="text-brand" />
-                <h2 className="text-xl font-semibold">Metadata &amp; Enrichment Operations</h2>
-              </div>
-              <p className="mb-4 text-sm text-text-secondary">Run library-changing enrichment and year maintenance here. Configure AI providers and enrichment sources in AI &amp; Enrichment.</p>
-              <div className="space-y-4">
-
-              {/* Unified AI Enrichment */}
-              <div className="bg-surface-1 rounded-lg p-4 border-2 border-brand">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2 py-0.5 text-xs font-bold bg-brand text-black rounded">RECOMMENDED</span>
-                  <h3 className="text-lg font-bold text-text-main">Unified AI Enrichment</h3>
-                </div>
-                <p className="text-text-subtle text-sm mb-4">
-                  Enrich your entire library with genres, mood, energy, tempo, BPM, and original year detection 
-                  in a <strong>single efficient operation</strong>.
-                </p>
-
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="force-unified"
-                      checked={forceUnified}
-                      onChange={(e) => setForceUnified(e.target.checked)}
-                      disabled={isUnifiedEnriching}
-                      className="rounded border-surface-border bg-surface-3 text-brand focus:ring-brand"
-                    />
-                    <label htmlFor="force-unified" className="text-sm text-text-main cursor-pointer select-none">
-                      Force re-analyze all songs (overwrites existing metadata)
-                    </label>
-                  </div>
-
-                  <Button
-                    onClick={async () => {
-                      const hasLLMAccess = llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey);
-                      if (!hasLLMAccess) {
-                        alert("Please configure an AI Provider & Model in the AI & Enrichment tab first.");
-                        return;
-                      }
-
-                      setIsUnifiedEnriching(true);
-                      setUnifiedStatus('Connecting to unified enrichment service...');
-                      setUnifiedProgress(null);
-					  setEnrichmentStatus({
-						isEnriching: true,
-						totalSongs: 0,
-						processedSongs: 0,
-						currentBatch: 0,
-						totalBatches: 0,
-						message: 'Connecting to AI enrichment service…',
-					  });
-
-                      try {
-                        await api.enrichAllMetadataStream(forceUnified, (progress) => {
-                        setUnifiedStatus(progress.message);
-                        updateGlobalEnrichmentStatus(progress, 'AI metadata enrichment is running');
-                        
-                        if (progress.status === 'started' || progress.status === 'processing' || progress.status === 'batch_complete') {
-                          setUnifiedProgress({
-                            processedSongs: progress.processedSongs,
-                            totalSongs: progress.totalSongs,
-                            currentBatch: progress.currentBatch,
-                            totalBatches: progress.totalBatches,
-                          });
-                        }
-                        
-                        if (progress.status === 'complete') {
-                          setIsUnifiedEnriching(false);
-						  void refreshLibrary();
-						  window.dispatchEvent(new CustomEvent('enrichment_complete', { detail: progress }));
-                          setTimeout(() => setUnifiedProgress(null), 5000);
-                        }
-
-						if (progress.status === 'batch_complete') {
-						  void refreshLibrary();
-						}
-                        
-                        if (progress.status === 'error') {
-                          setIsUnifiedEnriching(false);
-                          setUnifiedProgress(null);
-                          setUnifiedStatus(`Error: ${progress.error || progress.message}`);
-                        }
-                        });
-                      } catch (error) {
-                        console.error('Failed to open metadata enrichment stream:', error);
-                        setIsUnifiedEnriching(false);
-                        setUnifiedProgress(null);
-                        setUnifiedStatus('Error: Unable to connect to the AI enrichment service');
-                      }
-                    }}
-                    disabled={isUnifiedEnriching || !(llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey))}
-                    variant={isUnifiedEnriching || !(llmProvider && (llmProvider === 'ollama' ? llmBaseURL : llmApiKey)) ? 'secondary' : 'primary'}
-                    accent="brand"
-                    className="self-start px-6 py-3 font-bold text-base"
-                  >
-                    {isUnifiedEnriching ? (
-                      <>
-                        <span className="animate-spin mr-2">⏳</span> Enriching Library...
-                      </>
-                    ) : (
-                      <>🚀 Enrich All Metadata</>
-                    )}
-                  </Button>
-                  
-                  {unifiedProgress && unifiedProgress.totalSongs > 0 && (
-                    <div className="w-full">
-                      <div className="flex justify-between text-xs text-text-subtle mb-1">
-                        <span>Batch {unifiedProgress.currentBatch} of {unifiedProgress.totalBatches}</span>
-                        <span>{unifiedProgress.processedSongs} / {unifiedProgress.totalSongs} songs</span>
-                      </div>
-                      <div className="w-full bg-surface-3 rounded-full h-2.5 overflow-hidden">
-                        <div 
-                          className="bg-brand h-full rounded-full transition-all duration-300 ease-out"
-                          style={{ 
-                            width: `${Math.round((unifiedProgress.processedSongs / unifiedProgress.totalSongs) * 100)}%` 
-                          }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                  
-                  {unifiedStatus && (
-                    <div className={`text-sm mt-2 ${
-                      unifiedStatus.startsWith('Error') ? 'text-error' : 
-                      unifiedStatus.includes('complete') || unifiedStatus.startsWith('Success') ? 'text-success' : 
-                      'text-text-subtle'
-                    }`}>
-                      {unifiedStatus}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Year Backfill & Remaster Detection */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-surface-1 rounded-lg p-4 border border-surface-border">
-                  <h3 className="text-base font-bold text-text-main mb-1">Year Data Backfill</h3>
-                  <p className="text-text-subtle text-xs mb-3">
-                    Populate missing song year values from album metadata release dates.
-                  </p>
-                  <Button
-                    onClick={async () => {
-                      setYearBackfillStatus('Backfilling years...');
-                      try {
-                        const result = await api.backfillSongYears();
-                        setYearBackfillStatus(`Success: ${result.message}`);
-                      } catch (err: unknown) {
-                        setYearBackfillStatus(`Error: ${err instanceof Error ? err.message : 'Failed to backfill years'}`);
-                      }
-                    }}
-                    variant="primary"
-                    accent="brand"
-                    className="self-start text-xs py-2 px-3 font-bold"
-                  >
-                    📅 Backfill Song Years
-                  </Button>
-                  {yearBackfillStatus && (
-                    <div className={`text-xs mt-2 ${yearBackfillStatus.startsWith('Error') ? 'text-error' : 'text-success'}`}>
-                      {yearBackfillStatus}
-                    </div>
-                  )}
-                </div>
-
-                <div className="bg-surface-1 rounded-lg p-4 border border-surface-border">
-                  <h3 className="text-base font-bold text-text-main mb-1">Original Year Detection</h3>
-                  <p className="text-text-subtle text-xs mb-3">
-                    Detect songs with remaster dates vs original release years.
-                  </p>
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={async () => {
-                        setRemasterStatus('Detecting remasters...');
-                        try {
-                          const result = await api.detectRemasters();
-                          setRemasterStatus(`Success: ${result.message}`);
-                        } catch (err: unknown) {
-                          setRemasterStatus(`Error: ${err instanceof Error ? err.message : 'Failed to detect remasters'}`);
-                        }
-                      }}
-                      variant="primary"
-                      accent="brand"
-                      className="text-xs py-2 px-3 font-bold"
-                    >
-                      🔍 Detect Remasters
-                    </Button>
-                  </div>
-                  {remasterStatus && (
-                    <div className={`text-xs mt-2 ${remasterStatus.startsWith('Error') ? 'text-error' : 'text-success'}`}>
-                      {remasterStatus}
-                    </div>
-                  )}
-                </div>
-              </div>
-              </div>
-            </section>
-          )}
+            </div>
+          </section>
         </div>
       )}
 
@@ -2572,14 +2583,14 @@ export const Settings: React.FC = () => {
         <div className="space-y-6 animate-in fade-in duration-200">
           <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
             <div className="flex items-center gap-3 mb-6 text-brand">
-                <Sparkles size={20} />
+                <Sparkles size={20} aria-hidden="true" />
                 <h2 className="text-lg font-bold text-text-main">Home & Now Playing Appearance</h2>
             </div>
             
             <div className="space-y-6">
               <div>
                 <div className="mb-3">
-                    <h3 className="font-medium text-text-main">Home Layout</h3>
+                    <h3 className="text-base font-semibold text-text-main">Home Layout</h3>
                     <p className="text-sm text-text-subtle">Choose the Home screen experience.</p>
                 </div>
                 <div className="grid gap-3 md:grid-cols-3" role="radiogroup" aria-label="Home layout">
@@ -2609,29 +2620,28 @@ export const Settings: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between border-t border-surface-hover pt-6">
+              <div className="flex items-center justify-between gap-3 border-t border-surface-hover pt-6">
                 <div>
-                    <h3 className="font-medium text-text-main">Show Smart Mixes</h3>
+                    <h3 className="text-base font-semibold text-text-main">Show Smart Mixes</h3>
                     <p className="text-sm text-text-subtle">Display auto-generated mixes on the Home screen</p>
                 </div>
-                <div 
-                    className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${showSmartMixes ? 'bg-brand' : 'bg-surface-border'}`}
-                    onClick={() => setShowSmartMixes(!showSmartMixes)}
-                >
-                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${showSmartMixes ? 'right-1' : 'left-1'}`}></div>
-                </div>
+                <ToggleSwitch
+                    checked={showSmartMixes}
+                    onChange={setShowSmartMixes}
+                    aria-label="Show Smart Mixes"
+                />
               </div>
               {!isBrowserRuntime && (
                 <div className="border-t border-surface-hover pt-6">
                   <div className="flex items-center justify-between gap-4">
-                    <h3 className="font-medium text-text-main">Close Window</h3>
-                    <button
-                      type="button"
+                    <h3 className="text-base font-semibold text-text-main">Close Window</h3>
+                    <Button
+                      variant="secondary"
+                      size="sm"
                       onClick={() => void closeNativeWindow('quit')}
-                      className="rounded-lg border border-surface-border px-4 py-2 text-sm font-medium text-text-main hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
                     >
                       Quit now
-                    </button>
+                    </Button>
                   </div>
                   <p className="mt-1 text-sm text-text-subtle">
                     {isMacDesktopApp

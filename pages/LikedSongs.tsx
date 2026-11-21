@@ -86,9 +86,10 @@ const LikedHeader: React.FC<{ context?: LikedContext }> = ({ context }) => {
                     <Play size={26} className="fill-current ml-1" />
                 </button>
                 <button 
+                    type="button"
                     onClick={handleShuffle}
                     disabled={likedSongs.length === 0}
-                    className="text-text-secondary hover:text-text-main transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="min-w-[36px] min-h-[36px] inline-flex items-center justify-center text-text-secondary hover:text-text-main transition-colors disabled:opacity-50 disabled:cursor-not-allowed rounded-full"
                     title="Shuffle play"
                     aria-label="Shuffle liked songs"
                 >
@@ -97,14 +98,14 @@ const LikedHeader: React.FC<{ context?: LikedContext }> = ({ context }) => {
             </div>
 
             {/* Table Header */}
-            <div className="grid grid-cols-[40px_1fr_52px_36px] md:grid-cols-[44px_4fr_3fr_3fr_60px_40px_40px] gap-2 md:gap-4 px-4 py-2 text-text-subtle text-xs uppercase tracking-wider font-semibold border-b border-surface-border mb-1">
+            <div className="grid grid-cols-[36px_minmax(0,1fr)_48px_32px_32px] md:grid-cols-[44px_4fr_3fr_3fr_60px_40px_40px] gap-2 md:gap-4 px-4 py-2 text-text-subtle text-xs uppercase tracking-wider font-semibold border-b border-surface-border mb-1 items-center">
                 <div className="text-center">#</div>
                 <div>Title</div>
                 <div className="hidden md:block">Album</div>
                 <div className="hidden md:block">Artist</div>
-                <div className="flex justify-center"><Clock size={14} aria-label="Duration" /></div>
-                <div></div>
-                <div className="hidden md:block"></div>
+                <div className="flex items-center justify-end"><Clock size={14} aria-label="Duration" /></div>
+                <div aria-hidden="true"></div>
+                <div aria-hidden="true"></div>
             </div>
         </ListHeader>
     );
@@ -158,7 +159,7 @@ export const LikedSongs: React.FC = () => {
     if (likedSongs.length === 0) {
         return (
             <div className="h-full animate-fade-in">
-                <div className="px-4 pt-6 sm:px-6 lg:px-8">
+                <div className="px-4 pt-6 sm:px-6 lg:px-7">
                     {/* Header Section */}
                     <div className="flex flex-col sm:flex-row items-start sm:items-end gap-6 mb-8">
                         <div className="w-40 h-40 sm:w-48 sm:h-48 rounded-md bg-gradient-to-br from-accent-purple/70 via-accent-blue/60 to-surface-3 flex items-center justify-center shadow-[0_8px_24px_rgba(0,0,0,0.5)] flex-shrink-0">
@@ -205,9 +206,9 @@ export const LikedSongs: React.FC = () => {
                     const displayCover = song.coverUrl || albumCovers[song.album];
 
                     return (
-                        <div className="bg-surface-1 px-4 sm:px-6 lg:px-8">
+                        <div className="bg-surface-1 px-4 sm:px-6 lg:px-7">
                             <div 
-                                className={`grid grid-cols-[40px_1fr_52px_36px] md:grid-cols-[44px_4fr_3fr_3fr_60px_40px_40px] gap-2 md:gap-4 rounded-md px-4 py-2 items-center hover:bg-surface-hover group transition-colors cursor-pointer ${isCurrent ? 'bg-surface-hover' : 'bg-transparent'}`}
+                                className={`grid grid-cols-[36px_minmax(0,1fr)_48px_32px_32px] md:grid-cols-[44px_4fr_3fr_3fr_60px_40px_40px] gap-2 md:gap-4 rounded-md px-4 py-2 items-center hover:bg-surface-hover group transition-colors cursor-pointer ${isCurrent ? 'bg-surface-hover' : 'bg-transparent'}`}
                                 onClick={() => playSong(song, likedSongs, undefined, index)}
                                 onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, song)}
                             >
@@ -230,16 +231,20 @@ export const LikedSongs: React.FC = () => {
                                 </div>
                                 <div className="hidden md:block text-text-secondary text-sm truncate">{song.album}</div>
                                 <div className="hidden md:block text-text-secondary text-sm truncate">{song.artist}</div>
-                                <div className="text-text-secondary text-xs tabular-nums text-center">{formatTime(song.duration)}</div>
+                                <div className="text-text-secondary text-xs tabular-nums text-right">{formatTime(song.duration)}</div>
                                 
                                 <div className="flex justify-center">
                                     <LikeButton songId={song.id} size={16} />
                                 </div>
                                 
-                                <div className="hidden md:flex justify-center relative">
+                                <div className="flex justify-center relative">
                                     <button 
-                                        onClick={(e) => openContextMenu(e, ContextMenuType.SONG, song)}
-                                        className="text-text-subtle hover:text-text-main transition-opacity opacity-0 group-hover:opacity-100"
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            openContextMenu(e, ContextMenuType.SONG, song);
+                                        }}
+                                        className="min-w-[28px] min-h-[28px] inline-flex items-center justify-center text-text-subtle hover:text-text-main transition-opacity opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 rounded-full"
                                         aria-label="More options"
                                     >
                                         <MoreHorizontal size={18} />

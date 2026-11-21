@@ -23,6 +23,7 @@ import { X, Trash2, GripVertical, Play, LocateFixed } from 'lucide-react';
 import { generateGradient, formatTime, coverBackground } from '../utils';
 import { ContextMenuType, Song } from '../types';
 import { EmptyQueue } from './EmptyState';
+import { VIIB } from './ui/tokens';
 
 interface QueueRowProps {
   song: Song;
@@ -196,7 +197,7 @@ export const Queue: React.FC = () => {
 
   return (
     <div
-      className="fixed bottom-24 right-4 w-full max-w-[380px] bg-surface-2 border border-surface-border rounded-lg shadow-2xl z-40 flex flex-col overflow-hidden transition-all duration-200"
+      className={`fixed bottom-24 left-2 right-2 sm:left-auto sm:right-4 sm:w-[380px] max-h-[calc(100vh-7.5rem)] bg-surface-2 border border-surface-border rounded-lg shadow-2xl ${VIIB.zIndex.queue} flex flex-col overflow-hidden transition-all duration-200`}
       style={{ height: `${height}px` }}
       role="region"
       aria-label="Playback queue"
@@ -224,7 +225,7 @@ export const Queue: React.FC = () => {
               onClick={jumpToCurrent}
               aria-label="Jump to current track"
               title="Jump to current track"
-              className="p-1.5 rounded-full text-text-secondary hover:bg-surface-hover hover:text-text-main transition-colors"
+              className="min-w-[32px] min-h-[32px] inline-flex items-center justify-center rounded-full text-text-secondary hover:bg-surface-hover hover:text-text-main transition-colors"
             >
               <LocateFixed size={16} aria-hidden="true" />
             </button>
@@ -232,7 +233,7 @@ export const Queue: React.FC = () => {
           {queue.length > 0 && (
             <button
               onClick={clearQueue}
-              className="text-xs font-semibold text-text-secondary hover:text-text-main px-2 py-1 rounded hover:bg-surface-hover transition-colors"
+              className="min-w-[32px] min-h-[32px] inline-flex items-center justify-center text-xs font-semibold text-text-secondary hover:text-text-main px-2.5 py-1 rounded hover:bg-surface-hover transition-colors"
             >
               Clear
             </button>
@@ -240,7 +241,7 @@ export const Queue: React.FC = () => {
           <button
             onClick={() => setQueueOpen(false)}
             aria-label="Close queue"
-            className="p-1.5 hover:bg-surface-hover rounded-full text-text-secondary hover:text-text-main transition-colors"
+            className="min-w-[32px] min-h-[32px] inline-flex items-center justify-center hover:bg-surface-hover rounded-full text-text-secondary hover:text-text-main transition-colors"
           >
             <X size={18} aria-hidden="true" />
           </button>

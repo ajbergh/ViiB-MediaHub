@@ -18,6 +18,7 @@ import React, { useState } from 'react';
 import { useStore } from '../../store';
 import { VisualizerMode } from '../../types';
 import { Button } from '../ui/Button';
+import { VIIB } from '../ui/tokens';
 import { 
     X, 
     Waves, 
@@ -86,7 +87,7 @@ export const VisualizerSelector: React.FC<Props> = ({ isOpen, onClose }) => {
         selectedMode: VisualizerMode, 
         onSelect: (mode: VisualizerMode) => void
     ) => (
-        <div className="grid grid-cols-4 gap-2 p-2">
+        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 p-2">
             {VISUALIZER_OPTIONS.map(option => (
                 <button
                     key={option.mode}
@@ -112,7 +113,7 @@ export const VisualizerSelector: React.FC<Props> = ({ isOpen, onClose }) => {
     );
     
     return (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className={`fixed inset-0 ${VIIB.zIndex.overlayPanel} flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200`}>
             <div 
                 className="bg-surface-1/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-surface-3/50 max-w-md w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
                 onClick={e => e.stopPropagation()}
@@ -178,7 +179,7 @@ export const VisualizerSelector: React.FC<Props> = ({ isOpen, onClose }) => {
                                         max="100"
                                         value={audioSettings.visualizerArtworkOpacity}
                                         onChange={e => setVisualizerArtworkOpacity(parseInt(e.target.value))}
-                                        className="w-full accent-accent-green"
+                                        className="w-full h-7 accent-accent-green cursor-pointer"
                                     />
                                 </div>
                             </div>
@@ -247,7 +248,7 @@ export const VisualizerSelector: React.FC<Props> = ({ isOpen, onClose }) => {
                                                 max="100"
                                                 value={audioSettings.visualizerFullscreenOpacity}
                                                 onChange={e => setVisualizerFullscreenOpacity(parseInt(e.target.value))}
-                                                className="w-full accent-brand"
+                                                className="w-full h-7 accent-brand cursor-pointer"
                                             />
                                         </div>
                                     </>

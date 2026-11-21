@@ -4,18 +4,44 @@
  * request failures use the loaded-song fallback so navigation remains available
  * offline.
  */
-import React, { useEffect, useMemo, useState } from 'react';
-import { ListPlus, Music, Play, Search as SearchIcon } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Disc3, ListPlus, Play, Search as SearchIcon, UserRound } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router';
 import { useStore } from '../store';
 import { Song } from '../types';
+import { api } from '../services/api';
 import { libraryV2, ClientLibrarySearchResult } from '../services/libraryV2';
+import { coverThumbnailUrl, isPlexSourcePath, resolveAlbumArtwork } from '../lib/artwork';
 import { generateGradient, formatTime } from '../utils';
 import { EmptySearchResults } from '../components/EmptyState';
 import { TextInput } from '../components/ui/TextInput';
 import { Page, PageHeader } from '../components/ui/Page';
 
 type SearchTab = 'all' | 'tracks' | 'albums' | 'artists' | 'playlists';
+
+const SEARCH_TABS: SearchTab[] = ['all', 'tracks', 'albums', 'artists', 'playlists'];
+
+function normalizeSearchCoverPath(coverPath?: string): string | undefined {
+  if (!coverPath) return undefined;
+  if (coverPath.startsWith('plex://art/')) {
+    const target = coverPath.slice('plex://art/'.length);
+    const queryIndex = target.indexOf('?');
+    const songId = queryIndex >= 0 ? target.slice(0, queryIndex) : target;
+    const query = queryIndex >= 0 ? target.slice(queryIndex) : '';
+    return songId ? `${api.getCoverUrl(encodeURIComponent(songId))}${query}` : undefined;
+  }
+  if (
+    coverPath.startsWith('/api/cover/') ||
+    coverPath.startsWith('http://') ||
+    coverPath.startsWith('https://') ||
+    coverPath.startsWith('data:') ||
+    coverPath.startsWith('blob:') ||
+    coverPath.startsWith('/')
+  ) {
+    return coverPath;
+  }
+  return undefined;
+}
 
 const emptyResults = (query = ''): ClientLibrarySearchResult => ({
   query,
@@ -87,7 +113,27 @@ const ArtistResultArtwork: React.FC<{ name: string; imageUrl?: string }> = ({ na
           onError={() => setFailedUrl(imageUrl)}
         />
       ) : (
-        <Music size={36} className="text-white/70" aria-hidden="true" />
+        <UserRound size={36} className="text-text-main/70" aria-hidden="true" />
+      )}
+    </div>
+  );
+};
+
+const AlbumResultArtwork: React.FC<{ name: string; imageUrl?: string }> = ({ name, imageUrl }) => {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const showImage = Boolean(imageUrl && imageUrl !== failedUrl);
+  return (
+    <div className="aspect-square rounded-md overflow-hidden mb-3 shadow-lg flex items-center justify-center" style={{ background: generateGradient(name) }}>
+      {showImage ? (
+        <img
+          src={imageUrl}
+          alt=""
+          loading="lazy"
+          className="w-full h-full object-cover"
+          onError={() => setFailedUrl(imageUrl!)}
+        />
+      ) : (
+        <Disc3 size={36} className="text-text-main/70" aria-hidden="true" />
       )}
     </div>
   );
@@ -99,6 +145,19 @@ export const Search: React.FC = () => {
   const songs = useStore(state => state.songs);
   const playlists = useStore(state => state.playlists);
   const artistMetadata = useStore(state => state.artistMetadata);
+  const albumMetadata = useStore(state => state.albumMetadata) ?? {};
+  const albumFallbacks = useMemo(() => {
+    const map = new Map<string, { coverUrl?: string; plexBacked: boolean }>();
+    for (const song of songs) {
+      const artist = song.albumArtist || song.artist;
+      const key = `${song.album}\u0000${artist}`;
+      const existing = map.get(key);
+      const plexBacked = Boolean(existing?.plexBacked || isPlexSourcePath(song.path));
+      const coverUrl = existing?.coverUrl || song.coverUrl;
+      map.set(key, { coverUrl, plexBacked });
+    }
+    return map;
+  }, [songs]);
   const artistImages = useMemo(() => {
     const images = new Map<string, string>();
     for (const song of songs) {
@@ -191,6 +250,36 @@ export const Search: React.FC = () => {
     setLocalSearchTab(next);
   };
 
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowRight') nextIndex = (index + 1) % SEARCH_TABS.length;
+    else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + SEARCH_TABS.length) % SEARCH_TABS.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = SEARCH_TABS.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    const nextTab = SEARCH_TABS[nextIndex];
+    selectTab(nextTab);
+    tabRefs.current[nextIndex]?.focus();
+  };
+
+  const clearSearch = () => {
+    setInput('');
+    setQuery('');
+    setLocalSearchQuery('');
+  };
+
+  const getAlbumArtworkUrl = (album: ClientLibrarySearchResult['albums'][number]) => {
+    const fallback = albumFallbacks.get(`${album.name}\u0000${album.artist}`);
+    const metadata = albumMetadata[`${album.name}::${album.artist}`] || albumMetadata[album.name];
+    const plexBacked = Boolean(fallback?.plexBacked || album.coverPath?.startsWith('plex://art/'));
+    const catalogArtwork = normalizeSearchCoverPath(album.coverPath) ?? fallback?.coverUrl;
+    const resolved = resolveAlbumArtwork(catalogArtwork, metadata?.coverUrl, plexBacked);
+    return coverThumbnailUrl(resolved, 256);
+  };
+
   const playAlbum = (album: string, artist: string) => {
     const albumSongs = songs
       .filter(song => song.album === album && (song.albumArtist || song.artist) === artist)
@@ -213,12 +302,15 @@ export const Search: React.FC = () => {
       <div className="w-full max-w-3xl mb-4 flex-shrink-0">
         <TextInput
           className="w-full"
+          inputClassName="[&::-webkit-search-cancel-button]:hidden"
           leftIcon={<SearchIcon size={18} className="text-text-secondary" aria-hidden="true" />}
           type="search"
           placeholder="Search tracks, albums, artists, genres, paths, and playlists"
           aria-label="Search library"
           value={input}
           onChange={event => setInput(event.target.value)}
+          onClear={clearSearch}
+          clearLabel="Clear search"
           autoFocus
         />
       </div>
@@ -226,13 +318,17 @@ export const Search: React.FC = () => {
       {searchError && <p className="text-sm text-warning mb-3" role="status">{searchError}</p>}
       {query && (
         <div className="flex gap-2 mb-6 flex-wrap" role="tablist" aria-label="Search result categories">
-          {(['all', 'tracks', 'albums', 'artists', 'playlists'] as SearchTab[]).map(item => (
+          {SEARCH_TABS.map((item, index) => (
             <button
               key={item}
+              ref={el => { tabRefs.current[index] = el; }}
+              type="button"
               role="tab"
               aria-selected={tab === item}
+              tabIndex={tab === item ? 0 : -1}
               onClick={() => selectTab(item)}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors ${tab === item ? 'bg-text-main text-surface-0 font-bold' : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-hover'}`}
+              onKeyDown={(event) => handleTabKeyDown(event, index)}
+              className={`min-h-[36px] inline-flex items-center px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors ${tab === item ? 'bg-text-main text-surface-0 font-bold' : 'bg-surface-2 text-text-secondary hover:text-text-main hover:bg-surface-hover'}`}
             >
               {item[0].toUpperCase() + item.slice(1)} ({counts[item]})
             </button>
@@ -251,7 +347,7 @@ export const Search: React.FC = () => {
       ) : loading && totalResults === 0 ? (
         <div className="text-text-secondary py-10" role="status">Searching…</div>
       ) : totalResults === 0 ? (
-        <EmptySearchResults query={query} />
+        <EmptySearchResults query={query} onClear={clearSearch} />
       ) : (
         <div className="flex-1 overflow-y-auto pb-32 space-y-8">
           {(tab === 'all' || tab === 'artists') && results.artists.length > 0 && (
@@ -261,6 +357,7 @@ export const Search: React.FC = () => {
                 {(tab === 'all' ? results.artists.slice(0, 5) : results.artists).map(artist => (
                   <button
                     key={artist.name}
+                    type="button"
                     onClick={() => navigate(`/artist/${encodeURIComponent(artist.name)}`)}
                     className="text-left bg-transparent hover:bg-surface-hover rounded-lg p-3 transition-colors"
                   >
@@ -278,17 +375,15 @@ export const Search: React.FC = () => {
               <h2 className="text-section font-bold tracking-tight mb-4">Albums</h2>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
                 {(tab === 'all' ? results.albums.slice(0, 5) : results.albums).map(album => (
-                  <div key={`${album.name}\u0000${album.artist}`} className="bg-transparent hover:bg-surface-hover rounded-lg p-3 group transition-colors">
-                    <button className="w-full text-left" onClick={() => navigate(`/album/${encodeURIComponent(album.name)}/${encodeURIComponent(album.artist)}`)}>
-                      <div className="aspect-square rounded-md overflow-hidden mb-3 shadow-lg" style={{ background: generateGradient(album.name) }}>
-                        {album.coverPath && <img src={album.coverPath} alt="" className="w-full h-full object-cover" />}
-                      </div>
+                  <div key={`${album.name}\u0000${album.artist}`} className="bg-transparent hover:bg-surface-hover rounded-lg p-3 group transition-colors flex flex-col">
+                    <button type="button" className="w-full text-left flex-1" onClick={() => navigate(`/album/${encodeURIComponent(album.name)}/${encodeURIComponent(album.artist)}`)}>
+                      <AlbumResultArtwork name={album.name} imageUrl={getAlbumArtworkUrl(album)} />
                       <div className="font-bold text-sm truncate text-text-main">{album.name}</div>
                       <div className="text-xs text-text-secondary truncate mt-0.5">{album.artist} · {album.songCount}</div>
                     </button>
-                    <div className="flex gap-2 mt-3">
-                      <button onClick={() => playAlbum(album.name, album.artist)} className="p-2 rounded-full bg-brand text-surface-0 hover:bg-brand-hover transition-colors" aria-label={`Play ${album.name}`}><Play size={15} fill="currentColor" /></button>
-                      <button onClick={() => addAlbum(album.name, album.artist)} className="p-2 rounded-full bg-surface-3 hover:bg-surface-highlight transition-colors" aria-label={`Add ${album.name} to queue`}><ListPlus size={15} /></button>
+                    <div className="flex items-center gap-2 mt-3 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity">
+                      <button type="button" onClick={() => playAlbum(album.name, album.artist)} className="inline-flex items-center justify-center min-w-[36px] min-h-[36px] rounded-full bg-brand text-surface-0 hover:bg-brand-hover transition-colors" aria-label={`Play ${album.name}`}><Play size={15} fill="currentColor" /></button>
+                      <button type="button" onClick={() => addAlbum(album.name, album.artist)} className="inline-flex items-center justify-center min-w-[36px] min-h-[36px] rounded-full bg-surface-3 text-text-main hover:bg-surface-highlight transition-colors" aria-label={`Add ${album.name} to queue`}><ListPlus size={15} /></button>
                     </div>
                   </div>
                 ))}
@@ -301,14 +396,14 @@ export const Search: React.FC = () => {
               <h2 className="text-section font-bold tracking-tight mb-3">Tracks</h2>
               <div className="space-y-0.5">
                 {(tab === 'all' ? results.tracks.slice(0, 12) : results.tracks).map(track => (
-                  <div key={track.id} className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-surface-hover transition-colors">
-                    <button onClick={() => playSong(track, results.tracks)} className="p-2 rounded-full hover:bg-surface-3 text-text-secondary hover:text-text-main" aria-label={`Play ${track.title}`}><Play size={16} fill="currentColor" /></button>
+                  <div key={track.id} className="group flex items-center gap-3 px-3 py-2 rounded-md hover:bg-surface-hover transition-colors">
+                    <button type="button" onClick={() => playSong(track, results.tracks)} className="inline-flex items-center justify-center min-w-[36px] min-h-[36px] rounded-full hover:bg-surface-3 text-text-secondary hover:text-text-main opacity-100 md:opacity-80 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-all" aria-label={`Play ${track.title}`}><Play size={16} fill="currentColor" /></button>
                     <div className="min-w-0 flex-1">
                       <div className="font-semibold text-sm text-text-main truncate">{track.title}</div>
                       <div className="text-xs text-text-secondary truncate">{track.artist} — {track.album}</div>
                     </div>
                     <div className="text-xs text-text-secondary tabular-nums">{formatTime(track.duration)}</div>
-                    <button onClick={() => addToQueue(track)} className="p-2 rounded-full hover:bg-surface-3 text-text-secondary hover:text-text-main" aria-label={`Add ${track.title} to queue`}><ListPlus size={16} /></button>
+                    <button type="button" onClick={() => addToQueue(track)} className="inline-flex items-center justify-center min-w-[36px] min-h-[36px] rounded-full hover:bg-surface-3 text-text-secondary hover:text-text-main opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-all" aria-label={`Add ${track.title} to queue`}><ListPlus size={16} /></button>
                   </div>
                 ))}
               </div>
@@ -320,7 +415,7 @@ export const Search: React.FC = () => {
               <h2 className="text-section font-bold tracking-tight mb-3">Playlists</h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {results.playlists.map(playlist => (
-                  <button key={playlist.id} onClick={() => navigate(`/playlist/${playlist.id}`)} className="text-left bg-surface-2/70 hover:bg-surface-hover rounded-lg p-4 transition-colors">
+                  <button type="button" key={playlist.id} onClick={() => navigate(`/playlist/${playlist.id}`)} className="text-left bg-surface-2/70 hover:bg-surface-hover rounded-lg p-4 transition-colors">
                     <div className="font-bold text-sm text-text-main truncate">{playlist.name}</div>
                     <div className="text-xs text-text-secondary mt-0.5">{playlist.songCount} tracks</div>
                   </button>

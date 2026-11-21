@@ -9,6 +9,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Activity, Archive, CheckCircle2, Database, Eye, Play, RefreshCw, ShieldCheck, Square, Wrench } from 'lucide-react';
 import { Page, PageHeader } from '../components/ui/Page';
+import { Button } from '../components/ui/Button';
 import { BackupInfo, LibraryDiagnostics, WatcherStatus, libraryOperationsV2 } from '../services/libraryOperationsV2';
 import { APIError } from '../services/httpClient';
 import { MetadataHealthWidget } from '../components/MetadataHealthWidget';
@@ -22,9 +23,6 @@ const formatBytes = (bytes: number) => {
   while (value >= 1024 && index < units.length - 1) { value /= 1024; index += 1; }
   return `${value.toFixed(value >= 10 ? 1 : 2)} ${units[index]}`;
 };
-
-const actionClass = 'inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-black hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50';
-const secondaryClass = 'inline-flex items-center gap-2 rounded-lg bg-surface-2 px-4 py-2 text-sm font-semibold text-text-main hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50';
 
 /** Continuous folder monitoring belongs beside scan configuration, not repair. */
 export const LibraryMonitoringPanel: React.FC = () => {
@@ -56,17 +54,18 @@ export const LibraryMonitoringPanel: React.FC = () => {
 
   return (
     <section className="mt-6 rounded-xl border border-surface-highlight bg-surface-1 p-5">
-      <div className="mb-2 flex items-center gap-3"><Activity className="text-brand" /><h2 className="text-xl font-semibold">Continuous Monitoring</h2></div>
+      <div className="mb-2 flex items-center gap-3"><Activity className="text-brand" aria-hidden="true" /><h3 className="text-base font-semibold text-text-main">Continuous Monitoring</h3></div>
       <p className="mb-4 text-sm text-text-secondary">Check configured music folders for changes between manual scans.</p>
-      <div className="flex flex-wrap items-center gap-4">
-        <label className="text-sm text-text-secondary">Interval
-          <select className="ml-2 rounded-lg bg-surface-2 px-3 py-2 text-text-main" value={watcher.intervalMs || 15000} disabled={watcher.running || busy} onChange={event => setWatcher(current => ({ ...current, intervalMs: Number(event.target.value) }))}>
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="flex flex-wrap items-center gap-2 text-sm text-text-secondary">
+          <span>Interval</span>
+          <select className="w-full sm:w-auto max-w-full rounded-lg bg-surface-2 px-3 py-2 text-text-main border border-surface-border" value={watcher.intervalMs || 15000} disabled={watcher.running || busy} onChange={event => setWatcher(current => ({ ...current, intervalMs: Number(event.target.value) }))}>
             <option value={5000}>5 seconds</option><option value={15000}>15 seconds</option><option value={30000}>30 seconds</option><option value={60000}>1 minute</option><option value={300000}>5 minutes</option>
           </select>
         </label>
-        <button className={watcher.running ? secondaryClass : actionClass} disabled={busy} onClick={() => void toggleWatcher()}>
-          {watcher.running ? <><Square size={16} />Stop watcher</> : <><Play size={16} />Start watcher</>}
-        </button>
+        <Button variant={watcher.running ? 'secondary' : 'primary'} size="sm" disabled={busy} onClick={() => void toggleWatcher()} leftIcon={watcher.running ? <Square size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}>
+          {watcher.running ? 'Stop watcher' : 'Start watcher'}
+        </Button>
         <span className="text-sm text-text-secondary">Checks: {watcher.checks} · Last changes: {watcher.lastChanges}{watcher.lastError ? ` · Error: ${watcher.lastError}` : ''}</span>
       </div>
       {error && <p className="mt-3 text-sm text-error" role="status">{error}</p>}
@@ -189,7 +188,7 @@ export const LibraryOperationsPanel: React.FC = () => {
             <label className="text-xs">Support reference
               <input className="ml-2 rounded bg-surface-2 px-2 py-1 font-mono" readOnly value={diagnosticToken} />
             </label>
-            <button className={secondaryClass} onClick={() => void copyReference()}>Copy reference</button>
+            <Button variant="secondary" size="sm" onClick={() => void copyReference()}>Copy reference</Button>
             <span className="text-xs" aria-live="polite">{copyMessage}</span>
           </div>}
 
@@ -205,11 +204,11 @@ export const LibraryOperationsPanel: React.FC = () => {
 
       <div className="grid gap-6 xl:grid-cols-2">
         <section className="rounded-xl border border-surface-highlight bg-surface-1 p-5">
-          <div className="mb-4 flex items-center gap-3"><ShieldCheck className="text-brand" /><h2 className="text-xl font-semibold">Diagnostics & Repair</h2></div>
-          <div className="mb-4 flex flex-wrap gap-3">
-            <button className={actionClass} disabled={busy !== null} onClick={runDiagnostics}><Activity size={17} />Run diagnostics</button>
-            <button className={secondaryClass} disabled={busy !== null} onClick={() => repair(false)}><Wrench size={17} />Repair indexes</button>
-            <button className={secondaryClass} disabled={busy !== null || !diagnostics?.missingMedia.length} onClick={() => repair(true)}><RefreshCw size={17} />Remove missing files</button>
+          <div className="mb-4 flex items-center gap-3"><ShieldCheck className="text-brand" aria-hidden="true" /><h3 className="text-base font-semibold text-text-main">Diagnostics & Repair</h3></div>
+          <div className="mb-4 flex flex-wrap gap-2">
+            <Button variant="primary" size="sm" disabled={busy !== null} onClick={runDiagnostics} leftIcon={<Activity size={15} aria-hidden="true" />}>Run diagnostics</Button>
+            <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => repair(false)} leftIcon={<Wrench size={15} aria-hidden="true" />}>Repair indexes</Button>
+            <Button variant="secondary" size="sm" disabled={busy !== null || !diagnostics?.missingMedia.length} onClick={() => repair(true)} leftIcon={<RefreshCw size={15} aria-hidden="true" />}>Remove missing files</Button>
           </div>
           {diagnostics ? (
             <>
@@ -233,16 +232,16 @@ export const LibraryOperationsPanel: React.FC = () => {
         </section>
 
         <section className="rounded-xl border border-surface-highlight bg-surface-1 p-5">
-          <div className="mb-4 flex items-center gap-3"><Archive className="text-brand" /><h2 className="text-xl font-semibold">Backup & Recovery</h2></div>
-          <button className={actionClass} disabled={busy !== null} onClick={createBackup}><Database size={17} />Create validated backup</button>
+          <div className="mb-4 flex items-center gap-3"><Archive className="text-brand" aria-hidden="true" /><h3 className="text-base font-semibold text-text-main">Backup & Recovery</h3></div>
+          <Button variant="primary" size="sm" disabled={busy !== null} onClick={createBackup} leftIcon={<Database size={15} aria-hidden="true" />}>Create validated backup</Button>
           <div className="mt-4 max-h-72 space-y-2 overflow-y-auto">
             {backups.length === 0 && <p className="text-sm text-text-secondary">No backups have been created.</p>}
             {backups.map(backup => (
               <div key={backup.name} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-surface-2 p-3">
                 <div className="min-w-0"><div className="truncate font-medium">{backup.name}</div><div className="text-xs text-text-secondary">{formatBytes(backup.size)} · {new Date(backup.createdAt).toLocaleString()}</div></div>
                 <div className="flex gap-2">
-                  <button className={secondaryClass} disabled={busy !== null} onClick={() => previewRestore(backup)}><Eye size={15} />Validate</button>
-                  <button className={secondaryClass} disabled={busy !== null} onClick={() => stageRestore(backup)}><CheckCircle2 size={15} />Stage</button>
+                  <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => previewRestore(backup)} leftIcon={<Eye size={14} aria-hidden="true" />}>Validate</Button>
+                  <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => stageRestore(backup)} leftIcon={<CheckCircle2 size={14} aria-hidden="true" />}>Stage</Button>
                 </div>
               </div>
             ))}

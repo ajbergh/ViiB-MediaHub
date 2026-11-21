@@ -353,12 +353,12 @@ export const PlexMusicSourceSettings: React.FC = () => {
   const busy = state.busy !== null || syncRunning;
 
   return (
-    <section className="rounded-xl border border-surface-highlight bg-surface-1 p-5">
+    <section className="rounded-xl border border-surface-3 bg-surface-2 p-6">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <Server className="text-brand" size={21} />
+          <Server className="text-brand" size={20} aria-hidden="true" />
           <div>
-            <h2 className="text-xl font-semibold text-text-main">Plex Media Server</h2>
+            <h2 className="text-lg font-bold text-text-main">Plex Media Server</h2>
             <p className="text-sm text-text-secondary">Use a Plex music library as part of the normal ViiB catalog and player.</p>
           </div>
         </div>
@@ -370,8 +370,8 @@ export const PlexMusicSourceSettings: React.FC = () => {
       </div>
 
       {(state.message || state.error || state.busy) && (
-        <div className={`mt-4 flex items-start gap-2 rounded-lg border p-3 text-sm ${state.error ? 'border-error/40 bg-error/10 text-error' : 'border-surface-border bg-surface-2 text-text-secondary'}`} role="status">
-          {state.busy ? <Loader2 className="mt-0.5 animate-spin" size={16} /> : state.error ? <AlertTriangle className="mt-0.5" size={16} /> : <ShieldCheck className="mt-0.5 text-success" size={16} />}
+        <div className={`mt-4 flex items-start gap-2 rounded-lg border p-3 text-sm ${state.error ? 'border-error/40 bg-error/10 text-error' : 'border-surface-border bg-surface-1 text-text-secondary'}`} role="status">
+          {state.busy ? <Loader2 className="mt-0.5 animate-spin" size={16} aria-hidden="true" /> : state.error ? <AlertTriangle className="mt-0.5" size={16} aria-hidden="true" /> : <ShieldCheck className="mt-0.5 text-success" size={16} aria-hidden="true" />}
           <span>{state.error || (state.busy ? busyLabel[state.busy] : state.message)}</span>
         </div>
       )}
@@ -386,30 +386,30 @@ export const PlexMusicSourceSettings: React.FC = () => {
       {state.source && !editingServer ? (
         <div className="mt-5 space-y-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-lg bg-surface-2 p-3"><div className="text-xs uppercase tracking-wide text-text-subtle">Server</div><div className="mt-1 font-semibold text-text-main">{state.source.name || state.source.machineIdentifier}</div></div>
-            <div className="rounded-lg bg-surface-2 p-3"><div className="text-xs uppercase tracking-wide text-text-subtle">Address</div><div className="mt-1 truncate font-mono text-xs text-text-main" title={state.source.baseUrl}>{state.source.baseUrl}</div></div>
-            <div className="rounded-lg bg-surface-2 p-3"><div className="text-xs uppercase tracking-wide text-text-subtle">Music library</div><div className="mt-1 font-semibold text-text-main">{state.source.libraryTitle || 'Not selected'}</div></div>
-            <div className="rounded-lg bg-surface-2 p-3"><div className="text-xs uppercase tracking-wide text-text-subtle">Last successful sync</div><div className="mt-1 text-sm text-text-main">{formatSyncTime(state.source.lastSyncAt)}</div></div>
+            <div className="rounded-lg bg-surface-1 p-3"><div className="text-xs uppercase tracking-wide text-text-subtle">Server</div><div className="mt-1 font-semibold text-text-main">{state.source.name || state.source.machineIdentifier}</div></div>
+            <div className="rounded-lg bg-surface-1 p-3"><div className="text-xs uppercase tracking-wide text-text-subtle">Address</div><div className="mt-1 truncate font-mono text-xs text-text-main" title={state.source.baseUrl}>{state.source.baseUrl}</div></div>
+            <div className="rounded-lg bg-surface-1 p-3"><div className="text-xs uppercase tracking-wide text-text-subtle">Music library</div><div className="mt-1 font-semibold text-text-main">{state.source.libraryTitle || 'Not selected'}</div></div>
+            <div className="rounded-lg bg-surface-1 p-3"><div className="text-xs uppercase tracking-wide text-text-subtle">Last successful sync</div><div className="mt-1 text-sm text-text-main">{formatSyncTime(state.source.lastSyncAt)}</div></div>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" disabled={busy} onClick={() => { setEditingServer(true); void discover(); }} leftIcon={<Search size={16} />}>Rediscover / Change Server</Button>
-            <Button variant="secondary" disabled={busy} onClick={() => { setEditingServer(true); if (state.authenticated) void loadAccountServers(); else void signIn(); }} leftIcon={<ExternalLink size={16} />}>{state.authenticated ? 'Browse Plex Account Servers' : 'Sign in to Plex'}</Button>
-            {sourceNeedsAuth && <Button variant="primary" accent="brand" disabled={busy} onClick={() => void signIn()} leftIcon={<ExternalLink size={16} />}>Sign in / Reconnect</Button>}
-            <Button variant="secondary" disabled={busy} onClick={() => void loadLibraries()} leftIcon={<RefreshCw size={16} />}>Refresh Libraries</Button>
-            <Button variant="secondary" disabled={busy} onClick={() => void disconnect()} leftIcon={<Trash2 size={16} />} className="hover:text-error">Remove Plex Source</Button>
+            <Button variant="secondary" size="sm" disabled={busy} onClick={() => { setEditingServer(true); void discover(); }} leftIcon={<Search size={15} aria-hidden="true" />}>Rediscover / Change Server</Button>
+            <Button variant="secondary" size="sm" disabled={busy} onClick={() => { setEditingServer(true); if (state.authenticated) void loadAccountServers(); else void signIn(); }} leftIcon={<ExternalLink size={15} aria-hidden="true" />}>{state.authenticated ? 'Browse Plex Account Servers' : 'Sign in to Plex'}</Button>
+            {sourceNeedsAuth && <Button variant="primary" size="sm" accent="brand" disabled={busy} onClick={() => void signIn()} leftIcon={<ExternalLink size={15} aria-hidden="true" />}>Sign in / Reconnect</Button>}
+            <Button variant="secondary" size="sm" disabled={busy} onClick={() => void loadLibraries()} leftIcon={<RefreshCw size={15} aria-hidden="true" />}>Refresh Libraries</Button>
+            <Button variant="secondary" size="sm" disabled={busy} onClick={() => void disconnect()} leftIcon={<Trash2 size={15} aria-hidden="true" />} className="hover:text-error">Remove Plex Source</Button>
           </div>
 
           {syncRunning && (
             <div className="flex items-center gap-2 text-sm text-text-secondary" role="status">
-              <Loader2 size={16} className="animate-spin" />
+              <Loader2 size={16} className="animate-spin" aria-hidden="true" />
               <span>{state.source.syncTracks ? `Read ${state.source.syncTracks.toLocaleString()}${state.source.syncTotal ? ` of ${state.source.syncTotal.toLocaleString()}` : ''} Plex tracks` : 'Synchronizing Plex music…'}</span>
-              <Button variant="secondary" disabled={state.busy !== null} onClick={() => void cancelSync()}>Cancel sync</Button>
+              <Button variant="secondary" size="sm" disabled={state.busy !== null} onClick={() => void cancelSync()}>Cancel sync</Button>
             </div>
           )}
           {!syncRunning && state.source.lastSyncError && (
             <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
-              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
               <span>{state.source.lastSyncError} ViiB kept any previously synced tracks.</span>
             </div>
           )}
@@ -417,23 +417,23 @@ export const PlexMusicSourceSettings: React.FC = () => {
       ) : (
         <div className="mt-5 space-y-4">
           <div className="flex flex-wrap gap-2">
-            <Button variant="primary" accent="brand" disabled={busy} onClick={() => void discover()} leftIcon={<Search size={16} />}>Search Local Network</Button>
+            <Button variant="primary" size="sm" accent="brand" disabled={busy} onClick={() => void discover()} leftIcon={<Search size={15} aria-hidden="true" />}>Search Local Network</Button>
             {!state.authenticated ? (
-              <Button variant="secondary" disabled={busy} onClick={() => void signIn()} leftIcon={<ExternalLink size={16} />}>Sign in to Plex</Button>
+              <Button variant="secondary" size="sm" disabled={busy} onClick={() => void signIn()} leftIcon={<ExternalLink size={15} aria-hidden="true" />}>Sign in to Plex</Button>
             ) : (
-              <Button variant="secondary" disabled={busy} onClick={() => void loadAccountServers()} leftIcon={<RefreshCw size={16} />}>Refresh Plex Account Servers</Button>
+              <Button variant="secondary" size="sm" disabled={busy} onClick={() => void loadAccountServers()} leftIcon={<RefreshCw size={15} aria-hidden="true" />}>Refresh Plex Account Servers</Button>
             )}
-            {state.source && <Button variant="secondary" disabled={busy} onClick={() => setEditingServer(false)}>Cancel Change</Button>}
+            {state.source && <Button variant="secondary" size="sm" disabled={busy} onClick={() => setEditingServer(false)}>Cancel Change</Button>}
           </div>
 
           {!state.authenticated && <p className="text-xs text-text-subtle">Sign in with your Plex account to find your remote servers and servers with libraries shared with you.</p>}
 
           {state.accountServers.length > 0 && (
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-text-main">Plex account servers</h3>
+              <h3 className="mb-2 text-base font-semibold text-text-main">Plex account servers</h3>
               <div className="grid gap-2 md:grid-cols-2">
                 {state.accountServers.map(server => (
-                  <button key={server.machineIdentifier} type="button" disabled={busy} onClick={() => void connectAccountServer(server)} className="rounded-lg border border-surface-border bg-surface-2 p-3 text-left transition hover:border-brand disabled:opacity-50">
+                  <button key={server.machineIdentifier} type="button" disabled={busy} onClick={() => void connectAccountServer(server)} className="rounded-lg border border-surface-border bg-surface-1 p-3 text-left transition hover:border-brand disabled:opacity-50">
                     <div className="flex items-center justify-between gap-2"><div className="font-semibold text-text-main">{server.name || server.machineIdentifier}</div><span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${server.owned ? 'bg-brand/10 text-brand' : 'bg-success/15 text-success'}`}>{server.owned ? 'Your server' : 'Shared with you'}</span></div>
                     <div className="mt-1 truncate font-mono text-xs text-text-subtle">{server.url}</div>
                     <div className="mt-1 text-xs text-text-secondary">{server.owner ? `Shared by ${server.owner}` : server.version ? `Plex ${server.version}` : 'Plex Media Server'}{server.relay ? ' · Relay connection' : ''}</div>
@@ -445,10 +445,10 @@ export const PlexMusicSourceSettings: React.FC = () => {
 
           {state.discovered.length > 0 && (
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-text-main">Discovered Plex servers</h3>
+              <h3 className="mb-2 text-base font-semibold text-text-main">Discovered Plex servers</h3>
               <div className="grid gap-2 md:grid-cols-2">
                 {state.discovered.map(server => (
-                  <button key={server.machineIdentifier || serverAddress(server)} type="button" disabled={busy} onClick={() => void connect(serverAddress(server))} className="rounded-lg border border-surface-border bg-surface-2 p-3 text-left transition hover:border-brand disabled:opacity-50">
+                  <button key={server.machineIdentifier || serverAddress(server)} type="button" disabled={busy} onClick={() => void connect(serverAddress(server))} className="rounded-lg border border-surface-border bg-surface-1 p-3 text-left transition hover:border-brand disabled:opacity-50">
                     <div className="font-semibold text-text-main">{server.name || server.host}</div>
                     <div className="mt-1 font-mono text-xs text-text-subtle">{serverAddress(server)}</div>
                     <div className="mt-1 text-xs text-text-secondary">{server.version ? `Plex ${server.version}` : 'Plex Media Server'}{server.claimed ? ' · Claimed' : ' · Unclaimed'}</div>
@@ -462,7 +462,7 @@ export const PlexMusicSourceSettings: React.FC = () => {
             <label className="mb-2 block text-xs font-bold uppercase text-text-secondary">Manual Plex server</label>
             <div className="flex flex-col gap-2 sm:flex-row">
               <TextInput value={state.manualUrl} onChange={event => dispatch({ type: 'manual_url', url: event.target.value })} placeholder="192.168.1.20 or https://plex.example.com" className="flex-1" inputClassName="font-mono" />
-              <Button variant="secondary" disabled={busy || !state.manualUrl.trim()} onClick={() => void connect(state.manualUrl)} leftIcon={<Server size={16} />}>Connect</Button>
+              <Button variant="secondary" size="sm" disabled={busy || !state.manualUrl.trim()} onClick={() => void connect(state.manualUrl)} leftIcon={<Server size={15} aria-hidden="true" />}>Connect</Button>
             </div>
             <p className="mt-2 text-xs text-text-subtle">Bare hosts/IP addresses default to port 32400. Full HTTP/HTTPS URLs are used as entered so reverse proxies on 80/443 work. The endpoint is validated as Plex before it is saved.</p>
           </div>
@@ -472,8 +472,8 @@ export const PlexMusicSourceSettings: React.FC = () => {
       {state.source && !editingServer && (
         <div className="mt-6 border-t border-surface-border pt-5">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2"><Music className="text-brand" size={18} /><h3 className="font-semibold text-text-main">Music Library</h3></div>
-            {state.source.libraryId && <Button variant="primary" accent="brand" disabled={busy || sourceNeedsAuth} onClick={() => void sync()} leftIcon={<RefreshCw size={16} />}>{state.source.lastSyncAt ? 'Resynchronize' : 'Synchronize'}</Button>}
+            <div className="flex items-center gap-2"><Music className="text-brand" size={18} aria-hidden="true" /><h3 className="text-base font-semibold text-text-main">Music Library</h3></div>
+            {state.source.libraryId && <Button variant="primary" size="sm" accent="brand" disabled={busy || sourceNeedsAuth} onClick={() => void sync()} leftIcon={<RefreshCw size={15} aria-hidden="true" />}>{state.source.lastSyncAt ? 'Resynchronize' : 'Synchronize'}</Button>}
           </div>
 
           {state.source.libraryId && (
@@ -492,8 +492,8 @@ export const PlexMusicSourceSettings: React.FC = () => {
               {state.libraries.map(library => {
                 const selected = state.selectedLibraryId === library.id;
                 return (
-                  <button type="button" key={library.id} disabled={busy} onClick={() => void selectLibrary(library.id)} className={`rounded-lg border p-3 text-left transition disabled:opacity-50 ${selected ? 'border-brand bg-brand/10' : 'border-surface-border bg-surface-2 hover:border-brand/60'}`}>
-                    <div className="flex items-center gap-2"><Music size={15} className={selected ? 'text-brand' : 'text-text-subtle'} /><span className="font-semibold text-text-main">{library.title}</span></div>
+                  <button type="button" key={library.id} disabled={busy} onClick={() => void selectLibrary(library.id)} className={`rounded-lg border p-3 text-left transition disabled:opacity-50 ${selected ? 'border-brand bg-brand/10' : 'border-surface-border bg-surface-1 hover:border-brand/60'}`}>
+                    <div className="flex items-center gap-2"><Music size={15} className={selected ? 'text-brand' : 'text-text-subtle'} aria-hidden="true" /><span className="font-semibold text-text-main">{library.title}</span></div>
                     <div className="mt-1 text-xs text-text-subtle">Music / audio only{selected ? ' · Selected' : ''}</div>
                   </button>
                 );
@@ -507,10 +507,10 @@ export const PlexMusicSourceSettings: React.FC = () => {
         <div className="mt-6 border-t border-surface-border pt-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h3 className="font-semibold text-text-main">AI Metadata Writeback</h3>
+              <h3 className="text-base font-semibold text-text-main">AI Metadata Writeback</h3>
               <p className="mt-1 max-w-3xl text-sm text-text-secondary">Review AI-enriched genres and original release years before sending them to Plex. ViiB only writes approved changes, locks those fields in Plex, and verifies each update with a fresh PMS read.</p>
             </div>
-            <Button variant="secondary" disabled={busy || writebackBusy || sourceNeedsAuth} onClick={() => void previewAIWriteback()} leftIcon={<Eye size={16} />}>{writebackBusy ? 'Loading preview…' : 'Preview AI metadata'}</Button>
+            <Button variant="secondary" size="sm" disabled={busy || writebackBusy || sourceNeedsAuth} onClick={() => void previewAIWriteback()} leftIcon={<Eye size={15} aria-hidden="true" />}>{writebackBusy ? 'Loading preview…' : 'Preview AI metadata'}</Button>
           </div>
 
           {(writebackMessage || writebackError) && (
@@ -520,14 +520,14 @@ export const PlexMusicSourceSettings: React.FC = () => {
           )}
 
           {writebackPreview && writebackPreview.items.length > 0 && (
-            <div className="mt-4 rounded-lg border border-surface-border bg-surface-2 p-4">
+            <div className="mt-4 rounded-lg border border-surface-border bg-surface-1 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="text-sm font-semibold text-text-main">Review {writebackPreview.items.length} Plex track{writebackPreview.items.length === 1 ? '' : 's'}</div>
                 {writebackPreview.hasMore && <span className="text-xs text-warning">Only the first 100 pending proposals are shown. Sync this set, then preview again.</span>}
               </div>
               <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
                 {writebackPreview.items.map(item => (
-                  <div key={item.songId} className="rounded-md border border-surface-border bg-surface-1 p-3 text-sm">
+                  <div key={item.songId} className="rounded-md border border-surface-border bg-surface-2 p-3 text-sm">
                     <div className="font-medium text-text-main">{item.title} <span className="font-normal text-text-secondary">· {item.artist}{item.album ? ` · ${item.album}` : ''}</span></div>
                     {item.changes.length > 0 ? (
                       <ul className="mt-2 space-y-1 text-xs text-text-secondary">
@@ -542,7 +542,7 @@ export const PlexMusicSourceSettings: React.FC = () => {
                 <span>I reviewed these changes and approve writing them to this Plex server. Plex stores them as locked metadata overrides; ViiB does not alter the source audio files.</span>
               </label>
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                <Button variant="primary" accent="brand" disabled={busy || writebackBusy || !writebackApproved} onClick={() => void syncAIWriteback()} leftIcon={<CheckCircle2 size={16} />}>{writebackBusy ? 'Writing to Plex…' : 'Sync approved metadata to Plex'}</Button>
+                <Button variant="primary" size="sm" accent="brand" disabled={busy || writebackBusy || !writebackApproved} onClick={() => void syncAIWriteback()} leftIcon={<CheckCircle2 size={15} aria-hidden="true" />}>{writebackBusy ? 'Writing to Plex…' : 'Sync approved metadata to Plex'}</Button>
                 <button type="button" className="text-sm text-text-secondary underline hover:text-text-main" disabled={writebackBusy} onClick={() => { setWritebackPreview(null); setWritebackApproved(false); }}>Discard preview</button>
               </div>
             </div>

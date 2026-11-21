@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { SpotifyRateLimitError } from '../lib/spotifyErrors';
 import { backendSpotifyFetch } from '../services/spotifyBackend';
+import { SpotifyArtistLinks } from './SpotifyArtistLinks';
 import { Button } from './ui/Button';
 
 const views = [
@@ -14,7 +15,17 @@ const views = [
     ['queue', 'Spotify Queue', '/me/player/queue'],
 ] as const;
 
-type Entry = {id?: string; name: string; type?: string; is_active?: boolean; typeLabel?: string};
+type Entry = {
+    id?: string;
+    name: string;
+    type?: string;
+    is_active?: boolean;
+    typeLabel?: string;
+    artists?: Array<{ id?: string; name: string }>;
+    album?: { id?: string; name?: string };
+    genres?: string[];
+    followers?: { total?: number };
+};
 type AccountResponse = {
     items?: Array<Entry | {track: Entry | null}>;
     devices?: Entry[];
@@ -83,18 +94,18 @@ export function SpotifyAccountViews({generation}: {generation: number}) {
         : page?.items?.map(item => item && 'track' in item ? item.track : item);
     return <section className="space-y-4" aria-labelledby="spotify-account-view">
         <div className="flex flex-wrap items-center gap-4">
-            <label className="flex items-center gap-2">
+            <label className="flex items-center gap-2 text-sm text-text-secondary">
                 View
-                <select className="rounded bg-surface-1 p-2 text-text-main" value={view} onChange={event => {
+                <select className="border border-surface-border rounded-lg px-3 py-1.5 text-sm bg-surface-1 text-text-main" value={view} onChange={event => {
                     const next = views.find(entry => entry[0] === event.target.value);
                     if (next && (next[0] === 'liked' || oauthViews === true)) { setPage(null); setOffset(0); setView(next[0]); }
                 }}>
                     {views.map(([id, name]) => <option key={id} value={id} disabled={id !== 'liked' && oauthViews !== true}>{name}</option>)}
                 </select>
             </label>
-            {isTop && <label className="flex items-center gap-2">
+            {isTop && <label className="flex items-center gap-2 text-sm text-text-secondary">
                 Time range
-                <select className="rounded bg-surface-1 p-2 text-text-main" value={range} onChange={event => {
+                <select className="border border-surface-border rounded-lg px-3 py-1.5 text-sm bg-surface-1 text-text-main" value={range} onChange={event => {
                     setPage(null); setOffset(0); setRange(event.target.value);
                 }}>
                     <option value="short_term">Last 4 weeks</option>
@@ -109,14 +120,50 @@ export function SpotifyAccountViews({generation}: {generation: number}) {
         <h2 id="spotify-account-view" className="text-lg font-semibold">{label}</h2>
         {!canRead ? null : error ? <p role="alert">{error}</p> : !page ? <p role="status">Loading {label}…</p> : <>
             {view === 'queue' && page.currently_playing && <p>Now playing: {page.currently_playing.name}</p>}
-            {entries?.length ? <ol className="divide-y divide-surface-border">
-                {entries.map((entry, index) => <li key={`${index}:${entry?.id ?? ''}`} className="px-3 py-2">
-                    {view === 'top-artists' && entry?.id ? <Link to={`/spotify/artist/${entry.id}`} className="text-brand">{entry.name}</Link>
-                        : entry?.id && view !== 'devices' && /^[A-Za-z0-9]{22}$/.test(entry.id)
-                            ? <a className="text-brand" href={`https://open.spotify.com/${entry.type === 'episode' ? 'episode' : 'track'}/${entry.id}`} target="_blank" rel="noopener noreferrer">{entry.name}</a>
-                            : entry?.name ?? 'Unavailable item'}
-                    {view === 'devices' && entry?.is_active && <span className="ml-2 text-text-secondary">Active</span>}
-                </li>)}
+            {entries?.length ? <ol className="divide-y divide-surface-border rounded-xl bg-surface-1 overflow-hidden">
+                {entries.map((entry, index) => {
+                    const subtitle = entry?.artists?.length ? (
+                        <>
+                            <SpotifyArtistLinks artists={entry.artists} />
+                            {entry.album?.name ? ` · ${entry.album.name}` : ''}
+                        </>
+                    ) : view === 'top-artists' ? (
+                        entry?.genres?.length
+                            ? entry.genres.slice(0, 2).join(', ')
+                            : entry?.followers?.total != null
+                              ? `${entry.followers.total.toLocaleString()} followers`
+                              : null
+                    ) : view === 'devices' ? (
+                        entry?.typeLabel || entry?.type || null
+                    ) : null;
+
+                    return (
+                        <li key={`${index}:${entry?.id ?? ''}`} className="flex items-center gap-3 px-3 py-2 min-h-[36px] hover:bg-surface-hover transition-colors">
+                            <span className="w-6 shrink-0 text-right text-xs font-mono text-text-subtle">
+                                {offset + index + 1}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                                <div className="truncate font-medium text-text-main">
+                                    {view === 'top-artists' && entry?.id ? (
+                                        <Link to={`/spotify/artist/${entry.id}`} className="text-brand hover:underline">{entry.name}</Link>
+                                    ) : entry?.id && view !== 'devices' && /^[A-Za-z0-9]{22}$/.test(entry.id) ? (
+                                        <a className="text-brand hover:underline" href={`https://open.spotify.com/${entry.type === 'episode' ? 'episode' : 'track'}/${entry.id}`} target="_blank" rel="noopener noreferrer">{entry.name}</a>
+                                    ) : (
+                                        entry?.name ?? 'Unavailable item'
+                                    )}
+                                </div>
+                                {subtitle && (
+                                    <div className="truncate text-xs text-text-secondary">
+                                        {subtitle}
+                                    </div>
+                                )}
+                            </div>
+                            {view === 'devices' && entry?.is_active && (
+                                <span className="shrink-0 rounded-full bg-brand/15 px-2.5 py-0.5 text-xs font-semibold text-brand">Active</span>
+                            )}
+                        </li>
+                    );
+                })}
             </ol> : <p className="text-text-secondary">No items to show.</p>}
             {(offset > 0 || page.next) && <div className="flex gap-2">
                 <Button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 20))}>Previous page</Button>

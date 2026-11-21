@@ -19,6 +19,7 @@ import { Download, FileUp, Plus } from 'lucide-react';
 import { ContextMenuType } from '../types';
 import { EmptyPlaylists } from '../components/EmptyState';
 import { Page, PageHeader } from '../components/ui/Page';
+import { Button } from '../components/ui/Button';
 import { CardSizeSlider, MAX_CARD_COLUMNS } from '../components/ui/CardSizeSlider';
 import { LibraryListHeader, LibraryListRow } from '../components/ui/LibraryList';
 import { api } from '../services/api';
@@ -81,7 +82,7 @@ export const Playlists: React.FC = () => {
         heading="Playlists"
         subtitle={`${playlists.length} ${playlists.length === 1 ? 'playlist' : 'playlists'}`}
         actions={
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
           <input
             ref={importInputRef}
             type="file"
@@ -89,18 +90,22 @@ export const Playlists: React.FC = () => {
             className="hidden"
             onChange={(event) => void handleImport(event.target.files?.[0])}
           />
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
+            leftIcon={<FileUp size={15} />}
             onClick={() => importInputRef.current?.click()}
-            className="flex items-center gap-2 bg-surface-3 hover:bg-surface-highlight text-text-main px-4 py-2 rounded-full font-semibold transition-colors text-xs"
           >
-            <FileUp size={15} /> Import M3U
-          </button>
-          <button
+            Import M3U
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            leftIcon={<Plus size={15} />}
             onClick={() => setShowInput(true)}
-            className="flex items-center gap-2 bg-brand hover:bg-brand-hover text-surface-0 px-4 py-2 rounded-full font-bold transition-transform hover:scale-[1.02] text-xs"
           >
-            <Plus size={15} /> Create Playlist
-          </button>
+            Create Playlist
+          </Button>
           <CardSizeSlider listAtMinimum value={cardCols} onChange={handleCardColsChange} />
           </div>
         }
@@ -118,26 +123,25 @@ export const Playlists: React.FC = () => {
             onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
             autoFocus
           />
-          <button onClick={handleCreate} className="bg-brand text-surface-0 font-bold px-5 py-2 rounded-full text-sm hover:bg-brand-hover transition-colors">Save</button>
-          <button onClick={() => setShowInput(false)} className="text-text-secondary hover:text-text-main text-sm font-medium px-2">Cancel</button>
+          <Button variant="primary" size="sm" onClick={handleCreate}>Save</Button>
+          <Button variant="ghost" size="sm" onClick={() => setShowInput(false)}>Cancel</Button>
         </div>
       )}
 
       {playlists.length === 0 ? (
         <EmptyPlaylists onCreate={() => setShowInput(true)} />
       ) : (
-        <div>
+        <div style={{ '--card-cols': listView ? 1 : cardCols } as React.CSSProperties}>
         {listView && <LibraryListHeader title="Playlist" stats="Tracks" />}
         <div
-          className={listView ? 'grid gap-0' : 'grid gap-2'}
-          style={{ gridTemplateColumns: `repeat(${listView ? 1 : cardCols}, minmax(0, 1fr))` }}
+          className={listView ? 'grid grid-cols-1 gap-0' : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-[repeat(var(--card-cols,4),minmax(0,1fr))] gap-2'}
         >
             {playlists.map((pl, index) => listView ? (
                 <LibraryListRow key={pl.id} index={index} name={pl.name}
                   artwork={<PlaylistArtwork name={pl.name} coverUrl={pl.coverUrl} covers={thumbnails.get(pl.id) || []} />}
                   stats={String(pl.songIds.length)} onOpen={() => navigate(`/playlist/${encodeURIComponent(pl.id)}`)}
                   onContextMenu={e => openContextMenu(e, ContextMenuType.PLAYLIST, pl)}
-                  actions={<button type="button" aria-label={`Export ${pl.name} as M3U`} className="p-2 text-text-secondary hover:text-brand" onClick={event => { event.stopPropagation(); void handleExport(pl.id, pl.name); }}><Download size={16} /></button>} />
+                  actions={<button type="button" aria-label={`Export ${pl.name} as M3U`} className="min-w-[32px] min-h-[32px] inline-flex items-center justify-center p-2 text-text-secondary hover:text-brand" onClick={event => { event.stopPropagation(); void handleExport(pl.id, pl.name); }}><Download size={16} /></button>} />
             ) : (
                 <div 
                     key={pl.id} 
@@ -156,7 +160,7 @@ export const Playlists: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-text-subtle hover:text-text-main transition-colors"
+                      className="mt-2 min-h-[32px] px-2 inline-flex items-center gap-1.5 text-xs font-medium text-text-subtle hover:text-text-main transition-colors rounded-md"
                       onClick={(event) => { event.stopPropagation(); void handleExport(pl.id, pl.name); }}
                     >
                       <Download size={13} /> Export M3U

@@ -33,17 +33,8 @@ export const HomeSpotlight: React.FC<HomeSpotlightProps> = ({ item, className, c
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={item.onClick}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          item.onClick();
-        }
-      }}
       className={cn(
-        'group relative flex cursor-pointer flex-col gap-5 overflow-hidden rounded-lg bg-gradient-to-br from-surface-3 via-surface-2 to-surface-2 p-5 transition-colors hover:from-surface-highlight hover:via-surface-3 hover:to-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70 sm:flex-row sm:items-center',
+        'group relative flex flex-col gap-5 overflow-hidden rounded-lg bg-gradient-to-br from-surface-3 via-surface-2 to-surface-2 p-5 transition-colors hover:from-surface-highlight hover:via-surface-3 hover:to-surface-2 sm:flex-row sm:items-center',
         compact ? 'min-h-[180px]' : 'min-h-[210px]',
         className
       )}
@@ -62,7 +53,7 @@ export const HomeSpotlight: React.FC<HomeSpotlightProps> = ({ item, className, c
         ) : null}
       </div>
 
-      <div className="relative z-10 flex min-w-0 flex-1 flex-col justify-center">
+      <div className="flex min-w-0 flex-1 flex-col justify-center">
         <p className="text-[11px] font-bold uppercase tracking-widest text-text-secondary">
           {item.kind === 'album' ? 'Featured Album' : item.kind === 'artist' ? 'Featured Artist' : 'Smart Mix'}
         </p>
@@ -75,19 +66,21 @@ export const HomeSpotlight: React.FC<HomeSpotlightProps> = ({ item, className, c
           {item.onPlay ? (
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                item.onPlay?.();
-              }}
-              className="inline-flex h-10 items-center gap-2 rounded-full bg-brand px-6 text-sm font-bold text-surface-0 transition-transform hover:scale-105 hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
+              onClick={() => item.onPlay?.()}
+              className="relative z-10 inline-flex h-10 items-center gap-2 rounded-full bg-brand px-6 text-sm font-bold text-surface-0 transition-transform hover:scale-105 hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
             >
               <Play size={16} className="fill-current" aria-hidden="true" />
               Play
             </button>
           ) : null}
-          <span className="rounded-full border border-surface-border px-4 py-2 text-xs font-bold text-text-main transition-colors group-hover:border-text-secondary">
+          <button
+            type="button"
+            onClick={item.onClick}
+            aria-label={`View ${item.title}`}
+            className="cursor-pointer rounded-full border border-surface-border px-4 py-2 text-xs font-bold text-text-main transition-colors group-hover:border-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70 after:absolute after:inset-0 after:rounded-lg focus-visible:after:ring-2 focus-visible:after:ring-brand/70"
+          >
             View
-          </span>
+          </button>
         </div>
       </div>
     </div>

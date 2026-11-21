@@ -13,7 +13,7 @@ import { getPlaylistArtwork } from '../lib/playlistArtwork';
 import { indexPlaylistSongs, resolvePlaylistSongs } from '../lib/playlistContents';
 import { formatTime } from '../utils';
 
-const buttonClass = 'rounded-lg px-3 py-2 text-sm font-medium bg-surface-2 hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 disabled:cursor-not-allowed';
+const buttonClass = 'inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium bg-surface-2 hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 disabled:cursor-not-allowed';
 
 const PlaylistEditor: React.FC<{ playlist: Playlist }> = ({ playlist }) => {
   const songs = useStore(state => state.songs);
@@ -76,12 +76,12 @@ const PlaylistEditor: React.FC<{ playlist: Playlist }> = ({ playlist }) => {
 
   return (
     <Page>
-      <Link to="/playlists" className="text-sm text-text-secondary hover:text-text-main">← Playlists</Link>
-      <div className="mt-6 flex items-center gap-6">
+      <Link to="/playlists" className="min-h-[32px] inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-main">← Playlists</Link>
+      <div className="mt-6 flex flex-col sm:flex-row items-start sm:items-end gap-4 sm:gap-6">
         <div className="w-28 sm:w-36 shrink-0"><PlaylistArtwork name={playlist.name} coverUrl={playlist.coverUrl} covers={covers} /></div>
         <div className="min-w-0 flex-1">
           <PageHeader heading={playlist.name} subtitle={`${songIds.length} tracks`} />
-          <button type="button" className={buttonClass} disabled={availableSongs.length === 0 || saving} onClick={() => void playSong(availableSongs[0], availableSongs)}><Play size={14} className="inline mr-2" />Play playlist</button>
+          <button type="button" className={buttonClass} disabled={availableSongs.length === 0 || saving} onClick={() => void playSong(availableSongs[0], availableSongs)}><Play size={14} />Play playlist</button>
         </div>
       </div>
       <div className="mt-6 mb-4 flex items-center gap-3">
@@ -118,7 +118,7 @@ const PlaylistEditor: React.FC<{ playlist: Playlist }> = ({ playlist }) => {
         {matches.length === 0 ? <p className="text-text-secondary">No matching tracks.</p> : <ul className="max-h-80 overflow-y-auto divide-y divide-surface-border">
           {matches.map(song => <li key={song.id} className="flex items-center gap-3 py-3">
             <div className="min-w-0 flex-1"><p className="truncate font-medium">{song.title}</p><p className="truncate text-sm text-text-secondary">{song.artist} · {song.album}</p></div>
-            <button type="button" className={buttonClass} aria-label={`Add ${song.title} to playlist`} onClick={() => edit([...songIds, song.id])}><Plus size={16} className="inline mr-1" />Add</button>
+            <button type="button" className={buttonClass} aria-label={`Add ${song.title} to playlist`} onClick={() => edit([...songIds, song.id])}><Plus size={16} />Add</button>
           </li>)}
         </ul>}
       </fieldset>
@@ -130,6 +130,6 @@ export const PlaylistDetail: React.FC = () => {
   const { playlistId } = useParams<{ playlistId: string }>();
   const playlist = useStore(state => state.playlists.find(item => item.id === playlistId));
   const initializing = useStore(state => state.isLibraryInitializing);
-  if (!playlist) return <Page><PageHeader heading={initializing ? 'Loading playlist…' : 'Playlist not found'} /><Link to="/playlists">Back to Playlists</Link></Page>;
+  if (!playlist) return <Page><PageHeader heading={initializing ? 'Loading playlist…' : 'Playlist not found'} /><Link to="/playlists" className="min-h-[32px] inline-flex items-center text-sm text-text-secondary hover:text-text-main">Back to Playlists</Link></Page>;
   return <PlaylistEditor key={playlist.id} playlist={playlist} />;
 };

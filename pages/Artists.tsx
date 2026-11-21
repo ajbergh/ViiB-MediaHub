@@ -41,16 +41,30 @@ const artistSortLabels: Record<ArtistSortOption, string> = {
 };
 
 // Define Grid Components
-// gridTemplateColumns driven by --card-cols CSS variable on the parent wrapper.
-const ListContainer = forwardRef<HTMLDivElement, any>(({ style, children, ...props }, ref) => (
+// Desktop gridTemplateColumns driven by --card-cols CSS variable on the parent wrapper.
+const GridListContainer = forwardRef<HTMLDivElement, any>(({ style, children, className, ...props }, ref) => (
   <div
     ref={ref}
     {...props}
+    className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-[repeat(var(--card-cols,4),minmax(0,1fr))] ${className || ''}`}
     style={{
       ...style,
-      display: 'grid',
-      gridTemplateColumns: 'repeat(var(--card-cols, 5), minmax(0, 1fr))',
       gap: 'var(--card-gap, 1.5rem)',
+      paddingBottom: '8rem',
+    }}
+  >
+    {children}
+  </div>
+));
+
+const RowListContainer = forwardRef<HTMLDivElement, any>(({ style, children, className, ...props }, ref) => (
+  <div
+    ref={ref}
+    {...props}
+    className={`grid grid-cols-1 ${className || ''}`}
+    style={{
+      ...style,
+      gap: 'var(--card-gap, 0px)',
       paddingBottom: '8rem',
     }}
   >
@@ -123,7 +137,7 @@ export const Artists: React.FC = () => {
     <Page withPlayerPadding={false}>
         <PageHeader heading="Artists" subtitle={`${filteredArtists.length}${filter ? ` of ${artists.length}` : ''} artists`}
           actions={
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <CardSizeSlider listAtMinimum value={cardCols} onChange={handleCardColsChange} />
               <div className="relative">
                 <Button
@@ -183,14 +197,14 @@ export const Artists: React.FC = () => {
             <EmptyArtists />
         ) : (
              <div style={{ '--card-cols': listView ? 1 : cardCols, '--card-gap': listView ? '0px' : '0.5rem' } as React.CSSProperties}>
-             {listView && <LibraryListHeader title="Artist" detail="Albums" stats="Tracks" />}
+             {listView && <LibraryListHeader title="Artist" detail="Albums" stats="Tracks" hasActions={false} />}
              <VirtuosoGrid
                 key={listView ? 'list' : 'tiles'}
                 useWindowScroll={false}
                 customScrollParent={scrollParent ?? undefined}
                 data={filteredArtists}
                 components={{
-                    List: ListContainer,
+                    List: listView ? RowListContainer : GridListContainer,
                     Item: ItemContainer
                 }}
                 itemContent={(index, artist) => {

@@ -18,6 +18,7 @@
 import React, { useCallback, useId } from 'react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { AlertTriangle, Loader2 } from 'lucide-react';
+import { VIIB } from './ui/tokens';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -75,7 +76,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     <div
       ref={dialogRef}
       tabIndex={-1}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 motion-reduce:animate-none motion-reduce:transition-none"
+      className={`fixed inset-0 ${VIIB.zIndex.confirmDialog} flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 motion-reduce:animate-none motion-reduce:transition-none`}
       role="dialog"
       aria-modal="true"
       aria-labelledby={`${dialogId}-title`}
@@ -90,7 +91,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       <div className="bg-surface-2 border border-surface-border rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl animate-scale-in motion-reduce:animate-none">
         <div className="flex items-center gap-4 mb-4">
           {variant !== 'default' && (
-            <AlertTriangle size={28} className={styles.iconColor} aria-hidden="true" />
+            <AlertTriangle size={28} className={`${styles.iconColor} shrink-0`} aria-hidden="true" />
           )}
           <h2 id={`${dialogId}-title`} className="text-lg font-bold text-text-main">{title}</h2>
         </div>

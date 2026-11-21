@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { spotifyReference, spotifyRecordingId, type SpotifyRecordingLink, type SpotifyReferenceView, type SpotifyReferenceEndpoint } from '../services/spotifyReference';
+import { Button } from './ui/Button';
 
 const failureText: Record<string, string> = {
   not_found: 'Spotify has no reference for this recording.',
@@ -83,16 +84,16 @@ export function SpotifyReference({ songId, sourceIdentity }: { songId: string; s
           className="ml-2 rounded border border-[var(--dj-border-light)] bg-[var(--dj-surface-1)] px-2 py-1" />
       </label>
       <label className="block"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} disabled={busy} /> This is the same recording and version as this local track.</label>
-      <button type="button" onClick={() => void link()} disabled={busy || !confirmed || !identity.sourceFingerprint || !spotifyRecordingId(input)}>Link recording</button>
+      <Button size="sm" variant="secondary" onClick={() => void link()} disabled={busy || !confirmed || !identity.sourceFingerprint || !spotifyRecordingId(input)}>Link recording</Button>
     </>}
     {identity?.link && <>
-      <div className="flex flex-wrap gap-3">
-        <a href={'https://open.spotify.com/track/' + identity.link.externalId} target="_blank" rel="noopener noreferrer">Open Spotify recording</a>
-        <select className="rounded border border-[var(--dj-border-light)] bg-[var(--dj-surface-1)] px-1 text-[var(--dj-text-primary)]" aria-label="Spotify reference type" value={endpoint} disabled={busy} onChange={event => setEndpoint(event.target.value as SpotifyReferenceEndpoint)}>
+      <div className="flex flex-wrap items-center gap-3">
+        <a href={'https://open.spotify.com/track/' + identity.link.externalId} target="_blank" rel="noopener noreferrer" className="hover:underline">Open Spotify recording</a>
+        <select className="border border-surface-border rounded-lg px-3 py-1.5 text-sm bg-surface-1 text-text-main" aria-label="Spotify reference type" value={endpoint} disabled={busy} onChange={event => setEndpoint(event.target.value as SpotifyReferenceEndpoint)}>
           <option value="audio_attributes_v2">Audio attributes V2</option><option value="audio_features">Audio features</option><option value="audio_analysis">Detailed analysis</option>
         </select>
-        <button type="button" disabled={busy || !connected} onClick={() => void refresh()}>Refresh reference</button>
-        <button type="button" disabled={busy} onClick={() => void unlink()}>Remove recording link</button>
+        <Button size="sm" variant="secondary" disabled={busy || !connected} onClick={() => void refresh()}>Refresh reference</Button>
+        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void unlink()}>Remove recording link</Button>
       </div>
       {observation ? <div>
         <p>BPM {observation.bpm ?? 'unknown'} · Key {observation.camelot ?? 'unknown'} · BPM confidence {observation.bpmConfidence == null ? 'unknown' : Math.round(observation.bpmConfidence * 100) + '%'} · Key confidence {observation.keyConfidence == null ? 'unknown' : Math.round(observation.keyConfidence * 100) + '%'}</p>

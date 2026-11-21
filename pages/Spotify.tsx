@@ -29,6 +29,7 @@ import { ContextMenuType } from '../types';
 import { Button } from '../components/ui/Button';
 import { TextInput } from '../components/ui/TextInput';
 import { CardSizeSlider } from '../components/ui/CardSizeSlider';
+import { SpotifyIcon } from '../components/icons/SpotifyIcon';
 
 const spotifyTabs = [
     ['search', 'Search'], ['recent', 'Recently Played'], ['albums', 'Saved Albums'],
@@ -805,7 +806,7 @@ export const Spotify: React.FC = () => {
     // Show loading screen while restoring session
     if (isRestoringSession) {
         return (
-            <div className="h-full flex flex-col items-center justify-center p-8 text-center">
+            <div className="h-full flex flex-col items-center justify-center p-4 md:p-8 text-center">
                 <div className="w-24 h-24 bg-brand rounded-full flex items-center justify-center mb-6 shadow-lg shadow-brand/20">
                     <Loader2 size={48} className="text-surface-0 animate-spin" />
                 </div>
@@ -817,9 +818,9 @@ export const Spotify: React.FC = () => {
 
     if (!spotifyConnected) {
         return (
-            <div className="h-full flex flex-col items-center justify-center p-8 text-center">
+            <div className="h-full flex flex-col items-center justify-center p-4 md:p-8 text-center">
                 <div className="w-24 h-24 bg-brand rounded-full flex items-center justify-center mb-6 shadow-lg shadow-brand/20">
-                    <Music size={48} className="text-surface-0" />
+                    <SpotifyIcon size={48} className="text-surface-0" />
                 </div>
                 <h1 className="text-display mb-4">Connect to Spotify</h1>
                 <p className="text-text-secondary max-w-md mb-8">
@@ -837,23 +838,24 @@ export const Spotify: React.FC = () => {
         (activeTab === 'search' && Boolean(spotifyResults) && searchResultTab !== 'tracks');
 
     return (
-        <div className="p-8 h-full overflow-y-auto">
+        <div className="p-4 md:p-8 h-full overflow-y-auto">
             <SpotifyAccountNotice />
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
                 <h1 className="text-display flex items-center gap-3">
-                    <Music className="text-brand" size={32} />
+                    <SpotifyIcon className="text-brand" size={32} />
                     Spotify
                 </h1>
-                <button
+                <Button
+                    variant="secondary"
                     onClick={handleLogout}
-                    className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-3 rounded-full text-sm font-bold transition-colors"
+                    leftIcon={<LogOut size={16} />}
                 >
-                    <LogOut size={16} /> Disconnect
-                </button>
+                    Disconnect
+                </Button>
             </div>
 
             <div className="bg-gradient-to-br from-brand/20 to-surface-1 p-6 rounded-2xl border border-brand/30 mb-8">
-                <div className="flex items-center gap-6">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
                     {spotifyUser?.images && spotifyUser?.images.length > 0 ? (
                         <img
                             src={spotifyUser?.images[0].url}
@@ -866,9 +868,9 @@ export const Spotify: React.FC = () => {
                         </div>
                     )}
 
-                    <div>
-                        <h2 className="text-section font-bold mb-1">{spotifyUser?.display_name || "Spotify account"}</h2>
-                        <div className="flex items-center gap-4 text-text-secondary text-sm mb-3">
+                    <div className="min-w-0">
+                        <h2 className="text-section font-bold mb-1 truncate">{spotifyUser?.display_name || "Spotify account"}</h2>
+                        <div className="flex flex-wrap items-center gap-4 text-text-secondary text-sm mb-3">
                             {spotifyUser?.followers && <span>{spotifyUser.followers.total.toLocaleString()} followers</span>}
                             {accountProduct !== 'unknown' && <span className="uppercase">{accountProduct} Plan</span>}
                             {spotifyUser?.country && <span>{spotifyUser.country}</span>}
@@ -877,7 +879,7 @@ export const Spotify: React.FC = () => {
                             href={spotifyUser?.external_urls?.spotify}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-brand hover:text-brand-hover font-bold text-sm transition-all duration-200"
+                            className="inline-flex items-center gap-1 min-h-[32px] text-brand hover:text-brand-hover font-bold text-sm transition-all duration-200"
                         >
                             Open in Spotify <ExternalLink size={14} />
                         </a>
@@ -917,7 +919,7 @@ export const Spotify: React.FC = () => {
                         value={libraryFilter} onChange={event => setLibraryFilter(event.target.value)} />
                     <label className="flex items-center gap-2 text-sm text-text-secondary">
                         Sort by
-                        <select className="rounded bg-surface-1 p-2 text-text-main" value={librarySort}
+                        <select className="border border-surface-border rounded-lg px-3 py-1.5 text-sm bg-surface-1 text-text-main" value={librarySort}
                             onChange={event => setLibrarySort(event.target.value === 'name' ? 'name' : 'saved')}>
                             <option value="saved">Spotify order</option>
                             <option value="name">Name</option>
@@ -998,7 +1000,7 @@ export const Spotify: React.FC = () => {
                             {/* Albums - only show when albums tab selected */}
                             {searchResultTab === 'albums' && spotifyResults.albums?.items && Array.isArray(spotifyResults.albums.items) && spotifyResults.albums.items.length > 0 && (
                                 <section>
-                                    <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-[repeat(var(--card-cols,5),minmax(0,1fr))] gap-4" style={{ '--card-cols': cardCols } as React.CSSProperties}>
                                         {spotifyResults.albums.items.filter((a: any) => a).map((album: any) => (
                                             <div
                                                 key={album.id}
@@ -1022,7 +1024,7 @@ export const Spotify: React.FC = () => {
                                                                 <Music size={40} className="text-text-subtle" />
                                                             </div>
                                                         )}
-                                                        <div className="absolute right-2 bottom-2 flex gap-1 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-200">
+                                                        <div className="absolute right-2 bottom-2 flex gap-1 translate-y-0 md:translate-y-4 opacity-100 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100 md:group-focus-within:translate-y-0 md:group-focus-within:opacity-100 transition-all duration-200">
                                                             <button 
                                                                 onClick={(e) => { e.stopPropagation(); handleShuffleAlbum(album); }}
                                                                 className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1057,7 +1059,7 @@ export const Spotify: React.FC = () => {
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleDownloadAlbum(album); }}
                                                     disabled={mediaDisabled || downloadingAlbums.has(album.id)}
-                                                    className="absolute top-2 right-2 p-2 bg-surface-3 hover:bg-brand rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    className="absolute top-2 right-2 p-2 bg-surface-3 hover:bg-brand rounded-full opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 focus-visible:opacity-100 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                                     title={downloadingAlbums.has(album.id) ? "Queueing..." : "Download album"}
                                                     aria-label="Download album"
                                                 >
@@ -1076,7 +1078,7 @@ export const Spotify: React.FC = () => {
                             {/* Artists - only show when artists tab selected */}
                             {searchResultTab === 'artists' && spotifyResults.artists?.items && Array.isArray(spotifyResults.artists.items) && spotifyResults.artists.items.length > 0 && (
                                 <section>
-                                    <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-[repeat(var(--card-cols,5),minmax(0,1fr))] gap-4" style={{ '--card-cols': cardCols } as React.CSSProperties}>
                                         {spotifyResults.artists.items.filter((a: any) => a).map((artist: any) => (
                                             <div key={artist.id} className="relative bg-surface-1 hover:bg-surface-2 p-4 rounded-lg transition-colors group">
                                                 <Link to={`/spotify/artist/${encodeURIComponent(artist.id)}`} aria-label={`View artist ${artist.name}`} className="absolute inset-0 z-10 rounded-lg focus-visible:outline focus-visible:outline-brand" />
@@ -1088,7 +1090,7 @@ export const Spotify: React.FC = () => {
                                                             <Mic2 size={40} className="text-text-subtle" />
                                                         </div>
                                                     )}
-                                                    <div className="absolute z-20 right-2 bottom-2 flex gap-1 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100 transition-all duration-200">
+                                                    <div className="absolute z-20 right-2 bottom-2 flex gap-1 translate-y-0 md:translate-y-4 opacity-100 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100 md:group-focus-within:translate-y-0 md:group-focus-within:opacity-100 transition-all duration-200">
                                                         <button 
                                                             onClick={(e) => { e.stopPropagation(); handleShuffleArtistTopTracks(artist); }}
                                                             className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1131,7 +1133,7 @@ export const Spotify: React.FC = () => {
                             {/* Playlists - only show when playlists tab selected */}
                             {searchResultTab === 'playlists' && spotifyResults.playlists?.items && Array.isArray(spotifyResults.playlists.items) && spotifyResults.playlists.items.length > 0 && (
                                 <section>
-                                    <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-[repeat(var(--card-cols,5),minmax(0,1fr))] gap-4" style={{ '--card-cols': cardCols } as React.CSSProperties}>
                                         {spotifyResults.playlists.items.filter((p: any) => p).map((playlist: any) => (
                                             <div
                                                 key={playlist.id}
@@ -1155,7 +1157,7 @@ export const Spotify: React.FC = () => {
                                                                 <Music size={40} className="text-text-subtle" />
                                                             </div>
                                                         )}
-                                                        <div className="absolute right-2 bottom-2 flex gap-1 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-200">
+                                                        <div className="absolute right-2 bottom-2 flex gap-1 translate-y-0 md:translate-y-4 opacity-100 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100 md:group-focus-within:translate-y-0 md:group-focus-within:opacity-100 transition-all duration-200">
                                                             <button 
                                                                 onClick={(e) => { e.stopPropagation(); handleShufflePlaylist(playlist); }}
                                                                 className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1189,7 +1191,7 @@ export const Spotify: React.FC = () => {
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleDownloadPlaylist(playlist); }}
                                                     disabled={mediaDisabled || downloadingPlaylists.has(playlist.id)}
-                                                    className="absolute top-2 right-2 p-2 bg-surface-3 hover:bg-brand rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    className="absolute top-2 right-2 p-2 bg-surface-3 hover:bg-brand rounded-full opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 focus-visible:opacity-100 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                                     title={downloadingPlaylists.has(playlist.id) ? "Queueing..." : "Download playlist"}
                                                     aria-label="Download playlist"
                                                 >
@@ -1242,7 +1244,7 @@ export const Spotify: React.FC = () => {
                                                     )}
                                                 </div>
                                                 <div className="flex-1 min-w-0">
-                                                    <div className="font-medium text-text-main truncate group-hover:text-brand transition-all duration-200">{track.name}</div>
+                                                    <div className="font-medium text-text-main truncate group-hover:text-brand transition-all duration-200" title={track.name}>{track.name}</div>
                                                     <div className="text-sm text-text-secondary truncate">
                                                         {track.artists?.map((artist: any, i: number) => (
                                                             <span key={artist.id}>
@@ -1263,7 +1265,7 @@ export const Spotify: React.FC = () => {
                                                 {/* Add to Queue button */}
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleAddTrackToQueue(track); }}
-                                                    className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    className="p-2 text-text-subtle hover:text-text-main opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                                                     title="Add to queue"
                                                     disabled={mediaDisabled}
                                                 >
@@ -1272,14 +1274,14 @@ export const Spotify: React.FC = () => {
                                                 
                                                 {/* Download button */}
                                                 {isDownloaded ? (
-                                                    <div className="p-2 text-brand opacity-0 group-hover:opacity-100 transition-opacity" title="Downloaded - will play locally">
+                                                    <div className="p-2 text-brand opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity" title="Downloaded - will play locally">
                                                         <CheckCircle size={16} />
                                                     </div>
                                                 ) : (
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleDownloadTrack(track); }}
                                                     disabled={mediaDisabled || downloadingTracks.has(track.id)}
-                                                    className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    className="p-2 text-text-subtle hover:text-text-main opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                                                     title={downloadingTracks.has(track.id) ? "Queueing..." : "Download for offline"}
                                                 >
                                                     {downloadingTracks.has(track.id) ? (
@@ -1321,10 +1323,11 @@ export const Spotify: React.FC = () => {
                             {/* Load More Button */}
                             {hasMore && (spotifyResults.albums?.items?.length || spotifyResults.playlists?.items?.length || spotifyResults.tracks?.items?.length || spotifyResults.artists?.items?.length) && (
                                 <div className="flex justify-center mt-8">
-                                    <button
+                                    <Button
+                                        variant="secondary"
+                                        size="lg"
                                         onClick={handleLoadMore}
                                         disabled={isLoadingMore}
-                                        className="bg-surface-2 hover:bg-surface-3 disabled:opacity-50 disabled:cursor-not-allowed text-text-main font-bold py-3 px-8 rounded-full transition-all flex items-center gap-2"
                                     >
                                         {isLoadingMore ? (
                                             <>
@@ -1334,7 +1337,7 @@ export const Spotify: React.FC = () => {
                                         ) : (
                                             'Load More'
                                         )}
-                                    </button>
+                                    </Button>
                                 </div>
                             )}
                         </div>
@@ -1397,13 +1400,13 @@ export const Spotify: React.FC = () => {
                                         )}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-text-main truncate group-hover:text-brand transition-all duration-200">
+                                        <div className="font-medium text-text-main truncate group-hover:text-brand transition-all duration-200" title={item.track.name}>
                                             {item.track.name}
                                         </div>
                                         <div className="text-sm text-text-secondary truncate"><SpotifyArtistLinks artists={item.track.artists || []} /></div>
                                     </div>
                                     <div 
-                                        className="text-sm text-text-subtle hover:text-brand hover:underline cursor-pointer"
+                                        className="hidden sm:block text-sm text-text-subtle hover:text-brand hover:underline cursor-pointer truncate max-w-[160px]"
                                         onClick={(e) => { e.stopPropagation(); navigate(`/spotify/album/${item.track.album.id}`); }}
                                     >
                                         {item.track.album.name}
@@ -1413,7 +1416,7 @@ export const Spotify: React.FC = () => {
                                     {/* Add to Queue button */}
                                     <button
                                         onClick={(e) => { e.stopPropagation(); handleAddTrackToQueue(item.track); }}
-                                        className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="p-2 text-text-subtle hover:text-text-main opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                                         title="Add to queue"
                                         disabled={mediaDisabled}
                                     >
@@ -1422,14 +1425,14 @@ export const Spotify: React.FC = () => {
                                     
                                     {/* Download button */}
                                     {isDownloaded ? (
-                                        <div className="p-2 text-brand opacity-0 group-hover:opacity-100 transition-opacity" title="Downloaded">
+                                        <div className="p-2 text-brand opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity" title="Downloaded">
                                             <CheckCircle size={16} />
                                         </div>
                                     ) : (
                                         <button
                                             onClick={(e) => { e.stopPropagation(); handleDownloadTrack(item.track); }}
                                             disabled={mediaDisabled || downloadingTracks.has(item.track.id)}
-                                            className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                                            className="p-2 text-text-subtle hover:text-text-main opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity disabled:opacity-50"
                                             title="Download for offline"
                                         >
                                             {downloadingTracks.has(item.track.id) ? (
@@ -1446,7 +1449,8 @@ export const Spotify: React.FC = () => {
                                             const song = spotifyTrackToSong(item.track);
                                             openContextMenu(e, ContextMenuType.SONG, song);
                                         }}
-                                        className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity"
+                                        aria-label="More options"
+                                        className="p-2 text-text-subtle hover:text-text-main opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity"
                                     >
                                         <MoreHorizontal size={18} />
                                     </button>
@@ -1471,7 +1475,7 @@ export const Spotify: React.FC = () => {
                             <Loader2 className="animate-spin text-brand" size={48} />
                         </div>
                     ) : savedAlbums?.items && savedAlbums.items.length > 0 ? (
-                        <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-[repeat(var(--card-cols,5),minmax(0,1fr))] gap-4" style={{ '--card-cols': cardCols } as React.CSSProperties}>
                             {libraryRows(savedAlbums.items, true).map((item: any, index: number) => (
                                 <div
                                     key={`${item.album.id}:${index}`}
@@ -1495,7 +1499,7 @@ export const Spotify: React.FC = () => {
                                                 <Music size={40} className="text-text-subtle" />
                                             </div>
                                         )}
-                                        <div className="absolute right-2 bottom-2 flex gap-1 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-200">
+                                        <div className="absolute right-2 bottom-2 flex gap-1 translate-y-0 md:translate-y-4 opacity-100 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100 md:group-focus-within:translate-y-0 md:group-focus-within:opacity-100 transition-all duration-200">
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); handleShuffleAlbum(item.album); }}
                                                 className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1530,7 +1534,7 @@ export const Spotify: React.FC = () => {
                                     <button
                                         onClick={(e) => { e.stopPropagation(); handleDownloadAlbum(item.album); }}
                                         disabled={mediaDisabled || downloadingAlbums.has(item.album.id)}
-                                        className="absolute top-2 right-2 p-2 bg-surface-3 hover:bg-brand rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="absolute top-2 right-2 p-2 bg-surface-3 hover:bg-brand rounded-full opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 focus-visible:opacity-100 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                         title={downloadingAlbums.has(item.album.id) ? "Queueing..." : "Download album"}
                                         aria-label="Download album"
                                     >
@@ -1564,7 +1568,7 @@ export const Spotify: React.FC = () => {
                             <Loader2 className="animate-spin text-brand" size={48} />
                         </div>
                     ) : savedPlaylists?.items && savedPlaylists.items.length > 0 ? (
-                        <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cardCols}, minmax(0, 1fr))` }}>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-[repeat(var(--card-cols,5),minmax(0,1fr))] gap-4" style={{ '--card-cols': cardCols } as React.CSSProperties}>
                             {libraryRows(savedPlaylists.items, false).map((playlist: any, index: number) => (
                                 <div
                                     key={`${playlist.id}:${index}`}
@@ -1588,7 +1592,7 @@ export const Spotify: React.FC = () => {
                                                 <Music size={40} className="text-text-subtle" />
                                             </div>
                                         )}
-                                        <div className="absolute right-2 bottom-2 flex gap-1 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-200">
+                                        <div className="absolute right-2 bottom-2 flex gap-1 translate-y-0 md:translate-y-4 opacity-100 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100 md:group-focus-within:translate-y-0 md:group-focus-within:opacity-100 transition-all duration-200">
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); handleShufflePlaylist(playlist); }}
                                                 className="w-8 h-8 bg-surface-3 hover:bg-surface-hover rounded-full flex items-center justify-center shadow-lg hover:scale-105 text-text-main disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1623,7 +1627,7 @@ export const Spotify: React.FC = () => {
                                     <button
                                         onClick={(e) => { e.stopPropagation(); handleDownloadPlaylist(playlist); }}
                                         disabled={mediaDisabled || downloadingPlaylists.has(playlist.id)}
-                                        className="absolute top-2 right-2 p-2 bg-surface-3 hover:bg-brand rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="absolute top-2 right-2 p-2 bg-surface-3 hover:bg-brand rounded-full opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 focus-visible:opacity-100 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                         title={downloadingPlaylists.has(playlist.id) ? "Queueing..." : "Download playlist"}
                                         aria-label="Download playlist"
                                     >

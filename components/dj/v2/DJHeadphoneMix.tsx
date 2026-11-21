@@ -121,14 +121,14 @@ export const DJHeadphoneMix: React.FC<DJHeadphoneMixProps> = ({
           aria-label={`Master cue ${masterCueEnabled ? 'enabled' : 'disabled'}`}
           title="Master Cue - route master mix to headphones"
           className={`
-            min-h-7 px-2 rounded border flex items-center gap-1 text-[12px] font-bold
+            min-h-8 px-2.5 py-1 rounded border flex items-center gap-1.5 text-xs font-bold leading-none
             transition-all duration-100
             ${masterCueEnabled
               ? 'bg-[var(--dj-info)] text-white border-[var(--dj-info)] shadow shadow-[color-mix(in_srgb,var(--dj-info)_30%,transparent)]'
               : 'bg-[var(--dj-surface-3)] text-[var(--dj-text-secondary)] border-[var(--dj-border-light)] hover:bg-[var(--dj-border)] hover:text-[var(--dj-info)]'}
           `}
         >
-          <Headphones size={10} aria-hidden />
+          <Headphones size={14} aria-hidden="true" />
           <span>MST</span>
         </button>
       </div>

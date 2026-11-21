@@ -60,43 +60,57 @@ export const DJWaveformLane = React.memo(function DJWaveformLane({
     updateVisibleSeconds(value => value * (event.deltaY < 0 ? 1 / 1.15 : 1.15));
   }, [updateVisibleSeconds]);
 
-  const toolbar = (
-    <div className='dj-waveform-toolbar'>
-      {localBands ? (
-        <div className='dj-segmented dj-waveform-band-selector' role='group' aria-label={`Deck ${deck} waveform band`}>
-          {(['all', 'low', 'mid', 'high'] as const).map(band => (
-            <button key={band} type='button' className='dj-btn dj-btn-xs' data-deck-accent={deck}
-              aria-pressed={bandSelection === band}
-              title={band === 'all' ? 'Show all three bands' : `Isolate ${band} band at full size`}
-              onClick={() => setDeckWaveformView(deck, { bandSelection: band })}>
-              {band.toUpperCase()}
-            </button>
-          ))}
-        </div>
-      ) : <div className='dj-segmented' role='group' aria-label={`Deck ${deck} waveform color`}>
-        {WAVEFORM_COLOR_MODES.map(({ mode, label, title }) => (
-          <button key={mode} type='button' className='dj-btn dj-btn-xs' data-deck-accent={deck}
-            aria-pressed={colorMode === mode} title={title} onClick={() => setColorMode(mode)}>{label}</button>
-        ))}
-      </div>}
-      <button type='button' className='dj-btn dj-btn-xs' aria-pressed={localBands} title='Scrolling lane and overview: Spotify low/mid/high first, local estimate only when provider data is unavailable; amplitude fallback when timelines differ' onClick={toggleLocalBands}>Three-band</button>
-      <div className='dj-segmented' role='group' aria-label={`Deck ${deck} waveform zoom`}>
-        <button type='button' className='dj-btn dj-btn-xs dj-btn-icon' aria-label={`Zoom in Deck ${deck} waveform`}
-          title='Zoom in (Ctrl+Scroll up)' onClick={() => updateVisibleSeconds(value => value / 1.5)}>+</button>
-        <label className='dj-select-wrap'>
-          <span className='sr-only'>{`Deck ${deck} visible seconds`}</span>
-          <select className='dj-select dj-btn-xs' value={ZOOM_PRESETS.includes(Math.round(visibleSeconds) as typeof ZOOM_PRESETS[number]) ? Math.round(visibleSeconds) : ''}
-            onChange={event => updateVisibleSeconds(Number(event.currentTarget.value))}
-            aria-label={`Deck ${deck} visible seconds`}>
-            {!ZOOM_PRESETS.includes(Math.round(visibleSeconds) as typeof ZOOM_PRESETS[number]) && <option value=''>{`${visibleSeconds.toFixed(0)}s`}</option>}
-            {ZOOM_PRESETS.map(seconds => <option key={seconds} value={seconds}>{`${seconds}s`}</option>)}
-          </select>
-        </label>
-        <button type='button' className='dj-btn dj-btn-xs dj-btn-icon' aria-label={`Zoom out Deck ${deck} waveform`}
-          title='Zoom out (Ctrl+Scroll down)' onClick={() => updateVisibleSeconds(value => value * 1.5)}>−</button>
-      </div>
+  const colorOrBandControls = localBands ? (
+    <div className='dj-segmented dj-waveform-band-selector' role='group' aria-label={`Deck ${deck} waveform band`}>
+      {(['all', 'low', 'mid', 'high'] as const).map(band => (
+        <button key={band} type='button' className='dj-btn dj-btn-xs' data-deck-accent={deck}
+          aria-pressed={bandSelection === band}
+          title={band === 'all' ? 'Show all three bands' : `Isolate ${band} band at full size`}
+          onClick={() => setDeckWaveformView(deck, { bandSelection: band })}>
+          {band.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  ) : (
+    <div className='dj-segmented dj-waveform-color-selector' role='group' aria-label={`Deck ${deck} waveform color`}>
+      {WAVEFORM_COLOR_MODES.map(({ mode, label, title }) => (
+        <button key={mode} type='button' className='dj-btn dj-btn-xs' data-deck-accent={deck}
+          aria-pressed={colorMode === mode} title={title} onClick={() => setColorMode(mode)}>{label}</button>
+      ))}
     </div>
   );
+
+  const threeBandButton = (
+    <button
+      type='button'
+      className='dj-btn dj-btn-xs dj-waveform-threeband-btn'
+      aria-pressed={localBands}
+      aria-label='Three-band'
+      title='Scrolling lane and overview: Spotify low/mid/high first, local estimate only when provider data is unavailable; amplitude fallback when timelines differ'
+      onClick={toggleLocalBands}
+    >
+      {orientation === 'vertical' ? '3BD' : 'Three-band'}
+    </button>
+  );
+
+  const zoomControls = (
+    <div className='dj-segmented dj-waveform-zoom-group' role='group' aria-label={`Deck ${deck} waveform zoom`}>
+      <button type='button' className='dj-btn dj-btn-xs dj-btn-icon' aria-label={`Zoom in Deck ${deck} waveform`}
+        title='Zoom in (Ctrl+Scroll up)' onClick={() => updateVisibleSeconds(value => value / 1.5)}>+</button>
+      <label className='dj-select-wrap'>
+        <span className='sr-only'>{`Deck ${deck} visible seconds`}</span>
+        <select className='dj-select dj-btn-xs' value={ZOOM_PRESETS.includes(Math.round(visibleSeconds) as typeof ZOOM_PRESETS[number]) ? Math.round(visibleSeconds) : ''}
+          onChange={event => updateVisibleSeconds(Number(event.currentTarget.value))}
+          aria-label={`Deck ${deck} visible seconds`}>
+          {!ZOOM_PRESETS.includes(Math.round(visibleSeconds) as typeof ZOOM_PRESETS[number]) && <option value=''>{`${visibleSeconds.toFixed(0)}s`}</option>}
+          {ZOOM_PRESETS.map(seconds => <option key={seconds} value={seconds}>{`${seconds}s`}</option>)}
+        </select>
+      </label>
+      <button type='button' className='dj-btn dj-btn-xs dj-btn-icon' aria-label={`Zoom out Deck ${deck} waveform`}
+        title='Zoom out (Ctrl+Scroll down)' onClick={() => updateVisibleSeconds(value => value * 1.5)}>−</button>
+    </div>
+  );
+
   const badge = <span className='dj-deck-badge dj-deck-badge-sm' data-deck={deck} aria-hidden='true'>{deck}</span>;
 
   return (
@@ -108,8 +122,27 @@ export const DJWaveformLane = React.memo(function DJWaveformLane({
       onWheel={handleWheel}
     >
       <header className='dj-waveform-lane-header'>
-        {badge}
-        {toolbar}
+        {orientation === 'vertical' ? (
+          <>
+            <div className='dj-waveform-lane-top'>
+              {badge}
+              {zoomControls}
+            </div>
+            <div className='dj-waveform-toolbar'>
+              {colorOrBandControls}
+              {threeBandButton}
+            </div>
+          </>
+        ) : (
+          <>
+            {badge}
+            <div className='dj-waveform-toolbar'>
+              {colorOrBandControls}
+              {threeBandButton}
+              {zoomControls}
+            </div>
+          </>
+        )}
       </header>
       <div className='dj-waveform-main-wrap'>
         <DJErrorBoundary componentName={`Deck ${deck} waveform`}>

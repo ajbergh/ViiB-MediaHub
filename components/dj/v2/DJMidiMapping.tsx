@@ -7,7 +7,9 @@
  * @module components/dj/v2/DJMidiMapping
  */
 
-import React, { useState, useEffect, useCallback, memo } from 'react';
+import React, { useState, useEffect, useCallback, useId, memo } from 'react';
+import { createPortal } from 'react-dom';
+import { Cable, X } from 'lucide-react';
 import { PAD_MODE_NAMES, type PadMode } from '../../../lib/djPadModes';
 import { controllerProfileForName, DJ_CONTROLLER_PROFILES } from '../../../lib/djControllerProfiles';
 import type { DeckId } from '../../../slices/djMixerSlice';
@@ -27,6 +29,7 @@ import {
 
 export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose }) => {
   const midi = getDJMidiService();
+  const titleId = useId();
   
   const [initialized, setInitialized] = useState(midi.isEnabled());
   const [devices, setDevices] = useState<MidiDevice[]>(midi.getDevices());
@@ -49,6 +52,17 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
     return unsub;
   }, [midi]);
   useEffect(() => () => midi.cancelLearn(), [midi]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [onClose]);
   
   // Initialize MIDI
   const handleInit = useCallback(async () => {
@@ -126,23 +140,34 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
   
   const category = MIDI_ACTION_CATEGORIES[selectedCategory];
   
-  return (
+  const modal = (
     <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center" onClick={onClose}>
       <div 
-        className="bg-[var(--dj-surface-2)] border border-[var(--dj-border-light)] rounded-lg w-[600px] max-h-[80vh] flex flex-col shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="bg-[var(--dj-surface-2)] border border-[var(--dj-border-light)] rounded-lg w-[min(600px,calc(100vw-2rem))] max-h-[80vh] flex flex-col shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--dj-border-light)]">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-bold text-[var(--dj-text-primary)]">🎹 MIDI Controller Mapping</span>
+            <Cable size={16} className="text-[var(--dj-deck-a-bright)]" aria-hidden="true" />
+            <h2 id={titleId} className="text-sm font-bold text-[var(--dj-text-primary)]">MIDI Controller Mapping</h2>
             {initialized && (
               <span className="text-[12px] bg-[color-mix(in_srgb,var(--dj-play)_30%,transparent)] text-[var(--dj-play-hover)] px-1.5 py-0.5 rounded">
                 {devices.filter(d => d.connected).length} device(s)
               </span>
             )}
           </div>
-          <button onClick={onClose} className="text-[var(--dj-text-secondary)] hover:text-[var(--dj-text-secondary)] text-lg">&times;</button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close MIDI mapping"
+            className="p-1 rounded text-[var(--dj-text-secondary)] hover:text-[var(--dj-text-primary)] transition-colors"
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
         </div>
         
         {/* Content */}
@@ -336,6 +361,8 @@ export const DJMidiMapping: React.FC<{ onClose: () => void }> = memo(({ onClose 
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modal, document.body) : modal;
 });
 DJMidiMapping.displayName = 'DJMidiMapping';
 
