@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -120,6 +122,44 @@ func TestPlexAudioProxyForwardsRangeAndKeepsTokenServerSide(t *testing.T) {
 	}
 	if bytes.Contains(recorder.Body.Bytes(), []byte(token)) {
 		t.Fatal("Plex token leaked into browser-visible response")
+	}
+}
+
+func TestPlexAudioProxyUsesOggMIMETypeForGenericResponses(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		http.ServeContent(w, r, "music.ogg", time.Time{}, strings.NewReader("OggS-test-audio"))
+	}))
+	defer upstream.Close()
+
+	database, handler, track := setupPlexProxyTest(t, upstream.URL, "/audio", "token", true)
+	track.Container, track.AudioCodec = "ogg", "vorbis"
+	if _, _, _, err := database.SyncPlexLibrary(track.SourceID, track.LibraryID, []db.PlexCatalogTrack{track}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tt := range []struct {
+		name, byteRange, contentRange, body string
+		status                              int
+	}{
+		{"full", "", "", "OggS-test-audio", http.StatusOK},
+		{"initial WebKit probe", "bytes=0-1", "bytes 0-1/15", "Og", http.StatusPartialContent},
+		{"seek", "bytes=5-8", "bytes 5-8/15", "test", http.StatusPartialContent},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/audio/"+track.SongID, nil)
+			if tt.byteRange != "" {
+				req.Header.Set("Range", tt.byteRange)
+			}
+			rec := httptest.NewRecorder()
+			handler.ServeAudioSourceAware(rec, req)
+			if rec.Code != tt.status || rec.Body.String() != tt.body ||
+				rec.Header().Get("Content-Type") != "audio/ogg" ||
+				rec.Header().Get("Content-Range") != tt.contentRange ||
+				rec.Header().Get("Content-Length") != strconv.Itoa(len(tt.body)) {
+				t.Fatalf("unexpected Plex response: status=%d headers=%v body=%q", rec.Code, rec.Header(), rec.Body.String())
+			}
+		})
 	}
 }
 

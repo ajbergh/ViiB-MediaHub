@@ -701,7 +701,7 @@ func (a *API) proxyPlexArtistArtwork(w http.ResponseWriter, r *http.Request) {
 	a.proxyPlexSourceAsset(w, r, source, plexMediaInput{key: artwork.ArtworkKey})
 }
 
-func (a *API) proxyPlexAsset(w http.ResponseWriter, r *http.Request, track *db.PlexTrackSource, key string, rangeRequest bool) {
+func (a *API) proxyPlexAsset(w http.ResponseWriter, r *http.Request, track *db.PlexTrackSource, key string, audio bool) {
 	if key == "" {
 		respondPlexStreamMessage(w, http.StatusNotFound, "Plex media asset is unavailable")
 		return
@@ -711,11 +711,15 @@ func (a *API) proxyPlexAsset(w http.ResponseWriter, r *http.Request, track *db.P
 		respondPlexStreamMessage(w, http.StatusServiceUnavailable, "Plex source is not configured")
 		return
 	}
-	a.proxyPlexSourceAsset(w, r, source, plexMediaInput{key: key, metadataKey: track.MetadataKey, ratingKey: track.RatingKey, audio: rangeRequest, byteRange: r.Header.Get("Range")})
+	a.proxyPlexSourceAsset(w, r, source, plexMediaInput{
+		key: key, metadataKey: track.MetadataKey, ratingKey: track.RatingKey, container: track.Container,
+		audio: audio, byteRange: r.Header.Get("Range"),
+	})
 }
 
 type plexMediaInput struct {
 	key, metadataKey, ratingKey string
+	container                   string
 	audio                       bool
 	byteRange                   string
 }
@@ -804,8 +808,19 @@ func (a *API) proxyPlexSourceAsset(w http.ResponseWriter, r *http.Request, sourc
 		return
 	}
 	copyPlexProxyHeaders(w.Header(), resp.Header)
-	if input.audio && w.Header().Get("Accept-Ranges") == "" {
-		w.Header().Set("Accept-Ranges", "bytes")
+	if input.audio {
+		if w.Header().Get("Accept-Ranges") == "" {
+			w.Header().Set("Accept-Ranges", "bytes")
+		}
+		// WebKit needs an audio MIME type to select its Ogg decoder for Plex
+		// streams. PMS can serve these parts as generic binary data.
+		if strings.EqualFold(input.container, "ogg") {
+			contentType, _, _ := strings.Cut(w.Header().Get("Content-Type"), ";")
+			switch strings.ToLower(strings.TrimSpace(contentType)) {
+			case "", "application/octet-stream", "application/ogg":
+				w.Header().Set("Content-Type", "audio/ogg")
+			}
+		}
 	}
 	w.WriteHeader(resp.StatusCode)
 	_, copyErr := io.Copy(w, resp.Body)
