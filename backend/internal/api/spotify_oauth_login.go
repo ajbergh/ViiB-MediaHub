@@ -172,7 +172,7 @@ func (a *API) finishSpotifyOAuthLogin(query url.Values) bool {
 	return false
 }
 
-var errSpotifyOAuthRateLimited = errors.New("Spotify sign-in rate limited")
+var errSpotifyOAuthRateLimited = errors.New("rate limited during Spotify sign-in")
 
 // exchangeSpotifyOAuthCode exchanges a single-use code and serializes the resulting
 // Web API credentials for encrypted persistence.
@@ -196,7 +196,7 @@ func exchangeSpotifyOAuthCode(attempt *spotifyOAuthAttempt, code, redirectURI st
 		return "", errSpotifyOAuthRateLimited
 	}
 	if res.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Spotify token exchange returned %d", res.StatusCode)
+		return "", fmt.Errorf("unexpected status %d from Spotify token exchange", res.StatusCode)
 	}
 	var token struct {
 		AccessToken  string `json:"access_token"`
@@ -207,7 +207,7 @@ func exchangeSpotifyOAuthCode(attempt *spotifyOAuthAttempt, code, redirectURI st
 		return "", err
 	}
 	if token.AccessToken == "" || token.RefreshToken == "" || token.ExpiresIn <= 0 {
-		return "", errors.New("Spotify token exchange returned incomplete credentials")
+		return "", errors.New("incomplete credentials from Spotify token exchange")
 	}
 	raw, err := json.Marshal(SpotifyCredentials{
 		ClientId: attempt.clientID, AccessToken: token.AccessToken, RefreshToken: token.RefreshToken,

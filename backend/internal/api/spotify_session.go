@@ -620,7 +620,7 @@ func (a *API) retireSpotifyAccount() error {
 	return a.db.PurgeSpotifyMetadata()
 }
 
-var errSpotifyRecentsUnavailable = errors.New("Spotify history is unavailable")
+var errSpotifyRecentsUnavailable = errors.New("unavailable Spotify listening history")
 
 func respondSpotifySessionError(w http.ResponseWriter, err error) {
 	if errors.Is(err, errSpotifyAccountRequiresOAuth) {

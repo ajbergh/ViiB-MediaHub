@@ -10,7 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-var errSpotifyAccountRequiresOAuth = errors.New("This Spotify view requires an OAuth connection.")
+var errSpotifyAccountRequiresOAuth = errors.New("this Spotify view requires an OAuth connection")
 
 var spotifyAccountPaths = map[string]string{
 	"liked": "me/tracks", "top-tracks": "me/top/tracks", "top-artists": "me/top/artists",

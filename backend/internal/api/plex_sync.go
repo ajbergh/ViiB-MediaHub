@@ -19,9 +19,9 @@ const plexAutoSyncSetting = "plex_auto_sync"
 const plexAutoSyncInterval = time.Hour
 
 var (
-	errPlexSourceRequired  = errors.New("Plex server required")
-	errPlexLibraryRequired = errors.New("Plex library required")
-	errPlexSyncRunning     = errors.New("Plex synchronization is already running")
+	errPlexSourceRequired  = errors.New("active Plex server required")
+	errPlexLibraryRequired = errors.New("selected Plex library required")
+	errPlexSyncRunning     = errors.New("a Plex synchronization is already running")
 )
 
 type plexSyncRun struct {

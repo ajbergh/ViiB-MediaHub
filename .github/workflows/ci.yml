@@ -72,7 +72,7 @@ jobs:
 
   browser-e2e:
     needs: frontend
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -114,7 +114,7 @@ jobs:
           show-progress: false
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26.10'
+          go-version: '1.26.11'
           cache-dependency-path: backend/go.sum
       - name: Install native tray dependencies
         run: |
@@ -185,7 +185,7 @@ jobs:
           show-progress: false
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26.10'
+          go-version: '1.26.11'
           cache-dependency-path: backend/go.sum
       - name: Validate analysis and generate production fixture results
         run: |
@@ -213,7 +213,7 @@ jobs:
           show-progress: false
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26.10'
+          go-version: '1.26.11'
           cache-dependency-path: backend/go.sum
       - uses: actions/download-artifact@v4
         with:
@@ -258,7 +258,7 @@ jobs:
           show-progress: false
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26.10'
+          go-version: '1.26.11'
           cache-dependency-path: backend/go.sum
       # This package compiles the complete foundation dependency closure,
       # including SQLite persistence, without trying to cross-package a native
@@ -299,7 +299,7 @@ jobs:
           show-progress: false
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26.10'
+          go-version: '1.26.11'
           cache-dependency-path: backend/go.sum
       - name: Install Linux desktop dependencies
         if: startsWith(matrix.target, 'linux-')
@@ -404,7 +404,7 @@ jobs:
           cache: npm
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26.10'
+          go-version: '1.26.11'
           cache-dependency-path: backend/go.sum
       - uses: msys2/setup-msys2@v2
         with:

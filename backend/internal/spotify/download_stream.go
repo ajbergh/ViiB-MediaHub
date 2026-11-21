@@ -13,7 +13,7 @@ import (
 )
 
 // ErrDownloadAudioTimeout means that an open Spotify asset stopped yielding bytes.
-var ErrDownloadAudioTimeout = errors.New("Spotify audio transfer timed out waiting for data")
+var ErrDownloadAudioTimeout = errors.New("timed out waiting for Spotify audio transfer data")
 
 // Closing the asset task wakes a librespot reader waiting for a missing chunk.
 // Use a transfer-specific cause so an idle reader can be retried without

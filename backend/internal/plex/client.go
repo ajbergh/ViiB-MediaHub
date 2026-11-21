@@ -659,7 +659,7 @@ func endOfPlexPage(page *plexTrackPage, offset int, expectedTotal *int) (bool, e
 	}
 	if page.TotalSize != nil {
 		if *page.TotalSize < 0 || (*expectedTotal >= 0 && *expectedTotal != *page.TotalSize) {
-			return false, errors.New("Plex catalog size changed during synchronization")
+			return false, errors.New("unexpected Plex catalog size change during synchronization")
 		}
 		*expectedTotal = *page.TotalSize
 	}
@@ -670,7 +670,7 @@ func endOfPlexPage(page *plexTrackPage, offset int, expectedTotal *int) (bool, e
 	}
 	next := offset + count
 	if next > *expectedTotal || (count == 0 && next < *expectedTotal) {
-		return false, errors.New("Plex returned an incomplete catalog page")
+		return false, errors.New("incomplete Plex catalog page")
 	}
 	return next == *expectedTotal, nil
 }
@@ -918,7 +918,7 @@ func (c *Client) FetchTracksWithProgress(ctx context.Context, library Library, p
 				return SyncResult{}, fmt.Errorf("invalid Plex music track at offset %d", offset)
 			}
 			if _, duplicate := seenRatingKeys[track.RatingKey]; duplicate {
-				return SyncResult{}, fmt.Errorf("Plex repeated a track at offset %d; the library may have changed during synchronization", offset)
+				return SyncResult{}, fmt.Errorf("duplicate track from Plex at offset %d; the library may have changed during synchronization", offset)
 			}
 			seenRatingKeys[track.RatingKey] = struct{}{}
 			tracks = append(tracks, track)
@@ -996,7 +996,7 @@ func (c *Client) fetchAlbumMetadata(ctx context.Context, albumKey string) (map[s
 				return nil, fmt.Errorf("invalid Plex music album at offset %d", offset)
 			}
 			if _, duplicate := seenAlbums[raw.RatingKey]; duplicate {
-				return nil, fmt.Errorf("Plex repeated an album at offset %d", offset)
+				return nil, fmt.Errorf("duplicate album from Plex at offset %d", offset)
 			}
 			seenAlbums[raw.RatingKey] = struct{}{}
 			if genres := plexGenres(raw.Genre); len(genres) > 0 || raw.Year > 0 {

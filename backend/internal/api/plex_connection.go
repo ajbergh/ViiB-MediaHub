@@ -39,7 +39,7 @@ func validatePlexRoutes(ctx context.Context, machine, token, clientID string, ro
 		}
 	}
 	if firstErr == nil {
-		firstErr = errors.New("Plex did not advertise a usable address for this server")
+		firstErr = errors.New("no usable address advertised by Plex for this server")
 	}
 	return plex.Server{}, firstErr
 }
