@@ -22,9 +22,9 @@ require (
 	github.com/twoscott/gobble-fm v1.0.8
 	github.com/wailsapp/wails/v2 v2.17.0
 	go.senan.xyz/taglib v0.11.1
-	golang.org/x/crypto v0.57.0
-	golang.org/x/sys v0.48.0
-	golang.org/x/text v0.42.0
+	golang.org/x/crypto v0.58.0
+	golang.org/x/sys v0.49.0
+	golang.org/x/text v0.43.0
 	golang.org/x/time v0.15.0
 	gonum.org/v1/gonum v0.17.0
 	modernc.org/sqlite v1.56.0
@@ -92,7 +92,7 @@ require (
 	go.opentelemetry.io/otel v1.44.0 // indirect
 	go.opentelemetry.io/otel/metric v1.44.0 // indirect
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
-	golang.org/x/net v0.60.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
 	google.golang.org/genai v1.40.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/grpc v1.83.2 // indirect
