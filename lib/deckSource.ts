@@ -24,3 +24,7 @@ export interface DeckSource {
   removeEventListener(type: 'ended' | 'loadedmetadata' | 'timeupdate', listener: () => void): void;
   dispose(): void;
 }
+
+/** Messages shared by the vinyl and deck transport worklets. */
+export interface ScratchPort { postMessage(message: Record<string, unknown>): void }
+export type ScratchEvent = { type: string; token?: number; position?: number; time?: number; rate?: number };

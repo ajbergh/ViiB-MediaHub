@@ -8,6 +8,7 @@ import { StemDeckSource, type StemBus, type StemDeckState, type StemDeckStatus }
 import { SingleTrackDeckSource } from './singleTrackDeckSource';
 import { connectFourChannelOutput, type DJOutputMode } from './djOutputRouting';
 import { getDJSamplerEngine } from './djSampler';
+import { isMacOSWails } from './webglSafety';
 /**
  * ViiB MediaHub - DJ Audio Engine
  * 
@@ -809,7 +810,8 @@ export class DJAudioEngine {
     const stemStatus = source.getStemStatus();
     if (stemStatus.mode !== 'stems') {
       const url = this.deckAudioUrls[deck];
-      if (url && generation === this.getDeckLoadGeneration(deck) && !this.scratchNodes[deck] && !this.scratchLoads[deck] && !this.scratchQueue[deck]) {
+      if (url && generation === this.getDeckLoadGeneration(deck) && !source.bufferedScratchPort
+        && !this.scratchNodes[deck] && !this.scratchLoads[deck] && !this.scratchQueue[deck]) {
         this.queueScratchAudio(deck, url, generation);
       }
       return;
@@ -1414,13 +1416,13 @@ export class DJAudioEngine {
   private scratchPort(deck: DeckId): { postMessage(message: Record<string, unknown>): void } | null {
     const stem = this.getStemDeckSource(deck);
     if (stem?.getStemStatus().mode === 'stems') return stem.scratchPort;
-    return this.scratchNodes[deck]?.port ?? null;
+    return stem?.bufferedScratchPort ?? this.scratchNodes[deck]?.port ?? null;
   }
 
   canScratch(deck: DeckId): boolean {
     const stem = this.getStemDeckSource(deck);
     if (stem?.getStemStatus().mode === 'stems') return stem.canScratch();
-    return !!this.scratchReady[deck] && !!this.scratchNodes[deck];
+    return !!stem?.bufferedScratchPort || (!!this.scratchReady[deck] && !!this.scratchNodes[deck]);
   }
 
   private handleScratchMessage(deck: DeckId, message: { type: string; token?: number; position?: number; time?: number; rate?: number }): void {
@@ -1441,7 +1443,7 @@ export class DJAudioEngine {
   getScratchStatus(deck: DeckId): string {
     const stem = this.getStemDeckSource(deck);
     if (stem?.getStemStatus().mode === 'stems') return stem.canScratch() ? 'Scratch' : 'Scratch unavailable';
-    if (this.scratchReady[deck]) return 'Scratch';
+    if (stem?.bufferedScratchPort || this.scratchReady[deck]) return 'Scratch';
     return this.scratchQueue[deck] || this.scratchLoads[deck] || this.scratchNodes[deck] ? 'Preparing scratch…' : 'Scratch unavailable';
   }
 
@@ -1462,8 +1464,9 @@ export class DJAudioEngine {
   /** Reconsider an unprepared deck when it becomes the active work surface. */
   prioritizeScratch(deck: DeckId): void {
     const url = this.deckAudioUrls[deck];
+    const source = this.getStemDeckSource(deck);
     if (!url || this.scratchNodes[deck] || this.scratchLoads[deck] || this.scratchQueue[deck]
-      || this.getStemDeckSource(deck)?.getStemStatus().mode === "stems") return;
+      || source?.bufferedScratchPort || source?.getStemStatus().mode === 'stems') return;
     this.queueScratchAudio(deck, url, this.getDeckLoadGeneration(deck));
   }
 
@@ -1509,10 +1512,15 @@ export class DJAudioEngine {
     this.scratchLoads[deck] = controller;
     const current = () => !controller.signal.aborted && this.audioContext === context &&
       generation === (deck === 'A' ? this.trackLoadGenerationA : this.trackLoadGenerationB);
-    try {
+    const source = this.getStemDeckSource(deck);
+    const useBufferedTransport = source && isMacOSWails();
+    const loadVinylModule = () => {
       this.scratchModule ??= context.audioWorklet.addModule(new URL('./vinylScratch.worklet.js', import.meta.url).href)
         .catch(error => { this.scratchModule = null; throw error; });
-      await this.scratchModule;
+      return this.scratchModule;
+    };
+    try {
+      if (!useBufferedTransport) await loadVinylModule();
       if (!current()) return;
       const response = await fetch(url, { signal: controller.signal });
       if (!response.ok) throw new Error(`Scratch audio: HTTP ${response.status}`);
@@ -1520,23 +1528,38 @@ export class DJAudioEngine {
       if (!current()) return;
       const buffer = await context.decodeAudioData(compressed);
       if (!current()) return;
-      const node = new AudioWorkletNode(context, 'vinyl-scratch', {
-        numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [Math.min(2, buffer.numberOfChannels)],
-      });
       const channelCount = Math.min(2, buffer.numberOfChannels);
       const bytes = buffer.length * channelCount * Float32Array.BYTES_PER_ELEMENT;
-      if (retained + bytes > DJAudioEngine.scratchBudget) {
-        node.port.close();
-        return;
+      if (retained + bytes > DJAudioEngine.scratchBudget) return;
+      if (useBufferedTransport && buffer.numberOfChannels <= 2) {
+        const prepared = await source.prepareBufferedTransport(buffer, () => {
+          if (this.getDeckSource(deck) !== source || generation !== this.getDeckLoadGeneration(deck)) return;
+          delete this.scratchBytes[deck];
+          this.endScratch(deck, 0, true);
+          this.reconcileLoopTicker();
+        });
+        if (!current()) return;
+        if (prepared) {
+          this.scratchBytes[deck] = bytes;
+          this.reconcileLoopTicker();
+          return;
+        }
       }
-      const channels = Array.from({ length: channelCount }, (_, ch) => buffer.getChannelData(ch).slice());
+      if (useBufferedTransport) {
+        // Keep the media element's speaker downmix for multichannel material.
+        await loadVinylModule();
+        if (!current()) return;
+      }
+      const node = new AudioWorkletNode(context, 'vinyl-scratch', {
+        numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [channelCount],
+      });
+      const channels: Float32Array<ArrayBuffer>[] = [];
+      for (let channel = 0; channel < channelCount; channel++) channels.push(buffer.getChannelData(channel).slice());
       node.port.postMessage({ type: 'load', channels }, channels.map(channel => channel.buffer));
       node.connect((deck === 'A' ? this.gainNodeA : this.gainNodeB)!);
       this.scratchNodes[deck] = node;
       this.scratchBytes[deck] = bytes;
-      // Keep native loop buffers independently bounded so a loop on one deck
-      // cannot consume the other deck's scratch budget.
-      const source = this.getStemDeckSource(deck);
+      // Keep native loop buffers independently bounded.
       const bufferBytes = buffer.length * buffer.numberOfChannels * Float32Array.BYTES_PER_ELEMENT;
       node.port.onmessage = event => {
         if (this.scratchNodes[deck] === node) this.handleScratchMessage(deck, event.data);

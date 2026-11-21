@@ -1,9 +1,9 @@
 /** Implements multi-stem deck loading, routing, transport, and scratch coordination. */
 
 import type { Song } from '../types';
-import type { DeckSource } from './deckSource';
+import type { DeckSource, ScratchEvent, ScratchPort } from './deckSource';
 import { SingleTrackDeckSource } from './singleTrackDeckSource';
-import { stretchModuleUrl } from './stemStretchModule';
+import { loadDeckStretchModule, loadDeckTransportModule } from './stemStretchModule';
 
 export type StemBus = 'vocals' | 'drums' | 'bass' | 'music';
 export type StemMode = 'full' | 'stems' | 'fallback';
@@ -41,9 +41,6 @@ interface StemWorkletNode {
   connect(destination: AudioNode, output?: number, input?: number): unknown;
   disconnect(): void;
 }
-/** Vinyl-scratch protocol messages (see vinylScratch.worklet.js), relayed to the stem worklet. */
-export interface ScratchPort { postMessage(message: Record<string, unknown>): void }
-export type ScratchEvent = { type: string; token?: number; position?: number; time?: number; rate?: number };
 export interface StemDeckSourceOptions {
   fetch?: typeof fetch;
   createFallback?: (context: AudioContext) => DeckSource;
@@ -212,9 +209,9 @@ export class StemDeckSource implements DeckSource {
   private async createBrowserWorklet(): Promise<StemWorkletNode> {
     if (!this.context.audioWorklet || typeof AudioWorkletNode === 'undefined') throw new Error('AudioWorklet is unavailable');
     // Key lock only; the transport reports the stretcher as unavailable without it.
-    try { await this.context.audioWorklet.addModule(await stretchModuleUrl()); }
+    try { await loadDeckStretchModule(this.context); }
     catch (error) { console.warn('Stem key lock unavailable', error); }
-    await this.context.audioWorklet.addModule(new URL('./stemTransport.worklet.js', import.meta.url));
+    await loadDeckTransportModule(this.context);
     return new AudioWorkletNode(this.context, 'viib-stem-transport', {
       numberOfInputs: 0, numberOfOutputs: 4, outputChannelCount: [2, 2, 2, 2],
     }) as unknown as StemWorkletNode;
@@ -605,6 +602,13 @@ export class StemDeckSource implements DeckSource {
   }
   setLoopBuffer(buffer: AudioBuffer | null): void {
     if (this.fallback instanceof SingleTrackDeckSource) this.fallback.setLoopBuffer(buffer);
+  }
+  get bufferedScratchPort(): ScratchPort | null {
+    return this.fallback instanceof SingleTrackDeckSource ? this.fallback.scratchPort : null;
+  }
+  async prepareBufferedTransport(buffer: AudioBuffer, onError: () => void): Promise<boolean> {
+    return this.fallback instanceof SingleTrackDeckSource &&
+      this.fallback.prepareBufferedTransport(buffer, event => this.onScratchEvent?.(event), onError);
   }
   getPosition(): number { return this.mode === 'stems' && this.descriptor ? this.currentFrame() / this.descriptor.sampleRate : this.fallback.getPosition(); }
   getDuration(): number { return this.descriptor?.durationSeconds || this.fallback.getDuration(); }
