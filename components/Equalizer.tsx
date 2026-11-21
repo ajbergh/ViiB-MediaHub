@@ -140,7 +140,7 @@ export const EqualizerPanel: React.FC = () => {
                                     return (
                                         <div key={freq} className="relative z-10 flex-1 flex flex-col items-center group h-full py-2">
                                             {/* Gain Value Tooltip (Hover) */}
-                                            <div 
+                                            <div
                                                 className="absolute -top-9 opacity-0 group-hover:opacity-100 transition-opacity bg-surface-3 text-text-main text-[10px] font-mono py-1 px-2 rounded border border-surface-border shadow-lg whitespace-nowrap pointer-events-none transform translate-y-2 group-hover:translate-y-0 duration-200 z-40"
                                             >
                                                 {gain > 0 ? '+' : ''}{gain.toFixed(1)} dB
@@ -150,7 +150,7 @@ export const EqualizerPanel: React.FC = () => {
                                             <div className="flex-1 w-full flex items-center justify-center relative">
                                                 {/* Vertical Track Visual */}
                                                 <div className="absolute w-1 h-full bg-surface-highlight rounded-full overflow-hidden pointer-events-none">
-                                                    <div 
+                                                    <div
                                                         className="absolute w-full bg-surface-border left-0"
                                                         style={{
                                                             top: '50%',
@@ -159,7 +159,7 @@ export const EqualizerPanel: React.FC = () => {
                                                         }}
                                                     />
                                                 </div>
-                                                
+
                                                 {/* Active Fill Line */}
                                                 <div
                                                     className={`absolute w-1 rounded-full transition-colors duration-150 pointer-events-none ${audioSettings.eqEnabled ? 'bg-brand/50' : 'bg-surface-slider/70'}`}
@@ -172,7 +172,7 @@ export const EqualizerPanel: React.FC = () => {
                                                 />
 
                                                 {/* Custom Thumb Visual (Positioned by JS) */}
-                                                <div 
+                                                <div
                                                     className={`pointer-events-none absolute left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 shadow-lg transition-all duration-75 z-20 ${
                                                         audioSettings.eqEnabled
                                                             ? 'bg-text-main border-brand group-hover:scale-125'

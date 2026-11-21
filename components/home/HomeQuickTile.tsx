@@ -33,7 +33,7 @@ export const HomeQuickTile: React.FC<HomeQuickTileProps> = ({ item, compact = fa
         />
         <span className="min-w-0 flex-1 px-3.5">
           <span className="block truncate text-sm font-bold text-text-main">{item.title}</span>
-          {item.subtitle ? (
+          {!compact && item.subtitle ? (
             <span className="mt-0.5 block truncate text-xs text-text-secondary">{item.subtitle}</span>
           ) : null}
         </span>

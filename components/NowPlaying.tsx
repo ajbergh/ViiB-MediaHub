@@ -304,7 +304,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                     <div 
                         className={`aspect-square bg-surface-2 rounded-xl shadow-2xl relative group overflow-hidden cursor-pointer ring-1 ring-surface-3/60 ${
                             isPartyMode 
-                                ? 'w-[70vh] max-w-[80vw] max-h-[60vh] mb-8' 
+                                ? 'w-[70vh] max-w-[80vw] max-h-[60vh] mb-8'
                                 : 'w-auto h-[32vh] sm:h-[34vh] md:h-[46vh] max-h-[34vh] md:max-h-[46vh] max-w-[80vw] md:max-w-[500px] mx-auto mb-4 md:mb-10'
                         }`}
                         onClick={() => setShowVisualizerOverlay(!showVisualizerOverlay)}
@@ -606,7 +606,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                         <span className="w-10 text-right">{formatTime(currentTime)}</span>
                         <div className="flex-1 h-6 flex items-center relative group">
                             <div className="w-full h-1.5 bg-surface-3/60 rounded-full relative pointer-events-none">
-                                <div 
+                                <div
                                     className="absolute top-0 left-0 h-full bg-accent-green rounded-full transition-all"
                                     style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
                                 >
