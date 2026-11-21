@@ -31,12 +31,59 @@ class FakeAudio {
 
 function sourceFixture() {
   const audio = new FakeAudio();
-  const outputNode = { connect: vi.fn() } as unknown as MediaElementAudioSourceNode;
-  const context = { createMediaElementSource: vi.fn(() => outputNode) } as unknown as AudioContext;
-  return { audio, context, source: new SingleTrackDeckSource(audio as unknown as HTMLAudioElement, context) };
+  const mediaSource = { connect: vi.fn(), disconnect: vi.fn() };
+  const nodes: Array<ReturnType<typeof makeBufferSource>> = [];
+  function makeBufferSource() {
+    return {
+      connect: vi.fn(), disconnect: vi.fn(), start: vi.fn(), stop: vi.fn(),
+      playbackRate: { value: 1, setValueAtTime: vi.fn() }, loop: false, loopStart: 0, loopEnd: 0,
+    };
+  }
+  const context = {
+    currentTime: 0,
+    createGain: vi.fn(() => ({})),
+    createMediaElementSource: vi.fn(() => mediaSource),
+    createBufferSource: vi.fn(() => {
+      const node = makeBufferSource();
+      nodes.push(node);
+      return node;
+    }),
+  };
+  return { audio, context, nodes, source: new SingleTrackDeckSource(audio as unknown as HTMLAudioElement, context as unknown as AudioContext) };
 }
 
 describe('SingleTrackDeckSource', () => {
+  it('wraps a quarter beat on the audio clock and preserves key lock when changing tempo', async () => {
+    const { audio, context, nodes, source } = sourceFixture();
+    audio.readyState = 3;
+    await source.load({ id: 'loop', title: 'Loop' } as never);
+    source.seek(2);
+    source.setLoop(2, 2.125, true);
+    source.setLoopBuffer({ duration: 12 } as AudioBuffer);
+    source.setKeyLock(true);
+    await source.play();
+    expect(source.supportsSampleAccurateLoop()).toBe(true);
+    expect(nodes[0]).toMatchObject({ loop: true, loopStart: 2, loopEnd: 2.125 });
+    expect(nodes[0].start).toHaveBeenCalledWith(0, 2);
+    expect(audio.play).not.toHaveBeenCalled();
+
+    context.currentTime = 0.4;
+    expect(source.getPosition()).toBeCloseTo(2.025);
+    source.setTempo(1.2);
+    expect(source.supportsSampleAccurateLoop()).toBe(false);
+    expect(nodes[0].stop).toHaveBeenCalledOnce();
+    expect(audio.currentTime).toBeCloseTo(2.025);
+    expect(audio.play).toHaveBeenCalledOnce();
+    expect(audio.preservesPitch).toBe(true);
+
+    source.setKeyLock(false);
+    expect(source.supportsSampleAccurateLoop()).toBe(true);
+    expect(nodes[1].playbackRate.value).toBe(1.2);
+    source.setLoop(0, 0, false);
+    expect(nodes[1].stop).toHaveBeenCalledOnce();
+    expect(audio.play).toHaveBeenCalledTimes(2);
+  });
+
   it('loads the supplied or fallback URL and resolves when canplay fires', async () => {
     const { audio, source } = sourceFixture();
     const supplied = source.load({ id: 'one', title: 'One', url: '/custom.mp3' } as never);

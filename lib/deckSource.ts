@@ -13,8 +13,9 @@ export interface DeckSource {
   seek(seconds: number): void;
   setTempo(rate: number): void;
   setKeyLock(enabled: boolean): void;
-  /** Loop wrapping is scheduled by DJAudioEngine; this records no native element loop. */
+  /** Sources with sample-accurate loop support wrap internally. */
   setLoop(start: number, end: number, enabled: boolean): void;
+  supportsSampleAccurateLoop?(): boolean;
   getPosition(): number;
   getDuration(): number;
   isPlaying(): boolean;

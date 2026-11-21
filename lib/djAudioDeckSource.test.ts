@@ -61,6 +61,36 @@ describe('DJAudioEngine DeckSource integration', () => {
     }
   });
 
+  it.each(['A', 'B'] as const)('scratches and resumes Deck %s independently of the other deck', async deck => {
+    const engine = new DJAudioEngine();
+    const decks = { A: fakeSource(5), B: fakeSource(8) };
+    const ports = { A: { postMessage: vi.fn() }, B: { postMessage: vi.fn() } };
+    const selected = decks[deck];
+    const other = deck === 'A' ? 'B' : 'A';
+    const initialPosition = selected.state.position;
+    Object.assign(engine, {
+      audioContext: { resume: vi.fn().mockResolvedValue(undefined) },
+      deckSourceA: decks.A.source,
+      deckSourceB: decks.B.source,
+      scratchReady: { A: true, B: true },
+      scratchNodes: { A: { port: ports.A }, B: { port: ports.B } },
+    });
+
+    expect(engine.startScratch(deck)).toBe(true);
+    expect(selected.source.pause).toHaveBeenCalledOnce();
+    engine.updateScratch(deck, -0.25, -1);
+    expect(engine.getPosition(deck)).toBe(initialPosition - 0.25);
+    engine.endScratch(deck);
+    await Promise.resolve();
+
+    expect(ports[deck].postMessage.mock.calls.map(([message]) => message.type)).toEqual(['start', 'move', 'stop']);
+    expect(selected.source.seek).toHaveBeenCalledWith(initialPosition - 0.25);
+    expect(selected.source.play).toHaveBeenCalledOnce();
+    expect(ports[other].postMessage).not.toHaveBeenCalled();
+    expect(decks[other].source.pause).not.toHaveBeenCalled();
+    expect(engine.isPlaying(other)).toBe(true);
+  });
+
   it('applies the selected curve to the actual crossfader gain nodes at the current position', () => {
     const engine = new DJAudioEngine();
     const a = vi.fn(), b = vi.fn();
@@ -120,6 +150,24 @@ describe('DJAudioEngine DeckSource integration', () => {
       expect(state.setLoop).toHaveBeenLastCalledWith('A', 19.8, 20, true, 8);
     } finally {
       Object.assign(state.djDeckA, previousA); Object.assign(state.djDeckB, previousB);
+      state.djMixer.quantize = previousQuantize;
+    }
+  });
+
+  it('keeps a quarter-beat loop valid at the final grid marker', () => {
+    const engine = new DJAudioEngine();
+    Object.assign(engine, { deckSourceA: fakeSource(1.4).source });
+    const previous = { ...state.djDeckA };
+    const previousQuantize = state.djMixer.quantize;
+    try {
+      state.djMixer.quantize = true;
+      Object.assign(state.djDeckA, { beatGrid: [0, 0.6, 1.4], beatGridSource: 'manual', beatGridLocked: true });
+      engine.setLoopBeats('A', 0.25);
+      const [deck, start, end, enabled, beats] = state.setLoop.mock.lastCall!;
+      expect([deck, start, enabled, beats]).toEqual(['A', 1.4, true, 0.25]);
+      expect(end).toBeCloseTo(1.6);
+    } finally {
+      Object.assign(state.djDeckA, previous);
       state.djMixer.quantize = previousQuantize;
     }
   });

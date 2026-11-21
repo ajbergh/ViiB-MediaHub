@@ -5,15 +5,21 @@ import type { DeckSource } from './deckSource';
 
 /** Existing HTMLAudioElement transport, kept behind the DeckSource boundary. */
 export class SingleTrackDeckSource implements DeckSource {
-  readonly outputNode: MediaElementAudioSourceNode;
+  readonly outputNode: GainNode;
+  private readonly mediaSource: MediaElementAudioSourceNode;
   private loadGeneration = 0;
   private cancelPendingLoad: (() => void) | null = null;
+  private loopBuffer: AudioBuffer | null = null;
+  private loop = { start: 0, end: 0, enabled: false };
+  private loopPlayback: { node: AudioBufferSourceNode; position: number; time: number; rate: number } | null = null;
 
   constructor(
     private readonly audio: HTMLAudioElement,
-    context: AudioContext,
+    private readonly context: AudioContext,
   ) {
-    this.outputNode = context.createMediaElementSource(audio);
+    this.outputNode = context.createGain();
+    this.mediaSource = context.createMediaElementSource(audio);
+    this.mediaSource.connect(this.outputNode);
     audio.crossOrigin = 'anonymous';
   }
 
@@ -22,6 +28,9 @@ export class SingleTrackDeckSource implements DeckSource {
   }
 
   async load(track: Song): Promise<string> {
+    this.stopBufferedLoop();
+    this.loopBuffer = null;
+    this.loop = { start: 0, end: 0, enabled: false };
     this.cancelLoad();
     const generation = ++this.loadGeneration;
     const url = track.url || `/api/audio/${track.id}`;
@@ -75,31 +84,122 @@ export class SingleTrackDeckSource implements DeckSource {
 
   unload(): void {
     this.cancelLoad();
+    this.stopBufferedLoop();
+    this.loopBuffer = null;
+    this.loop = { start: 0, end: 0, enabled: false };
     this.audio.pause();
     this.audio.src = '';
     this.audio.currentTime = 0;
   }
 
-  play(): Promise<void> { return this.audio.play(); }
-  pause(): void { this.audio.pause(); }
+  async play(): Promise<void> {
+    if (this.loopPlayback) return;
+    if (this.supportsSampleAccurateLoop()) this.startBufferedLoop(this.getPosition());
+    else await this.audio.play();
+  }
+  pause(): void {
+    if (this.loopPlayback) {
+      const position = this.getPosition();
+      this.stopBufferedLoop();
+      this.audio.currentTime = position;
+    }
+    this.audio.pause();
+  }
 
   seek(seconds: number): void {
     const duration = this.getDuration();
-    if (duration) this.audio.currentTime = Math.max(0, Math.min(seconds, duration));
+    if (!duration) return;
+    const position = Math.max(0, Math.min(seconds, duration));
+    if (this.loopPlayback) this.startBufferedLoop(position);
+    else this.audio.currentTime = position;
   }
 
   setTempo(rate: number): void {
-    this.audio.playbackRate = Math.max(0.5, Math.min(1.5, rate));
+    const position = this.getPosition();
+    const nextRate = Math.max(0.5, Math.min(1.5, rate));
+    this.audio.playbackRate = nextRate;
+    if (this.loopPlayback && this.supportsSampleAccurateLoop()) {
+      const time = this.context.currentTime;
+      this.loopPlayback.node.playbackRate.setValueAtTime(nextRate, time);
+      Object.assign(this.loopPlayback, { position, time, rate: nextRate });
+    } else {
+      this.refreshLoopPlayback(position);
+    }
   }
 
-  setKeyLock(enabled: boolean): void { this.audio.preservesPitch = enabled; }
+  setKeyLock(enabled: boolean): void {
+    if (this.audio.preservesPitch === enabled) return;
+    this.audio.preservesPitch = enabled;
+    this.refreshLoopPlayback(this.getPosition());
+  }
 
-  // Loops remain engine-scheduled seeks, preserving the existing worker/timeupdate cadence.
-  setLoop(_start: number, _end: number, _enabled: boolean): void {}
+  setLoop(start: number, end: number, enabled: boolean): void {
+    if (start === this.loop.start && end === this.loop.end && enabled === this.loop.enabled) return;
+    const position = this.getPosition();
+    this.loop = { start, end, enabled };
+    this.refreshLoopPlayback(position);
+  }
 
-  getPosition(): number { return this.audio.currentTime; }
+  setLoopBuffer(buffer: AudioBuffer | null): void {
+    if (buffer === this.loopBuffer) return;
+    const position = this.getPosition();
+    this.loopBuffer = buffer;
+    this.refreshLoopPlayback(position);
+  }
+
+  supportsSampleAccurateLoop(): boolean {
+    return !!this.loopBuffer && this.loop.enabled && this.loop.start >= 0 && this.loop.end > this.loop.start &&
+      this.loop.end <= this.loopBuffer.duration &&
+      (!this.audio.preservesPitch || this.audio.playbackRate === 1);
+  }
+
+  private wrapBufferedPosition(position: number): number {
+    const { start, end } = this.loop;
+    return position >= end ? start + (position - start) % (end - start) : position;
+  }
+
+  private refreshLoopPlayback(position: number): void {
+    if (!this.isPlaying()) return;
+    if (this.supportsSampleAccurateLoop()) {
+      this.startBufferedLoop(position);
+    } else if (this.loopPlayback) {
+      this.stopBufferedLoop();
+      this.audio.currentTime = position;
+      void this.audio.play().catch(() => {});
+    }
+  }
+
+  private startBufferedLoop(position: number): void {
+    this.stopBufferedLoop();
+    const node = this.context.createBufferSource();
+    const rate = this.audio.playbackRate;
+    const time = this.context.currentTime;
+    const offset = this.wrapBufferedPosition(position);
+    node.buffer = this.loopBuffer;
+    node.loop = true;
+    node.loopStart = this.loop.start;
+    node.loopEnd = this.loop.end;
+    node.playbackRate.value = rate;
+    node.connect(this.outputNode);
+    this.audio.pause();
+    node.start(time, offset);
+    this.loopPlayback = { node, position: offset, time, rate };
+  }
+
+  private stopBufferedLoop(): void {
+    this.loopPlayback?.node.stop();
+    this.loopPlayback?.node.disconnect();
+    this.loopPlayback = null;
+  }
+
+  getPosition(): number {
+    const active = this.loopPlayback;
+    return active
+      ? this.wrapBufferedPosition(active.position + (this.context.currentTime - active.time) * active.rate)
+      : this.audio.currentTime;
+  }
   getDuration(): number { return this.audio.duration || 0; }
-  isPlaying(): boolean { return !this.audio.paused; }
+  isPlaying(): boolean { return !!this.loopPlayback || !this.audio.paused; }
   isLoaded(): boolean { return !!this.audio.src && this.audio.readyState >= 2; }
 
   addEventListener(type: 'ended' | 'loadedmetadata' | 'timeupdate', listener: () => void): void {
@@ -110,5 +210,8 @@ export class SingleTrackDeckSource implements DeckSource {
     this.audio.removeEventListener(type, listener);
   }
 
-  dispose(): void { this.unload(); }
+  dispose(): void {
+    this.unload();
+    this.mediaSource.disconnect();
+  }
 }

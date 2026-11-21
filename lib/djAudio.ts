@@ -1401,9 +1401,11 @@ export class DJAudioEngine {
   private scratchLoads: Partial<Record<DeckId, AbortController>> = {};
   private scratchQueue: Partial<Record<DeckId, { url: string; generation: number }>> = {};
   private scratchBytes: Partial<Record<DeckId, number>> = {};
+  private loopBufferBytes: Partial<Record<DeckId, number>> = {};
   private scratchTimer: ReturnType<typeof setTimeout> | undefined;
   private scratchPreparing = false;
   private static readonly scratchBudget = 192 * 1024 * 1024;
+  private static readonly loopBufferBudget = 128 * 1024 * 1024;
   private scratchModule: Promise<void> | null = null;
   private scratchToken = 0;
   private deckAudioUrls: Partial<Record<DeckId, string>> = {};
@@ -1445,8 +1447,10 @@ export class DJAudioEngine {
 
   private clearScratchAudio(deck: DeckId): void {
     this.endScratch(deck, 0, false);
+    this.getStemDeckSource(deck)?.setLoopBuffer(null);
     delete this.scratchQueue[deck];
     delete this.scratchBytes[deck];
+    delete this.loopBufferBytes[deck];
     this.scratchLoads[deck]?.abort();
     delete this.scratchLoads[deck];
     this.scratchNodes[deck]?.port.close();
@@ -1530,6 +1534,10 @@ export class DJAudioEngine {
       node.connect((deck === 'A' ? this.gainNodeA : this.gainNodeB)!);
       this.scratchNodes[deck] = node;
       this.scratchBytes[deck] = bytes;
+      // Keep native loop buffers independently bounded so a loop on one deck
+      // cannot consume the other deck's scratch budget.
+      const source = this.getStemDeckSource(deck);
+      const bufferBytes = buffer.length * buffer.numberOfChannels * Float32Array.BYTES_PER_ELEMENT;
       node.port.onmessage = event => {
         if (this.scratchNodes[deck] === node) this.handleScratchMessage(deck, event.data);
       };
@@ -1540,8 +1548,16 @@ export class DJAudioEngine {
         node.disconnect();
         node.port.close();
         delete this.scratchNodes[deck];
+        this.getStemDeckSource(deck)?.setLoopBuffer(null);
         delete this.scratchBytes[deck];
+        delete this.loopBufferBytes[deck];
+        this.reconcileLoopTicker();
       };
+      if (source && (this.loopBufferBytes[other] ?? 0) + bufferBytes <= DJAudioEngine.loopBufferBudget) {
+        source.setLoopBuffer(buffer);
+        this.loopBufferBytes[deck] = bufferBytes;
+        this.reconcileLoopTicker();
+      }
     } catch (error) {
       if (current()) console.warn(`Scratch audio unavailable on Deck ${deck}`, error);
     } finally {
@@ -2181,9 +2197,17 @@ export class DJAudioEngine {
     
     // Fallback approach: use HTMLAudioElement
     const audio = this.headphoneAudioElement as HTMLAudioElement & { setSinkId?: (deviceId: string) => Promise<void> };
+    // WebKit asks for a user gesture even when selecting the already-active
+    // system default. The element is already routed there without a request.
+    const currentSink = audio.sinkId === 'default' ? '' : audio.sinkId || '';
+    const requestedSink = deviceId === 'default' ? '' : deviceId;
+    if (currentSink === requestedSink) {
+      await this.ensureHeadphoneOutputPlaying();
+      return;
+    }
     if (typeof audio.setSinkId === 'function') {
       try {
-        await audio.setSinkId(deviceId || '');
+        await audio.setSinkId(requestedSink);
         await this.ensureHeadphoneOutputPlaying();
         console.log(`🎧 Headphone output device set to: ${deviceId || 'default'}`);
       } catch (error) {
@@ -2247,6 +2271,7 @@ export class DJAudioEngine {
    */
   setTempo(deck: DeckId, tempo: number): void {
     this.getDeckSource(deck)?.setTempo(tempo);
+    this.reconcileLoopTicker();
   }
 
   /**
@@ -2255,6 +2280,7 @@ export class DJAudioEngine {
    */
   setKeyLock(deck: DeckId, enabled: boolean): void {
     this.getDeckSource(deck)?.setKeyLock(enabled);
+    this.reconcileLoopTicker();
   }
 
   /**
@@ -2774,11 +2800,12 @@ export class DJAudioEngine {
       const endBeat = nearest + beats;
       const whole = Math.floor(endBeat);
       const fraction = endBeat - whole;
-      const beatAt = (index: number) => beatGrid[Math.min(index, beatGrid.length - 1)] + offset;
+      const lastBeat = beatGrid.length - 1;
+      const finalInterval = beatGrid[lastBeat] - beatGrid[lastBeat - 1];
+      const beatAt = (index: number) => beatGrid[Math.min(index, lastBeat)] + offset +
+        Math.max(0, index - lastBeat) * finalInterval;
       start = beatAt(nearest);
-      end = whole < beatGrid.length
-        ? beatAt(whole) + (whole + 1 < beatGrid.length ? (beatAt(whole + 1) - beatAt(whole)) * fraction : 0)
-        : start + beats * (60 / bpm);
+      end = beatAt(whole) + (beatAt(whole + 1) - beatAt(whole)) * fraction;
     }
     end = Math.min(end, source.getDuration());
     
@@ -2869,8 +2896,14 @@ export class DJAudioEngine {
       const source = this.getDeckSource(deck);
       const loop = (deck === 'A' ? state.djDeckA : state.djDeckB).loop;
       return source?.isPlaying() && !this.isScratching(deck) && loop.enabled && loop.end > loop.start
-        && !(source instanceof StemDeckSource && source.getStemStatus().supportsSampleAccurateLoop);
+        && !this.hasSampleAccurateLoop(source);
     });
+  }
+
+  private hasSampleAccurateLoop(source: DeckSource | null): boolean {
+    return source instanceof StemDeckSource
+      ? source.getStemStatus().supportsSampleAccurateLoop
+      : source?.supportsSampleAccurateLoop?.() ?? false;
   }
 
   private stopLoopTicker(): void {
@@ -2904,9 +2937,7 @@ export class DJAudioEngine {
     for (const deck of ['A', 'B'] as const) {
       const source = this.getDeckSource(deck);
       const loop = (deck === 'A' ? state.djDeckA : state.djDeckB).loop;
-      if (source instanceof StemDeckSource && source.getStemStatus().supportsSampleAccurateLoop) {
-        continue;
-      }
+      if (this.hasSampleAccurateLoop(source)) continue;
       if (!source || !source.isPlaying() || (this.scratchStateA?.active && deck === 'A') || (this.scratchStateB?.active && deck === 'B')) continue;
       const length = loop.end - loop.start;
       const position = source.getPosition();

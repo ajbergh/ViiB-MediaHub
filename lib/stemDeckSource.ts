@@ -494,7 +494,8 @@ export class StemDeckSource implements DeckSource {
       mode: this.mode, available: !!this.descriptor,
       bufferedSeconds: this.descriptor ? Math.max(0, (this.bufferEndFrame - this.currentFrame()) / this.descriptor.sampleRate) : 0,
       underruns: this.underruns, supportsKeyLock: !supportsStems || this.stretchReady, supportsScratch: true,
-      supportsSampleAccurateLoop: supportsStems && this.loopFitsBuffer, ...(this.error ? { error: this.error } : {}),
+      supportsSampleAccurateLoop: supportsStems ? this.loopFitsBuffer : this.fallback.supportsSampleAccurateLoop?.() ?? false,
+      ...(this.error ? { error: this.error } : {}),
     };
   }
 
@@ -577,6 +578,7 @@ export class StemDeckSource implements DeckSource {
     this.worklet?.port.postMessage({ type: 'keyLock', enabled });
   }
   setLoop(start: number, end: number, enabled: boolean): void {
+    this.fallback.setLoop(start, end, enabled);
     const descriptor = this.descriptor;
     if (!descriptor) return;
     const startFrame = Math.max(0, Math.min(descriptor.frames, Math.round(start * descriptor.sampleRate)));
@@ -589,6 +591,9 @@ export class StemDeckSource implements DeckSource {
     this.worklet?.port.postMessage({ type: 'loop', ...this.loop, generation: this.generation });
     ++this.loopPrefetchGeneration;
     if (next.enabled) void this.prefetchLoopFrames(this.generation, startFrame, endFrame);
+  }
+  setLoopBuffer(buffer: AudioBuffer | null): void {
+    if (this.fallback instanceof SingleTrackDeckSource) this.fallback.setLoopBuffer(buffer);
   }
   getPosition(): number { return this.mode === 'stems' && this.descriptor ? this.currentFrame() / this.descriptor.sampleRate : this.fallback.getPosition(); }
   getDuration(): number { return this.descriptor?.durationSeconds || this.fallback.getDuration(); }

@@ -9,6 +9,7 @@ vi.mock('./djSampler', () => ({ getDJSamplerEngine: () => ({ attachOutput: mocks
 vi.mock('./djAudioEffects', () => ({ createReverbImpulse: vi.fn(), getBeatFXDelayTime: vi.fn(() => 0.5) }));
 vi.mock('./stemDeckSource', () => ({ StemDeckSource: class {
   outputNode: Node;
+  setLoopBuffer = vi.fn();
   dispose = vi.fn();
   constructor(context: Context) { this.outputNode = context.createGain(); }
 } }));
@@ -77,6 +78,16 @@ describe('live DJ engine output routing', () => {
     vi.stubGlobal('AudioContext', Context);
   });
   afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.clearAllMocks(); });
+
+  it('uses the existing default media sink without requesting a WebKit user gesture', async () => {
+    const audio = engine();
+    const setSinkId = vi.fn().mockRejectedValue(new DOMException('A user gesture is required', 'NotAllowedError'));
+    Object.assign(audio, { headphoneAudioElement: { sinkId: '', paused: false, setSinkId } });
+
+    await expect(audio.setHeadphoneOutputDevice('')).resolves.toBeUndefined();
+    await expect(audio.setHeadphoneOutputDevice('default')).resolves.toBeUndefined();
+    expect(setSinkId).not.toHaveBeenCalled();
+  });
 
   it('initializes the actual mixer from persisted settings and connects only one four-channel destination', async () => {
     const audio = engine();
