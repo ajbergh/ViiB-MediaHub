@@ -1,3 +1,4 @@
+// Tests the desktop Spotify callback, PKCE exchange, credential handling, and media restrictions.
 package api
 
 import (

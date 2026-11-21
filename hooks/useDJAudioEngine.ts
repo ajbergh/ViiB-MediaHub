@@ -1,16 +1,7 @@
-import { reportAudioReadFailure } from '../services/audioReadDiagnostics';
 /** Connects DJ store state and guarded deck loading to the audio engine lifecycle. */
 
+import { reportAudioReadFailure } from '../services/audioReadDiagnostics';
 import { canSyncBeatGrid, resolvedGridPatch } from '../lib/beatGridConfidence';
-/**
- * ViiB MediaHub - DJ Audio Engine Hook
- * 
- * React hook for integrating the DJ Audio Engine with components.
- * Handles initialization, state synchronization, and cleanup.
- * 
- * @module hooks/useDJAudioEngine
- */
-
 import { useEffect, useRef, useCallback } from 'react';
 import { useStore } from '../store';
 import { getDJAudioEngine, disposeDJAudioEngine, VULevels } from '../lib/djAudio';

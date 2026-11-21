@@ -1,11 +1,10 @@
 /**
  * Spotify catalog and metadata service using the backend-owned session.
- * Browser sign-in and token renewal run in the backend; catalog requests send
- * resource paths and reject results from a retired session generation.
+ * Web Player capture, desktop PKCE, and active token renewal run in the backend.
+ * Catalog requests send resource paths and reject results from retired sessions.
  * Background metadata work is queued with 200 ms spacing. Interactive searches
  * bypass that queue; the backend enforces concurrency bounds and provider cooldowns.
- * Includes typed failures, fuzzy artist/album matching, and retained OAuth helpers
- * for compatibility. The normal connection UI uses Spotify browser sign-in.
+ * Includes typed failures, fuzzy artist/album matching, and legacy OAuth helpers.
  */
 
 import { backendSpotifyFetch, assertSpotifySession, SpotifySessionChangedError, throwIfSpotifyRequestAborted } from './spotifyBackend';

@@ -33,7 +33,7 @@ ViiB runs on your own computer, as a native desktop app or a local server in you
 | **Matching that stays local** | Meaning-based catalog search prepares automatically on your device. Switch AI providers without rebuilding the library index. |
 | **Take the decks** | Mix with two decks, waveforms, pitch/tempo controls, loops, hot cues, effects, a sampler, and separate main/cue outputs where supported. |
 | **Shape the sound** | Gapless playback, configurable crossfade, a 10-band EQ with presets and Auto-EQ, visualizers, and a sleep timer. |
-| **Explore Spotify** | Sign in, search, and browse saved albums, artists, and playlists. Spotify Premium enables streaming, playback queue actions, and downloads. |
+| **Explore Spotify** | Sign in, search, and browse saved albums, artists, and playlists. Use a Premium Web Player connection for in-app streaming, playback queue actions, and downloads. |
 | **Keep your library in shape** | Monitor folders, review duplicates, enrich metadata, prepare track analysis, and run diagnostics, repair, backup, or staged restore. |
 | **See your listening story** | Track listening time, play counts, top artists/albums/genres, likes, and history; add optional Last.FM metadata and scrobbling. |
 
@@ -67,7 +67,7 @@ DJ Mode requires a desktop viewport at least **1440 CSS pixels wide**. MIDI and 
 
 ### More ways to explore
 
-Browse Spotify in its own workspace, then follow downloads and scan completed files into your local library. Free or unknown-plan sessions can browse; Premium is required for streaming and downloads. Local playback works independently of Spotify Premium.
+Browse Spotify in its own workspace. The desktop app offers default-browser sign-in, including Safari, for Spotify Web API features. A Premium Web Player connection enables streaming and downloads. Scan completed files into your local library for local playback.
 
 ![Spotify sign-in screen explaining how to connect an account](assets/screenshots/spotify.png)
 
@@ -79,7 +79,7 @@ Screenshots were captured from the live app at 1440 × 900. Artwork, counts, acc
 2. **Bring your music:** add folders in **Settings → Library Sources**, or connect a Plex server, choose a music library, and synchronize it.
 3. **Press play:** explore Home, search your collection, or open AI Smart Mix after configuring an AI provider in **Settings → AI & Enrichment**.
 
-Plex support is for **music/audio libraries**. Plex must be reachable for remote playback; cached metadata remains browsable during temporary outages. Spotify sign-in requires Chrome, Edge, or Chromium installed on the backend device. See the [Plex](docs/plex-music.md) and [Spotify](docs/spotify.md) guides for setup.
+Plex support is for **music/audio libraries**. Remote playback requires a reachable Plex server, and cached metadata remains browsable during temporary outages. Spotify Web Player sign-in requires Chrome, Edge, or Chromium on the backend device. See the [Plex](docs/plex-music.md) and [Spotify](docs/spotify.md) guides for setup.
 
 ### Platforms
 

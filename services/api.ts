@@ -1,11 +1,3 @@
-export interface SpotifyDownloadOrigin {
-  kind: 'playlist' | 'album' | 'library';
-  id: string;
-  revision?: string;
-  entityId?: string;
-  position: number;
-}
-
 /**
  * API Client for ViiB MediaHub Backend
  * 
@@ -14,15 +6,15 @@ export interface SpotifyDownloadOrigin {
  * also call backend routes directly.
  * 
  * Architecture:
- * - Development: Vite dev server proxies /api requests to Go backend (port 8080)
- * - Production: Backend serves both the built frontend and API from same origin
+ * - Development: Vite proxies /api to the configured Go backend
+ * - Production: Browser builds serve /api directly and Wails proxies it to loopback
  * - Structured responses are typed JSON; event streams and file exports use separate formats
  * - TypeScript interfaces match backend Go structs
  * 
  * Features:
  * - Library management (songs, playlists, folders)
  * - File scanning and metadata extraction
- * - Spotify browser sign-in, redacted session status, and legacy credential endpoints
+ * - Spotify Web Player and desktop OAuth sign-in, redacted status, and legacy credential endpoints
  * - Spotify download queue management
  * - Real-time download progress via SSE (handled by DownloadManager component)
  * 
@@ -51,6 +43,14 @@ import { AudioSettings } from '../types';
 import { requestJSON } from './httpClient';
 import { getEventStreamURL } from './eventStreamURL';
 import { needsSpotifyMP3 } from './spotifyPlaybackFormat';
+
+export interface SpotifyDownloadOrigin {
+  kind: 'playlist' | 'album' | 'library';
+  id: string;
+  revision?: string;
+  entityId?: string;
+  position: number;
+}
 
 export interface SpotifySessionStatus {
   provider: 'oauth' | 'webplayer';
@@ -595,15 +595,16 @@ export const api = {
     return `${API_BASE}/spotify/stream/${spotifyId}${query ? '?' + query : ''}`;
   },
 
+  /** Uses the desktop loopback transport for native audio and relative URLs in browser builds. */
   async resolveSpotifyStreamUrl(spotifyId: string, quality?: 'high' | 'medium' | 'low'): Promise<string> {
-    // Wails' Windows asset response buffers audio until EOF. Use the same
-    // direct loopback transport as SSE, retaining ordinary browser URLs.
     return getEventStreamURL(api.getSpotifyStreamUrl(spotifyId, quality));
   },
 
+  /** Starts a Web Player capture in a supported browser on the backend device. */
   async startSpotifyBrowserLogin(): Promise<SpotifyBrowserLoginStatus> {
     return handleResponse<SpotifyBrowserLoginStatus>(await fetch(API_BASE + '/spotify/auth/browser-login', { method: 'POST', headers: { 'Content-Type': 'application/json' } }));
   },
+  /** Creates a desktop PKCE attempt and returns the URL to open in the system browser. */
   async startSpotifyOAuthLogin(clientId: string): Promise<SpotifyBrowserLoginStatus & { authUrl: string }> {
     return handleResponse<SpotifyBrowserLoginStatus & { authUrl: string }>(await fetch(API_BASE + '/spotify/auth/oauth-login', {
       method: 'POST',
@@ -611,9 +612,11 @@ export const api = {
       body: JSON.stringify({ clientId }),
     }));
   },
+  /** Polls a Web Player or desktop OAuth attempt by its operation ID. */
   async getSpotifyBrowserLogin(id: string): Promise<SpotifyBrowserLoginStatus> {
     return handleResponse<SpotifyBrowserLoginStatus>(await fetch(API_BASE + '/spotify/auth/browser-login/' + encodeURIComponent(id)));
   },
+  /** Cancels the specified attempt if it is still pending. */
   async cancelSpotifyBrowserLogin(id: string): Promise<SpotifyBrowserLoginStatus> {
     return handleResponse<SpotifyBrowserLoginStatus>(await fetch(API_BASE + '/spotify/auth/browser-login/' + encodeURIComponent(id), { method: 'DELETE', headers: { 'Content-Type': 'application/json' } }));
   },
@@ -629,14 +632,7 @@ export const api = {
 
   // Spotify Credentials
 
-  /**
-   * Saves Spotify OAuth credentials to backend database.
-   * Credentials are stored in the spotify_credentials setting as JSON.
-   * The access token is used for both Web API calls and librespot downloads.
-   * 
-   * @param creds - OAuth credentials from Spotify authorization flow
-   * @returns Promise resolving to success response
-   */
+  /** Saves credentials through the legacy OAuth compatibility route. Desktop PKCE saves on the backend. */
   async saveSpotifyCredentials(creds: { clientId: string; clientSecret: string; accessToken: string; refreshToken: string; expiry: number; codeVerifier?: string; oauthState?: string; oauthError?: string; redirectUri?: string }) {
     const response = await fetch(`${API_BASE}/spotify/credentials`, {
       method: 'POST',
@@ -646,12 +642,7 @@ export const api = {
     return handleResponse(response);
   },
 
-  /**
-   * Retrieves stored Spotify OAuth credentials from backend.
-   * Used for checking if user is authenticated and for token refresh.
-   * 
-   * @returns Promise resolving to credentials or empty object if not set
-   */
+  /** Reads legacy credentials, public desktop OAuth settings, or an empty object. Use auth status for session checks. */
   async getSpotifyCredentials() {
     const response = await fetch(`${API_BASE}/spotify/credentials`);
     return handleResponse<{ clientId: string; clientSecret: string; accessToken: string; refreshToken: string; expiry: number; codeVerifier?: string; oauthState?: string; oauthError?: string; redirectUri?: string }>(response);

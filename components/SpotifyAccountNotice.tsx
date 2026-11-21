@@ -1,3 +1,5 @@
+/** Explains Spotify media availability and offers a plan recheck when applicable. */
+
 import React, { useState } from 'react';
 import { useStore } from '../store';
 import { api } from '../services/api';

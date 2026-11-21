@@ -1,3 +1,4 @@
+// Tests metadata executor handling of timed-out and canceled work.
 package scanner
 
 import (

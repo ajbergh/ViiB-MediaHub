@@ -1,4 +1,5 @@
-// Starts and retires the desktop backend after Wails checks for an existing instance.
+// Starts the desktop loopback backend after Wails checks for an existing instance.
+// Owns the WebView proxy, Spotify OAuth redirect, and backend shutdown.
 package main
 
 import (
@@ -35,6 +36,7 @@ type runningDesktopBackend struct {
 	close     func()
 }
 
+// get starts the backend once and returns the same startup result to all callers.
 func (b *desktopBackend) get() (*runningDesktopBackend, error) {
 	b.once.Do(func() { b.running, b.err = b.start() })
 	if b.running == nil && b.err == nil {
@@ -43,6 +45,7 @@ func (b *desktopBackend) get() (*runningDesktopBackend, error) {
 	return b.running, b.err
 }
 
+// ServeHTTP forwards WebView API requests to the loopback backend.
 func (b *desktopBackend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !strings.HasPrefix(r.URL.Path, "/api") {
 		http.NotFound(w, r)
@@ -57,6 +60,7 @@ func (b *desktopBackend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	running.proxy.ServeHTTP(w, r)
 }
 
+// close waits for any startup already in progress and prevents future startup.
 func (b *desktopBackend) close() error {
 	// Wait for an in-progress start, or prevent a late callback from starting
 	// services after the desktop window has already closed.
@@ -67,6 +71,8 @@ func (b *desktopBackend) close() error {
 	return b.err
 }
 
+// startDesktopBackend binds the loopback listener, opens the library, and serves
+// the desktop API, frontend assets, and Spotify redirect.
 func startDesktopBackend(port int, dataDir string, assets fs.FS) (*runningDesktopBackend, error) {
 	// Reserve the OAuth callback port before opening the database. An unrelated
 	// listener must never cause this launch to supersede active Spotify metadata.

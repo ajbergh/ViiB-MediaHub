@@ -29,7 +29,8 @@ type spotifyOAuthAttempt struct {
 	state    string
 }
 
-// WithSpotifyOAuthCallback enables OAuth only on the desktop's loopback server.
+// WithSpotifyOAuthCallback registers the desktop redirect URI and handles its
+// browser callback before passing other requests to the standard server.
 func (a *API) WithSpotifyOAuthCallback(origin string, next http.Handler) http.Handler {
 	a.spotifyOAuthCallback = origin + "/callback"
 	host := strings.TrimPrefix(origin, "http://")
@@ -62,6 +63,8 @@ func (a *API) WithSpotifyOAuthCallback(origin string, next http.Handler) http.Ha
 	})
 }
 
+// startSpotifyOAuthLogin creates a timed PKCE attempt and returns its authorization URL.
+// The verifier stays in memory in the backend.
 func (a *API) startSpotifyOAuthLogin(w http.ResponseWriter, r *http.Request) {
 	if a.spotifyOAuthCallback == "" || !spotifyLoginRequestAllowed(r) {
 		respondError(w, http.StatusForbidden, "System browser sign-in is available in the ViiB desktop app.")
@@ -127,6 +130,8 @@ func (a *API) startSpotifyOAuthLogin(w http.ResponseWriter, r *http.Request) {
 	}{status, "https://accounts.spotify.com/authorize?" + params.Encode()})
 }
 
+// finishSpotifyOAuthLogin validates and consumes the callback state, then installs
+// exchanged credentials only while the attempt still owns the connection.
 func (a *API) finishSpotifyOAuthLogin(query url.Values) bool {
 	s := a.spotifyTokens()
 	s.login.mu.Lock()
@@ -169,6 +174,8 @@ func (a *API) finishSpotifyOAuthLogin(query url.Values) bool {
 
 var errSpotifyOAuthRateLimited = errors.New("Spotify sign-in rate limited")
 
+// exchangeSpotifyOAuthCode exchanges a single-use code and serializes the resulting
+// Web API credentials for encrypted persistence.
 func exchangeSpotifyOAuthCode(attempt *spotifyOAuthAttempt, code, redirectURI string) (string, error) {
 	params := url.Values{
 		"grant_type": {"authorization_code"}, "code": {code}, "redirect_uri": {redirectURI},

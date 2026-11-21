@@ -1,3 +1,4 @@
+// Validates and persists source-scoped manual track metadata overrides.
 package db
 
 import (

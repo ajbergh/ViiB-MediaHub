@@ -1,3 +1,4 @@
+// Retries transient SQLite write contention within a bounded, cancelable window.
 package db
 
 import (

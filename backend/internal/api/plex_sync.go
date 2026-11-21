@@ -1,3 +1,4 @@
+// Coordinates manual and scheduled Plex catalog sync for the selected source.
 package api
 
 import (

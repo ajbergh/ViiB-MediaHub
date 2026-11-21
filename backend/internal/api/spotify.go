@@ -1,6 +1,5 @@
-// Package api provides REST API handlers for ViiB MediaHub.
-// This file serves legacy credential routes, catalog proxy requests, downloads, and audio streams.
-// Cookie sessions, browser sign-in, token routing, and fixed catalog adapters are composed in companion files.
+// Serves Spotify credential compatibility, catalog proxy, download, and audio routes.
+// Companion files own Web Player and desktop OAuth sign-in, token routing, and catalog adapters.
 package api
 
 import (
@@ -26,13 +25,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// SpotifyCredentials represents OAuth 2.0 credentials for Spotify Web API.
-// These credentials are stored in the database and used for:
-//   - Web API calls (search, metadata, user profile)
-//   - librespot authentication for downloads and streaming
-//
-// The backend refreshes and persists these credentials for the legacy OAuth path.
-// Cookie-mode requests instead obtain purpose-scoped tokens from the auth runtime.
+// SpotifyCredentials stores OAuth tokens and client settings in an encrypted database setting.
+// Desktop PKCE credentials are scoped to Web API features. Legacy OAuth records
+// retain the compatibility path, and Web Player uses a separate encrypted session.
 type SpotifyCredentials struct {
 	ClientId     string `json:"clientId"`     // OAuth public client ID
 	ClientSecret string `json:"clientSecret"` // Legacy field; never returned to the renderer
@@ -71,13 +66,8 @@ type downloadMetadata struct {
 	ImageURL string `json:"imageUrl,omitempty"`
 }
 
-// saveSpotifyCredentials saves OAuth credentials to the database.
-// Called by the frontend after successful OAuth authorization.
-// Credentials are stored as JSON in the "spotify_credentials" setting.
-//
-// The access token is used for:
-//   - Spotify Web API calls (proxied through this backend)
-//   - librespot-go authentication for direct downloads and streaming
+// saveSpotifyCredentials accepts credentials from legacy OAuth clients and replaces
+// the active account. Desktop PKCE saves credentials directly from its backend callback.
 //
 // POST /api/spotify/credentials
 // Request body: SpotifyCredentials JSON
@@ -107,12 +97,12 @@ func (a *API) saveSpotifyCredentials(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, map[string]string{"status": "ok"})
 }
 
-// getSpotifyCredentials retrieves stored OAuth credentials.
-// Returns empty object if credentials are not configured.
-// Used by frontend to check authentication status and for token refresh.
+// getSpotifyCredentials serves the legacy OAuth compatibility response. Desktop PKCE
+// returns only the public client ID and redirect URI. Web Player and unavailable
+// credentials return an empty object.
 //
 // GET /api/spotify/credentials
-// Response: SpotifyCredentials JSON or {}
+// Response: redacted OAuth settings, legacy credentials without the client secret, or {}.
 func (a *API) getSpotifyCredentials(w http.ResponseWriter, r *http.Request) {
 	if a.spotifyTokens().status().Provider == "webplayer" {
 		respondJSON(w, map[string]interface{}{})
@@ -1375,11 +1365,10 @@ func (a *API) forceRestartDownload(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, map[string]string{"status": "queued"})
 }
 
-// getSpotifyAuthStatus returns the current Spotify authentication status.
-// This is used to check if re-authentication is required (e.g., token expired/revoked).
+// getSpotifyAuthStatus returns connection and media capabilities without credentials.
+// Desktop PKCE skips the account-plan probe and reports Web API access only.
 //
 // GET /api/spotify/auth/status
-// Response: {"authRequired": true/false, "message": "..."}
 func (a *API) getSpotifyAuthStatus(w http.ResponseWriter, r *http.Request) {
 	status := a.spotifyTokens().status()
 	if a.downloadManager != nil && a.downloadManager.IsAuthRequired() {

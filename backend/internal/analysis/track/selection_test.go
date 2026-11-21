@@ -1,3 +1,4 @@
+// Tests preparation discovery across batches, artifact repairs, and cooperative throttling.
 package track
 
 import (

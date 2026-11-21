@@ -123,7 +123,7 @@ func (a *App) ShowWindow() {
 	}
 }
 
-// GetServerURL returns the local HTTP origin for audio and event streams.
+// GetServerURL returns the loopback origin for audio, event streams, and the Spotify callback URI.
 func (a *App) GetServerURL() (string, error) {
 	backend, err := a.backend.get()
 	if err != nil {
@@ -195,7 +195,8 @@ func main() {
 	dataDir := flag.String("data", "", "Data directory (default: user config dir)")
 	// Spotify requires an OAuth redirect URI that exactly matches a URI registered
 	// in the user's Developer Dashboard. Keep the desktop API server on a stable
-	// loopback port so its /callback route can be registered once.
+	// loopback port so its /callback route can be registered once. A different
+	// port requires registering its exact callback URI.
 	port := flag.Int("port", 34115, "Port for API server (required for Spotify OAuth callback)")
 	debug := flag.Bool("debug", false, "Enable debug mode")
 	flag.Parse()

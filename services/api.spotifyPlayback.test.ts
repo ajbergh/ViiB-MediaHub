@@ -1,3 +1,5 @@
+/** Tests Spotify stream format selection using the platform and Vorbis capability. */
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from './api';
 

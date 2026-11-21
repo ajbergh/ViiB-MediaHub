@@ -1,5 +1,3 @@
-import { SpotifyAccountNotice } from '../components/SpotifyAccountNotice';
-import { savedLibraryDownloadOrigins } from '../lib/spotifyDownloadOrigins';
 /**
  * ViiB MediaHub - Spotify Album Detail Page
  * 
@@ -18,6 +16,8 @@ import { savedLibraryDownloadOrigins } from '../lib/spotifyDownloadOrigins';
  * @module SpotifyAlbumDetail
  */
 
+import { SpotifyAccountNotice } from '../components/SpotifyAccountNotice';
+import { savedLibraryDownloadOrigins } from '../lib/spotifyDownloadOrigins';
 import {fetchSpotifyAlbum} from '../services/spotifyAlbum';
 import { SpotifyArtistLinks } from '../components/SpotifyArtistLinks';
 import React, { useEffect, useMemo, useState } from 'react';

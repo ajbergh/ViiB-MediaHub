@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+/** Tests waveform peak extraction, cancellation, and audio-context cleanup. */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   calculateAudioBufferPeaks,

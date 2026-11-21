@@ -16,9 +16,13 @@ import (
 const recentsHash = "94be830be40f0f3759ef83a4ea6e4dd1bef1f6108f7502c11ee1fa7fb1bb1658"
 const recentsURI = "spotify:list:recents:page"
 
+// RecentsQuery describes a page in the Web Player's offset-based history.
 type RecentsQuery struct{ Limit, Offset int }
 
+// RecentsPath matches the recently played resource routed to the Web Player adapter.
 func RecentsPath(path string) bool { return path == "/v1/me/player/recently-played" }
+
+// ParseRecentsQuery accepts a bounded limit and offset and defaults to the first 100 entries.
 func ParseRecentsQuery(v url.Values) (RecentsQuery, error) {
 	q := RecentsQuery{Limit: 100}
 	for key, values := range v {
@@ -41,6 +45,7 @@ func ParseRecentsQuery(v url.Values) (RecentsQuery, error) {
 	return q, nil
 }
 
+// RecentEntry represents a dated Web Player item or a listening group.
 type RecentEntry struct {
 	URI             string  `json:"uri"`
 	Name            string  `json:"name"`
@@ -53,6 +58,7 @@ type RecentEntry struct {
 	GroupCount      int     `json:"group_count"`
 	Track           *Track  `json:"track,omitempty"`
 }
+// RecentsResult carries the page and a next offset when more items are available.
 type RecentsResult struct {
 	Source     string        `json:"source"`
 	Items      []RecentEntry `json:"items"`
@@ -110,6 +116,7 @@ type recentWireItem struct {
 	} `json:"entity"`
 }
 
+// Recents reads and normalizes a Web Player history page in provider order.
 func (c *Client) Recents(ctx context.Context, token auth.Token, q RecentsQuery) (RecentsResult, error) {
 	if q.Limit < 1 || q.Limit > 100 || q.Offset < 0 || q.Offset > 100000 {
 		return RecentsResult{}, ErrInvalidQuery

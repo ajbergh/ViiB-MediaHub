@@ -1,3 +1,4 @@
+// Tests loopback startup and shutdown ordering for the Wails backend.
 package main
 
 import (

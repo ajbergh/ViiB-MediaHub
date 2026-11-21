@@ -1,29 +1,15 @@
+/**
+ * Spotify workspace for catalog search, saved libraries, account views, and listening history.
+ * The backend restores either a Web Player or OAuth session. Desktop PKCE enables
+ * Web API features. In-app streaming and downloads require media capability.
+ */
+
 import { SpotifyAccountViews } from '../components/SpotifyAccountViews';
 import { backendSpotifyFetch } from '../services/spotifyBackend';
 import { parseSpotifyLink } from '../lib/spotifyLinks';
 import { SpotifyAccountNotice } from '../components/SpotifyAccountNotice';
 import { SpotifyRecents } from '../components/SpotifyRecents';
 import { savedLibraryDownloadOrigins, savedLibraryDownloadState } from '../lib/spotifyDownloadOrigins';
-/**
- * ViiB MediaHub - Spotify Page
- * 
- * Spotify integration hub for browsing, streaming, and downloading from Spotify catalog.
- * 
- * Features:
- * - Backend cookie session connection
- * - Search Spotify catalog (tracks, albums, artists, playlists)
- * - Browse user's saved albums and playlists
- * - View recently played tracks
- * - Queue downloads for tracks, albums, and playlists
- * - Redacted backend session restoration
- * 
- * Requires Spotify Premium for streaming and download functionality.
- * Uses backend Web Player catalog adapters for search/browse and librespot for audio.
- * Recent-history availability depends on the provider capabilities exposed to the session.
- * 
- * @module Spotify
- */
-
 import { appendSpotifyLibraryPage } from '../lib/spotifyLibraryPaging';
 import {fetchSpotifyPlaylist} from '../services/spotifyPlaylist';
 import {fetchSpotifyAlbum} from '../services/spotifyAlbum';

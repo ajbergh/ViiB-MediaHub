@@ -1,4 +1,4 @@
-// Owns encrypted cookie-session persistence, status, account generations, and session retirement hooks.
+// Owns Web Player and OAuth session selection, encrypted persistence, and account retirement.
 package api
 
 import (
@@ -292,6 +292,7 @@ func (s *spotifyAuthRuntime) accountToken(ctx context.Context, p spotifyauth.Pur
 	}
 	return token, err
 }
+// status reports the selected provider and credential availability without contacting Spotify.
 func (s *spotifyAuthRuntime) status() spotifySessionStatus {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -659,13 +660,15 @@ func (s *spotifyAuthRuntime) withAccount(ctx context.Context, commit func() erro
 	return commit()
 }
 
-// Explicit OAuth saves represent a new login selection. Automatic token renewal
-// uses its separate persistence path and keeps the current metadata lifetime.
+// replaceOAuthCredentials installs an explicit legacy OAuth login and cancels any
+// browser attempt. Token renewal retains the current account lifetime.
 func (s *spotifyAuthRuntime) replaceOAuthCredentials(raw string) error {
 	s.cancelBrowserLogin("", false)
 	return s.replaceOAuthCredentialsGuarded(raw, nil)
 }
 
+// replaceOAuthCredentialsGuarded retires the current account and installs OAuth settings
+// under the optional browser-attempt guard.
 func (s *spotifyAuthRuntime) replaceOAuthCredentialsGuarded(raw string, guard func() (func(bool), error)) error {
 	s.changeMu.Lock()
 	defer s.changeMu.Unlock()

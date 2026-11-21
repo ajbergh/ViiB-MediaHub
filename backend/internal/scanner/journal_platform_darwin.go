@@ -1,11 +1,11 @@
 //go:build darwin
 // +build darwin
 
-// Defines journal platform darwin functionality for package scanner.
+// Configures macOS incremental scans to compare the committed metadata cache.
 
 package scanner
 
-// Use the metadata cache as the checkpoint on macOS. A host-wide FSEvents ID
+// getPlatformDetectors leaves the metadata cache as the checkpoint on macOS. A host-wide FSEvents ID
 // cannot establish coverage for newly added folders, moved trees, or mounted
 // volumes. Comparing with the committed cache also retries unprocessed changes.
 func (s *Scanner) getPlatformDetectors() []JournalChangeDetector {

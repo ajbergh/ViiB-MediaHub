@@ -1,3 +1,4 @@
+// Reads bounded structure artifacts and caches validation facts for identical payloads.
 package features
 
 import (

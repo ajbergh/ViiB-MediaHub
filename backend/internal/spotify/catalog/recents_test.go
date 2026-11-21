@@ -1,3 +1,4 @@
+// Tests Web Player Recents query bounds and response normalization.
 package catalog
 
 import (

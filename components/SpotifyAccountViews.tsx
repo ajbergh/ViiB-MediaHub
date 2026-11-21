@@ -1,3 +1,5 @@
+/** Displays Spotify account views available to the active session. */
+
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { SpotifyRateLimitError } from '../lib/spotifyErrors';
@@ -23,6 +25,7 @@ type AccountResponse = {
     limit?: number;
 };
 
+/** Loads the selected account view while guarding against changes to the active session. */
 export function SpotifyAccountViews({generation}: {generation: number}) {
     const [oauthViews, setOAuthViews] = useState<boolean | 'unavailable' | null>(null);
     const [view, setView] = useState<(typeof views)[number][0]>('liked');

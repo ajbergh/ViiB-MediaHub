@@ -1,3 +1,4 @@
+// Tests thumbnail size, caching, and refresh when source artwork changes.
 package api
 
 import (

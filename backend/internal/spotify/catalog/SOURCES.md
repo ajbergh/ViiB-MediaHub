@@ -1,6 +1,6 @@
 # Fixed Web Player catalog protocol sources
 
-**Documentation reviewed:** 2026-10-04. Implementation checkpoint: `8187104`. The pinned revisions below are retained; this documentation review did not fetch new hashes or rerun provider calls.
+The original source review was recorded on 2026-10-04 at `8187104`. The Web App Recents contract was captured on 2026-11-20. The references below preserve the recorded protocol sources and revisions.
 
 These sources identify protocol contracts used by the adapter. They do not prove universal account/market availability or completed OAuth parity. Current application coverage and unresolved Recent/profile fields are recorded in the [parity audit](../../../../docs/SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md).
 

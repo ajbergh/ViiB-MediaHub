@@ -1,3 +1,4 @@
+// Checks preparation artifacts and settles claims for analysis that is already current.
 package track
 
 import (

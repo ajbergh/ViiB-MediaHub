@@ -1,3 +1,4 @@
+// Expands track preparation selections and checks claims, cancellation, and throttling.
 package track
 
 import (
@@ -239,10 +240,13 @@ func ExpandPreparationSelectionWithOptions(ctx context.Context, database *db.DB,
 // owns matching work; counting that work as skipped would lose crash recovery.
 var ErrPreparationBusy = errors.New("preparation is owned by another live worker")
 
+// ExpandPreparationJobSelection discovers durable job work with a source resolver.
 func ExpandPreparationJobSelection(ctx context.Context, database *db.DB, selection db.AnalysisSelection, resolve func(context.Context, string) (analysis.ResolvedSource, error)) ([]string, error) {
 	return ExpandPreparationJobSelectionWithOptions(ctx, database, selection, SelectionOptions{ResolveSource: resolve})
 }
 
+// ExpandPreparationJobSelectionWithOptions discovers work and checks for live
+// claims while honoring cancellation and throttling.
 func ExpandPreparationJobSelectionWithOptions(ctx context.Context, database *db.DB, selection db.AnalysisSelection, opts SelectionOptions) ([]string, error) {
 	selected, err := ExpandPreparationSelectionWithOptions(ctx, database, selection, opts)
 	if err != nil {
@@ -254,8 +258,8 @@ func ExpandPreparationJobSelectionWithOptions(ctx context.Context, database *db.
 	return selected, nil
 }
 
-// Check again before a durable job completes: a claimant can arrive after
-// discovery and make the runner skip work that still belongs to that owner.
+// CheckPreparationSelectionClaims detects claims acquired after discovery,
+// before a durable job can report completion.
 func CheckPreparationSelectionClaims(ctx context.Context, database *db.DB, selection db.AnalysisSelection) error {
 	return checkPreparationSelectionClaims(ctx, database, selection, nil, nil)
 }

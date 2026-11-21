@@ -1,3 +1,4 @@
+// Validates Plex routes and recovers account-managed connections after read failures.
 package api
 
 import (

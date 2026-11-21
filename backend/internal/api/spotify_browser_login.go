@@ -1,4 +1,4 @@
-// Manages cancellable Spotify browser sign-in operations and guarded session installation.
+// Captures Web Player sessions and tracks cancellable sign-in attempts for Web Player and desktop OAuth.
 package api
 
 import (
@@ -29,8 +29,8 @@ type spotifyBrowserLogin struct {
 	oauth   *spotifyOAuthAttempt
 }
 
-// Independent from account locks so capture/provider I/O can be canceled even
-// while an account transition waits. Never retain cookie material here.
+// spotifyBrowserLoginOwner guards the current attempt and tracks in-flight work
+// during shutdown. Cookie material stays in the capture worker.
 type spotifyBrowserLoginOwner struct {
 	mu        sync.Mutex
 	wg        sync.WaitGroup
@@ -39,6 +39,8 @@ type spotifyBrowserLoginOwner struct {
 	capture   func(context.Context) (string, error)
 }
 
+// cancelBrowserLogin cancels the specified attempt, or the current attempt for an
+// empty ID. Shutdown also prevents new attempts.
 func (s *spotifyAuthRuntime) cancelBrowserLogin(id string, closing bool) {
 	s.login.mu.Lock()
 	defer s.login.mu.Unlock()
@@ -51,6 +53,7 @@ func (s *spotifyAuthRuntime) cancelBrowserLogin(id string, closing bool) {
 		op.status.State = "canceled"
 	}
 }
+// startBrowserLogin replaces the pending attempt and launches Web Player capture.
 func (s *spotifyAuthRuntime) startBrowserLogin() (spotifyBrowserLoginStatus, error) {
 	s.login.mu.Lock()
 	defer s.login.mu.Unlock()
@@ -74,6 +77,7 @@ func (s *spotifyAuthRuntime) startBrowserLogin() (spotifyBrowserLoginStatus, err
 	go s.runBrowserLogin(ctx, op, capture)
 	return op.status, nil
 }
+// runBrowserLogin captures and validates the Web Player session before committing it.
 func (s *spotifyAuthRuntime) runBrowserLogin(ctx context.Context, op *spotifyBrowserLogin, capture func(context.Context) (string, error)) {
 	defer s.login.wg.Done()
 	defer op.cancel()
@@ -157,6 +161,8 @@ func (s *spotifyAuthRuntime) browserLoginStatus(id string) (spotifyBrowserLoginS
 	return s.login.operation.status, true
 }
 
+// browserLoginCommit fences account replacement against cancellation, shutdown,
+// and changes to the active attempt or account lifetime.
 func (s *spotifyAuthRuntime) browserLoginCommit(ctx context.Context, op *spotifyBrowserLogin) func() (func(bool), error) {
 	return func() (func(bool), error) {
 		s.login.mu.Lock()

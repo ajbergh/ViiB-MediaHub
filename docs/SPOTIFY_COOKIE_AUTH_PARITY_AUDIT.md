@@ -2,9 +2,9 @@
 
 > Scope update — 2026-10-12: This is a dated parity record. Its remaining provider/platform gaps are disclosed limitations, not completed features. Further local-scanning/DSP accuracy work is deferred to a future branch. See [Spotify behavior and limitations](spotify.md) and [future local-analysis work](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
 
-Evidence updated: 2026-10-04. Branch: spotify/webplayer-auth-analysis-provider. Implementation checkpoint: `8187104`.
+The original 2026-10-04 baseline was recorded on `spotify/webplayer-auth-analysis-provider` at `8187104`. The latest dated addition below covers Web App Recents on 2026-11-20.
 
-The active goal is all prior Spotify functionality working with cookie authentication. Completion is unproven. The original research document remains source material, not an instruction overriding the user's authorization to implement cookie-based authentication.
+This audit tracks Spotify functionality available through the Web Player session. For desktop OAuth with PKCE, see the [Spotify setup guide](spotify.md#default-browser-sign-in-on-desktop) and its [macOS validation gate](SPOTIFY_MACOS_AUTH_VALIDATION.md#default-browser-sign-in-hand-test-gate).
 
 Evidence is recorded in [the validation log](SPOTIFY_WEBPLAYER_VALIDATION.md). "Adapter implemented" below means source coverage, not exhaustive production parity. Live samples do not prove every account, market, pagination variant, platform or failure case.
 

@@ -1,3 +1,4 @@
+// Manages source-scoped waveform leases and guarded artifact publication.
 package db
 
 import (
@@ -43,6 +44,8 @@ func (d *DB) ClaimWaveformLease(song, fingerprint string) (string, bool, error) 
 	}
 	return token, true, nil
 }
+
+// RenewWaveformLease extends a matching lease that has not expired.
 func (d *DB) RenewWaveformLease(song, fingerprint, token string) error {
 	now := time.Now().UnixMilli()
 	result, err := d.conn.Exec(`UPDATE track_waveform_leases SET renewed_at=? WHERE song_id=? AND source_fingerprint=? AND token=? AND renewed_at>?`, now, song, fingerprint, token, now-TrackAnalysisLeaseMillis)
@@ -58,6 +61,8 @@ func (d *DB) RenewWaveformLease(song, fingerprint, token string) error {
 	}
 	return nil
 }
+
+// ReleaseWaveformLease deletes the lease owned by the given token.
 func (d *DB) ReleaseWaveformLease(song, token string) error {
 	result, err := d.conn.Exec(`DELETE FROM track_waveform_leases WHERE song_id=? AND token=?`, song, token)
 	if err != nil {

@@ -1,5 +1,3 @@
-import { SpotifyAccountNotice } from '../components/SpotifyAccountNotice';
-import { savedLibraryDownloadOrigins } from '../lib/spotifyDownloadOrigins';
 /**
  * ViiB MediaHub - Spotify Playlist Detail Page
  * 
@@ -18,6 +16,8 @@ import { savedLibraryDownloadOrigins } from '../lib/spotifyDownloadOrigins';
  * @module SpotifyPlaylistDetail
  */
 
+import { SpotifyAccountNotice } from '../components/SpotifyAccountNotice';
+import { savedLibraryDownloadOrigins } from '../lib/spotifyDownloadOrigins';
 import {fetchSpotifyPlaylist} from '../services/spotifyPlaylist';
 import { backendSpotifyFetch } from '../services/spotifyBackend';
 import { SpotifyArtistLinks } from '../components/SpotifyArtistLinks';

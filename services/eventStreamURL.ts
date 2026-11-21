@@ -2,7 +2,7 @@
  * Resolves streaming URLs for both the browser build and the native Wails build.
  *
  * Wails proxies ordinary API requests through its asset server, but that
- * response path buffers indefinitely-lived Server-Sent Event responses. The
+ * response path can buffer Server-Sent Event and audio responses. The
  * backend's loopback HTTP server is therefore used directly for event and audio streams
  * in the native app. Browser and Vite development builds retain relative URLs.
  */
@@ -56,6 +56,7 @@ async function resolveWailsServerURL(getServerURL: () => Promise<string>): Promi
   });
 }
 
+/** Resolves a stream path against the validated loopback origin when the Wails bridge is available. */
 export async function getEventStreamURL(path: string): Promise<string> {
   const serverURL = getWailsServerURL();
   const baseURL = await serverURL;

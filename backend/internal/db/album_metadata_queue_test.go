@@ -1,3 +1,4 @@
+// Tests metadata queue ordering with legacy and renderer timestamps.
 package db
 
 import (

@@ -1,3 +1,4 @@
+// Publishes track preparation records and artifacts under the current claim.
 package db
 
 import (

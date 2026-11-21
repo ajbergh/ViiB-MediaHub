@@ -1,4 +1,4 @@
-/** Connects through Spotify browser sign-in, polls cancellable login status, and disconnects backend-owned sessions. */
+/** Offers desktop PKCE and Web Player sign-in, polls attempt status, and disconnects backend-owned sessions. */
 
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { api } from '../services/api';

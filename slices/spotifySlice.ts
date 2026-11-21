@@ -2,8 +2,8 @@
  * Zustand slice for Spotify connection, account generation, profile, search,
  * playback preferences, and download count. Disconnect and authentication failure
  * retire Spotify playback and invalidate requests from the prior generation.
- * Legacy OAuth fields remain for compatibility. Cookies and active Web Player
- * bearer tokens stay in the backend; renderer persistence excludes secrets and tokens.
+ * Retains legacy OAuth fields for compatibility. Active Web Player and desktop
+ * OAuth credentials belong to the backend. Renderer persistence excludes credentials.
  *
  * @module spotifySlice
  */

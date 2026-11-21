@@ -1,4 +1,3 @@
-import { useAnalysisFeatures, type AnalysisOrderingField } from '../../../hooks/useAnalysisFeatures';
 /**
  * ViiB MediaHub - DJ Library Browser V2 Component
  *
@@ -12,6 +11,7 @@ import { useAnalysisFeatures, type AnalysisOrderingField } from '../../../hooks/
  * @module components/dj/v2/DJLibraryBrowserV2
  */
 
+import { useAnalysisFeatures, type AnalysisOrderingField } from '../../../hooks/useAnalysisFeatures';
 import React, { useState, useMemo, useCallback, useEffect, useRef, useDeferredValue, memo } from 'react';
 import { TableVirtuoso, type TableComponents, type TableVirtuosoHandle } from 'react-virtuoso';
 import { useStore } from '../../../store';

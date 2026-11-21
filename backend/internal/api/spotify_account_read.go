@@ -1,3 +1,4 @@
+// Exposes account views and reports which require an OAuth connection.
 package api
 
 import (
@@ -16,7 +17,7 @@ var spotifyAccountPaths = map[string]string{
 	"devices": "me/player/devices", "queue": "me/player/queue",
 }
 
-// These public Web API routes have no verified Web Player adapter.
+// spotifyAccountRequiresOAuth identifies account routes without a Web Player adapter.
 func spotifyAccountRequiresOAuth(path string) bool {
 	for view, resource := range spotifyAccountPaths {
 		if view != "liked" && path == "/v1/"+resource {
@@ -26,6 +27,8 @@ func spotifyAccountRequiresOAuth(path string) bool {
 	return false
 }
 
+// spotifyAccountCapabilities reports whether the active OAuth session can request
+// OAuth-only views. Spotify still decides access to individual endpoints.
 func (a *API) spotifyAccountCapabilities(w http.ResponseWriter, _ *http.Request) {
 	status := a.spotifyTokens().status()
 	w.Header().Set("Cache-Control", "no-store")

@@ -1,4 +1,3 @@
-import { SpotifyAccountNotice } from '../components/SpotifyAccountNotice';
 /**
  * ViiB MediaHub - Settings Page
  * 
@@ -32,6 +31,7 @@ import { SpotifyAccountNotice } from '../components/SpotifyAccountNotice';
  * @module Settings
  */
 
+import { SpotifyAccountNotice } from '../components/SpotifyAccountNotice';
 import { SpotifySessionConnect } from '../components/SpotifySessionConnect';
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router';

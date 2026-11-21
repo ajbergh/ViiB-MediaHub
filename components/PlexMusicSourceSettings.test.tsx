@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+/** Tests reconnecting the Plex settings panel to an in-progress catalog sync. */
+
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';

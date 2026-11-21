@@ -1,4 +1,4 @@
-// Routes cookie catalog requests and legacy OAuth token refresh through shared request and cooldown handling.
+// Routes Web Player and OAuth requests through the selected token provider and shared cooldown handling.
 package api
 
 import (
@@ -274,8 +274,7 @@ func (a *API) doSpotifyRequest(ctx context.Context, method, target string, body 
 	}
 }
 
-// spotifyOAuthManager preserves the existing OAuth owner and persistence.
-// Internal analysis remains disabled in the application until explicitly composed.
+// spotifyOAuthManager loads and refreshes stored desktop and legacy OAuth tokens.
 func spotifyOAuthManager(database *db.DB) *spotifyauth.Manager {
 	load := func(ctx context.Context, force bool) (spotifyauth.Token, error) {
 		credentials, err := refreshSpotifyCredentials(ctx, database, force)

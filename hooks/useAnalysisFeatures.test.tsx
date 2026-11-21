@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+/** Tests shared analysis requests, viewport caching, delta refreshes, and sorting. */
+
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';

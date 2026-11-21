@@ -1,3 +1,4 @@
+// Resizes and caches artwork for bounded cover requests.
 package api
 
 import (
