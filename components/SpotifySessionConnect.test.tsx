@@ -31,6 +31,21 @@ function button(host: HTMLElement, text: string) {
 }
 describe('Spotify browser sign-in', () => {
     const releaseClientId = (import.meta.env.VITE_SPOTIFY_CLIENT_ID ?? '').trim();
+    it('uses Web Player for the primary desktop sign-in and keeps browsing-only setup collapsed', async () => {
+        vi.stubGlobal('go', {});
+        const start = vi.spyOn(api, 'startSpotifyBrowserLogin').mockResolvedValue({ id: 'web', state: 'pending' });
+        const oauth = vi.spyOn(api, 'startSpotifyOAuthLogin');
+        vi.spyOn(api, 'getSpotifyBrowserLogin').mockResolvedValue({ id: 'web', state: 'failed' });
+        const host = await render();
+        const primary = button(host, 'Sign in with Spotify');
+        expect(host.querySelector('button')).toBe(primary);
+        expect(button(host, 'Browsing-only sign-in').getAttribute('aria-expanded')).toBe('false');
+        expect(host.querySelector('input')).toBeNull();
+        await act(async () => primary.click());
+        expect(start).toHaveBeenCalledOnce();
+        expect(oauth).not.toHaveBeenCalled();
+    });
+
     it.runIf(/^[a-f0-9]{32}$/i.test(releaseClientId))('opens desktop authorization directly when a release Client ID is configured', async () => {
         vi.stubGlobal('go', {});
         const authUrl = 'https://accounts.spotify.com/authorize';
@@ -39,6 +54,7 @@ describe('Spotify browser sign-in', () => {
         vi.spyOn(api, 'getSpotifyBrowserLogin').mockResolvedValue({ id: 'oauth', state: 'failed' });
         const host = await render();
         expect(host.querySelector('input')).toBeNull();
+        await act(async () => button(host, 'Browsing-only sign-in').click());
         await act(async () => button(host, 'Sign in with your default browser').click());
         expect(start).toHaveBeenCalledWith(releaseClientId);
         expect(open).toHaveBeenCalledWith(authUrl);
@@ -57,6 +73,7 @@ describe('Spotify browser sign-in', () => {
         vi.spyOn(api, 'getSpotifyBrowserLogin').mockResolvedValue({ id: 'oauth', state: 'connected' });
         vi.spyOn(api, 'getSpotifyAuthStatus').mockResolvedValue({ provider: 'oauth', connected: true, authRequired: false, webApiOnly: true, message: '' });
         const host = await render();
+        await act(async () => button(host, 'Browsing-only sign-in').click());
         await act(async () => (button(host, 'Use your own Spotify Client ID') ?? button(host, 'Sign in with your default browser')).click());
         expect(host.textContent).toContain('http://127.0.0.1:34116/callback');
         await act(async () => button(host, 'Open Spotify authorization').click());

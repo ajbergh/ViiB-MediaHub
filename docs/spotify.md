@@ -8,16 +8,16 @@ The Spotify page connects ViiB to your Spotify account for browsing, streaming, 
 
 ## Connect your Spotify account
 
-Open **Spotify** or **Settings → Integrations & Spotify → Spotify account**. Choose a connection based on the features you need.
+Open **Spotify** or **Settings → Integrations & Spotify → Spotify account**. Select **Sign in with Spotify** for one saved connection that covers search, streaming, and downloads. Streaming and downloads require verified Spotify Premium. Desktop users can also choose **Browsing-only sign-in** to connect through their default browser.
 
 | Connection | Availability | Features |
 |---|---|---|
-| Default browser | Wails desktop, including Safari on Mac | Spotify Web API catalog, library, top tracks, top artists, and Connect device and queue views, subject to Spotify app and account access |
 | Web Player | Desktop and browser/server builds with Chrome, Edge, or Chromium on the backend device | Catalog, supported library views, Web Player Recents, and ViiB streaming and downloads with verified Premium |
+| Default browser | Wails desktop, including Safari on Mac | Spotify Web API catalog, library, top tracks, top artists, and Connect device and queue views, subject to Spotify app and account access |
 
 ### Default-browser sign-in on desktop
 
-1. Select **Sign in with your default browser**. If the release includes a Spotify Client ID, Spotify authorization opens immediately.
+1. Expand **Browsing-only sign-in** and select **Sign in with your default browser**. If the release includes a Spotify Client ID, Spotify authorization opens immediately.
 2. To use your own Spotify Developer app, add the redirect URI shown in ViiB to the app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard). The default is `http://127.0.0.1:34115/callback`. If you start ViiB with a different `-port`, register the exact URI shown. Add your Spotify account to the app's allowed users when using Development Mode.
 3. Enter the app's **Spotify Client ID** and select **Open Spotify authorization**. Builds with a bundled Client ID also offer **Use your own Spotify Client ID**.
 4. Approve access on Spotify's page. When the browser confirms the connection, close the tab and return to ViiB.
@@ -27,7 +27,7 @@ The desktop flow uses Spotify's Authorization Code with PKCE and requires only t
 ### Web Player sign-in
 
 1. Install Chrome, Microsoft Edge, or Chromium on the device running the ViiB backend.
-2. Select **Connect Web Player** on desktop or **Sign in with Spotify** in the browser/server build.
+2. Select **Sign in with Spotify**. If you already have a browsing-only session, select **Connect for streaming and downloads**.
 3. Sign in on Spotify's page in the separate browser window. ViiB validates the session and closes the temporary window.
 
 Web Player sign-in requires no Spotify Developer app or redirect setup. You can keep Safari as your default browser.

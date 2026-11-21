@@ -63,7 +63,7 @@ CI fixtures do not prove a real Spotify form/MFA/SSO submission or user-visible 
 
 Test the packaged build installed in its final location, ideally once on Apple Silicon and once on Intel. Use Chrome first; repeat with Edge or Chromium if those browsers are claimed as supported for the release.
 
-1. With Safari selected as the default browser and Chrome installed, click **Connect Web Player**. Verify a separate visible Chrome sign-in window opens.
+1. With Safari selected as the default browser and Chrome installed, click **Sign in with Spotify**. Verify a separate visible Chrome sign-in window opens.
 2. Sign in directly on Spotify, including MFA/SSO if applicable. Verify ViiB reports connected, the temporary window closes, and no `viib-spotify-login-*` profile remains under the system temporary directory.
 3. Search, open an artist and album, and play/seek/advance a track in the native Wails window. Record authentication, catalog, and audio outcomes separately.
 4. Quit and relaunch the same installed app. Verify the session restores without asking for a cookie or another sign-in.
@@ -80,7 +80,7 @@ See [the overall validation record](SPOTIFY_WEBPLAYER_VALIDATION.md) and [the pa
 The desktop implementation uses Spotify PKCE and accepts Spotify's redirect through the loopback listener. The Windows callback fixture checks state validation, cancellation, replay rejection, credential handling, and media capability gating. The API package compiled for Apple Silicon. A packaged Mac run with live Safari authorization remains unverified.
 
 1. Install the packaged app on an Apple Silicon Mac with Safari as the default browser. Register the URI shown in ViiB for an authorized Spotify Developer app, as described in the [Spotify setup guide](spotify.md#default-browser-sign-in-on-desktop).
-2. Select **Sign in with your default browser**, authorize access in Safari, and verify that the confirmation page and ViiB both show success.
+2. Open **Browsing-only sign-in** and select **Sign in with your default browser**. Authorize access in Safari and verify that the confirmation page and ViiB both show success.
 3. Verify Web API browsing and account views. Confirm that ViiB directs users to Web Player for in-app streaming and downloads.
 4. Relaunch and verify that the connection restores. Test declined consent, **Cancel sign-in**, and **Disconnect**. A callback arriving after cancellation should leave the connection unchanged.
 

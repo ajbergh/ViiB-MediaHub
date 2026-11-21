@@ -15,6 +15,7 @@ export const SpotifySessionConnect: React.FC<{ onConnected?: () => void }> = ({ 
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
     const [browserRequired, setBrowserRequired] = useState(false);
+    const [showWebAPIOption, setShowWebAPIOption] = useState(false);
     const [showOAuthSetup, setShowOAuthSetup] = useState(false);
     const [callbackUrl, setCallbackUrl] = useState(SPOTIFY_DESKTOP_CALLBACK_URL);
     const clientIdInput = useId();
@@ -123,7 +124,21 @@ export const SpotifySessionConnect: React.FC<{ onConnected?: () => void }> = ({ 
     return <div className="w-full max-w-lg space-y-4 text-left">
         {authRequired && <p className="text-warning text-sm">Your Spotify session expired. Connect again to continue.</p>}
         {connected && <p className="text-success text-sm">{webAPIOnly ? 'Spotify Web API connected' : 'Spotify session connected'}</p>}
-        {desktop && <div className="space-y-2">
+        <p className="text-sm text-text-secondary">Sign in once to search Spotify. With Spotify Premium, the same connection enables streaming and downloads in ViiB. Sign-in uses Chrome, Microsoft Edge, or Chromium.</p>
+        <p className="text-xs text-text-subtle">ViiB saves your session encrypted on this device and restores it when you reopen the app.</p>
+        {busy && <p role="status" className="text-sm text-text-secondary">Waiting for Spotify sign-in…</p>}
+        <div className="flex flex-wrap gap-3">
+            <Button type="button" disabled={busy} onClick={() => void connect()}>{webAPIOnly ? 'Connect for streaming and downloads' : connected ? 'Switch Spotify account' : 'Sign in with Spotify'}</Button>
+            {busy && <Button type="button" variant="secondary" onClick={() => void cancel()}>Cancel sign-in</Button>}
+            {connected && <Button type="button" variant="secondary" disabled={busy} onClick={() => void disconnect()}>Disconnect</Button>}
+        </div>
+        {error && <p role="alert" className="text-danger text-sm">{error}</p>}
+        {browserRequired && <a className="text-sm underline" href="https://www.google.com/chrome/" target="_blank" rel="noreferrer" onClick={desktop ? event => {
+            event.preventDefault();
+            void openExternalURL('https://www.google.com/chrome/').catch(() => setError('Could not open the Chrome download page.'));
+        } : undefined}>Get Chrome for Spotify sign-in</a>}
+        {desktop && <Button type="button" variant="secondary" disabled={busy} aria-expanded={showWebAPIOption} onClick={() => setShowWebAPIOption(!showWebAPIOption)}>Browsing-only sign-in</Button>}
+        {desktop && showWebAPIOption && <div className="space-y-2">
             <p className="text-sm text-text-secondary">Use your default browser, including Safari, for Spotify Web API features like top tracks and Spotify Connect.{!hasReleaseClientId && ' This option requires a Spotify Developer Client ID.'}</p>
             {hasReleaseClientId && <Button type="button" disabled={busy} onClick={() => void connect(releaseClientId)}>Sign in with your default browser</Button>}
             <Button type="button" variant="secondary" disabled={busy} aria-expanded={showOAuthSetup} onClick={() => {
@@ -140,18 +155,5 @@ export const SpotifySessionConnect: React.FC<{ onConnected?: () => void }> = ({ 
                 <Button type="button" disabled={busy || !isSpotifyClientId(clientId.trim())} onClick={() => void connect(clientId.trim())}>Open Spotify authorization</Button>
             </div>}
         </div>}
-        <p className="text-sm text-text-secondary">Web Player sign-in uses Chrome, Microsoft Edge, or Chromium and supports the existing download flow.</p>
-        <p className="text-xs text-text-subtle">Your session is stored encrypted on this device.</p>
-        {busy && <p role="status" className="text-sm text-text-secondary">Waiting for Spotify sign-in…</p>}
-        <div className="flex flex-wrap gap-3">
-            <Button type="button" disabled={busy} onClick={() => void connect()}>{desktop ? 'Connect Web Player' : connected ? 'Switch Spotify account' : 'Sign in with Spotify'}</Button>
-            {busy && <Button type="button" variant="secondary" onClick={() => void cancel()}>Cancel sign-in</Button>}
-            {connected && <Button type="button" variant="secondary" disabled={busy} onClick={() => void disconnect()}>Disconnect</Button>}
-        </div>
-        {error && <p role="alert" className="text-danger text-sm">{error}</p>}
-        {browserRequired && <a className="text-sm underline" href="https://www.google.com/chrome/" target="_blank" rel="noreferrer" onClick={desktop ? event => {
-            event.preventDefault();
-            void openExternalURL('https://www.google.com/chrome/').catch(() => setError('Could not open the Chrome download page.'));
-        } : undefined}>Get Chrome for Web Player sign-in</a>}
     </div>;
 };
