@@ -9,6 +9,8 @@ import (
 	"io"
 	"strconv"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/art-media-platform/librespot-go/librespot/asset"
 )
@@ -170,4 +172,79 @@ func TestCopySpotifyDownloadRejectsNoProgress(t *testing.T) {
 	if !errors.Is(err, io.ErrNoProgress) {
 		t.Fatalf("stalled reader accepted: %v", err)
 	}
+}
+
+type interruptedDownloadReader struct {
+	*boundaryAssetReader
+	readsBeforeStall int
+	closed           <-chan struct{}
+}
+
+func (r interruptedDownloadReader) Read(p []byte) (int, error) {
+	if r.reads >= r.readsBeforeStall {
+		<-r.closed
+		return 0, io.ErrClosedPipe
+	}
+	return r.boundaryAssetReader.Read(p)
+}
+
+func TestSpotifyDownloadInterruptsStalledAssetAndPreservesUserCancellation(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		cancel     bool
+		reads      int
+		wantError  error
+		wantCopied int64
+	}{
+		{"before first byte", false, 0, ErrDownloadAudioTimeout, 0},
+		{"after progress", false, 1, ErrDownloadAudioTimeout, 64 * 1024},
+		{"user cancellation", true, 1, context.Canceled, 64 * 1024},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				closed := make(chan struct{})
+				reader := interruptedDownloadReader{
+					boundaryAssetReader: &boundaryAssetReader{data: make([]byte, 128*1024)},
+					readsBeforeStall:    tc.reads,
+					closed:              closed,
+				}
+				n, err := copySpotifyDownloadWithTimeout(ctx, io.Discard, reader, func() { close(closed) }, time.Second, func(_, _ int64) {
+					if tc.cancel {
+						cancel()
+					}
+				})
+				if !errors.Is(err, tc.wantError) || n != tc.wantCopied {
+					t.Fatalf("copied %d bytes, error %v, want %d bytes and %v", n, err, tc.wantCopied, tc.wantError)
+				}
+				select {
+				case <-closed:
+				default:
+					t.Fatal("download returned before interrupting the asset")
+				}
+			})
+		})
+	}
+}
+
+type slowDownloadReader struct{ *boundaryAssetReader }
+
+func (r slowDownloadReader) Read(p []byte) (int, error) {
+	time.Sleep(750 * time.Millisecond)
+	return r.boundaryAssetReader.Read(p)
+}
+
+func TestSpotifyDownloadTimeoutAllowsContinuingProgress(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		data := make([]byte, 256*1024)
+		reader := slowDownloadReader{&boundaryAssetReader{data: data}}
+		var dst bytes.Buffer
+		n, err := copySpotifyDownloadWithTimeout(t.Context(), &dst, reader, func() {
+			t.Error("interrupted a transfer that was still making progress")
+		}, time.Second, nil)
+		if err != nil || n != int64(len(data)) || !bytes.Equal(dst.Bytes(), data) {
+			t.Fatalf("copied %d of %d bytes: %v", n, len(data), err)
+		}
+	})
 }

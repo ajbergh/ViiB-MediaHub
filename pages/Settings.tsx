@@ -104,8 +104,10 @@ export const Settings: React.FC = () => {
   
   // Folder browser state
   const [showFolderBrowser, setShowFolderBrowser] = useState(false);
-  const [folderBrowserPurpose, setFolderBrowserPurpose] = useState<'music' | 'stems'>('music');
+  const [folderBrowserPurpose, setFolderBrowserPurpose] = useState<'music' | 'stems' | 'downloads'>('music');
   const [browserPath, setBrowserPath] = useState('');
+  const [browserError, setBrowserError] = useState('');
+  const browserRequest = useRef(0);
   const [stemLibraryLocations, setStemLibraryLocations] = useState<import('../services/api').StemLibraryLocation[]>([]);
   const [stemLibraryError, setStemLibraryError] = useState('');
   const stemScan = useStemLibraryScan(backendAvailable);
@@ -316,15 +318,11 @@ export const Settings: React.FC = () => {
       }
   }, [backendAvailable]);
 
-  // Download folder browser state
-  const [showDownloadFolderBrowser, setShowDownloadFolderBrowser] = useState(false);
-  const [downloadBrowserPath, setDownloadBrowserPath] = useState('');
-  const [downloadBrowserEntries, setDownloadBrowserEntries] = useState<{ name: string; path: string; isDir: boolean }[]>([]);
-  const [loadingDownloadBrowser, setLoadingDownloadBrowser] = useState(false);
-
   // Integrations & Spotify download/conversion state
   const [spotifyDownloadPath, setSpotifyDownloadPath] = useState('');
   const [downloadPathSaved, setDownloadPathSaved] = useState(false);
+  const [savingDownloadPath, setSavingDownloadPath] = useState(false);
+  const [downloadPathError, setDownloadPathError] = useState('');
   const [autoConvertOggToMp3, setAutoConvertOggToMp3] = useState(false);
   const [autoConvertOggSaving, setAutoConvertOggSaving] = useState(false);
   const [conversionWorkers, setConversionWorkers] = useState(() => Math.min(4, Math.max(1, (navigator.hardwareConcurrency || 2) - 1)));
@@ -509,14 +507,23 @@ export const Settings: React.FC = () => {
       }
   };
 
-  const handleSaveDownloadPath = async () => {
+  const saveDownloadPath = async (path: string) => {
+      setSavingDownloadPath(true);
+      setDownloadPathSaved(false);
+      setDownloadPathError('');
       try {
-          await api.setSetting('spotify_download_path', spotifyDownloadPath);
+          await api.setSetting('spotify_download_path', path);
+          setSpotifyDownloadPath(path);
           addLog('success', 'Download location saved');
           setDownloadPathSaved(true);
           setTimeout(() => setDownloadPathSaved(false), 3000);
+          return true;
       } catch (e) {
+          setDownloadPathError(e instanceof Error ? e.message : 'Unable to save the download location.');
           addLog('error', 'Failed to save download location', e);
+          return false;
+      } finally {
+          setSavingDownloadPath(false);
       }
   };
 
@@ -549,49 +556,52 @@ export const Settings: React.FC = () => {
   };
 
   // Folder browser functions
-  const openFolderBrowserFor = async (purpose: 'music' | 'stems') => {
+  const openFolderBrowserFor = (purpose: typeof folderBrowserPurpose) => {
       setFolderBrowserPurpose(purpose);
       setShowFolderBrowser(true);
-      setLoadingBrowser(true);
       setBrowserPath('');
       setBrowserEntries([]);
-      try {
-          // Start from drives on Windows, home on others
-          const startPath = navigator.platform.toLowerCase().includes('win') ? 'drives' : undefined;
-          const result = await api.browseFolder(startPath);
-          setBrowserPath(result.currentPath);
-          setBrowserEntries(result.entries);
-      } catch (e) {
-          console.error("Failed to browse folder", e);
-          setBrowserPath('');
-          setBrowserEntries([]);
-      } finally {
-          setLoadingBrowser(false);
-      }
+      setDownloadPathError('');
+      const savedPath = purpose === 'downloads' ? spotifyDownloadPath : '';
+      const homePath = navigator.platform.toLowerCase().includes('win') ? 'drives' : undefined;
+      void navigateFolder(savedPath || homePath, !!savedPath);
   };
 
   const openFolderBrowser = () => openFolderBrowserFor('music');
   const openStemFolderBrowser = () => openFolderBrowserFor('stems');
 
-  const navigateFolder = async (path: string) => {
+  const closeFolderBrowser = () => {
+      browserRequest.current += 1;
+      setShowFolderBrowser(false);
+  };
+
+  const navigateFolder = async (path?: string, fallbackToHome = false) => {
+      const request = ++browserRequest.current;
       setLoadingBrowser(true);
+      setBrowserError('');
+      setDownloadPathError('');
       try {
-          const result = await api.browseFolder(path);
+          const result = await api.browseFolder(path).catch(error => {
+              if (fallbackToHome) return api.browseFolder();
+              throw error;
+          });
+          if (request !== browserRequest.current) return;
           setBrowserPath(result.currentPath);
-          setBrowserEntries(result.entries);
+          setBrowserEntries(result.entries ?? []);
       } catch (e) {
-          console.error("Failed to navigate to folder", e);
-          setBrowserPath('');
-          setBrowserEntries([]);
+          if (request !== browserRequest.current) return;
+          setBrowserError(e instanceof Error ? e.message : 'Unable to open this folder.');
       } finally {
-          setLoadingBrowser(false);
+          if (request === browserRequest.current) setLoadingBrowser(false);
       }
   };
 
   const selectCurrentFolder = async () => {
-      if (browserPath && browserPath !== 'Drives' && !loadingBrowser) {
+      if (browserPath && browserPath !== 'Drives' && !loadingBrowser && !savingDownloadPath) {
           if (folderBrowserPurpose === 'music') {
               await addScanFolder(browserPath);
+          } else if (folderBrowserPurpose === 'downloads') {
+              if (!await saveDownloadPath(browserPath)) return;
           } else {
               const nextPaths = [...stemLibraryLocations.map(location => location.path), browserPath];
               setSavingStemLocations(true);
@@ -606,7 +616,7 @@ export const Settings: React.FC = () => {
                   setSavingStemLocations(false);
               }
           }
-          setShowFolderBrowser(false);
+          closeFolderBrowser();
       }
   };
 
@@ -626,61 +636,6 @@ export const Settings: React.FC = () => {
   // Helper to determine if an entry is a drive letter (e.g., "C:")
   const isDriveLetter = (name: string): boolean => {
       return /^[A-Z]:$/.test(name);
-  };
-
-  // Download folder browser functions
-  const openDownloadFolderBrowser = async () => {
-      setShowDownloadFolderBrowser(true);
-      setLoadingDownloadBrowser(true);
-      try {
-          // Start from drives on Windows if no download path set, otherwise use current path
-          let startPath: string | undefined = spotifyDownloadPath;
-          if (!startPath && navigator.platform.toLowerCase().includes('win')) {
-              startPath = 'drives';
-          }
-          const result = await api.browseFolder(startPath);
-          setDownloadBrowserPath(result.currentPath);
-          setDownloadBrowserEntries(result.entries);
-      } catch (e) {
-          console.error("Failed to browse folder", e);
-          // Fallback: try without a path on error
-          try {
-              const result = await api.browseFolder();
-              setDownloadBrowserPath(result.currentPath);
-              setDownloadBrowserEntries(result.entries);
-          } catch (e2) {
-              console.error("Failed to browse folder", e2);
-          }
-      }
-      setLoadingDownloadBrowser(false);
-  };
-
-  const navigateDownloadFolder = async (path: string) => {
-      setLoadingDownloadBrowser(true);
-      try {
-          const result = await api.browseFolder(path);
-          setDownloadBrowserPath(result.currentPath);
-          setDownloadBrowserEntries(result.entries);
-      } catch (e) {
-          console.error("Failed to navigate to folder", e);
-      }
-      setLoadingDownloadBrowser(false);
-  };
-
-  const selectDownloadFolder = async () => {
-      if (downloadBrowserPath) {
-          setSpotifyDownloadPath(downloadBrowserPath);
-          setShowDownloadFolderBrowser(false);
-          // Auto-save when selected via browser
-          try {
-              await api.setSetting('spotify_download_path', downloadBrowserPath);
-              addLog('success', `Download location set to: ${downloadBrowserPath}`);
-              setDownloadPathSaved(true);
-              setTimeout(() => setDownloadPathSaved(false), 3000);
-          } catch (e) {
-              addLog('error', 'Failed to save download location', e);
-          }
-      }
   };
 
   const getLogColor = (level: string) => {
@@ -1531,22 +1486,29 @@ export const Settings: React.FC = () => {
             {/* Spotify Download Location */}
             {backendAvailable && (
                 <div className="mb-6">
-                    <label className="block text-xs font-bold text-text-secondary uppercase mb-2">Spotify Download Location</label>
+                    <label htmlFor="spotify-download-path" className="block text-xs font-bold text-text-secondary uppercase mb-2">Spotify Download Location</label>
                     <p className="text-xs text-text-subtle mb-3">
                         Specify where Spotify downloads should be saved. Leave empty to use default location.
                     </p>
                     <div className="flex items-center gap-3">
                         <TextInput
+                            id="spotify-download-path"
                             type="text"
                             value={spotifyDownloadPath}
-                            onChange={(e) => setSpotifyDownloadPath(e.target.value)}
-                            placeholder="Default: AppData/ViiB-MediaHub/spotify_downloads"
+                            onChange={(e) => {
+                                setSpotifyDownloadPath(e.target.value);
+                                setDownloadPathSaved(false);
+                                setDownloadPathError('');
+                            }}
+                            placeholder="Default download folder"
+                            disabled={savingDownloadPath}
                             className="flex-1 px-4 py-3"
                             inputClassName="font-mono text-sm"
                         />
                         <Button
                             variant="secondary"
-                            onClick={openDownloadFolderBrowser}
+                            onClick={() => openFolderBrowserFor('downloads')}
+                            disabled={savingDownloadPath}
                             className="py-3 px-4"
                             title="Browse folders"
                             aria-label="Browse folders"
@@ -1561,12 +1523,16 @@ export const Settings: React.FC = () => {
                         <Button
                             variant="primary"
                             accent="brand"
-                            onClick={handleSaveDownloadPath}
+                            onClick={() => void saveDownloadPath(spotifyDownloadPath)}
+                            disabled={savingDownloadPath}
                             className="py-3 px-6 rounded-lg text-sm font-bold"
                         >
                             Save
                         </Button>
                     </div>
+                    {downloadPathError && !showFolderBrowser && (
+                        <p role="alert" className="mt-2 text-sm text-error">{downloadPathError}</p>
+                    )}
                 </div>
             )}
 
@@ -2823,14 +2789,18 @@ export const Settings: React.FC = () => {
               <div
                   role="dialog"
                   aria-modal="true"
-                  aria-labelledby="library-folder-browser-title"
+                  aria-labelledby="settings-folder-browser-title"
                   className="bg-surface-2 border border-surface-border rounded-xl p-6 max-w-2xl w-full mx-4 shadow-2xl max-h-[80vh] flex flex-col"
               >
                   <div className="flex items-center justify-between mb-4">
-                      <h2 id="library-folder-browser-title" className="text-xl font-bold text-white">{folderBrowserPurpose === 'music' ? 'Select Music Folder' : 'Select Stem Library Folder'}</h2>
+                      <h2 id="settings-folder-browser-title" className="text-xl font-bold text-white">
+                          {folderBrowserPurpose === 'downloads' ? 'Select Download Folder'
+                              : folderBrowserPurpose === 'music' ? 'Select Music Folder' : 'Select Stem Library Folder'}
+                      </h2>
                       <Button
                           variant="ghost"
-                          onClick={() => setShowFolderBrowser(false)}
+                          onClick={closeFolderBrowser}
+                          disabled={savingDownloadPath}
                           className="p-2"
                           aria-label="Close folder browser"
                       >
@@ -2839,9 +2809,13 @@ export const Settings: React.FC = () => {
                   </div>
 
                   <div className="bg-surface-1 border border-surface-border rounded-lg p-3 mb-4 font-mono text-sm text-text-main truncate">
-                      {browserPath || 'Loading...'}
+                      {browserPath || (loadingBrowser ? 'Loading…' : 'No folder selected')}
                   </div>
 
+                  {browserError && <p role="alert" className="mb-3 text-sm text-error">{browserError}</p>}
+                  {folderBrowserPurpose === 'downloads' && downloadPathError && (
+                      <p role="alert" className="mb-3 text-sm text-error">{downloadPathError}</p>
+                  )}
                   <div className="flex-1 overflow-y-auto bg-surface-1 border border-surface-border rounded-lg mb-4 min-h-[300px]">
                       {loadingBrowser ? (
                           <div className="flex items-center justify-center gap-2 h-full text-text-subtle" role="status">
@@ -2857,6 +2831,7 @@ export const Settings: React.FC = () => {
                                           variant="ghost"
                                           key={`${entry.path}-${idx}`}
                                           onClick={() => navigateFolder(entry.path)}
+                                          disabled={savingDownloadPath}
                                           className="w-full justify-start gap-3 p-3 hover:bg-surface-hover transition-colors text-left"
                                           aria-label={isRoot ? `${entry.name} drive` : entry.name}
                                       >
@@ -2870,7 +2845,7 @@ export const Settings: React.FC = () => {
                                       </Button>
                                   );
                               })}
-                              {browserEntries.length === 0 && (
+                              {browserEntries.length === 0 && !browserError && (
                                   <div className="p-4 text-center text-text-subtle">No subfolders found</div>
                               )}
                           </div>
@@ -2878,18 +2853,19 @@ export const Settings: React.FC = () => {
                   </div>
 
                   <div className="flex items-center justify-end gap-3">
-                      <Button variant="ghost" onClick={() => setShowFolderBrowser(false)}>
+                      <Button variant="ghost" onClick={closeFolderBrowser} disabled={savingDownloadPath}>
                           Cancel
                       </Button>
                       <Button
                           variant="primary"
                           accent="brand"
                           onClick={selectCurrentFolder}
-                          disabled={!browserPath || browserPath === 'Drives' || loadingBrowser || savingStemLocations}
-                          leftIcon={<Plus size={16} />}
+                          disabled={!browserPath || browserPath === 'Drives' || loadingBrowser || savingStemLocations || savingDownloadPath}
+                          leftIcon={folderBrowserPurpose === 'downloads' ? <FolderOpen size={16} /> : <Plus size={16} />}
                           className="px-6 py-2 font-bold"
                       >
-                          {folderBrowserPurpose === 'music' ? 'Add This Folder' : 'Use This Folder'}
+                          {folderBrowserPurpose === 'downloads' ? (savingDownloadPath ? 'Saving…' : 'Select This Folder')
+                              : folderBrowserPurpose === 'music' ? 'Add This Folder' : 'Use This Folder'}
                       </Button>
                   </div>
               </div>
