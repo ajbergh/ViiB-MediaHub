@@ -698,17 +698,12 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
   // Tempo
   setDeckTempo: (deck, tempo) => {
     const deckKey = deck === 'A' ? 'djDeckA' : 'djDeckB';
+    if (!Number.isFinite(tempo)) return;
     const clampedTempo = Math.max(0.5, Math.min(1.5, tempo));
-    set((state) => {
-      const originalBpm = state[deckKey].originalBpm;
-      return {
-        [deckKey]: { 
-          ...state[deckKey], 
-          tempo: clampedTempo,
-          effectiveBpm: originalBpm ? Math.round(originalBpm * clampedTempo * 10) / 10 : null
-        }
-      };
-    });
+    const current = get()[deckKey];
+    const effectiveBpm = current.originalBpm ? Math.round(current.originalBpm * clampedTempo * 10) / 10 : null;
+    if (current.tempo === clampedTempo && current.effectiveBpm === effectiveBpm) return;
+    set({ [deckKey]: { ...current, tempo: clampedTempo, effectiveBpm } });
   },
   
   syncDeck: (deck) => {

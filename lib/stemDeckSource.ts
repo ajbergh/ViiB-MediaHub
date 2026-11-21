@@ -321,14 +321,18 @@ export class StemDeckSource implements DeckSource {
   }
 
   private currentFrame(): number {
+    return Math.floor(this.positionAt(this.context.currentTime));
+  }
+
+  private positionAt(time: number): number {
     const descriptor = this.descriptor;
     if (!descriptor) return 0;
     let frame = this.positionFrame;
-    if (this.playing && !this.buffering && this.mode === 'stems') frame += Math.max(0, this.context.currentTime - this.positionAnchorTime) * descriptor.sampleRate * this.tempo;
+    if (this.playing && !this.buffering && this.mode === 'stems') frame += Math.max(0, time - this.positionAnchorTime) * descriptor.sampleRate * this.tempo;
     if (this.loop.enabled && this.loop.endFrame > this.loop.startFrame && frame >= this.loop.endFrame) {
       frame = this.loop.startFrame + ((frame - this.loop.startFrame) % (this.loop.endFrame - this.loop.startFrame));
     }
-    return Math.max(0, Math.min(descriptor.frames, Math.floor(frame)));
+    return Math.max(0, Math.min(descriptor.frames, frame));
   }
 
   async setStemMode(mode: 'full' | 'stems'): Promise<void> {
@@ -568,8 +572,15 @@ export class StemDeckSource implements DeckSource {
     this.emit('timeupdate');
   }
   setTempo(rate: number): void {
-    this.tempo = Number.isFinite(rate) ? Math.max(0.5, Math.min(1.5, rate)) : 1;
-    this.fallback.setTempo(this.tempo);
+    const next = Number.isFinite(rate) ? Math.max(0.5, Math.min(1.5, rate)) : 1;
+    this.fallback.setTempo(next);
+    if (this.tempo === next) return;
+    if (this.mode === 'stems' && this.playing && !this.buffering) {
+      const now = this.context.currentTime;
+      this.positionFrame = this.positionAt(now);
+      this.positionAnchorTime = now;
+    }
+    this.tempo = next;
     this.worklet?.port.postMessage({ type: 'rate', rate: this.tempo });
   }
   setKeyLock(enabled: boolean): void {

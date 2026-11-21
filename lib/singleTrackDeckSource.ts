@@ -115,8 +115,10 @@ export class SingleTrackDeckSource implements DeckSource {
   }
 
   setTempo(rate: number): void {
-    const position = this.getPosition();
+    if (!Number.isFinite(rate)) return;
     const nextRate = Math.max(0.5, Math.min(1.5, rate));
+    if (this.audio.playbackRate === nextRate) return;
+    const position = this.getPosition();
     this.audio.playbackRate = nextRate;
     if (this.loopPlayback && this.supportsSampleAccurateLoop()) {
       const time = this.context.currentTime;

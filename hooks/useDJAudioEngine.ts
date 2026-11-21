@@ -1069,8 +1069,7 @@ export function useDJAudioEngineSync(): void {
  * Each callback reads fresh store state via getState() at invocation time,
  * so references never go stale and never cause React re-renders.
  * 
- * ⚠️ The parent component (e.g. DJModeV2) MUST still mount useDJAudioEngine() once
- *    to handle store→engine synchronization effects.
+ * The DJ workstation mounts useDJAudioEngineSync once to apply store changes.
  */
 export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
   const isInitializedRef = useRef(false);
@@ -1316,8 +1315,7 @@ export function useDJAudioEngineActions(): UseDJAudioEngineReturn {
   }, []);
 
   const setTempo = useCallback((deck: DeckId, tempo: number) => {
-    const engine = getDJAudioEngine();
-    if (engine.initialized) engine.setTempo(deck, tempo);
+    // The synchronous store subscription applies this rate to the transport.
     useStore.getState().setDeckTempo(deck, tempo);
   }, []);
 
