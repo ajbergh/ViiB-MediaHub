@@ -116,6 +116,7 @@ type API struct {
 	podcastIntegrityMu    sync.Mutex
 	podcastIntegrityCache map[string]podcastFileVerification
 	podcastDownloadFetch  func(context.Context,string,string,string)(podcast.MediaSegment,error)
+	podcastDownloadFullFetch func(context.Context,string,string,io.Writer,int64)(podcast.FullMedia,error)
 	podcastDiskFreeBytes func(string)(uint64,error)
 	jobSchedulerMu         sync.Mutex
 	jobSchedulerOn         bool

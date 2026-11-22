@@ -25,6 +25,7 @@ var (
     ErrMediaUnavailable = errors.New("podcast media unavailable")
     ErrInvalidMediaRange = errors.New("invalid podcast media range")
     ErrPublisherNoRange = errors.New("podcast publisher ignored Range")
+    ErrMediaTooLarge = errors.New("podcast publisher audio exceeds transfer limit")
 )
 
 var (

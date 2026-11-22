@@ -121,7 +121,7 @@ func (a *API) processPodcastDownload(ctx context.Context){
             code="download_range_required"
         case errors.Is(err,podcast.ErrBlockedURL),errors.Is(err,podcast.ErrInvalidMedia),errors.Is(err,podcast.ErrInvalidMediaRange):
             code="download_unsupported"
-        case errors.Is(err,errPodcastDownloadTooLarge):
+        case errors.Is(err,errPodcastDownloadTooLarge),errors.Is(err,podcast.ErrMediaTooLarge):
             code="download_too_large"
         case errors.Is(err,errPodcastPublisherChanged):
             code="download_publisher_changed"
@@ -283,6 +283,30 @@ func (a *API) transferPodcastDownload(ctx context.Context,id,owner string) error
         header:=fmt.Sprintf("bytes=%d-%d",received,received+podcastDownloadChunkBytes-1)
         seg,err:=fetch(ctx,raw,header,declared)
         if err!=nil{
+            if received==0&&errors.Is(err,podcast.ErrPublisherNoRange){
+                fullFetch:=a.podcastDownloadFullFetch
+                if fullFetch==nil&&a.podcastDownloadFetch==nil{
+                    fullFetch=podcast.NewFetcher(false).FetchFullMedia
+                }
+                if fullFetch==nil{return err} // injected range test: never make an unexpected real fetch
+                // Unknown-length 200 publishers reserve the full per-episode
+                // ceiling first, then atomically reconcile actual verified size.
+                // A failed/blocked transfer releases its reservation.
+                if err:=a.requirePodcastDiskSpace(dir,db.MaxPodcastDownloadBytes);err!=nil{return err}
+                if err:=a.db.UpdatePodcastDownloadBytes(ctx,id,owner,0,db.MaxPodcastDownloadBytes);err!=nil{return err}
+                sum:=sha256.New()
+                full,fullErr:=fullFetch(ctx,raw,declared,io.MultiWriter(out,sum),db.MaxPodcastDownloadBytes)
+                if fullErr!=nil{return fullErr}
+                stat,statErr:=out.Stat()
+                if statErr!=nil||!stat.Mode().IsRegular()||full.Size<=0||
+                    full.Size>db.MaxPodcastDownloadBytes||stat.Size()!=full.Size||
+                    podcast.SupportedPodcastAudioMIME(full.MIME)==""{
+                    return podcast.ErrInvalidMedia
+                }
+                if err:=a.db.UpdatePodcastDownloadBytes(ctx,id,owner,full.Size,full.Size);err!=nil{return err}
+                return a.publishPodcastDownloadedAudio(ctx,id,owner,out,tempPath,dest,finalName,
+                    full.MIME,hex.EncodeToString(sum.Sum(nil)),full.Size)
+            }
             if received>0&&requestedIfRange!=""&&errors.Is(err,podcast.ErrPublisherNoRange){
                 return errPodcastPublisherChanged
             }
@@ -321,13 +345,18 @@ func (a *API) transferPodcastDownload(ctx context.Context,id,owner string) error
         if received==total{break}
         if received>total{return podcast.ErrInvalidMedia}
     }
+    return a.publishPodcastDownloadedAudio(ctx,id,owner,out,tempPath,dest,finalName,
+        mime,hex.EncodeToString(hash.Sum(nil)),received)
+}
+
+func (a *API) publishPodcastDownloadedAudio(ctx context.Context,id,owner string,out *os.File,
+    tempPath,dest,finalName,mime,digest string,size int64)error{
     if err:=out.Sync();err!=nil{return err}
     if err:=out.Close();err!=nil{return err}
-    // Never publish over a newly created file or a symlink.
+    // Never overwrite a previously published file or a symlink.
     if _,err:=os.Lstat(dest);err==nil{return errors.New("podcast destination already exists")}else if !errors.Is(err,os.ErrNotExist){return err}
     if err:=os.Rename(tempPath,dest);err!=nil{return err}
-    tempPath="" // renamed: remove only on a failed database publication
-    if err:=a.db.CompletePodcastDownload(ctx,id,owner,finalName,mime,hex.EncodeToString(hash.Sum(nil)),received);err!=nil{
+    if err:=a.db.CompletePodcastDownload(ctx,id,owner,finalName,mime,digest,size);err!=nil{
         _=os.Remove(dest)
         return err
     }

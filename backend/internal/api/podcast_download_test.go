@@ -8,6 +8,7 @@ import (
  "errors"
  "net/http"
  "net/http/httptest"
+ "io"
  "os"
  "path/filepath"
  "strings"
@@ -421,4 +422,71 @@ func TestPodcastDownloadRejectsPublisherRepresentationChangedMidTransfer(t *test
     if _,err:=os.Lstat(path);!errors.Is(err,os.ErrNotExist){
         t.Fatalf("mixed-version audio published: %v",err)
     }
+}
+
+func TestPodcastFull200OfflineDownloadAndLocalSeeking(t *testing.T){
+ d,id:=seedPodcastDownload(t);defer d.Close()
+ calls:=0
+ a:=&API{db:d,dataDir:t.TempDir(),
+  podcastDownloadFetch:func(context.Context,string,string,string)(podcast.MediaSegment,error){
+    return podcast.MediaSegment{},podcast.ErrPublisherNoRange
+  },
+  podcastDownloadFullFetch:func(_ context.Context,raw,declared string,dst io.Writer,maxBytes int64)(podcast.FullMedia,error){
+    calls++
+    if !strings.Contains(raw,"signature=keep-private")||declared!="audio/mpeg"||maxBytes!=db.MaxPodcastDownloadBytes{
+        t.Fatal("unsafe full fetch inputs")
+    }
+    data:=[]byte("ID3abcdefg")
+    if _,err:=dst.Write(data);err!=nil{return podcast.FullMedia{},err}
+    return podcast.FullMedia{MIME:"audio/mpeg",Size:int64(len(data))},nil
+  },
+ }
+ router:=a.PodcastRoutes()
+ request:=func(method,path string)*httptest.ResponseRecorder{
+    t.Helper()
+    result:=httptest.NewRecorder()
+    router.ServeHTTP(result,httptest.NewRequest(method,path,nil))
+    return result
+ }
+ if got:=request("POST","/episodes/"+id+"/download");got.Code!=202{t.Fatalf("queue: %d",got.Code)}
+ a.processPodcastDownload(context.Background())
+ row,err:=d.GetPodcastDownload(context.Background(),id)
+ if err!=nil||row.Status!="completed"||row.VerifiedSize!=10||calls!=1{
+    t.Fatalf("full 200 publish: %+v calls=%d err=%v",row,calls,err)
+ }
+ a.podcastMediaFetch=func(context.Context,string,string)(podcast.MediaSegment,error){
+    t.Error("offline playback accessed publisher")
+    return podcast.MediaSegment{},errors.New("disconnected")
+ }
+ media:=httptest.NewRecorder()
+ req:=httptest.NewRequest(http.MethodGet,"/episodes/"+id+"/media",nil)
+ req.Header.Set("Range","bytes=3-6")
+ router.ServeHTTP(media,req)
+ if media.Code!=206||media.Body.String()!="abcd"{
+    t.Fatalf("offline seek on downloaded 200 media: %d %q",media.Code,media.Body.String())
+ }
+}
+
+func TestPodcastFull200CancellationDoesNotPublish(t *testing.T){
+ d,id:=seedPodcastDownload(t);defer d.Close()
+ a:=&API{db:d,dataDir:t.TempDir(),
+  podcastDownloadFetch:func(context.Context,string,string,string)(podcast.MediaSegment,error){
+    return podcast.MediaSegment{},podcast.ErrPublisherNoRange
+  },
+  podcastDownloadFullFetch:func(ctx context.Context,_ string,_ string,dst io.Writer,_ int64)(podcast.FullMedia,error){
+    if _,err:=dst.Write([]byte("ID3x"));err!=nil{return podcast.FullMedia{},err}
+    if _,err:=d.CancelPodcastDownload(ctx,id);err!=nil{return podcast.FullMedia{},err}
+    return podcast.FullMedia{MIME:"audio/mpeg",Size:4},nil
+  },
+ }
+ router:=a.PodcastRoutes()
+ queued:=httptest.NewRecorder()
+ router.ServeHTTP(queued,httptest.NewRequest(http.MethodPost,"/episodes/"+id+"/download",nil))
+ if queued.Code!=202{t.Fatalf("queue: %d",queued.Code)}
+ a.processPodcastDownload(context.Background())
+ row,err:=d.GetPodcastDownload(context.Background(),id)
+ if err!=nil||row.Status!="canceled"{t.Fatalf("canceled 200: %+v %v",row,err)}
+ if _,err:=os.Stat(filepath.Join(a.dataDir,"podcasts","episodes",id+".audio"));!errors.Is(err,os.ErrNotExist){
+    t.Fatalf("canceled 200 downloaded audio was published: %v",err)
+ }
 }
