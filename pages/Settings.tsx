@@ -328,7 +328,7 @@ export const Settings: React.FC = () => {
     let active = true;
     void api.getSetting('podcasts_preview_enabled')
       .then(value => { if (active) setPodcastsPreviewEnabled(value === 'true'); })
-      .catch(() => { if (active) setPodcastsPreviewError('Unable to load Podcast Preview setting'); });
+      .catch(() => { if (active) setPodcastsPreviewError('Unable to load podcast refresh setting'); });
     return () => { active = false; };
   }, [backendAvailable]);
   const changePodcastsPreview = async (enabled: boolean) => {
@@ -337,9 +337,9 @@ export const Settings: React.FC = () => {
     try {
       await api.setSetting('podcasts_preview_enabled', enabled ? 'true' : 'false');
       setPodcastsPreviewEnabled(enabled);
-      window.dispatchEvent(new Event('viib:podcasts-preview-changed'));
+      window.dispatchEvent(new Event('viib:podcasts-refresh-changed'));
     } catch {
-      setPodcastsPreviewError('Unable to save Podcast Preview setting');
+      setPodcastsPreviewError('Unable to save podcast refresh setting');
     } finally {
       setPodcastsPreviewSaving(false);
     }
@@ -1720,14 +1720,14 @@ export const Settings: React.FC = () => {
 
           <section className="rounded-xl border border-surface-3 bg-surface-2 p-6">
             <div className="mb-2 flex items-center justify-between gap-4">
-              <h2 className="text-lg font-semibold text-text-main">Podcasts Preview</h2>
+              <h2 className="text-lg font-semibold text-text-main">Automatic Podcast Feed Refresh</h2>
               <label className="flex cursor-pointer items-center gap-2 text-sm text-text-main">
                 <input type="checkbox" checked={podcastsPreviewEnabled} disabled={!backendAvailable || podcastsPreviewSaving}
                   onChange={event => void changePodcastsPreview(event.target.checked)} />
                 Enable
               </label>
             </div>
-            <p className="text-sm text-text-secondary">Early access to public RSS feed preview, subscriptions, and episode browsing. Podcast streaming, searching, and offline downloads are not available yet. Disabled by default.</p>
+            <p className="text-sm text-text-secondary">Allow background RSS checks and manual feed refreshes for followed podcasts. The Podcasts sidebar and RSS follow/browse views work regardless of this setting. Off by default to avoid unsolicited background network traffic.</p>
             {podcastsPreviewError && <p role="alert" className="mt-3 text-sm text-error">{podcastsPreviewError}</p>}
           </section>
           {/* Downloads & Conversion */}

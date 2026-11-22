@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { ArrowLeft, Headphones, Loader2, Plus, RefreshCw, Rss, Trash2 } from 'lucide-react';
+import { api } from '../services/api';
 import { podcastsAPI, type PodcastFeed, type PodcastEpisode, type PodcastPreview, type PodcastRefreshStatus } from '../services/podcasts';
 
 const inputClass = 'w-full rounded-lg border border-surface-3 bg-surface-1 px-4 py-3 text-text-main outline-none focus-visible:ring-2 focus-visible:ring-brand';
@@ -133,9 +134,33 @@ export const PodcastShow: React.FC = () => {
   const [refreshPending, setRefreshPending] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState('');
   const [refreshStatus, setRefreshStatus] = useState<PodcastRefreshStatus | null>(null);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
+  const [autoRefreshSaving, setAutoRefreshSaving] = useState(false);
   const [revision, setRevision] = useState(0);
   const lastCheckedRef = useRef<number | null>(null);
   const navigate = useNavigate();
+  useEffect(() => {
+    let mounted = true;
+    void api.getSetting('podcasts_preview_enabled')
+      .then(value => { if (mounted) setAutoRefreshEnabled(value === 'true'); })
+      .catch(() => { if (mounted) setAutoRefreshEnabled(false); });
+    return () => { mounted = false; };
+  }, []);
+
+  const changeAutoRefresh = async (checked: boolean) => {
+    setAutoRefreshSaving(true);
+    try {
+      await api.setSetting('podcasts_preview_enabled', checked ? 'true' : 'false');
+      setAutoRefreshEnabled(checked);
+      setRefreshMessage(checked ? 'Automatic podcast refresh enabled.' : 'Automatic podcast refresh paused.');
+      window.dispatchEvent(new Event('viib:podcasts-refresh-changed'));
+    } catch (err) {
+      setRefreshMessage(readableError(err));
+    } finally {
+      setAutoRefreshSaving(false);
+    }
+  };
+
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
@@ -214,13 +239,19 @@ export const PodcastShow: React.FC = () => {
           <p className="mt-1 text-sm text-text-secondary">{feed.author}</p>
           <p className="mt-3 text-sm text-text-secondary">{feed.description}</p>
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <button type="button" onClick={() => void requestRefresh()} disabled={refreshPending || refreshStatus?.refreshing}
+            <button type="button" onClick={() => void requestRefresh()} disabled={!autoRefreshEnabled || autoRefreshSaving || refreshPending || refreshStatus?.refreshing}
               className="inline-flex items-center gap-2 rounded-md border border-surface-3 px-3 py-2 text-sm font-semibold text-text-main hover:bg-surface-highlight disabled:opacity-50">
               <RefreshCw size={16} className={refreshPending || refreshStatus?.refreshing ? 'animate-spin' : ''}/>
               {refreshPending || refreshStatus?.refreshing ? 'Refreshing…' : 'Refresh feed'}
             </button>
             {refreshStatus?.lastSuccessAt ? <span className="text-xs text-text-subtle">Last updated {new Date(refreshStatus.lastSuccessAt).toLocaleString()}</span> : null}
           </div>
+          <label className="mt-3 inline-flex cursor-pointer items-center gap-2 text-sm text-text-secondary">
+            <input type="checkbox" checked={autoRefreshEnabled} disabled={autoRefreshSaving}
+              onChange={event => void changeAutoRefresh(event.target.checked)} />
+            Enable feed refresh (early access)
+          </label>
+          <p className="mt-1 text-xs text-text-subtle">Feed refreshing is optional. You can browse and follow RSS podcasts without enabling it.</p>
           {refreshMessage && <p role="status" className="mt-2 text-sm text-text-secondary">{refreshMessage}</p>}
           {!confirmRemove ? <button type="button" onClick={() => setConfirmRemove(true)} className="mt-4 inline-flex items-center gap-2 text-sm text-text-secondary hover:text-error"><Trash2 size={16}/> Unfollow</button>
             : <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">

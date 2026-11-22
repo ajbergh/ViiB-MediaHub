@@ -414,7 +414,7 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 
 ## 7. Phased delivery plan and traceable PR sequence
 
-**Overall status:** Phase 0 partially completed; Phase 1 foundation in progress. No podcast UI, streaming, automated refresh or offline downloads are shipped. Future phases remain planned. Sequence is dependency-aware. Keep PRs reviewable (one vertical behavior or small layer), add tests in the same PR, update this roadmap checkboxes and maintain a changelog as implementation begins.
+**Overall status:** Phase 0 partially completed; Phase 1 in progress. A discoverable Podcast Following/Show Preview UI and optional feed refresh are implemented on the feature branch. Podcast directory discovery, streaming playback and offline downloads are not implemented. Future phases remain planned. Sequence is dependency-aware. Keep PRs reviewable (one vertical behavior or small layer), add tests in the same PR, update this roadmap checkboxes and maintain a changelog as implementation begins.
 
 ### Phase 0 — Architecture, compliance and decision gates
 
@@ -424,7 +424,7 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 - [ ] **POD-00D (in progress):** Added basic RSS/iTunes XML fixture, parser/conditional-GET/redirect/oversize tests and synthetic browser UI journey in `e2e/podcasts.spec.ts`; GUID-change, OPML, transcript, chapters and 206/416 fixture coverage remains.
 - [ ] **POD-00E:** Define player switching lifecycle, media-session semantics, progress completion threshold and API error shapes.
 - [ ] **POD-00F:** Design review of podcast home/show/episode/player and responsive accessibility; identify key design tokens.
-- [ ] **POD-00G (in progress):** Implemented an opt-in `podcasts_preview_enabled` backend setting with Settings toggle, guarded `/podcasts` route, Sidebar navigation only when enabled, typed API client and tests. More comprehensive frontend/end-to-end qualification remains.
+- [ ] **POD-00G (in progress):** Podcasts is now a permanent Sidebar destination and `/podcasts` routes are accessible without opting in. `podcasts_preview_enabled` is retained solely as an opt-in for automatic/manual RSS refresh; the Show page provides its own toggle and Settings remains an alternative. RSS following/browsing is available with the flag off. Frontend/E2E qualification remains.
 
 **Exit gate:** Approved ADR(s), fixture corpus, threat model, API schema draft, observable end-to-end test plan; no feature shipped as functional before integration tests exist.
 
@@ -434,7 +434,7 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 - [ ] **POD-01B (in progress):** Implemented bounded RSS 2.0/iTunes parser, plain-text notes, DTD block, HTTPS-default fetcher, public-IP DNS pinning, redirect/size/304 controls and unit tests. Full reserved-address audit, feed identity churn, download/media policy and CI confirmation remain.
 - [ ] **POD-01C (in progress):** Added crash-recoverable SQLite refresh leases, due scheduling, 304/ETag handling, bounded retry backoff and transaction-safe episode reconciliation preserving history. Dedicated serial polling worker started via API constructor and closed by API lifecycle; opt-in traffic gate, manual API, show-page Refresh control and worker/API/E2E tests implemented. Feed aliases and CI qualification remain.
 - [ ] **POD-01D (in progress):** Added guarded REST preview/subscribe/list/episodes/unsubscribe handlers under `/api/v2/podcasts`, typed `services/podcasts.ts` client and tests plus [provisional API documentation](podcast-api.md). Show detail endpoint, episode pagination, OpenAPI schemas and full API integration qualification remain; durable manual refresh/status endpoints are implemented.
-- [ ] **POD-01E (in progress):** Added a gated Podcasts Preview page with RSS preview/follow form, Following grid, show detail, episode list, unsubscribe confirmation, loading/error/empty states. Image proxy, search, pagination, end-to-end tests and visual review remain.
+- [ ] **POD-01E (in progress):** Added an always-accessible Podcasts (Early Access) section with RSS preview/follow form, Following grid, show detail, episode list, unsubscribe confirmation, loading/error/empty states. Image proxy, search, pagination, end-to-end tests and visual review remain.
 
 **Exit:** Paste a real supported RSS URL, see show and episodes, restart process, retain subscriptions/episode IDs, refresh without duplicates; malicious remote URLs blocked.
 
@@ -652,19 +652,19 @@ Branch strategy: short-lived `feature/podcasts-*` work branches from updated `ma
 
 ## 14. Implementation progress log
 
-> **Current checkpoint: 2026-11-22.** Work is being committed directly to `feature/podcast-client-roadmap-2026-11-22`. Scope completed is explicitly distinguished from unverified tests and future work.
+> **Current checkpoint: 2026-11-22, navigation milestone.** Work is being committed directly to `feature/podcast-client-roadmap-2026-11-22`. Scope completed is explicitly distinguished from unverified tests and future work.
 
 | Item | State | Implementation evidence | Outstanding |
 |---|---|---|---|
 | POD-00A | **ADR documented** | [ADR 0001](adr/0001-podcasts-local-first-boundaries.md) | Player coordinator is a future delivery; ADR does not claim it exists |
 | POD-00B/C/E/F | **Open** | ADR lists defaults and unresolved decisions | Directory credentials, legal review, listening lifecycle, UI design |
-| POD-00G | **In progress** | `podcasts_preview_enabled` setting, guarded UI routes, Sidebar/Settings opt-in and typed clients | End-to-end QA and complete acceptance gate |
+| POD-00G | **In progress** | Permanent Podcasts nav/routes; refresh-only opt-in in Settings and Podcast Show; no gated navigation | E2E and full CI qualification |
 | POD-00D | **In progress** | `backend/internal/podcast/testdata/basic.xml`, parser/fetch tests | More fixture formats, ID churn, OPML, media range, integration coverage |
 | POD-01A | **In progress** | `backend/internal/db/podcast_schema.go`, `podcast_repository.go`, tests | Durable progress API, migrations across future versions, verified backup/restore |
 | POD-01B | **In progress** | `backend/internal/podcast/feed.go`, `fetch.go`, unit tests | Expanded SSRF and RSS-format qualification, CI |
 | POD-01C | **In progress** | Refresh DB, bounded worker, manual REST/UI, backend worker & API test, client/Playwright test | Alias/GUID moves, large-scale stress, CI |
 | POD-01D | **In progress** | Podcast preview/follow/list/episodes/unfollow/manual-refresh REST, TS client and tests | Show details, pagination, OpenAPI, CI |
-| POD-01E | **In progress** | `pages/Podcasts.tsx`, gated Sidebar/Settings toggle, `e2e/podcasts.spec.ts` UI fixture | CI, artwork proxy, full show workflows and refinement |
+| POD-01E | **In progress** | `pages/Podcasts.tsx`, permanent Sidebar, inline refresh toggle, E2E journey | CI, artwork proxy, full show workflows and refinement |
 | Phase 2–8 | **Not started** | None | Discovery, player, offline downloads and remaining features |
 
 **Commits:** `abde2f2` introduces the foundational ADR, RSS and URL-fetch primitives.
@@ -672,4 +672,4 @@ Commit `b44e89a` adds SQLite persistence and the first status log. API contract 
 
 **Validation status:** Podcast-specific Go/Vitest/Playwright tests have been added. A targeted `podcast-slice` CI job now runs `TestPodcast*` plus the RSS parser and URL-security tests in the parser, DB and API packages alongside the original full-suite jobs. The current HEAD is **not yet confirmed green**. GitHub Actions is authoritative for the required Go 1.26 toolchain. A prior backend run failed due to an unused import in the refresh worker; that import has been removed on the current branch. Full CI remains unverified. Do not mark tests green without a GitHub Actions run.
 
-**Next vertical delivery:** Verify targeted/full CI and remediate failures; finish URL/identity edge cases and guarded artwork; then extend API/search and media capabilities. Music playback remains untouched.
+**Next vertical delivery:** Validate permanent Sidebar, gated refresh behavior and full CI, then address alias/GUID stability, show/episode pagination and artwork proxy. Keep playback and offline work explicitly later. Music playback remains untouched.

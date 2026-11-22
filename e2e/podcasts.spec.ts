@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 const feedURL = 'https://publisher.example/feed.xml';
 const feedId = 'podcast-fixture-1';
 
-test('opt-in podcast preview follows RSS and browses episodes without playback', async ({ page }) => {
+test('Podcasts follows public RSS and browses episodes without playback', async ({ page }) => {
   let subscribed = false;
   let unfollowed = false;
   let refreshed = 0;
@@ -91,22 +91,24 @@ test('opt-in podcast preview follows RSS and browses episodes without playback',
   expect(errors).toEqual([]);
 });
 
-test('podcast preview remains hidden by default', async ({ page }) => {
-  let feedCalls = 0;
+test('Podcasts stays visible with automatic refresh disabled by default', async ({ page }) => {
+  let podcastMutations = 0;
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.origin !== 'http://127.0.0.1:4173') return route.abort();
     if (url.pathname === '/api/settings/podcasts_preview_enabled') {
       return route.fulfill({ json: { key: 'podcasts_preview_enabled', value: '' } });
     }
-    if (url.pathname.startsWith('/api/v2/podcasts/')) feedCalls++;
+    if (url.pathname.startsWith('/api/v2/podcasts/') && route.request().method() !== 'GET') podcastMutations++;
+    if (url.pathname === '/api/v2/podcasts/feeds') return route.fulfill({ json: { feeds: [] } });
     if (url.pathname.startsWith('/api/')) {
       return route.fulfill({ status: 503, json: { error: 'Fixture backend unavailable' } });
     }
     return route.continue();
   });
   await page.goto('/podcasts');
-  await expect(page.getByRole('heading', { name: 'Podcast Preview is disabled' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Open Settings' })).toBeVisible();
-  expect(feedCalls).toBe(0);
+  await expect(page.getByRole('heading', { name: 'Podcasts', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Podcasts', exact: true })).toBeVisible();
+  await expect(page.getByText('No podcasts followed yet')).toBeVisible();
+  expect(podcastMutations).toBe(0);
 });

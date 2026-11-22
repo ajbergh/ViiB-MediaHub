@@ -68,8 +68,7 @@ Example successful response:
   export-redaction design.
 - Publisher enclosure URLs are catalog metadata only and **not** an
   implemented streaming or download endpoint.
-- The UI has a separate opt-in `podcasts_preview_enabled` backend setting
-  under **Settings → Integrations & Spotify**. Disabled by default.
+- **Podcasts** is a permanent Sidebar destination. RSS preview/follow and browsing work without opting in. Background and manual feed refreshing are controlled by an optional `podcasts_preview_enabled` setting on the Podcast Show page or in **Settings → Integrations & Spotify**. Disabled by default.
 - Existing song, Spotify, DJ and music download APIs are untouched.
 
 **Testing:** Go parser/fetch/repository/handler tests, TypeScript client tests

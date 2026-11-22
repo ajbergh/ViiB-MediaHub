@@ -45,7 +45,6 @@ const SpotifyPlaylistDetail = lazy(() => import('./pages/SpotifyPlaylistDetail')
 const Downloads = lazy(() => import('./pages/Downloads').then(module => ({ default: module.Downloads })));
 const Podcasts = lazy(() => import('./pages/Podcasts').then(module => ({ default: module.Podcasts })));
 const PodcastShow = lazy(() => import('./pages/Podcasts').then(module => ({ default: module.PodcastShow })));
-const PodcastPreviewGate = lazy(() => import('./components/podcasts/PodcastPreviewGate').then(module => ({ default: module.PodcastPreviewGate })));
 
 const SmartPlaylists = lazy(() => import('./pages/SmartPlaylists').then(module => ({ default: module.SmartPlaylists })));
 const Stats = lazy(() => import('./pages/Stats').then(module => ({ default: module.Stats })));
@@ -177,8 +176,8 @@ const App: React.FC = () => {
             <Route path="/spotify/playlist/:id" element={<SpotifyPlaylistDetail />} />
             <Route path="/callback" element={<SpotifyCallback />} />
             <Route path="/downloads" element={<Downloads />} />
-            <Route path="/podcasts" element={<PodcastPreviewGate><Podcasts /></PodcastPreviewGate>} />
-            <Route path="/podcasts/show/:id" element={<PodcastPreviewGate><PodcastShow /></PodcastPreviewGate>} />
+            <Route path="/podcasts" element={<Podcasts />} />
+            <Route path="/podcasts/show/:id" element={<PodcastShow />} />
             <Route path="/search" element={<Search />} />
             <Route path="/stats" element={<Stats />} />
             <Route path="/duplicates" element={<Duplicates />} />

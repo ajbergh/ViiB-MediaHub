@@ -17,7 +17,6 @@ import {
   ChevronLeft, ChevronRight, BarChart3, Heart, Disc3, Copy, X, Gauge
 } from 'lucide-react';
 import { useStore } from '../store';
-import { api } from '../services/api';
 import { jobsV2, type OperationJob } from '../services/jobsV2';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { SpotifyIcon } from './icons/SpotifyIcon';
@@ -91,22 +90,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onMobileCl
   const enrichmentStatus = useStore(state => state.enrichmentStatus);
   const [collapsed, setCollapsed] = useState(false);
   const [jobs, setJobs] = useState<OperationJob[]>([]);
-  const [podcastsPreviewEnabled, setPodcastsPreviewEnabled] = useState(false);
   const isMobile = useIsMobile();
   const location = useLocation();
   const drawerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    let active = true;
-    const update = () => {
-      void api.getSetting('podcasts_preview_enabled').then(value => {
-        if (active) setPodcastsPreviewEnabled(value === 'true');
-      }).catch(() => { if (active) setPodcastsPreviewEnabled(false); });
-    };
-    update();
-    window.addEventListener('viib:podcasts-preview-changed', update);
-    return () => { active = false; window.removeEventListener('viib:podcasts-preview-changed', update); };
-  }, [location.pathname]);
 
   const isDJRoute = location.pathname === '/dj';
   const effectiveCollapsed = isMobile ? false : (collapsed || isDJRoute);
@@ -247,7 +233,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onMobileCl
             )}
             {effectiveCollapsed && <div className="my-1 border-t border-surface-border mx-2" role="separator" />}
             <SidebarItem to="/spotify" icon={SpotifyIcon} label="Spotify" collapsed={effectiveCollapsed} onNavigate={onMobileClose} />
-            {podcastsPreviewEnabled && <SidebarItem to="/podcasts" icon={Headphones} label="Podcasts Preview" collapsed={effectiveCollapsed} onNavigate={onMobileClose} />}
+            <SidebarItem to="/podcasts" icon={Headphones} label="Podcasts" collapsed={effectiveCollapsed} onNavigate={onMobileClose} />
             <SidebarItem to="/downloads" icon={Download} label="Downloads" badge={downloadCount} collapsed={effectiveCollapsed} onNavigate={onMobileClose} />
             <SidebarItem to="/stats" icon={BarChart3} label="Stats" collapsed={effectiveCollapsed} onNavigate={onMobileClose} />
             <SidebarItem to="/duplicates" icon={Copy} label="Duplicates" collapsed={effectiveCollapsed} onNavigate={onMobileClose} />
