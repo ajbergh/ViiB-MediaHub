@@ -10,6 +10,13 @@ on:
 permissions:
   contents: read
 
+# Retain only the latest validation for a moving pull-request branch. This
+# avoids spending runner capacity on superseded roadmap commits. Main branch
+# pushes are never canceled by a later push.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   frontend:
     runs-on: ubuntu-latest
