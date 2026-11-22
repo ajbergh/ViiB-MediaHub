@@ -18,6 +18,7 @@ RSS 2.0 feeds during initial implementation.
 | GET | `/feeds` | List followed show records with episode counts |
 | POST | `/feeds/preview` | Validate and retrieve one public HTTPS RSS feed; return first ten episodes and total |
 | POST | `/feeds` | Fetch/feed parse + subscribe + transactional episode snapshot; returns ID/title/count |
+| GET | `/feeds/{id}/artwork` | Proxy the followed show's HTTPS public raster artwork; max 2 MiB; PNG/JPEG/WebP/GIF only; no arbitrary URL parameter |
 | GET | `/feeds/{id}/episodes?offset=0&limit=50` | Paginate episodes, default 50, maximum 100; response includes `nextOffset` (null on last page) |
 | DELETE | `/feeds/{id}` | Unfollow but retain cached episode metadata and progress |
 | GET | `/feeds/{id}/refresh` | Read last check/success, next refresh, bounded failures and error code |
@@ -67,6 +68,7 @@ Example successful response:
   restricted to `feed=rss`, `feed=rss2`, `feed=podcast`, `format=rss`, or
   `format=xml`; private feeds require a separate encrypted-credential and
   export-redaction design.
+- Artwork URLs are filtered at RSS parse, save and refresh; unsafe or tokenized artwork references are not persisted. The proxy resolves only subscribed show IDs, verifies public DNS at connection and each redirect, limits response size and sniffs actual raster content (never serves HTML or SVG). Browser caching is private for up to 15 minutes.
 - Publisher enclosure URLs are catalog metadata only and **not** an
   implemented streaming or download endpoint.
 - **Podcasts** is a permanent Sidebar destination. RSS preview/follow and browsing work without opting in. Background and manual feed refreshing are controlled by an optional `podcasts_preview_enabled` setting on the Podcast Show page or in **Settings → Integrations & Spotify**. Disabled by default.

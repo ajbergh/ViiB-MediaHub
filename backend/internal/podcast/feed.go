@@ -146,6 +146,7 @@ func ParseRSS(reader io.Reader, feedURL string) (Feed, error) {
         Episodes: make([]Episode, 0, len(doc.Channel.Items)),
     }
     if result.ImageURL == "" { result.ImageURL = strings.TrimSpace(doc.Channel.Image.URL) }
+    result.ImageURL = SafeArtworkURL(result.ImageURL)
     for _, item := range doc.Channel.Items {
         title := plainText(item.Title, 400)
         if title == "" { continue }

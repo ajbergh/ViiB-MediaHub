@@ -31,6 +31,7 @@ func (a *API) PodcastRoutes() chi.Router {
     r.Get("/feeds", a.listPodcastFeeds)
     r.Post("/feeds/preview", a.previewPodcastFeed)
     r.Post("/feeds", a.subscribePodcastFeed)
+    r.Get("/feeds/{id}/artwork", a.getPodcastArtwork)
     r.Get("/feeds/{id}/episodes", a.listPodcastEpisodes)
     r.Get("/feeds/{id}/refresh", a.getPodcastRefresh)
     r.Post("/feeds/{id}/refresh", a.schedulePodcastRefresh)
@@ -211,4 +212,56 @@ func (a *API) schedulePodcastRefresh(w http.ResponseWriter,r *http.Request){
     // queued work if this process exits immediately after returning 202.
     a.wakePodcastRefresher()
     respondV2JSON(w,http.StatusAccepted,map[string]any{"status":"queued"})
+}
+
+
+// Artwork is served by subscription ID only; callers cannot supply arbitrary
+// proxy URLs. Production fetcher validates all redirects and public addresses.
+func (a *API) getPodcastArtwork(w http.ResponseWriter,r *http.Request) {
+    id:=chi.URLParam(r,"id")
+    source,err:=a.db.PodcastArtworkURL(r.Context(),id)
+    if errors.Is(err,sql.ErrNoRows) {
+        respondV2Error(w,r,http.StatusNotFound,"podcast_not_found","Podcast subscription not found",false,nil)
+        return
+    }
+    if err!=nil {
+        respondV2Error(w,r,http.StatusInternalServerError,"podcast_artwork_unavailable","Unable to read podcast artwork",true,nil)
+        return
+    }
+    if source=="" {
+        respondV2Error(w,r,http.StatusNotFound,"podcast_artwork_missing","This podcast has no supported public artwork",false,nil)
+        return
+    }
+    ctx,cancel:=context.WithTimeout(r.Context(),12*time.Second)
+    defer cancel()
+    fetch:=a.podcastArtworkFetch
+    if fetch==nil {fetch=podcast.NewFetcher(false).FetchArtwork}
+    artwork,err:=fetch(ctx,source)
+    if err!=nil{
+        // Never leak the upstream URL, response or DNS details.
+        if errors.Is(err,podcast.ErrBlockedURL) || errors.Is(err,podcast.ErrInvalidFeed){
+            respondV2Error(w,r,http.StatusUnprocessableEntity,"podcast_artwork_invalid","Publisher artwork is not supported",false,nil)
+        }else{
+            respondV2Error(w,r,http.StatusBadGateway,"podcast_artwork_unavailable","Publisher artwork could not be retrieved",true,nil)
+        }
+        return
+    }
+    if len(artwork.Data)==0 || len(artwork.Data)>int(podcast.MaxArtworkBytes) || !podcastRasterType(artwork.MIME){
+        respondV2Error(w,r,http.StatusUnprocessableEntity,"podcast_artwork_invalid","Publisher artwork is not supported",false,nil)
+        return
+    }
+    w.Header().Set("Content-Type",artwork.MIME)
+    w.Header().Set("X-Content-Type-Options","nosniff")
+    w.Header().Set("Cache-Control","private, max-age=900")
+    w.Header().Set("Content-Security-Policy","default-src 'none'; sandbox")
+    w.Header().Set("Content-Length",strconv.Itoa(len(artwork.Data)))
+    w.WriteHeader(http.StatusOK)
+    _,_=w.Write(artwork.Data)
+}
+
+func podcastRasterType(t string) bool {
+    switch t{
+    case "image/png","image/jpeg","image/gif","image/webp":return true
+    default:return false
+    }
 }

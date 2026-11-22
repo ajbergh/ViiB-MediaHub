@@ -71,6 +71,7 @@ func (d *DB) savePodcastFeed(ctx context.Context, requestedURL string, feed podc
     requestedURL = source.String()
     feed.URL = target.String()
     if strings.TrimSpace(feed.Title) == "" { return "", podcast.ErrInvalidFeed }
+    feed.ImageURL = podcast.SafeArtworkURL(feed.ImageURL)
 
     now := time.Now().UnixMilli()
     tx, err := d.conn.BeginTx(ctx, nil)
@@ -235,6 +236,15 @@ ORDER BY COALESCE(published_at,0) DESC,id ASC LIMIT ? OFFSET ?
     more:=len(result)>limit
     if more{result=result[:limit]}
     return result,more,nil
+}
+
+// PodcastArtworkURL resolves only artwork for an active subscription.
+func (d *DB) PodcastArtworkURL(ctx context.Context,feedID string)(string,error){
+    if err:=d.EnsurePodcastSchema();err!=nil{return "",err}
+    var raw string
+    err:=d.conn.QueryRowContext(ctx,"SELECT f.image_url FROM podcast_feeds f JOIN podcast_subscriptions s ON s.feed_id=f.id WHERE f.id=?",feedID).Scan(&raw)
+    if err!=nil{return "",err}
+    return podcast.SafeArtworkURL(raw),nil
 }
 
 func (d *DB) UnsubscribePodcast(ctx context.Context,feedID string) error {

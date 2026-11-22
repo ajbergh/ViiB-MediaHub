@@ -157,7 +157,7 @@ ON CONFLICT(original_url) DO NOTHING
 UPDATE podcast_feeds SET
  title=?,author=?,description=?,image_url=?,language=?
 WHERE id=?`,result.Feed.Title,result.Feed.Author,result.Feed.Description,
-            result.Feed.ImageURL,result.Feed.Language,target.ID)
+            podcast.SafeArtworkURL(result.Feed.ImageURL),result.Feed.Language,target.ID)
         if err!=nil{return err}
         // Preserve history rows rather than deleting truncated back catalogs.
         if _,err=tx.ExecContext(ctx,`UPDATE podcast_episodes SET listed_in_feed=0 WHERE feed_id=?`,target.ID);err!=nil{return err}

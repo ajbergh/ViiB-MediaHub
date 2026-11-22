@@ -94,6 +94,7 @@ type API struct {
 	semanticWorkers        sync.WaitGroup
 	semanticInitializing   bool
 	semanticWake           chan struct{}
+	podcastArtworkFetch    func(context.Context,string)(podcast.Artwork,error)
 	podcastRefreshMu      sync.Mutex
 	podcastRefreshOn      bool
 	podcastRefreshClosed  bool
