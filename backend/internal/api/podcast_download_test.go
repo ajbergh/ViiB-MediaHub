@@ -12,6 +12,7 @@ import (
  "path/filepath"
  "strings"
  "testing"
+ "time"
 
  "github.com/ajbergh/viib-mediahub/internal/db"
  "github.com/ajbergh/viib-mediahub/internal/podcast"
@@ -193,4 +194,73 @@ func TestPodcastCompletedRemovalRefusesUnsafeLocalObject(t *testing.T){
  removed:=req("DELETE")
  if removed.Code!=409{t.Fatalf("special file deleted: %d",removed.Code)}
  if info,err:=os.Stat(path);err!=nil||!info.IsDir(){t.Fatalf("unexpected directory removal: %v",err)}
+}
+
+func TestPodcastOfflineIntegrityRejectsCorruptionAndRecoversOnRetry(t *testing.T){
+    d,id:=seedPodcastDownload(t);defer d.Close()
+    ctx:=context.Background()
+    pathRoot:=t.TempDir()
+    makeAPI:=func()*API{
+        return &API{db:d,dataDir:pathRoot,podcastDownloadFetch:func(context.Context,string,string,string)(podcast.MediaSegment,error){
+            return podcast.MediaSegment{Start:0,End:3,Total:4,MIME:"audio/mpeg",Data:[]byte("ID3!")},nil
+        }}
+    }
+    a:=makeAPI()
+    router:=a.PodcastRoutes()
+    req:=func(handler http.Handler,method,path string)*httptest.ResponseRecorder{
+        t.Helper();res:=httptest.NewRecorder()
+        handler.ServeHTTP(res,httptest.NewRequest(method,path,nil))
+        return res
+    }
+    if out:=req(router,"POST","/episodes/"+id+"/download");out.Code!=202{t.Fatalf("queue: %d",out.Code)}
+    a.processPodcastDownload(ctx)
+    if good:=req(router,"GET","/episodes/"+id+"/media");good.Code!=200||good.Body.String()!="ID3!"{
+        t.Fatalf("first verified playback %d %q",good.Code,good.Body.String())
+    }
+    diskPath:=filepath.Join(pathRoot,"podcasts","episodes",id+".audio")
+    if err:=os.WriteFile(diskPath,[]byte("BAD!"),0600);err!=nil{t.Fatal(err)}
+    // A new desktop/API process must perform the checksum check again even
+    // when a cached previous process already verified this file.
+    reopened:=makeAPI()
+    corrupt:=req(reopened.PodcastRoutes(),"GET","/episodes/"+id+"/media")
+    if corrupt.Code!=http.StatusGone||!strings.Contains(corrupt.Body.String(),"podcast_download_corrupt"){
+        t.Fatalf("corrupted same-size file still served: %d %s",corrupt.Code,corrupt.Body.String())
+    }
+    row,err:=d.GetPodcastDownload(ctx,id)
+    if err!=nil||row.Status!="failed"{t.Fatalf("corruption status: %+v %v",row,err)}
+    if again:=req(reopened.PodcastRoutes(),"POST","/episodes/"+id+"/download");again.Code!=202{
+        t.Fatalf("retry after corruption: %d",again.Code)
+    }
+    // Retried claim must remove only its known orphan final file, not write
+    // over an unsafe path or make the corrupt media downloadable again.
+    reopened.processPodcastDownload(ctx)
+    restored:=req(reopened.PodcastRoutes(),"GET","/episodes/"+id+"/media")
+    if restored.Code!=200||restored.Body.String()!="ID3!"{
+        t.Fatalf("safe retry not restored: %d %q",restored.Code,restored.Body.String())
+    }
+}
+
+func TestPodcastStaleTempCleanupKeepsRecentAndForeignFiles(t *testing.T){
+    a:=&API{dataDir:t.TempDir()}
+    dir,err:=a.podcastStorageDir();if err!=nil{t.Fatal(err)}
+    now:=time.Now()
+    files:=[]struct{name string;old bool;removed bool}{
+        {".part-123456789",true,true},
+        {".part-987654321",false,false},
+        {".part-private-not-owned",true,false},
+        {"unrelated-file.audio",true,false},
+    }
+    for _,tc:=range files{
+        path:=filepath.Join(dir,tc.name)
+        if err:=os.WriteFile(path,[]byte("test"),0600);err!=nil{t.Fatal(err)}
+        stamp:=now
+        if tc.old{stamp=now.Add(-podcastAbandonedPartGrace-time.Minute)}
+        if err:=os.Chtimes(path,stamp,stamp);err!=nil{t.Fatal(err)}
+    }
+    a.cleanupPodcastAbandonedParts(dir,now)
+    for _,tc:=range files{
+        _,err:=os.Lstat(filepath.Join(dir,tc.name))
+        if tc.removed && !errors.Is(err,os.ErrNotExist){t.Fatalf("abandoned temp not removed: %s %v",tc.name,err)}
+        if !tc.removed && err!=nil{t.Fatalf("non-owned/recent file removed: %s %v",tc.name,err)}
+    }
 }
