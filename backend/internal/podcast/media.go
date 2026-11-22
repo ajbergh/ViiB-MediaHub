@@ -7,6 +7,7 @@ import (
     "io"
     "mime"
     "net/http"
+    "net/netip"
     "net/url"
     "regexp"
     "strconv"
@@ -23,6 +24,7 @@ var (
     ErrInvalidMedia = errors.New("unsupported podcast media")
     ErrMediaUnavailable = errors.New("podcast media unavailable")
     ErrInvalidMediaRange = errors.New("invalid podcast media range")
+    ErrPublisherNoRange = errors.New("podcast publisher ignored Range")
 )
 
 var (
@@ -38,17 +40,29 @@ type MediaSegment struct {
     Total int64
 }
 
-// ValidateMediaURL rejects URL credentials, private or secret-bearing query
-// inputs and non-HTTPS origins. DNS is validated AGAIN at the actual dial,
-// using the existing public-IP-pinned Feed Fetcher transport.
+// ValidateMediaURL applies the NETWORK policy to publisher enclosures,
+// not the much narrower RSS subscription/OPML export URL policy.
+// Signed CDN queries are common, must stay backend-only, and MUST never
+// appear in rendered episode JSON, logs, error strings or redirect responses.
+// Every dial is separately DNS-pinned and checked against the public-IP rules.
 func ValidateMediaURL(raw string, allowHTTP bool) (*url.URL,error) {
-    if raw==""||len(raw)>2048{return nil,ErrBlockedURL}
-    parsed,err:=ValidatePublicURL(raw,allowHTTP)
-    if err!=nil{return nil,err}
+    if raw==""||len(raw)>8192 || strings.ContainsAny(raw,"\r\n\x00"){return nil,ErrBlockedURL}
+    parsed,err:=url.Parse(strings.TrimSpace(raw))
+    if err!=nil||parsed==nil||parsed.Hostname()==""||parsed.User!=nil||
+        parsed.Opaque!=""||parsed.Fragment!=""{return nil,ErrBlockedURL}
+    if parsed.Scheme!="https" && !(allowHTTP && parsed.Scheme=="http"){return nil,ErrBlockedURL}
+    if parsed.Port()!="" {
+        port,err:=strconv.Atoi(parsed.Port())
+        if err!=nil||port<1||port>65535{return nil,ErrBlockedURL}
+    }
     hostname:=strings.ToLower(strings.TrimSuffix(parsed.Hostname(),"."))
     if hostname=="localhost"||strings.HasSuffix(hostname,".localhost")||
         strings.HasSuffix(hostname,".local")||strings.HasSuffix(hostname,".internal")||
-        strings.HasSuffix(hostname,".home.arpa")||strings.HasSuffix(hostname,".lan"){
+        strings.HasSuffix(hostname,".home.arpa")||strings.HasSuffix(hostname,".lan")||
+        strings.ContainsAny(hostname,"% \\t\\r\\n") {return nil,ErrBlockedURL}
+    // Reject all non-public literal IPv4/IPv6 addresses before connecting;
+    // resolver addresses are checked independently in the dial callback.
+    if literal,err:=netip.ParseAddr(hostname);err==nil&&!IsPublicIP(literal){
         return nil,ErrBlockedURL
     }
     return parsed,nil
@@ -104,7 +118,7 @@ func parseUpstreamContentRange(header string,start,end int64)(int64,int64,error)
 // redirect response, compressed payload or unbounded stream.
 func (f *Fetcher) FetchMediaSegment(ctx context.Context,raw,rangeHeader string)(MediaSegment,error){
     var segment MediaSegment
-    u,err:=ValidateMediaURL(raw,f.AllowHTTP)
+    u,err:=ValidateMediaURL(raw,true)
     if err!=nil{return segment,err}
     start,end,err:=parseMediaRange(rangeHeader)
     if err!=nil{return segment,err}
@@ -115,7 +129,7 @@ func (f *Fetcher) FetchMediaSegment(ctx context.Context,raw,rangeHeader string)(
         Timeout:30*time.Second,
         CheckRedirect:func(req *http.Request,via []*http.Request)error{
             if len(via)>4{return ErrBlockedURL}
-            if _,err:=ValidateMediaURL(req.URL.String(),f.AllowHTTP);err!=nil{return ErrBlockedURL}
+            if _,err:=ValidateMediaURL(req.URL.String(),true);err!=nil{return ErrBlockedURL}
             if len(via)>0&&via[len(via)-1].URL.Scheme=="https"&&req.URL.Scheme!="https"{
                 return ErrBlockedURL
             }
@@ -140,6 +154,9 @@ func (f *Fetcher) FetchMediaSegment(ctx context.Context,raw,rangeHeader string)(
     defer response.Body.Close()
     if response.StatusCode==http.StatusRequestedRangeNotSatisfiable{
         return segment,ErrInvalidMediaRange
+    }
+    if response.StatusCode==http.StatusOK{
+        return segment,ErrPublisherNoRange
     }
     if response.StatusCode!=http.StatusPartialContent{
         return segment,ErrMediaUnavailable

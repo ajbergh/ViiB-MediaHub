@@ -18,7 +18,7 @@ FROM podcast_episodes e
 JOIN podcast_subscriptions sub ON sub.feed_id=e.feed_id
 WHERE e.id=?`,episodeID).Scan(&raw,&declared)
     if err!=nil{return "","",err}
-    if _,err=podcast.ValidateMediaURL(raw,false);err!=nil{return "","",err}
+    if _,err=podcast.ValidateMediaURL(raw,true);err!=nil{return "","",err}
     // Publisher MIME may be missing in older RSS. An explicit non-audio
     // declared type is not playable even if a remote server says otherwise.
     if declared!="" && podcast.SupportedPodcastAudioMIME(declared)==""{

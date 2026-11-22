@@ -7,6 +7,7 @@ import (
     "fmt"
     "net/http"
     "strconv"
+    "strings"
     "time"
 
     "github.com/ajbergh/viib-mediahub/internal/podcast"
@@ -50,6 +51,34 @@ func (a *API) getPodcastEpisodeMedia(w http.ResponseWriter,r *http.Request) {
     if fetch==nil{fetch=podcast.NewFetcher(false).FetchMediaSegment}
     segment,err:=fetch(ctx,source,r.Header.Get("Range"))
     switch{
+    case errors.Is(err,podcast.ErrPublisherNoRange):
+        // Some otherwise valid public publishers ignore Range and return 200.
+        // Stream their verified complete body, never buffer an entire episode.
+        // A non-zero seek cannot fall back to byte zero without lying to the
+        // player about position, so return an explicit non-seekable error.
+        rangeValue:=r.Header.Get("Range")
+        if rangeValue!="" && !strings.HasPrefix(strings.TrimSpace(rangeValue),"bytes=0-"){
+            respondV2Error(w,r,http.StatusRequestedRangeNotSatisfiable,
+                "podcast_seek_unavailable","Publisher audio does not support seeking",false,nil)
+            return
+        }
+        stream:=a.podcastMediaStream
+        if stream==nil{stream=podcast.NewFetcher(false).StreamMedia}
+        if streamErr:=stream(ctx,source,w);streamErr!=nil{
+            // StreamMedia only returns errors before writing headers except
+            // for interrupted transfers; never write JSON into an audio body.
+            if streamErr==podcast.ErrInvalidMedia{
+                respondV2Error(w,r,http.StatusUnprocessableEntity,"podcast_media_unsupported",
+                    "Publisher audio response is not supported",false,nil)
+            }else if streamErr==podcast.ErrBlockedURL{
+                respondV2Error(w,r,http.StatusUnprocessableEntity,"podcast_media_unsupported",
+                    "Publisher audio URL is not supported",false,nil)
+            }else{
+                respondV2Error(w,r,http.StatusBadGateway,"podcast_media_unavailable",
+                    "Publisher audio could not be streamed",true,nil)
+            }
+        }
+        return
     case errors.Is(err,podcast.ErrInvalidMediaRange):
         respondV2Error(w,r,http.StatusRequestedRangeNotSatisfiable,"podcast_range_invalid",
             "A single valid audio byte range is required",false,nil)
