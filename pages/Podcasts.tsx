@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { ArrowLeft, Download, Headphones, Loader2, Plus, RefreshCw, Rss, Trash2 } from 'lucide-react';
 import { api } from '../services/api';
-import { podcastEpisodeToTrack } from '../lib/podcastPlayback';
+import { podcastEpisodeToTrack, queuePodcastEpisode, type PodcastQueuePosition } from '../lib/podcastPlayback';
 import { useStore } from '../store';
 import { podcastsAPI, PodcastAPIError, type PodcastFeed, type PodcastEpisode, type PodcastPreview, type PodcastRefreshStatus, type PodcastOPMLImportPreview, type PodcastContinueEpisode } from '../services/podcasts';
 
@@ -29,6 +29,18 @@ const PodcastArtwork: React.FC<{ feedId: string; title: string; imageURL?: strin
 };
 
 /** Public RSS subscriptions and shared-player playback; offline downloads remain planned. */
+function queueEpisodeAction(episode: PodcastEpisode, feed: PodcastFeed, position: PodcastQueuePosition) {
+  const player = useStore.getState();
+  if (!queuePodcastEpisode(episode, feed, position, player)) return;
+  player.showToast({
+    type: 'success',
+    message: player.currentSong
+      ? (position === 'next' ? 'Episode added to Play Next.' : 'Episode added to the queue.')
+      : 'Started podcast playback in the shared player.',
+    duration: 3500,
+  });
+}
+
 export const Podcasts: React.FC = () => {
   const [feeds, setFeeds] = useState<PodcastFeed[]>([]);
   const [continueEpisodes, setContinueEpisodes] = useState<PodcastContinueEpisode[]>([]);
@@ -160,15 +172,15 @@ export const Podcasts: React.FC = () => {
     }
   };
 
-  const resumeEpisode = (episode: PodcastContinueEpisode) => {
-    if (!episode.hasAudio) return;
-    // Continue Listening loads independently of Following. Reuse the existing
-    // episode-ID queue adapter and persisted revision; never expose RSS URLs.
-    const feed = feeds.find(item => item.id === episode.feedId) ?? {
+  const getContinueFeed = (episode: PodcastContinueEpisode): PodcastFeed =>
+    feeds.find(item => item.id === episode.feedId) ?? {
       id: episode.feedId, url: '', title: episode.feedTitle, author: '',
       description: '', imageUrl: '', language: '', episodeCount: 0,
     };
-    const track = podcastEpisodeToTrack(episode, feed);
+
+  const resumeEpisode = (episode: PodcastContinueEpisode) => {
+    if (!episode.hasAudio) return;
+    const track = podcastEpisodeToTrack(episode, getContinueFeed(episode));
     void useStore.getState().playSong(track, [track], 'podcast', 0);
   };
 
@@ -280,6 +292,18 @@ export const Podcasts: React.FC = () => {
                 className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-surface-0">
                 Resume playback
               </button> : <span className="text-xs text-text-subtle">Audio unavailable</span>}
+              {episode.hasAudio && <>
+                <button type="button" onClick={() => queueEpisodeAction(episode, getContinueFeed(episode), 'next')}
+                  aria-label={'Play ' + episode.title + ' next'}
+                  className="rounded-md border border-surface-3 px-3 py-1.5 text-xs font-semibold text-text-secondary hover:text-text-main">
+                  Play Next
+                </button>
+                <button type="button" onClick={() => queueEpisodeAction(episode, getContinueFeed(episode), 'end')}
+                  aria-label={'Add ' + episode.title + ' to queue'}
+                  className="rounded-md border border-surface-3 px-3 py-1.5 text-xs font-semibold text-text-secondary hover:text-text-main">
+                  Add to Queue
+                </button>
+              </>}
               <Link to={'/podcasts/show/' + encodeURIComponent(episode.feedId)}
                 className="text-xs font-semibold text-text-secondary hover:text-text-main">
                 View show
@@ -565,7 +589,21 @@ export const PodcastShow: React.FC = () => {
                 className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-surface-0">
                 Listen
               </button>}
-              <span className="text-xs text-text-subtle">Play in the ViiB music player. Offline downloads are planned.</span>
+              {episode.hasAudio && <>
+                <button type="button"
+                  onClick={() => queueEpisodeAction(episode, feed, 'next')}
+                  aria-label={'Play ' + episode.title + ' next'}
+                  className="rounded-md border border-surface-3 px-3 py-1.5 text-xs font-semibold text-text-secondary hover:text-text-main">
+                  Play Next
+                </button>
+                <button type="button"
+                  onClick={() => queueEpisodeAction(episode, feed, 'end')}
+                  aria-label={'Add ' + episode.title + ' to queue'}
+                  className="rounded-md border border-surface-3 px-3 py-1.5 text-xs font-semibold text-text-secondary hover:text-text-main">
+                  Add to Queue
+                </button>
+              </>}
+              <span className="text-xs text-text-subtle">Uses the shared ViiB music/Plex queue. Offline downloads are planned.</span>
             </div>
           </article>)}
         </div>

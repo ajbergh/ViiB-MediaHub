@@ -1,6 +1,6 @@
 # ViiB MediaHub — Podcast Client, Player & Offline Library Roadmap
 
-> **Document status:** Proposed / planning only; no podcast feature is implemented by this document.
+> **Document status:** Living implementation roadmap for draft PR #167. Public RSS follow, streaming, shared-player playback/seeking and early Continue Listening are implemented on the feature branch; offline downloads and directory discovery are not shipped.
 > **Created:** 2026-11-22
 > **Last reviewed:** 2026-11-22 — codebase anchors re-verified against source (see [§13 Review log](#13-review-log))
 > **Target:** ViiB MediaHub (React 19.2 / React Router 8 / TypeScript 5.8 / Zustand 5 / Go 1.26 / SQLite via `modernc.org/sqlite` / Wails v2.17, plus local-Go browser builds)
@@ -414,7 +414,7 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 
 ## 7. Phased delivery plan and traceable PR sequence
 
-**Overall status:** Phase 0 partially completed; Phase 1 in progress. A discoverable Podcast Following/Show Preview UI and optional feed refresh are implemented on the feature branch. Podcast directory discovery, streaming playback and offline downloads are not implemented. Future phases remain planned. Sequence is dependency-aware. Keep PRs reviewable (one vertical behavior or small layer), add tests in the same PR, update this roadmap checkboxes and maintain a changelog as implementation begins.
+**Overall status:** Phase 0 and Phase 1 are partially implemented. Public RSS following, shared-player streaming/seeking, Continue Listening and manual episode queue actions are on the feature branch; Podcast Index discovery, offline downloads and cross-platform runtime qualification remain open. The branch is not merged or released. Sequence is dependency-aware. Keep PRs reviewable (one vertical behavior or small layer), add tests in the same PR, update this roadmap checkboxes and maintain a changelog as implementation begins.
 
 ### Phase 0 — Architecture, compliance and decision gates
 
@@ -445,7 +445,7 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 - [ ] **POD-02C (in progress):** Subscription-scoped public HTTP/HTTPS audio proxy accepts signed CDN queries with DNS/rebinding and redirect checks; strict 206 bounded Range or guarded streaming 200 fallback. Private/authenticated publisher feeds, offline source and real provider acceptance remain.
 - [ ] **POD-02D (in progress):** Podcast playback is now owned by the existing ViiB audio elements/queue and media-session hook, with podcast-only CAS progress tracking and crossfade exclusion. Real OS media key, Windows Wails and mixed-source testing remain.
 - [ ] **POD-02E (in progress):** The shared music/Plex player handles public RSS with the same controls, volume, EQ and Now Playing. Added podcast-only 15s rewind/30s forward and 0.75–2× speed on the existing transport; music resets to 1×. User playback and seek verified at `83426a5`; newest controls and native cross-platform qualification remain CI/runtime gated.
-- [ ] **POD-02F (in progress):** Durable Continue Listening, played controls and one-click Resume via the same queue/position adapter. Queue/starred workflows, newest-change CI and cross-platform acceptance remain.
+- [ ] **POD-02F (in progress):** Durable Continue Listening, played controls, one-click Resume and manual Play Next/Add to Queue actions in show/Continue cards through the existing shared transport. Starred episodes, wider inbox flows and cross-platform acceptance remain.
 
 **Exit:** Discovery or RSS → subscribe → stream → pause → quit/reopen → resume at expected position; music, Spotify and DJ behavior unchanged.
 
@@ -465,7 +465,7 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 - [ ] **POD-04A:** Per-show auto-download policies (newest N/unplayed N), global cap, host limits, dedup and opt-in defaults.
 - [ ] **POD-04B:** Resume partial transfers with strong validator checks; 416/retry/range tests, disable resume when unsafe.
 - [ ] **POD-04C:** Quota, retention, cleanup grace period, pinned/current protection and crash-safe file garbage collection.
-- [ ] **POD-04D:** Inbox / Queue triage, auto-queue optional policies, bulk mark played/archive and rich episode filters.
+- [ ] **POD-04D (partial manual queue):** User-driven Play Next and Add to Queue on followed shows/Continue Listening are implemented using the existing music/Plex queue; automatic policies, queue persistence, inbox triage, bulk mark/archive and rich filters remain.
 - [ ] **POD-04E (in progress):** Safe 512 KiB / 100-feed OPML 2.0 import parser, nested outlines, public URL filtering, preview and already-followed detection; UI follows each feed via existing API with cancellation and partial-failure report. Durable restartable import job, wider real-provider qualification and CI remain.
 - [ ] **POD-04F:** Per-show speed/seek/start/end skip defaults; global and show controls in Settings.
 - [ ] **POD-04G:** Smart podcast playlists; keep isolated from music playlist DB and Smart Mix heuristics.
@@ -875,3 +875,11 @@ failure modes remain open. Full CI must be green before merge.
 - **POD-02E follow-up (implementation, new CI pending):** In the *existing player*, podcast episodes expose -15/+30 second skip (normal and skinny layouts) and speed 0.75, 1, 1.25, 1.5, 1.75 or 2×. Both shared HTMLAudio elements receive the selected speed; music/Plex use 1×; Media Session reports the effective rate. No standalone player, raw publisher URL exposure or music analytics changes.
 - **New browser regression coverage:** Continue Listening Resume selects the local episode media route; skip and speed controls appear when playing podcasts; playbackRate changes; the removed podcast-only player remains absent. New commit CI results are pending, not inferred from the baseline.
 - **Next:** Validate controls against CI and Windows Wails/browser builds; continue queue/inbox triage, credentials-gated directory discovery, then secure offline downloads (POD-03A–E). Keep PR #167 draft and do not merge until release acceptance is satisfied.
+
+
+### 2026-11-22 — manual Up Next / Queue actions (POD-02F / POD-04D partial)
+
+- **Implementation:** Followed show episode rows and Continue Listening cards now expose **Play Next** and **Add to Queue** alongside Listen/Resume. Both map to transient podcast `Song` entries through `podcastEpisodeToTrack` and call the existing ViiB `playNext` and `addToQueue` actions. An idle player begins the selected podcast with its saved position rather than leaving a queued item with no active transport. Existing music/Plex playback is never replaced when another source is already active.
+- **Safety boundaries:** No additional HTMLAudio element, music-library writes, Spotify credentials, publisher URLs, or podcast-specific queue transport. The existing shared queue provides reorder, remove, clear and next/previous functionality. Only episodes with `hasAudio` expose queue actions.
+- **Tests:** Pure Vitest adapter coverage verifies idle playback, insert-next, append and no-audio refusal. Playwright checks Play Next/Add to Queue from both show and Continue views and confirms the common queue count. These changes require a fresh CI run; success of an earlier commit does not validate this slice.
+- **Future:** Persistently curated podcast Up Next/Inbox and starred episode semantics should be designed in the podcast-owned SQLite model and should not blindly persist ephemeral, possibly expired publisher source URLs; offline downloads remain POD-03A–E.

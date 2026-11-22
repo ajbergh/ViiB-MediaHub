@@ -15,7 +15,7 @@ an episode ID. The existing `components/Player.tsx`,
 queue and `useMediaSession` own the audio and OS controls.
 No podcast-only HTMLAudio player exists. Podcast queue entries do not
 enter the music SQLite catalog or music listening/AI-DJ statistics.
-Crossfades and music preloading are disabled for podcast transitions.
+Crossfades and music preloading are disabled for podcast transitions. Manual Play Next/Add to Queue on podcast episode cards reuse the existing ViiB queue; if idle, the selected podcast becomes the first playing item. Queue entries remain ephemeral and are not inserted in the music database.
 
 Podcast listening positions and played state remain in podcast-owned
 SQLite tables. The audio hook uses a revision-checked progress tracker;

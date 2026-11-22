@@ -126,7 +126,11 @@ test('Podcasts follows public RSS and browses episodes without playback', async 
   await page.getByRole('button', { name: 'Refresh feed' }).click();
   await expect(page.getByText('Refresh queued. Episodes will update when the publisher responds.')).toBeVisible();
   expect(refreshed).toBe(1);
-  await expect(page.getByText('Play in the ViiB music player. Offline downloads are planned.')).toBeVisible();
+  await expect(page.getByText('Uses the shared ViiB music/Plex queue. Offline downloads are planned.')).toBeVisible();
+  await page.getByRole('button', { name: 'Play First episode next' }).click();
+  await expect(page.getByRole('button', { name: 'Queue, 2 tracks' }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Add First episode to queue' }).click();
+  await expect(page.getByRole('button', { name: 'Queue, 3 tracks' }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Unfollow', exact: true }).click();
   await page.getByRole('button', { name: 'Confirm', exact: true }).click();
   await expect(page).toHaveURL('/podcasts');
@@ -334,5 +338,9 @@ test('Continue Listening resumes a saved episode through the shared player', asy
   await expect(section.getByRole('link', { name: 'View show' })).toHaveAttribute('href', '/podcasts/show/' + feedId);
   await section.getByRole('button', { name: 'Resume An unfinished episode' }).click();
   await expect(page.locator('audio[src="/api/v2/podcasts/episodes/episode-42/media"]')).toHaveCount(1);
+  await section.getByRole('button', { name: 'Play An unfinished episode next' }).click();
+  await expect(page.getByRole('button', { name: 'Queue, 2 tracks' }).first()).toBeVisible();
+  await section.getByRole('button', { name: 'Add An unfinished episode to queue' }).click();
+  await expect(page.getByRole('button', { name: 'Queue, 3 tracks' }).first()).toBeVisible();
   await expect(page.getByRole('region', { name: 'Podcast episode player' })).toHaveCount(0);
 });
