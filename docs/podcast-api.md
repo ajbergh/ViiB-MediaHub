@@ -4,7 +4,7 @@ This documents **only currently implemented endpoints** in
 [`backend/internal/api/podcast_routes.go`](../backend/internal/api/podcast_routes.go).
 The full prospective API is tracked in the
 [Podcast implementation roadmap](PODCAST_CLIENT_IMPLEMENTATION_ROADMAP.md).
-No Podcast Index search, offline downloads, paid feeds or private RSS credential support is implemented yet. Public HTTP(S) audio streams through the shared music/Plex player via a local episode-ID route. Core playback and seeking are user-verified on the tested build; native cross-platform qualification remains open. OPML 2.0
+No Podcast Index search, paid feeds or private RSS credential support is implemented yet. An initial 206-range-only offline download job/verified file path is implemented on the draft feature branch, not yet cross-platform qualified. Public HTTP(S) audio streams through the shared music/Plex player via a local episode-ID route. Core playback and seeking are user-verified on the tested build; native cross-platform qualification remains open. OPML 2.0
 subscription export and safe import preview are available; neither exports
 nor imports listening history.
 
@@ -20,7 +20,11 @@ RSS 2.0 feeds during initial implementation.
 | GET | `/feeds/{id}` | Read one followed show by stable ID; 404 when unknown or unfollowed |
 | GET | `/episodes/continue?limit=12` | Recently listened, uncompleted episodes on followed shows; bound 1–50, no publisher network requests |
 | GET | `/episodes/{id}/progress` | Revisioned durable progress; 404 for unknown episodes |
-| GET | `/episodes/{id}/media` | Subscription-scoped audio proxy: validated 206 byte ranges (maximum 2 MiB per request) or bounded streaming 200 fallback for publishers without Range. Nonzero seeks on 200-only origins return 416 |
+| GET | `/downloads` | Up to 100 recent statuses for followed episodes, without raw publisher URLs or internal disk paths |
+| GET | `/episodes/{id}/download` | Fetch one subscribed episode's persisted download status; 404 when absent |
+| POST | `/episodes/{id}/download` | Queue/retry a public supported audio enclosure; 202 for queued/current/completed record, idempotent; the worker starts independently |
+| DELETE | `/episodes/{id}/download` | Cancel queued/in-progress download; 409 if already completed. Completed-file deletion is not implemented |
+| GET | `/episodes/{id}/media` | Prefer subscription-scoped completed offline files served with local HTTP byte ranges; otherwise proxy validated public 206 publisher ranges (maximum 2 MiB) or bounded streaming 200 fallback. Nonzero seeks on 200-only origins return 416 |
 
 | PUT | `/episodes/{id}/progress` | Save position/listened/played with `expectedRevision` CAS; 409 on stale writes |
 | POST | `/import/opml/preview` | Validate raw OPML 2.0 XML (512 KiB, 100 feed outlines, max nesting 24); list public candidates, duplicate/unsupported counts, and already-followed flags without network calls |
@@ -79,7 +83,7 @@ Example successful response:
   `format=xml`; private feeds require a separate encrypted-credential and
   export-redaction design.
 - Artwork URLs are filtered at RSS parse, save and refresh; unsafe or tokenized artwork references are not persisted. The proxy resolves only subscribed show IDs, verifies public DNS at connection and each redirect, limits response size and sniffs actual raster content (never serves HTML or SVG). Browser caching is private for up to 15 minutes.
-- Publisher enclosure URLs are backend-only and never serialized into public episode JSON. The implemented subscription-scoped `GET /episodes/{id}/media` route serves guarded 206 ranges or a bounded streaming-200 fallback. Download storage and fully offline playback are **not yet implemented**.
+- Publisher enclosure URLs are backend-only and never serialized into public episode JSON. The subscription-scoped `GET /episodes/{id}/media` serves verified completed local files first via HTTP Range, otherwise guarded public 206 ranges or a bounded streaming-200 fallback. Initial download storage exists under a private fixed episode-ID path. **True disconnected restart and all-OS offline acceptance remain open**; 200-only upstream origins currently cannot be downloaded.
 - **Podcasts** is a permanent Sidebar destination. RSS preview/follow and browsing work without opting in. Background and manual feed refreshing are controlled by an optional `podcasts_preview_enabled` setting on the Podcast Show page or in **Settings → Integrations & Spotify**. Disabled by default.
 - Existing song, Spotify, DJ and music download APIs are untouched.
 
