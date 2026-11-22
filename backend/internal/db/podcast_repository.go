@@ -36,6 +36,10 @@ type PodcastEpisodeRecord struct {
     EnclosureType string `json:"enclosureType"`
     PublishedAt int64 `json:"publishedAt"`
     DurationMs int64 `json:"durationMs"`
+    IsPlayed bool `json:"isPlayed"`
+    PositionMs int64 `json:"positionMs"`
+    ListenedMs int64 `json:"listenedMs"`
+    ProgressRevision int64 `json:"progressRevision"`
 }
 
 func podcastStableID(parts ...string) string {
@@ -220,20 +224,26 @@ func (d *DB) ListPodcastEpisodesPage(ctx context.Context,feedID string,limit,off
     if limit<=0 || limit>100 {limit=50}
     if offset<0 {offset=0}
     rows,err:=d.conn.QueryContext(ctx,`
-SELECT id,feed_id,guid,title,description,enclosure_url,enclosure_mime,
- COALESCE(published_at,0),duration_ms
-FROM podcast_episodes WHERE feed_id=?
-ORDER BY COALESCE(published_at,0) DESC,id ASC LIMIT ? OFFSET ?
+SELECT e.id,e.feed_id,e.guid,e.title,e.description,e.enclosure_url,e.enclosure_mime,
+ COALESCE(e.published_at,0),e.duration_ms,
+ COALESCE(s.is_played,0),COALESCE(s.position_ms,0),COALESCE(s.listened_ms,0),COALESCE(s.revision,0)
+FROM podcast_episodes e
+LEFT JOIN podcast_episode_state s ON s.episode_id=e.id
+WHERE e.feed_id=?
+ORDER BY COALESCE(e.published_at,0) DESC,e.id ASC LIMIT ? OFFSET ?
 `,feedID,limit+1,offset)
     if err!=nil{return nil,false,err}
     defer rows.Close()
     result:=make([]PodcastEpisodeRecord,0,limit+1)
     for rows.Next(){
         var e PodcastEpisodeRecord
+        var played int64
         if err:=rows.Scan(&e.ID,&e.FeedID,&e.GUID,&e.Title,&e.Description,
-            &e.EnclosureURL,&e.EnclosureType,&e.PublishedAt,&e.DurationMs);err!=nil{
+            &e.EnclosureURL,&e.EnclosureType,&e.PublishedAt,&e.DurationMs,
+            &played,&e.PositionMs,&e.ListenedMs,&e.ProgressRevision);err!=nil{
             return nil,false,err
         }
+        e.IsPlayed=played==1
         result=append(result,e)
     }
     if err=rows.Err();err!=nil{return nil,false,err}
