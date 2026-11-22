@@ -130,6 +130,7 @@ CREATE INDEX IF NOT EXISTS idx_podcast_queue_order
         err = addPodcastColumns(d,
             "ALTER TABLE podcast_feeds ADD COLUMN refresh_failures INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE podcast_feeds ADD COLUMN refresh_lease_until INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE podcast_downloads ADD COLUMN mime TEXT NOT NULL DEFAULT ''",
         )
     }
     if err != nil { err = fmt.Errorf("create podcast schema: %w", err) }
