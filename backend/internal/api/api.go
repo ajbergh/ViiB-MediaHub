@@ -96,6 +96,7 @@ type API struct {
 	semanticInitializing   bool
 	semanticWake           chan struct{}
 	podcastArtworkFetch    func(context.Context,string)(podcast.Artwork,error)
+	podcastMediaFetch      func(context.Context,string,string)(podcast.MediaSegment,error)
 	podcastRefreshMu      sync.Mutex
 	podcastRefreshOn      bool
 	podcastRefreshClosed  bool
