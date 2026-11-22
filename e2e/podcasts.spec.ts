@@ -3,10 +3,12 @@ import { expect, test } from '@playwright/test';
 const feedURL = 'https://publisher.example/feed.xml';
 const feedId = 'podcast-fixture-1';
 
-test('Podcasts follows public RSS and browses episodes without playback', async ({ page }) => {
+test('Podcasts follows public RSS and uses shared playback, queue and played workflows', async ({ page }) => {
   let subscribed = false;
   let unfollowed = false;
   let refreshed = 0;
+  let progressPlayed = false;
+  let progressRevision = 0;
   const mutations: string[] = [];
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -56,13 +58,18 @@ test('Podcasts follows public RSS and browses episodes without playback', async 
     if (u.pathname === '/api/v2/podcasts/episodes/ep-1/progress') {
       if (req.method() === 'GET') {
         return route.fulfill({ json: { episodeId: 'ep-1', positionMs: 30000,
-          listenedMs: 30000, isPlayed: false, revision: 0, completedAt: 0, lastPlayedAt: 0 } });
+          listenedMs: 30000, isPlayed: progressPlayed, revision: progressRevision,
+          completedAt: progressPlayed ? 100 : 0, lastPlayedAt: 100 } });
       }
       expect(req.method()).toBe('PUT');
-      expect(req.postDataJSON()).toMatchObject({ positionMs: 30000,
-        listenedMs: 30000, isPlayed: true, expectedRevision: 0 });
+      const body = req.postDataJSON() as { positionMs: number; listenedMs: number; isPlayed: boolean; expectedRevision: number };
+      expect(body).toMatchObject({ positionMs: 30000, listenedMs: 30000,
+        expectedRevision: progressRevision });
+      progressPlayed = body.isPlayed;
+      progressRevision++;
       return route.fulfill({ json: { episodeId: 'ep-1', positionMs: 30000,
-        listenedMs: 30000, isPlayed: true, revision: 1, completedAt: 100, lastPlayedAt: 100 } });
+        listenedMs: 30000, isPlayed: progressPlayed, revision: progressRevision,
+        completedAt: progressPlayed ? 100 : 0, lastPlayedAt: 100 } });
     }
     if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/refresh') {
       if (req.method() === 'POST') {
@@ -122,6 +129,12 @@ test('Podcasts follows public RSS and browses episodes without playback', async 
   await expect(page.getByRole('heading', { name: 'First episode' })).toHaveCount(0);
   await page.getByRole('combobox', { name: 'Filter episodes by played status' }).selectOption('played');
   await expect(page.getByRole('heading', { name: 'First episode' })).toBeVisible();
+  await page.getByRole('combobox', { name: 'Filter episodes by played status' }).selectOption('all');
+  await page.getByRole('button', { name: 'Mark loaded episodes unplayed' }).click();
+  await expect(page.getByRole('group', { name: 'Confirm bulk episode change' })).toContainText('Saved positions will be kept.');
+  await page.getByRole('button', { name: 'Confirm mark loaded unplayed' }).click();
+  await expect(page.getByText('Updated 1 of 1 loaded episodes; 0 failed.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Mark First episode played' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Refresh feed' }).click();
   await expect(page.getByText('Refresh queued. Episodes will update when the publisher responds.')).toBeVisible();

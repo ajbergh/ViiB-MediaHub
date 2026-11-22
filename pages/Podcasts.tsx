@@ -361,6 +361,13 @@ export const PodcastShow: React.FC = () => {
   const [episodeFilter, setEpisodeFilter] = useState('');
   const [playedFilter, setPlayedFilter] = useState<'all' | 'played' | 'unplayed'>('all');
   const [updatingEpisode, setUpdatingEpisode] = useState<string | null>(null);
+  // Bulk edits are explicitly limited to currently loaded episode pages.
+  // Each revision is freshly read; conflict errors are reported, not forced.
+  const [bulkTarget, setBulkTarget] = useState<boolean | null>(null);
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkProcessed, setBulkProcessed] = useState(0);
+  const [bulkSummary, setBulkSummary] = useState('');
+  const bulkController = useRef<AbortController | null>(null);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -375,6 +382,7 @@ export const PodcastShow: React.FC = () => {
   const [revision, setRevision] = useState(0);
   const lastCheckedRef = useRef<number | null>(null);
   const navigate = useNavigate();
+  useEffect(() => () => bulkController.current?.abort(), []);
 
   useEffect(() => {
     let mounted = true;
@@ -462,7 +470,7 @@ export const PodcastShow: React.FC = () => {
   };
 
   const setEpisodePlayed = async (episode: PodcastEpisode) => {
-    if (updatingEpisode) return;
+    if (updatingEpisode || bulkRunning) return;
     setUpdatingEpisode(episode.id);
     setError('');
     try {
@@ -481,6 +489,57 @@ export const PodcastShow: React.FC = () => {
       setError(readableError(err));
     } finally {
       setUpdatingEpisode(null);
+    }
+  };
+
+  const applyBulkPlayed = async () => {
+    if (bulkTarget === null || bulkRunning || updatingEpisode) return;
+    const controller = new AbortController();
+    bulkController.current = controller;
+    const target = bulkTarget;
+    const candidates = episodes.filter(episode => Boolean(episode.isPlayed) !== target);
+    let updated = 0, failed = 0, processed = 0;
+    setBulkRunning(true);
+    setBulkProcessed(0);
+    setBulkSummary('');
+    setError('');
+    try {
+      for (const episode of candidates) {
+        if (controller.signal.aborted) break;
+        try {
+          const progress = await podcastsAPI.getProgress(episode.id, controller.signal);
+          if (progress.isPlayed !== target) {
+            const saved = await podcastsAPI.setProgress(episode.id, {
+              positionMs: progress.positionMs,
+              listenedMs: progress.listenedMs,
+              isPlayed: target,
+              expectedRevision: progress.revision,
+            }, controller.signal);
+            setEpisodes(current => current.map(item => item.id === episode.id
+              ? { ...item, isPlayed: saved.isPlayed, positionMs: saved.positionMs,
+                  listenedMs: saved.listenedMs, progressRevision: saved.revision }
+              : item));
+            updated++;
+          } else {
+            // Another session already applied the requested state.
+            setEpisodes(current => current.map(item => item.id === episode.id
+              ? { ...item, isPlayed: progress.isPlayed, positionMs: progress.positionMs,
+                  listenedMs: progress.listenedMs, progressRevision: progress.revision }
+              : item));
+          }
+        } catch {
+          if (controller.signal.aborted) break;
+          // CAS conflicts and network failures do not override newer progress.
+          failed++;
+        }
+        processed++;
+        setBulkProcessed(processed);
+      }
+    } finally {
+      bulkController.current = null;
+      setBulkRunning(false);
+      setBulkTarget(null);
+      setBulkSummary(`Updated ${updated} of ${candidates.length} loaded episodes; ${failed} failed.${controller.signal.aborted ? ' Stopped early.' : ''}`);
     }
   };
 
@@ -547,6 +606,20 @@ export const PodcastShow: React.FC = () => {
       <section>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-bold text-text-main">Episodes ({episodes.length} loaded)</h2>
+          <div aria-label="Loaded episode bulk actions" className="flex flex-wrap items-center gap-2">
+            <button type="button" disabled={bulkRunning || updatingEpisode !== null || episodes.length === 0}
+              onClick={() => { setBulkTarget(true); setBulkSummary(''); }}
+              aria-label="Mark loaded episodes played"
+              className="rounded-md border border-surface-3 px-3 py-2 text-xs font-semibold text-text-secondary disabled:opacity-50">
+              Mark loaded played
+            </button>
+            <button type="button" disabled={bulkRunning || updatingEpisode !== null || episodes.length === 0}
+              onClick={() => { setBulkTarget(false); setBulkSummary(''); }}
+              aria-label="Mark loaded episodes unplayed"
+              className="rounded-md border border-surface-3 px-3 py-2 text-xs font-semibold text-text-secondary disabled:opacity-50">
+              Mark loaded unplayed
+            </button>
+          </div>
           <label htmlFor="podcast-played-filter" className="text-sm text-text-secondary">Played status</label>
           <select id="podcast-played-filter" aria-label="Filter episodes by played status"
             value={playedFilter} onChange={event => setPlayedFilter(event.target.value as 'all' | 'played' | 'unplayed')}
@@ -559,7 +632,22 @@ export const PodcastShow: React.FC = () => {
             value={episodeFilter} onChange={event => setEpisodeFilter(event.target.value)}
             className="w-full max-w-xs rounded-md border border-surface-3 bg-surface-1 px-3 py-2 text-sm text-text-main focus-visible:outline-2 focus-visible:outline-brand" />
         </div>
-        <p className="mb-3 text-xs text-text-subtle">Episode filtering applies to loaded pages only. Load more to browse the full back catalog.</p>
+        <p className="mb-3 text-xs text-text-subtle">Episode filtering and bulk played controls apply only to loaded pages. Load more to browse the full back catalog.</p>
+        {bulkTarget !== null && !bulkRunning && <div role="group" aria-label="Confirm bulk episode change"
+          className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-surface-3 bg-surface-1 p-3 text-sm text-text-secondary">
+          <span>Mark up to {episodes.filter(row => Boolean(row.isPlayed) !== bulkTarget).length} loaded episodes {bulkTarget ? 'played' : 'unplayed'}? Saved positions will be kept.</span>
+          <button type="button" onClick={() => void applyBulkPlayed()}
+            aria-label={'Confirm mark loaded ' + (bulkTarget ? 'played' : 'unplayed')}
+            className="rounded-md bg-brand px-3 py-1.5 font-semibold text-surface-0">Confirm</button>
+          <button type="button" onClick={() => setBulkTarget(null)}
+            className="rounded-md border border-surface-3 px-3 py-1.5">Cancel</button>
+        </div>}
+        {bulkRunning && <div role="status" className="mb-3 flex items-center gap-3 text-sm text-text-secondary">
+          Processed {bulkProcessed} loaded episodes.
+          <button type="button" onClick={() => bulkController.current?.abort()}
+            className="rounded-md border border-surface-3 px-3 py-1.5">Stop bulk update</button>
+        </div>}
+        {bulkSummary && <p role="status" className="mb-3 text-sm text-text-secondary">{bulkSummary}</p>}
         {episodes.length === 0 && <p className="text-text-secondary">No episodes are available in this feed.</p>}
         <div className="space-y-2">
           {episodes.filter(episode => (episode.title + ' ' + episode.description).toLowerCase().includes(episodeFilter.trim().toLowerCase()) &&
@@ -569,7 +657,7 @@ export const PodcastShow: React.FC = () => {
             {episode.description && <p className="mt-2 line-clamp-3 text-sm text-text-secondary">{episode.description}</p>}
             <div className="mt-3 flex flex-wrap items-center gap-3">
               {episode.positionMs ? <span className="text-xs text-text-subtle">Position saved at {Math.floor(episode.positionMs / 60000)} min</span> : null}
-              <button type="button" onClick={() => void setEpisodePlayed(episode)} disabled={updatingEpisode !== null}
+              <button type="button" onClick={() => void setEpisodePlayed(episode)} disabled={updatingEpisode !== null || bulkRunning}
                 aria-label={episode.isPlayed ? `Mark ${episode.title} unplayed` : `Mark ${episode.title} played`}
                 className="rounded-md border border-surface-3 px-3 py-1.5 text-xs font-semibold text-text-secondary hover:text-text-main disabled:opacity-50">
                 {updatingEpisode === episode.id ? 'Saving…' : episode.isPlayed ? 'Mark unplayed' : 'Mark played'}
@@ -607,7 +695,7 @@ export const PodcastShow: React.FC = () => {
             </div>
           </article>)}
         </div>
-        {nextOffset !== null && <button type="button" disabled={loadingMore}
+        {nextOffset !== null && <button type="button" disabled={loadingMore || bulkRunning}
           onClick={() => void loadMoreEpisodes()}
           className="mt-5 w-full rounded-lg border border-surface-3 bg-surface-2 px-4 py-3 text-sm font-semibold text-text-main hover:bg-surface-highlight disabled:opacity-50">
           {loadingMore ? 'Loading more episodes…' : 'Load more episodes'}

@@ -465,7 +465,7 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 - [ ] **POD-04A:** Per-show auto-download policies (newest N/unplayed N), global cap, host limits, dedup and opt-in defaults.
 - [ ] **POD-04B:** Resume partial transfers with strong validator checks; 416/retry/range tests, disable resume when unsafe.
 - [ ] **POD-04C:** Quota, retention, cleanup grace period, pinned/current protection and crash-safe file garbage collection.
-- [ ] **POD-04D (partial manual queue):** User-driven Play Next and Add to Queue on followed shows/Continue Listening are implemented using the existing music/Plex queue; automatic policies, queue persistence, inbox triage, bulk mark/archive and rich filters remain.
+- [ ] **POD-04D (partial triage):** User-driven Play Next/Add to Queue on followed shows and Continue Listening plus guarded bulk mark played/unplayed on currently loaded show episodes are implemented. Automatic policies, durable podcast queue, starred/inbox views, archival and richer filters remain.
 - [ ] **POD-04E (in progress):** Safe 512 KiB / 100-feed OPML 2.0 import parser, nested outlines, public URL filtering, preview and already-followed detection; UI follows each feed via existing API with cancellation and partial-failure report. Durable restartable import job, wider real-provider qualification and CI remain.
 - [ ] **POD-04F:** Per-show speed/seek/start/end skip defaults; global and show controls in Settings.
 - [ ] **POD-04G:** Smart podcast playlists; keep isolated from music playlist DB and Smart Mix heuristics.
@@ -883,3 +883,10 @@ failure modes remain open. Full CI must be green before merge.
 - **Safety boundaries:** No additional HTMLAudio element, music-library writes, Spotify credentials, publisher URLs, or podcast-specific queue transport. The existing shared queue provides reorder, remove, clear and next/previous functionality. Only episodes with `hasAudio` expose queue actions.
 - **Tests:** Pure Vitest adapter coverage verifies idle playback, insert-next, append and no-audio refusal. Playwright checks Play Next/Add to Queue from both show and Continue views and confirms the common queue count. These changes require a fresh CI run; success of an earlier commit does not validate this slice.
 - **Future:** Persistently curated podcast Up Next/Inbox and starred episode semantics should be designed in the podcast-owned SQLite model and should not blindly persist ephemeral, possibly expired publisher source URLs; offline downloads remain POD-03A–E.
+
+
+### 2026-11-22 — guarded bulk played/unplayed (POD-04D partial)
+
+- **Scope:** Podcast Show offers confirmation-gated **Mark loaded played/unplayed** actions. The affected set is only the already-loaded episodes (at most the bounded pages already fetched), not all historic episodes or arbitrary feeds. Saved listening position and listened duration are preserved.
+- **Consistency:** Updates are serial, read fresh progress revisions, and use the established optimistic-CAS API. A newer writer wins: conflicts/failures are counted, never force-written. A Stop action cancels in-flight calls and reports partial success; pending work also aborts when the page unmounts.
+- **Tests:** Playwright's followed-feed fixture now verifies the explicit confirmation flow, preserving positions and change of played state after bulk processing. New CI must validate this continuation before acceptance. Retained mark-one controls are disabled while a bulk pass is active.
