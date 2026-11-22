@@ -54,8 +54,10 @@ Example successful response:
   are reduced to plain text. Malformed/unsupported feeds return an error.
 - Long-running subscribe/preview requests are currently synchronous; a
   durable background refresh job is planned, not present.
-- No custom ports or authenticated/tokenized feeds; query parameters are restricted to `feed=rss`, `feed=rss2`, `feed=podcast`, `format=rss` or `format=xml`. Private
-  feed access in this preview. These require a separate security design.
+- No custom ports or authenticated/tokenized feeds. Public query parameters are
+  restricted to `feed=rss`, `feed=rss2`, `feed=podcast`, `format=rss`, or
+  `format=xml`; private feeds require a separate encrypted-credential and
+  export-redaction design.
 - Publisher enclosure URLs are catalog metadata only and **not** an
   implemented streaming or download endpoint.
 - The UI has a separate opt-in `podcasts_preview_enabled` backend setting
