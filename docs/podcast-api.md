@@ -24,7 +24,7 @@ RSS 2.0 feeds during initial implementation.
 | GET | `/episodes/{id}/download` | Fetch one subscribed episode's persisted download status; 404 when absent |
 | POST | `/episodes/{id}/download` | Queue/retry a public supported audio enclosure; 202 for queued/current/completed record, idempotent; the worker starts independently |
 | DELETE | `/episodes/{id}/download` | Cancel queued/in-progress work and return its status (200), or explicitly remove a completed offline file with 204. Filesystem conflicts return 409; episode and listening progress are preserved |
-| GET | `/episodes/{id}/media` | Prefer subscription-scoped completed offline files served with local HTTP byte ranges; otherwise proxy validated public 206 publisher ranges (maximum 2 MiB) or bounded streaming 200 fallback. Nonzero seeks on 200-only origins return 416 |
+| GET | `/episodes/{id}/media` | Prefer subscription-scoped completed offline files served with local HTTP byte ranges after first-use SHA-256 verification. Bad cached audio returns 410 (`podcast_download_corrupt`/missing) and invalidates the download state. Otherwise proxy validated public 206 publisher ranges (maximum 2 MiB) or bounded streaming 200 fallback. Nonzero seeks on 200-only origins return 416 |
 
 | PUT | `/episodes/{id}/progress` | Save position/listened/played with `expectedRevision` CAS; 409 on stale writes |
 | POST | `/import/opml/preview` | Validate raw OPML 2.0 XML (512 KiB, 100 feed outlines, max nesting 24); list public candidates, duplicate/unsupported counts, and already-followed flags without network calls |
@@ -255,6 +255,6 @@ Player component, although desktop/Wails acceptance remains pending.
 
 **Still pending:** cross-device sync, reliable seeking on hosts that do
 not provide ranges, private/paywalled authentication, expiry handling
-for signed CDN URLs, offline disk-free preflight/retention/integrity repair,
+for signed CDN URLs, physical disk-free preflight/retention and advanced integrity repair,
 advanced podcast speed/silence processing and representative real-provider
 and cross-platform offline acceptance tests.
