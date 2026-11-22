@@ -20,13 +20,14 @@ export const PodcastEpisodePlayer: React.FC<Props> = ({ episode, showTitle, onCl
   const lastSaveRef = useRef(0);
   const writingRef = useRef(false);
   const queuedRef = useRef(false);
+  const conflictRef = useRef(false);
   const [ready, setReady] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(1);
   const [error, setError] = useState('');
 
   const save = useCallback(async () => {
-    if (!progressRef.current) return;
+    if (!progressRef.current || conflictRef.current) return;
     if (writingRef.current) { queuedRef.current = true; return; }
     writingRef.current = true;
     try {
@@ -49,7 +50,12 @@ export const PodcastEpisodePlayer: React.FC<Props> = ({ episode, showTitle, onCl
           lastSaveRef.current = Date.now();
           setError('');
         } catch (reason) {
-          setError(reason instanceof PodcastAPIError && reason.status === 409
+          const conflict = reason instanceof PodcastAPIError && reason.status === 409;
+          if (conflict) conflictRef.current = true;
+          // A temporary publisher/storage error should not cause requests
+          // on every audio timeupdate tick; retry at the normal interval.
+          lastSaveRef.current = Date.now();
+          setError(conflict
             ? 'Progress changed in another session. Reload this episode to avoid overwriting it.'
             : reason instanceof Error ? reason.message : 'Could not save listening progress.');
           break;
@@ -63,6 +69,7 @@ export const PodcastEpisodePlayer: React.FC<Props> = ({ episode, showTitle, onCl
     progressRef.current = null; positionRef.current = 0;
     baseListenedRef.current = 0; sessionListenedRef.current = 0;
     lastTimeRef.current = null; playedRef.current = false;
+    conflictRef.current = false;
     setReady(false); setPlaying(false); setError('');
     void podcastsAPI.getProgress(episode.id, controller.signal).then(progress => {
       if (controller.signal.aborted) return;
