@@ -514,3 +514,72 @@ test('Podcasts scheduled download retry stays visible and can be canceled', asyn
   await expect(downloads.getByText('Resumable episode')).toBeVisible();
   expect(pageErrors).toEqual([]);
 });
+
+
+test('Per-show auto-download is off by default and persists an explicit new-episode limit', async ({ page }) => {
+  let policy = { enabled: false, newestCount: 1 };
+  let updates = 0;
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/*', async route => {
+    const req = route.request();
+    const u = new URL(req.url());
+    if (u.origin !== 'http://127.0.0.1:4173') return route.abort();
+    if (u.pathname === '/api/settings/podcasts_preview_enabled') {
+      return route.fulfill({ json: { key: 'podcasts_preview_enabled', value: '' } });
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/auto-download') {
+      if (req.method() === 'GET') return route.fulfill({ json: { policy } });
+      if (req.method() === 'PUT') {
+        const body = req.postDataJSON() as { enabled: boolean; newestCount: number };
+        expect(body.newestCount).toBeGreaterThanOrEqual(1);
+        expect(body.newestCount).toBeLessThanOrEqual(3);
+        policy = body;
+        updates++;
+        return route.fulfill({ json: { policy } });
+      }
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId && req.method() === 'GET') {
+      return route.fulfill({ json: { feed: {
+        id: feedId, url: feedURL, title: 'Auto-download fixture',
+        author: 'Publisher', description: '', imageUrl: '', language: 'en', episodeCount: 0,
+      } } });
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/episodes') {
+      return route.fulfill({ json: { episodes: [], nextOffset: null } });
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/refresh') {
+      return route.fulfill({ json: {
+        lastCheckedAt: 0, lastSuccessAt: 0, nextRefreshAt: 0, failures: 0, refreshing: false,
+      } });
+    }
+    if (u.pathname === '/api/v2/podcasts/downloads') {
+      return route.fulfill({ json: {
+        downloads: [], storage: { usedBytes: 0, maxBytes: 2147483648 },
+      } });
+    }
+    if (u.pathname.startsWith('/api/')) {
+      return route.fulfill({ status: 503, json: { error: 'fixture backend unavailable' } });
+    }
+    return route.continue();
+  });
+
+  await page.goto('/podcasts/show/' + feedId);
+  const checkbox = page.getByRole('checkbox', { name: 'Automatically download new podcast episodes' });
+  const count = page.getByRole('combobox', { name: 'Maximum auto-download episodes per refresh' });
+  await expect(checkbox).not.toBeChecked();
+  await expect(page.getByText('No old episodes are downloaded automatically.', { exact: false })).toBeVisible();
+  await expect(page.getByText('Feed refresh is currently off.', { exact: false })).toBeVisible();
+  await checkbox.check();
+  await expect(checkbox).toBeChecked();
+  await count.selectOption('2');
+  await expect(count).toHaveValue('2');
+  expect(updates).toBe(2);
+  await page.reload();
+  await expect(checkbox).toBeChecked();
+  await expect(count).toHaveValue('2');
+  await checkbox.uncheck();
+  await expect(checkbox).not.toBeChecked();
+  expect(updates).toBe(3);
+  expect(errors).toEqual([]);
+});
