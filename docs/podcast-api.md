@@ -20,7 +20,7 @@ RSS 2.0 feeds during initial implementation.
 | GET | `/feeds/{id}` | Read one followed show by stable ID; 404 when unknown or unfollowed |
 | GET | `/episodes/continue?limit=12` | Recently listened, uncompleted episodes on followed shows; bound 1–50, no publisher network requests |
 | GET | `/episodes/{id}/progress` | Revisioned durable progress; 404 for unknown episodes |
-| GET | `/downloads` | Up to 100 recent statuses for followed episodes, without raw publisher URLs or internal disk paths. Also returns `storage.usedBytes` and `storage.maxBytes` for the 2 GiB aggregate podcast reservation budget, including completed and in-flight work |
+| GET | `/downloads` | Up to 100 recent statuses for followed episodes with safe `feedId`, `feedTitle`, `episodeTitle` metadata for the centralized Downloads view, but no raw publisher URLs or internal paths. Also returns `storage.usedBytes` and `storage.maxBytes` for the 2 GiB aggregate reservation budget |
 | GET | `/episodes/{id}/download` | Fetch one subscribed episode's persisted download status; 404 when absent |
 | POST | `/episodes/{id}/download` | Queue/retry a public supported audio enclosure; 202 for queued/current/completed record, idempotent; the worker starts independently |
 | DELETE | `/episodes/{id}/download` | Cancel queued/in-progress work and return its status (200), or explicitly remove a completed offline file with 204. Filesystem conflicts return 409; episode and listening progress are preserved |
@@ -265,3 +265,8 @@ and cross-platform offline acceptance tests.
 The download worker checks the destination volume's available bytes **before each publisher-chunk write** and requires the remaining episode total plus 128 MiB of spare capacity. The probe is fail-closed; status becomes `failed` with `errorCode: "download_disk_space_low"` if disk space is insufficient or the volume is not readable. This limit is separate from the 2 GiB aggregate reservation cap, which continues to use `download_quota_exceeded`. Neither system can prevent another process from consuming disk space after the check.
 
 Unfollowing a show revokes its queued and active transfer leases in the same SQLite transaction as subscription deletion, while preserving episode progress. Completed local files are reclaimed only by the backend using fixed episode-ID names and regular-file checks; an open file on Windows can defer reclamation until a later worker pass. There is no raw file-path delete endpoint or browser storage access.
+
+
+### In-progress publisher representation validation
+
+The podcast downloader keeps a bounded **strong ETag** (when present) and normalized Last-Modified from the first valid 206 range response. Subsequent ranges send `If-Range` using the same strict public-network fetcher; a changed ETag or Last-Modified returns safe download failure code `download_publisher_changed` rather than publishing mixed content. No validator or weak-only ETag permits basic range downloading, **not** restart resume. The validator is internal and is never returned in the public Downloads list or persisted in the shared music catalog. Persisted, validator-gated crash resume remains POD-04B work.
