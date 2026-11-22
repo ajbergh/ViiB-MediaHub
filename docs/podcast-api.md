@@ -77,3 +77,37 @@ Example successful response:
 **Testing:** Go parser/fetch/repository/handler tests, TypeScript client tests
 and synthetic browser Playwright tests are included in the feature branch.
 CI qualification must pass before this preview is marked ready.
+
+
+## Troubleshooting RSS preview/follow failures
+
+**Expected today:** supported public HTTPS RSS 2.0 feeds can be previewed and
+followed without enabling the optional automatic-refresh setting. Playback,
+download and podcast directory search are different roadmap milestones.
+
+The previous generic frontend message `The podcast request could not be
+completed` meant the HTTP response had no recognized V2 JSON error envelope.
+That could be an outdated Go backend route (404/405), unavailable backend
+proxy (502/503), blocked local client origin (403), or other HTTP failure.
+The current frontend reports the HTTP status and a more actionable explanation;
+the presence of the generic message **does not prove an invalid feed**.
+
+Check the failing `POST /api/v2/podcasts/feeds/preview` request using browser
+DevTools → Network. Note its HTTP status and response Content-Type. A working
+same-origin `GET /api/v2/podcasts/feeds` returns a JSON object with a `feeds`
+array, even when empty. A 404 or HTML response instead of JSON strongly
+suggests the UI and Go API aren't running matching builds.
+
+For Vite development, `vite.config.ts` proxies `/api` to
+`http://127.0.0.1:8080`. The Go backend must be built from the **same branch**
+and listening on that port (or the Vite proxy must be reconfigured). Running
+only `npm run dev` does not start the Go backend. For a Wails desktop build,
+recompile/restart the desktop Go executable; rebuilding the React UI alone
+doesn't update the embedded Go routes.
+
+If the server responds with a structured error code `invalid_feed_url`,
+`blocked_remote_target`, `feed_invalid`, or `feed_unavailable`, investigate
+the specific public-feed URL and current HTTPS/secret-query/security policy;
+don't weaken SSRF protections to hide an HTTP problem. Include the HTTP status
+and ViiB diagnostic token (if present) when reporting a failure, not private
+feed URLs or credentials.

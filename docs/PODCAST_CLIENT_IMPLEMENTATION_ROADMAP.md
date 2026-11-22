@@ -673,3 +673,30 @@ Commit `b44e89a` adds SQLite persistence and the first status log. API contract 
 **Validation status:** Focused podcast Go parser/DB/API and public-URL policy vet, frontend checks, and synthetic browser E2E **passed** on [CI run for commit `1b5fcf0`](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/45050987329). This includes the raster artwork proxy, conservative GUID matching, and followed/show filtering covered by that revision. Earlier CI found and fixed a missing import, SQL quote issue, and nondeterministic refresh fixture. The new episode-progress CAS tests and their first-write revision guard were subsequently added; **the latest branch HEAD has not yet been confirmed green**. Full backend validation remains pending/in progress. GitHub Actions uses the required Go 1.26.11 toolchain; no cross-platform release qualification is claimed.
 
 **Next vertical delivery:** Verify artwork proxy Go/Playwright and full CI, expand RSS compatibility, then address GUID changes; playback and downloads remain separately gated. The cross-project `docs/ROADMAP.md` links this plan as an unmerged domain roadmap, not a shipping feature. Keep playback and offline work explicitly later. Music playback remains untouched.
+
+
+### Phase 1 defect — public RSS preview/follow returns generic error (2026-11-22)
+
+**User report:** Every RSS feed gives `The podcast request could not be completed`.
+**Expected:** Public HTTPS RSS preview and subscribe are Phase 1 implemented
+behaviors; this is not expected or accepted early-access behavior.
+
+**Verified in source:** The TypeScript client rendered that exact fallback when
+an HTTP error did not match the backend's structured V2 JSON envelope. The
+application's source mounts the podcast router, and the Vite developer proxy
+points to `127.0.0.1:8080`; a stale/mismatched Go backend or missing proxy is
+a plausible explanation, **not a confirmed runtime root cause**. The user's
+running browser/network response is not available through the repository tools.
+
+**Remediation committed:** Explain HTTP 404/405 as missing/stale Podcast API,
+502/503/504 as backend/proxy unavailable, 403 as local API denial, and retain
+structured feed-specific errors without displaying untrusted response bodies.
+Add frontend regression tests, successful mock RSS preview+subscribe handler
+tests, and integration tests proving GET/POST routes are reachable under the
+actual server's approved origins. A test-only feed fetcher seam is reused in
+the valid-feed test; production still uses the public-IP-validated connector.
+
+**Status: investigation, not resolved.** Verify the checked-out frontend and
+running Go backend match, record the observed HTTP status/response and
+retest a real public HTTPS feed in both web/Vite and Wails. Keep the PR draft
+until runtime reproduction and required CI are green.
