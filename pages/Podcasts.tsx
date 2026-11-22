@@ -3,7 +3,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { ArrowLeft, Download, Headphones, Loader2, Plus, RefreshCw, Rss, Trash2 } from 'lucide-react';
 import { api } from '../services/api';
-import { PodcastEpisodePlayer } from '../components/PodcastEpisodePlayer';
+import { podcastEpisodeToTrack } from '../lib/podcastPlayback';
+import { useStore } from '../store';
 import { podcastsAPI, PodcastAPIError, type PodcastFeed, type PodcastEpisode, type PodcastPreview, type PodcastRefreshStatus, type PodcastOPMLImportPreview, type PodcastContinueEpisode } from '../services/podcasts';
 
 const inputClass = 'w-full rounded-lg border border-surface-3 bg-surface-1 px-4 py-3 text-text-main outline-none focus-visible:ring-2 focus-visible:ring-brand';
@@ -309,7 +310,7 @@ export const PodcastShow: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [feed, setFeed] = useState<PodcastFeed | null>(null);
   const [episodes, setEpisodes] = useState<PodcastEpisode[]>([]);
-  const [listeningEpisode, setListeningEpisode] = useState<PodcastEpisode | null>(null);
+
   const [episodeFilter, setEpisodeFilter] = useState('');
   const [playedFilter, setPlayedFilter] = useState<'all' | 'played' | 'unplayed'>('all');
   const [updatingEpisode, setUpdatingEpisode] = useState<string | null>(null);
@@ -327,7 +328,7 @@ export const PodcastShow: React.FC = () => {
   const [revision, setRevision] = useState(0);
   const lastCheckedRef = useRef<number | null>(null);
   const navigate = useNavigate();
-  useEffect(() => { setListeningEpisode(null); }, [id]);
+
   useEffect(() => {
     let mounted = true;
     void api.getSetting('podcasts_preview_enabled')
@@ -495,8 +496,7 @@ export const PodcastShow: React.FC = () => {
             </div>}
         </div>
       </header>
-      {listeningEpisode && <PodcastEpisodePlayer key={listeningEpisode.id}
-        episode={listeningEpisode} showTitle={feed.title} onClose={() => setListeningEpisode(null)} />}
+
       <section>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-bold text-text-main">Episodes ({episodes.length} loaded)</h2>
@@ -528,12 +528,21 @@ export const PodcastShow: React.FC = () => {
                 {updatingEpisode === episode.id ? 'Saving…' : episode.isPlayed ? 'Mark unplayed' : 'Mark played'}
               </button>
               {episode.enclosureUrl && <button type="button"
-                onClick={() => setListeningEpisode(episode)}
+                onClick={() => {
+                  // The same persistent Player owns music, Plex and podcasts.
+                  // The loaded show page supplies an episode queue without
+                  // ever adding podcast items to the music catalog.
+                  const queue = episodes.filter(item => Boolean(item.enclosureUrl))
+                    .map(item => podcastEpisodeToTrack(item, feed));
+                  const selected = queue.findIndex(item => item.podcastEpisodeId === episode.id);
+                  if (selected < 0) return;
+                  void useStore.getState().playSong(queue[selected], queue, 'podcast', selected);
+                }}
                 aria-label={'Listen to ' + episode.title}
                 className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-surface-0">
                 Listen
               </button>}
-              <span className="text-xs text-text-subtle">Streaming is early access; downloads are coming in a later phase.</span>
+              <span className="text-xs text-text-subtle">Play in the ViiB music player. Offline downloads are planned.</span>
             </div>
           </article>)}
         </div>

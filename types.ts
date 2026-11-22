@@ -28,7 +28,7 @@
  * @module types
  */
 
-export type PlaybackContext = 'ai_dj' | 'album' | 'playlist' | 'queue' | 'search' | 'spotify' | 'artist' | 'liked' | 'smart_mix';
+export type PlaybackContext = 'ai_dj' | 'album' | 'playlist' | 'queue' | 'search' | 'spotify' | 'artist' | 'liked' | 'smart_mix' | 'podcast';
 
 export type AlbumMetadataPatch = Partial<Pick<Song, 'album' | 'albumArtist' | 'artist' | 'year' | 'genre'>>;
 
@@ -88,7 +88,14 @@ export interface Song {
 
   // Catalog origin. Plex tracks continue to use the normal playback URL; this
   // metadata is only for source-aware UI such as AI DJ.
-  source?: 'local' | 'plex';
+  source?: 'local' | 'plex' | 'podcast';
+  // Podcast episodes are transient shared-player queue entries, never songs
+  // persisted in the music catalog. Their progress remains in podcast tables.
+  podcastEpisodeId?: string;
+  podcastResumeMs?: number;
+  podcastListenedMs?: number;
+  podcastProgressRevision?: number;
+  podcastIsPlayed?: boolean;
   sourceName?: string;
   stemStatus?: 'none' | 'discovered' | 'validating' | 'ready' | 'stale' | 'invalid' | 'unavailable';
 }
