@@ -22,6 +22,9 @@ export interface PodcastEpisode {
 }
 export interface PodcastContinueEpisode extends PodcastEpisode {
   feedTitle: string;
+  positionMs: number;
+  listenedMs: number;
+  progressRevision: number;
 }
 export interface PodcastProgress {
   episodeId: string;

@@ -286,5 +286,5 @@ test('OPML import previews safely and reports per-feed failures with cancellatio
   await expect(page.getByText('Followed 1 podcast; 1 failed.')).toBeVisible();
   await expect(page.getByText('Podcast Two: feed_unavailable')).toBeVisible();
   expect(imports).toBe(2);
-  await expect(page.getByRole('button', { name: 'Import 1 feeds' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Import 1 feed' })).toBeEnabled();
 });

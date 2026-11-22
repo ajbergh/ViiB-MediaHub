@@ -5,7 +5,6 @@ import (
     "encoding/xml"
     "errors"
     "io"
-    "strings"
 )
 
 const MaxOPMLImportBytes = 512 << 10
