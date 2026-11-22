@@ -983,3 +983,8 @@ failure modes remain open. Full CI must be green before merge.
 
 - **User flow:** Loaded show episodes now have explicit Unplayed, In progress, Not started and Played filters alongside bounded text search. In progress means unplayed with a positive saved position; Not started means unplayed without a saved position. The UI shows the number of matching loaded episodes and a clear no-results state. This is an **in-memory loaded-pages filter**, not an all-RSS/archive search, a persistent queue or a separate player.
 - **Regression coverage:** Extended synthetic Playwright episode-pagination fixture with both started and played episodes and checks for status visibility, combined search, counts and empty results. The original shared player transport is unchanged. CI for this feature commit and live native qualification remain open.
+
+### 2026-11-22 — auto-download UI failure and navigation guards (POD-04A partial)
+
+- **Saving a policy:** The React checkbox/count controls now optimistically reflect the requested value while the subscription-scoped PUT is in flight, restore the previous value on an API failure and display the server's safe error. A late PUT response from a prior show cannot overwrite the new show's policy after navigation; the new show fetch clears the previous saving/message state. This changes only settings UX, not the backend's opt-in/no-backfill/quota rules.
+- **Test coverage:** The auto-download Playwright fixture now simulates a rejected PUT and verifies the displayed error and state rollback in addition to save/reload/disable. Validation on the new head remains pending. No real-publisher/native acceptance is claimed.

@@ -552,6 +552,9 @@ export const PodcastShow: React.FC = () => {
   const [autoDownload, setAutoDownload] = useState<PodcastAutoDownloadPolicy | null>(null);
   const [autoDownloadSaving, setAutoDownloadSaving] = useState(false);
   const [autoDownloadMessage, setAutoDownloadMessage] = useState('');
+  // A settings request for show A must not overwrite show B after navigation.
+  const autoDownloadFeedRef = useRef(id);
+  autoDownloadFeedRef.current = id;
   const [revision, setRevision] = useState(0);
   const lastCheckedRef = useRef<number | null>(null);
   const navigate = useNavigate();
@@ -569,6 +572,8 @@ export const PodcastShow: React.FC = () => {
     if (!id) return;
     const controller = new AbortController();
     setAutoDownload(null);
+    setAutoDownloadSaving(false);
+    setAutoDownloadMessage('');
     void podcastsAPI.getAutoDownloadPolicy(id, controller.signal)
       .then(({ policy }) => { if (!controller.signal.aborted) setAutoDownload(policy); })
       .catch(err => {
@@ -579,25 +584,26 @@ export const PodcastShow: React.FC = () => {
 
   const saveAutoDownload = async (policy: PodcastAutoDownloadPolicy) => {
     if (!id || autoDownloadSaving || !autoDownload) return;
+    const feedID = id;
     const previous = autoDownload;
-    // These are controlled form inputs. Update them immediately on change,
-    // then reconcile with the Go-owned setting (or roll back on failure).
-    // Deferring all state until the request resolves makes checkboxes and
-    // selects appear to ignore the user's click in React/Playwright.
+    // Controlled inputs change immediately. The backend is authoritative;
+    // revert a rejected save, but never apply a late response to another show.
     setAutoDownload(policy);
     setAutoDownloadSaving(true);
     setAutoDownloadMessage('');
     try {
-      const updated = await podcastsAPI.setAutoDownloadPolicy(id, policy);
+      const updated = await podcastsAPI.setAutoDownloadPolicy(feedID, policy);
+      if (autoDownloadFeedRef.current !== feedID) return;
       setAutoDownload(updated.policy);
       setAutoDownloadMessage(updated.policy.enabled
         ? 'Automatic downloads enabled for new episodes discovered on future feed refreshes.'
         : 'Automatic downloads turned off. Existing downloads are unchanged.');
     } catch (err) {
+      if (autoDownloadFeedRef.current !== feedID) return;
       setAutoDownload(previous);
       setAutoDownloadMessage(readableError(err));
     } finally {
-      setAutoDownloadSaving(false);
+      if (autoDownloadFeedRef.current === feedID) setAutoDownloadSaving(false);
     }
   };
 

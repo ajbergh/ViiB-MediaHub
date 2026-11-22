@@ -542,6 +542,7 @@ test('Podcasts scheduled download retry stays visible and can be canceled', asyn
 test('Per-show auto-download is off by default and persists an explicit new-episode limit', async ({ page }) => {
   let policy = { enabled: false, newestCount: 1 };
   let updates = 0;
+  let rejectNext = false;
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/*', async route => {
@@ -557,8 +558,14 @@ test('Per-show auto-download is off by default and persists an explicit new-epis
         const body = req.postDataJSON() as { enabled: boolean; newestCount: number };
         expect(body.newestCount).toBeGreaterThanOrEqual(1);
         expect(body.newestCount).toBeLessThanOrEqual(3);
-        policy = body;
         updates++;
+        if (rejectNext) {
+          rejectNext = false;
+          return route.fulfill({ status: 503, json: {
+            error: { code: 'podcast_library_unavailable', message: 'Cannot save podcast auto-download preferences' },
+          } });
+        }
+        policy = body;
         return route.fulfill({ json: { policy } });
       }
     }
@@ -604,5 +611,11 @@ test('Per-show auto-download is off by default and persists an explicit new-epis
   await checkbox.uncheck();
   await expect(checkbox).not.toBeChecked();
   expect(updates).toBe(3);
+  rejectNext = true;
+  await checkbox.click();
+  await expect(page.getByText('Cannot save podcast auto-download preferences')).toBeVisible();
+  await expect(checkbox).not.toBeChecked();
+  expect(updates).toBe(4);
+  expect(policy.enabled).toBe(false);
   expect(errors).toEqual([]);
 });
