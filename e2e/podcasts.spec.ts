@@ -107,6 +107,10 @@ test('Podcasts follows public RSS and browses episodes without playback', async 
   // No separate podcast-only controls or audio element are mounted.
   await expect(page.getByRole('region', { name: 'Podcast episode player' })).toHaveCount(0);
   await expect(page.locator('audio[src="/api/v2/podcasts/episodes/ep-1/media"]')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Back 15 seconds' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Forward 30 seconds' })).toBeVisible();
+  await page.getByRole('combobox', { name: 'Podcast playback speed' }).selectOption('1.5');
+  await expect(page.locator('audio[src="/api/v2/podcasts/episodes/ep-1/media"]')).toHaveJSProperty('playbackRate', 1.5);
   await expect(page.getByText('First episode')).toHaveCount(2);
 
   await expect(page.getByRole('img', { name: 'Independent Podcast cover art' })).toHaveAttribute(
@@ -302,7 +306,7 @@ test('OPML import previews safely and reports per-feed failures with cancellatio
 });
 
 
-test('Continue Listening only displays saved-progress entries and opens followed show', async ({ page }) => {
+test('Continue Listening resumes a saved episode through the shared player', async ({ page }) => {
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
     if (url.origin !== 'http://127.0.0.1:4173') return route.abort();
@@ -311,7 +315,7 @@ test('Continue Listening only displays saved-progress entries and opens followed
       return route.fulfill({ json: { episodes: [{
         id: 'episode-42', feedId: feedId, feedTitle: 'Following a podcast',
         title: 'An unfinished episode', positionMs: 185000, listenedMs: 120000,
-        durationMs: 1800000, isPlayed: false, progressRevision: 1,
+        durationMs: 1800000, hasAudio: true, isPlayed: false, progressRevision: 1,
       }] } });
     }
     if (url.pathname === '/api/v2/podcasts/feeds') return route.fulfill({ json: { feeds: [{
@@ -326,6 +330,9 @@ test('Continue Listening only displays saved-progress entries and opens followed
   await expect(page.getByRole('heading', { name: 'Continue Listening' })).toBeVisible();
   const section = page.getByRole('region', { name: 'Continue listening' });
   await expect(section.getByText('An unfinished episode')).toBeVisible();
-  await expect(section.getByText('Saved at 3 min · View episode')).toBeVisible();
-  await expect(section.getByRole('link')).toHaveAttribute('href', '/podcasts/show/' + feedId);
+  await expect(section.getByText('Saved at 3 min')).toBeVisible();
+  await expect(section.getByRole('link', { name: 'View show' })).toHaveAttribute('href', '/podcasts/show/' + feedId);
+  await section.getByRole('button', { name: 'Resume An unfinished episode' }).click();
+  await expect(page.locator('audio[src="/api/v2/podcasts/episodes/episode-42/media"]')).toHaveCount(1);
+  await expect(page.getByRole('region', { name: 'Podcast episode player' })).toHaveCount(0);
 });

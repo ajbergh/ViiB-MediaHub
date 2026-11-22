@@ -444,8 +444,8 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 - [ ] **POD-02B:** Discover search UI, results with artwork, preview/follow, feed detail and episode filter.
 - [ ] **POD-02C (in progress):** Subscription-scoped public HTTP/HTTPS audio proxy accepts signed CDN queries with DNS/rebinding and redirect checks; strict 206 bounded Range or guarded streaming 200 fallback. Private/authenticated publisher feeds, offline source and real provider acceptance remain.
 - [ ] **POD-02D (in progress):** Podcast playback is now owned by the existing ViiB audio elements/queue and media-session hook, with podcast-only CAS progress tracking and crossfade exclusion. Real OS media key, Windows Wails and mixed-source testing remain.
-- [ ] **POD-02E (in progress):** Same global ViiB player now plays podcast episodes with existing music/Plex controls, queue, art, volume, EQ and Now Playing. Podcast-specific long-form speed/skip enhancements, real-provider streaming and cross-platform qualification remain.
-- [ ] **POD-02F (in progress):** Durable Continue Listening query/API and linked library cards, plus manual played/unplayed episode controls; playback-driven resume, queue/starred operations and full CI remain.
+- [ ] **POD-02E (in progress):** The shared music/Plex player handles public RSS with the same controls, volume, EQ and Now Playing. Added podcast-only 15s rewind/30s forward and 0.75–2× speed on the existing transport; music resets to 1×. User playback and seek verified at `83426a5`; newest controls and native cross-platform qualification remain CI/runtime gated.
+- [ ] **POD-02F (in progress):** Durable Continue Listening, played controls and one-click Resume via the same queue/position adapter. Queue/starred workflows, newest-change CI and cross-platform acceptance remain.
 
 **Exit:** Discovery or RSS → subscribe → stream → pause → quit/reopen → resume at expected position; music, Spotify and DJ behavior unchanged.
 
@@ -647,12 +647,12 @@ Branch strategy: short-lived `feature/podcasts-*` work branches from updated `ma
 
 ---
 
-**Current next task:** Qualify and stabilize the latest podcast refresh implementation on draft PR #167; then complete feed aliases, stronger publisher compatibility, image/enclosure security tests, and remaining Phase 1 API behaviors. The streaming player and offline downloads have not yet landed.
+**Historical first-phase task:** Qualify and stabilize the latest podcast refresh implementation on draft PR #167; then complete feed aliases, stronger publisher compatibility, image/enclosure security tests, and remaining Phase 1 API behaviors. The streaming player and offline downloads have not yet landed.
 
 
 ## 14. Implementation progress log
 
-> **Current checkpoint: 2026-11-22, artwork/GUID/progress milestone.** Work is being committed directly to `feature/podcast-client-roadmap-2026-11-22`. Scope completed is explicitly distinguished from unverified tests and future work.
+> **Historical checkpoint: 2026-11-22, artwork/GUID/progress milestone.** Work is being committed directly to `feature/podcast-client-roadmap-2026-11-22`. Scope completed is explicitly distinguished from unverified tests and future work.
 
 | Item | State | Implementation evidence | Outstanding |
 |---|---|---|---|
@@ -666,14 +666,16 @@ Branch strategy: short-lived `feature/podcasts-*` work branches from updated `ma
 | POD-01D | **In progress** | RSS/OPML preview, subscribe/list/detail/episodes/unfollow/refresh REST, bounded offset pagination, revisioned progress REST and Continue Listening read endpoint | Cursor pagination, OpenAPI, real-provider/CI qualification |
 | POD-01E | **In progress** | Permanent Sidebar, followed/show + Load more, local search/played filters, OPML export/import UI, played controls and Continue Listening cards | Full CI, provider/desktop qualification, UX refinement |
 | POD-03F | **Implemented, CI pending** | OPML subscription export API, UI action, safe XML encoder and tests | End-to-end CI and desktop/browser acceptance; import remains POD-04E |
-| Phase 2–8 | **Not started** | None | Discovery, player, offline downloads and remaining features |
+| POD-02C/D/E | **In progress; core playback user-verified** | Public proxy, shared player, CAS progress, seeks; baseline CI green at `83426a5` | New speed/skip CI; OS controls and real cross-platform publisher acceptance |
+| POD-02F | **In progress** | Continue Listening, manual played status and one-click Resume | Queue/starred workflows and new-CI qualification |
+| Phase 3–8 | **Not started** | OPML export (POD-03F) was delivered early, not as an offline transfer | Offline downloads, automation, chapters, transcripts, discovery and release gates |
 
 **Commits:** `abde2f2` introduces the foundational ADR, RSS and URL-fetch primitives.
 Commit `b44e89a` adds SQLite persistence and the first status log. API contract work is tracked by draft [PR #167](https://github.com/ajbergh/ViiB-MediaHub/pull/167).
 
-**Validation status:** Focused podcast Go parser/DB/API and public-URL policy vet, frontend checks, and synthetic browser E2E **passed** on [CI run for commit `1b5fcf0`](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/45050987329). This includes the raster artwork proxy, conservative GUID matching, and followed/show filtering covered by that revision. Earlier CI found and fixed a missing import, SQL quote issue, and nondeterministic refresh fixture. The new episode-progress CAS tests and their first-write revision guard were subsequently added; **the latest branch HEAD has not yet been confirmed green**. Full backend validation remains pending/in progress. GitHub Actions uses the required Go 1.26.11 toolchain; no cross-platform release qualification is claimed.
+**Validation status at this historical checkpoint:** Focused podcast Go parser/DB/API and public-URL policy vet, frontend checks, and synthetic browser E2E **passed** on [CI run for commit `1b5fcf0`](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/45050987329). This includes the raster artwork proxy, conservative GUID matching, and followed/show filtering covered by that revision. Earlier CI found and fixed a missing import, SQL quote issue, and nondeterministic refresh fixture. The new episode-progress CAS tests and their first-write revision guard were subsequently added; **the latest branch HEAD has not yet been confirmed green**. Full backend validation remains pending/in progress. GitHub Actions uses the required Go 1.26.11 toolchain; no cross-platform release qualification is claimed.
 
-**Next vertical delivery:** Verify artwork proxy Go/Playwright and full CI, expand RSS compatibility, then address GUID changes; playback and downloads remain separately gated. The cross-project `docs/ROADMAP.md` links this plan as an unmerged domain roadmap, not a shipping feature. Keep playback and offline work explicitly later. Music playback remains untouched.
+**Next vertical delivery at this historical checkpoint:** Verify artwork proxy Go/Playwright and full CI, expand RSS compatibility, then address GUID changes; playback and downloads remain separately gated. The cross-project `docs/ROADMAP.md` links this plan as an unmerged domain roadmap, not a shipping feature. Keep playback and offline work explicitly later. Music playback remains untouched.
 
 
 ### Phase 1 defect — public RSS preview/follow returns generic error (2026-11-22)
@@ -863,3 +865,13 @@ their RSS URLs/network traces; browser/Wails runtime acceptance remains
 required. OS controls follow the same hooks as music, but native
 acceptance on Windows/macOS and recovery from publisher-specific
 failure modes remain open. Full CI must be green before merge.
+
+
+### 2026-11-22 — verified playback, green baseline CI and next shared-player slice
+
+- **User runtime acceptance:** The user confirmed podcast playback and seeking work on the latest shared-player fixes, commit [`83426a5`](https://github.com/ajbergh/ViiB-MediaHub/commit/83426a5d8378c2e063e37dba99c20238cab8d1e3), superseding the earlier failure report in the tested environment. This does not prove every publisher/OS combination.
+- **Baseline CI:** [Run 45059199883](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/45059199883) passed all 17 checks: frontend, backend, browser E2E, podcast smoke and desktop builds on Windows, macOS and Linux. Prior pending-validation paragraphs above are historical.
+- **POD-02F follow-up (implementation, new CI pending):** Continue Listening cards now provide one-click **Resume playback** using persisted position and the same `podcastEpisodeToTrack` adapter/queue as the music/Plex player. A missing Following list entry uses server-supplied feed metadata. Episodes without audio remain nonplayable. View show remains a distinct link.
+- **POD-02E follow-up (implementation, new CI pending):** In the *existing player*, podcast episodes expose -15/+30 second skip (normal and skinny layouts) and speed 0.75, 1, 1.25, 1.5, 1.75 or 2×. Both shared HTMLAudio elements receive the selected speed; music/Plex use 1×; Media Session reports the effective rate. No standalone player, raw publisher URL exposure or music analytics changes.
+- **New browser regression coverage:** Continue Listening Resume selects the local episode media route; skip and speed controls appear when playing podcasts; playbackRate changes; the removed podcast-only player remains absent. New commit CI results are pending, not inferred from the baseline.
+- **Next:** Validate controls against CI and Windows Wails/browser builds; continue queue/inbox triage, credentials-gated directory discovery, then secure offline downloads (POD-03A–E). Keep PR #167 draft and do not merge until release acceptance is satisfied.

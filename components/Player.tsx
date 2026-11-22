@@ -122,6 +122,14 @@ const SkinnyPlayer: React.FC<SkinnyPlayerProps> = ({
           >
             <SkipBack size={19} className="fill-current" />
           </Button>
+          {currentSong?.source === 'podcast' && <Button
+            onClick={() => onSeek(Math.max(0, currentTime - 15))}
+            disabled={!duration}
+            variant="ghost"
+            className="h-9 rounded-full px-1 text-xs font-semibold"
+            aria-label="Back 15 seconds"
+            title="Back 15 seconds"
+          >−15s</Button>}
           <Button
             onClick={onTogglePlay}
             disabled={!hasSong}
@@ -139,6 +147,14 @@ const SkinnyPlayer: React.FC<SkinnyPlayerProps> = ({
               <Play size={19} className="ml-0.5 fill-current" />
             )}
           </Button>
+          {currentSong?.source === 'podcast' && <Button
+            onClick={() => onSeek(Math.min(duration, currentTime + 30))}
+            disabled={!duration}
+            variant="ghost"
+            className="h-9 rounded-full px-1 text-xs font-semibold"
+            aria-label="Forward 30 seconds"
+            title="Forward 30 seconds"
+          >+30s</Button>}
           <Button
             onClick={onNext}
             disabled={!hasSong}
@@ -262,9 +278,19 @@ export const Player: React.FC = () => {
       currentTime, duration, handleTimeUpdate, handleLoadedMetadata, handlePause, handleEnded, seek 
   } = useAudioPlayer();
 
+  // Podcast long-form controls share the existing dual HTMLAudio transport.
+  // Music/Plex return to 1x while the user's podcast speed is remembered.
+  const isPodcast = currentSong?.source === 'podcast';
+  const [podcastPlaybackRate, setPodcastPlaybackRate] = useState(1);
+  const effectivePlaybackRate = isPodcast ? podcastPlaybackRate : 1;
+  React.useEffect(() => {
+    if (primaryRef.current) primaryRef.current.playbackRate = effectivePlaybackRate;
+    if (secondaryRef.current) secondaryRef.current.playbackRate = effectivePlaybackRate;
+  }, [effectivePlaybackRate, primaryRef, secondaryRef]);
+
   // Windows SMTC / Media Session API integration
   // Provides media key support and Windows media overlay controls
-  useMediaSession(currentTime, duration, seek);
+  useMediaSession(currentTime, duration, seek, effectivePlaybackRate);
 
   // Sleep timer state
   const [isSleepTimerOpen, setIsSleepTimerOpen] = useState(false);
@@ -492,6 +518,11 @@ export const Player: React.FC = () => {
             <Button onClick={prevSong} variant="ghost" className="rounded-full p-1.5 text-text-secondary hover:text-text-main" aria-label="Previous track">
                 <SkipBack size={19} className="fill-current" />
             </Button>
+            {isPodcast && <Button onClick={() => seek(Math.max(0, currentTime - 15))}
+                disabled={!duration} variant="ghost" aria-label="Back 15 seconds"
+                title="Back 15 seconds" className="rounded-full px-1.5 py-1 text-xs font-semibold text-text-secondary hover:text-text-main">
+                −15s
+            </Button>
             
             <div className="relative">
                 {/* Buffering indicator */}
@@ -516,9 +547,27 @@ export const Player: React.FC = () => {
                 </button>
             </div>
 
+            {isPodcast && <Button onClick={() => seek(Math.min(duration, currentTime + 30))}
+                disabled={!duration} variant="ghost" aria-label="Forward 30 seconds"
+                title="Forward 30 seconds" className="rounded-full px-1.5 py-1 text-xs font-semibold text-text-secondary hover:text-text-main">
+                +30s
+            </Button>}
             <Button onClick={nextSong} variant="ghost" className="rounded-full p-1.5 text-text-secondary hover:text-text-main" aria-label="Next track">
                 <SkipForward size={19} className="fill-current" />
             </Button>
+            {isPodcast && <label className="ml-1 text-xs text-text-secondary">
+                <span className="sr-only">Podcast playback speed</span>
+                <select aria-label="Podcast playback speed" value={podcastPlaybackRate}
+                    onChange={event => setPodcastPlaybackRate(Number(event.target.value))}
+                    className="rounded-md border border-surface-3 bg-surface-2 px-1.5 py-1 text-xs text-text-main">
+                    <option value="0.75">0.75×</option>
+                    <option value="1">1×</option>
+                    <option value="1.25">1.25×</option>
+                    <option value="1.5">1.5×</option>
+                    <option value="1.75">1.75×</option>
+                    <option value="2">2×</option>
+                </select>
+            </label>
             <Button
                 variant="ghost"
                 disabled

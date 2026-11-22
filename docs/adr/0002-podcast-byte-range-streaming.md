@@ -1,7 +1,7 @@
 # ADR 0002 — Publisher audio through one shared ViiB Player
 
 - **Date:** 2026-11-22
-- **Status:** Implemented on draft feature branch; cross-platform acceptance pending
+- **Status:** Playback and seeking user-verified on the tested build at `83426a5`; cross-platform acceptance pending
 - **Scope:** POD-02C, POD-02D, POD-02E
 - **Depends on:** [ADR 0001](0001-podcasts-local-first-boundaries.md)
 
@@ -48,7 +48,7 @@ separate and does not permit private feed tokens.
 
 ## Acceptance gates
 
-Synthetic Go/API/TypeScript and browser tests must pass. Retest actual
+Synthetic Go/API/TypeScript and browser tests must pass (baseline CI run 45059199883 passed all checks). The user verified playback and seeking with actual RSS episodes. Retest actual
 public HTTPS/HTTP RSS podcast audio in both Vite and Wails, including
 initial play, page navigation, volume, pause/resume, seek where supported,
 queue navigation and music/Plex handoff. Cross-platform native codecs

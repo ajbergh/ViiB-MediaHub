@@ -4,7 +4,7 @@ This documents **only currently implemented endpoints** in
 [`backend/internal/api/podcast_routes.go`](../backend/internal/api/podcast_routes.go).
 The full prospective API is tracked in the
 [Podcast implementation roadmap](PODCAST_CLIENT_IMPLEMENTATION_ROADMAP.md).
-No Podcast Index search, offline downloads, paid feeds or private RSS credential support is implemented yet. Public HTTPS audio byte-range streaming is now exposed as an early-access local endpoint and show-page transport, pending cross-platform qualification. OPML 2.0
+No Podcast Index search, offline downloads, paid feeds or private RSS credential support is implemented yet. Public HTTP(S) audio streams through the shared music/Plex player via a local episode-ID route. Core playback and seeking are user-verified on the tested build; native cross-platform qualification remains open. OPML 2.0
 subscription export and safe import preview are available; neither exports
 nor imports listening history.
 
@@ -20,7 +20,7 @@ RSS 2.0 feeds during initial implementation.
 | GET | `/feeds/{id}` | Read one followed show by stable ID; 404 when unknown or unfollowed |
 | GET | `/episodes/continue?limit=12` | Recently listened, uncompleted episodes on followed shows; bound 1–50, no publisher network requests |
 | GET | `/episodes/{id}/progress` | Revisioned durable progress; 404 for unknown episodes |
-| GET | `/episodes/{id}/media` | Bounded, subscription-scoped audio media proxy: 206 Partial Content with validated Content-Range, 2 MiB maximum per request; accepts one Range or first 2 MiB if absent |
+| GET | `/episodes/{id}/media` | Subscription-scoped audio proxy: validated 206 byte ranges (maximum 2 MiB per request) or bounded streaming 200 fallback for publishers without Range. Nonzero seeks on 200-only origins return 416 |
 
 | PUT | `/episodes/{id}/progress` | Save position/listened/played with `expectedRevision` CAS; 409 on stale writes |
 | POST | `/import/opml/preview` | Validate raw OPML 2.0 XML (512 KiB, 100 feed outlines, max nesting 24); list public candidates, duplicate/unsupported counts, and already-followed flags without network calls |

@@ -25,7 +25,8 @@ import { useStore } from '../store';
 export const useMediaSession = (
     currentTime: number,
     duration: number,
-    onSeek: (time: number) => void
+    onSeek: (time: number) => void,
+    playbackRate = 1
 ) => {
     const { currentSong, isPlaying, togglePlay, nextSong, prevSong } = useStore(useShallow(state => ({
         currentSong: state.currentSong,
@@ -297,14 +298,14 @@ export const useMediaSession = (
         try {
             navigator.mediaSession.setPositionState({
                 duration: duration,
-                playbackRate: 1.0,
+                playbackRate,
                 position: Math.min(currentTime, duration)
             });
         } catch (error) {
             // setPositionState can throw if values are invalid
             console.warn('[MediaSession] Error setting position state:', error);
         }
-    }, [currentTime, duration, currentSong]);
+    }, [currentTime, duration, currentSong, playbackRate]);
 };
 
 export default useMediaSession;

@@ -28,7 +28,7 @@ const PodcastArtwork: React.FC<{ feedId: string; title: string; imageURL?: strin
   </span>;
 };
 
-/** Early RSS subscription experience; deliberately has no fake player or download actions. */
+/** Public RSS subscriptions and shared-player playback; offline downloads remain planned. */
 export const Podcasts: React.FC = () => {
   const [feeds, setFeeds] = useState<PodcastFeed[]>([]);
   const [continueEpisodes, setContinueEpisodes] = useState<PodcastContinueEpisode[]>([]);
@@ -160,6 +160,18 @@ export const Podcasts: React.FC = () => {
     }
   };
 
+  const resumeEpisode = (episode: PodcastContinueEpisode) => {
+    if (!episode.hasAudio) return;
+    // Continue Listening loads independently of Following. Reuse the existing
+    // episode-ID queue adapter and persisted revision; never expose RSS URLs.
+    const feed = feeds.find(item => item.id === episode.feedId) ?? {
+      id: episode.feedId, url: '', title: episode.feedTitle, author: '',
+      description: '', imageUrl: '', language: '', episodeCount: 0,
+    };
+    const track = podcastEpisodeToTrack(episode, feed);
+    void useStore.getState().playSong(track, [track], 'podcast', 0);
+  };
+
   const exportFollowing = async () => {
     if (exporting) return;
     setExporting(true);
@@ -187,7 +199,7 @@ export const Podcasts: React.FC = () => {
       <header>
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand">Early access · RSS subscriptions</p>
         <h1 className="mt-2 text-3xl font-bold text-text-main">Podcasts</h1>
-        <p className="mt-2 max-w-3xl text-text-secondary">Follow independent podcast feeds and browse their episodes. Search, streaming, offline listening, and smart playback controls are still under development.</p>
+        <p className="mt-2 max-w-3xl text-text-secondary">Follow public RSS podcasts, stream episodes through the shared ViiB player, and resume where you left off. Directory discovery and offline downloads are still under development.</p>
       </header>
 
       <section className="rounded-xl border border-surface-3 bg-surface-2 p-5">
@@ -257,12 +269,23 @@ export const Podcasts: React.FC = () => {
       {continueEpisodes.length > 0 && <section aria-label="Continue listening">
         <h2 className="mb-3 text-xl font-bold text-text-main">Continue Listening</h2>
         <div className="grid gap-3 md:grid-cols-2">
-          {continueEpisodes.map(episode => <Link key={episode.id} to={'/podcasts/show/' + encodeURIComponent(episode.feedId)}
-            className="rounded-xl border border-surface-3 bg-surface-2 p-4 hover:bg-surface-highlight">
+          {continueEpisodes.map(episode => <article key={episode.id}
+            className="rounded-xl border border-surface-3 bg-surface-2 p-4">
             <p className="text-xs font-semibold text-brand">{episode.feedTitle}</p>
             <h3 className="mt-1 font-semibold text-text-main">{episode.title}</h3>
-            <p className="mt-1 text-xs text-text-secondary">Saved at {Math.floor(episode.positionMs / 60000)} min · View episode</p>
-          </Link>)}
+            <p className="mt-1 text-xs text-text-secondary">Saved at {Math.floor(episode.positionMs / 60000)} min</p>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              {episode.hasAudio ? <button type="button" onClick={() => resumeEpisode(episode)}
+                aria-label={'Resume ' + episode.title}
+                className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-surface-0">
+                Resume playback
+              </button> : <span className="text-xs text-text-subtle">Audio unavailable</span>}
+              <Link to={'/podcasts/show/' + encodeURIComponent(episode.feedId)}
+                className="text-xs font-semibold text-text-secondary hover:text-text-main">
+                View show
+              </Link>
+            </div>
+          </article>)}
         </div>
       </section>}
 
