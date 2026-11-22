@@ -25,6 +25,9 @@ func TestPodcastProgressCASAndPersistence(t *testing.T){
     episodeID:=episodes[0].ID
     initial,err:=database.GetPodcastProgress(ctx,episodeID)
     if err!=nil||initial.Revision!=0||initial.PositionMs!=0{t.Fatalf("empty state: %+v %v",initial,err)}
+    if _,err=database.SetPodcastProgress(ctx,episodeID,5000,1000,5,false);!errors.Is(err,ErrPodcastProgressConflict){
+        t.Fatalf("first progress skipped revision zero: %v",err)
+    }
     next,err:=database.SetPodcastProgress(ctx,episodeID,60000,60000,0,false)
     if err!=nil||next.PositionMs!=60000||next.Revision!=1||next.ListenedMs!=60000||next.IsPlayed{
         t.Fatalf("first progress: %+v %v",next,err)
