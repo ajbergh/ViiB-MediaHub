@@ -233,7 +233,7 @@ func (d *DB) InvalidatePodcastDownload(ctx context.Context,id string) error {
     if err:=d.EnsurePodcastSchema();err!=nil{return err}
     _,err:=d.conn.ExecContext(ctx,`
 UPDATE podcast_downloads SET status='failed',error_code='cached_media_missing',
- destination_relative_path=NULL,mime=NULL,sha256=NULL,verified_size=NULL,updated_at=?
+ destination_relative_path=NULL,mime='',sha256=NULL,verified_size=NULL,updated_at=?
 WHERE episode_id=? AND status='completed'`,time.Now().UnixMilli(),id)
     return err
 }

@@ -44,6 +44,14 @@ func TestPodcastDownloadLifecycleSurvivesRestartAndValidatesLease(t *testing.T) 
  file,err:=d.PodcastCompletedDownload(ctx,id);if err!=nil||file.Size!=4||file.MIME!="audio/mpeg"{t.Fatalf("%v %+v",err,file)}
  done,err:=d.EnqueuePodcastDownload(ctx,id);if err!=nil||done.Status!="completed"{t.Fatalf("completed download overwritten: %v %+v",err,done)}
  if _,err=d.CancelPodcastDownload(ctx,id);!errors.Is(err,ErrPodcastDownloadNotCancelable){t.Fatalf("cancel completed: %v",err)}
+ // A completed file with damaged cached bytes must be invalidated and
+ // made retryable, not left completed by a NOT NULL mime column violation.
+ if err:=d.InvalidatePodcastDownload(ctx,id);err!=nil{t.Fatal(err)}
+ invalid,err:=d.GetPodcastDownload(ctx,id)
+ if err!=nil||invalid.Status!="failed"||invalid.ErrorCode!="cached_media_missing"{
+    t.Fatalf("invalidation failed: %+v %v",invalid,err)
+ }
+ if _,err=d.EnqueuePodcastDownload(ctx,id);err!=nil{t.Fatalf("retry invalidated download: %v",err)}
  if err:=d.UnsubscribePodcast(ctx,feedID);err!=nil{t.Fatal(err)}
  if _,err=d.GetPodcastDownload(ctx,id);!errors.Is(err,sql.ErrNoRows){t.Fatalf("unfollowed download exposed: %v",err)}
  if _,err=d.PodcastCompletedDownload(ctx,id);!errors.Is(err,sql.ErrNoRows){t.Fatalf("unfollowed file exposed: %v",err)}
