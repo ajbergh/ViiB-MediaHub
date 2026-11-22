@@ -652,16 +652,16 @@ Branch strategy: short-lived `feature/podcasts-*` work branches from updated `ma
 
 ## 14. Implementation progress log
 
-> **Current checkpoint: 2026-11-22, navigation milestone.** Work is being committed directly to `feature/podcast-client-roadmap-2026-11-22`. Scope completed is explicitly distinguished from unverified tests and future work.
+> **Current checkpoint: 2026-11-22, artwork/GUID/progress milestone.** Work is being committed directly to `feature/podcast-client-roadmap-2026-11-22`. Scope completed is explicitly distinguished from unverified tests and future work.
 
 | Item | State | Implementation evidence | Outstanding |
 |---|---|---|---|
 | POD-00A | **ADR documented** | [ADR 0001](adr/0001-podcasts-local-first-boundaries.md) | Player coordinator is a future delivery; ADR does not claim it exists |
 | POD-00B/C/E/F | **Open** | ADR lists defaults and unresolved decisions | Directory credentials, legal review, listening lifecycle, UI design |
 | POD-00G | **In progress** | Permanent Podcasts nav/routes; refresh-only opt-in in Settings and Podcast Show; no gated navigation | E2E and full CI qualification |
-| POD-00D | **In progress** | `backend/internal/podcast/testdata/basic.xml`, parser/fetch tests | More fixture formats, ID churn, OPML, media range, integration coverage |
+| POD-00D | **In progress** | RSS fixtures, public-network parser/fetch tests, raster artwork security tests, GUID churn/alias fixtures and UI browser journeys | OPML, media range, advanced RSS formats, real-provider acceptance |
 | POD-01A | **In progress** | Podcast schema, snapshot/upsert, revision-checked `podcast_progress.go`, persistence/conflict tests | Public/player integration, migrations, backup/restore and CI |
-| POD-01B | **In progress** | `backend/internal/podcast/feed.go`, `fetch.go`, unit tests | Expanded SSRF and RSS-format qualification, CI |
+| POD-01B | **In progress** | RSS/iTunes parser, public-only DNS-pinned feed fetch, `podcast/artwork.go` raster MIME/size/URL restrictions with tests | Wider RSS/image publisher compatibility and full CI |
 | POD-01C | **In progress** | Refresh worker, alias collision guards on subscribe/refresh, conservative GUID reconciliation and history-preservation tests | Real publisher/scale qualification and full CI |
 | POD-01D | **In progress** | Podcast preview/follow/list/episodes/unfollow/refresh REST; bounded episode offset pagination, TS client + tests | Show details, cursor pagination, OpenAPI, full CI |
 | POD-01E | **In progress** | Permanent Sidebar, followed/show + Load more, local library filters, SSRF-guarded artwork proxy/UI with tests | Full CI, wider publisher compatibility, UX refinement |
@@ -670,6 +670,6 @@ Branch strategy: short-lived `feature/podcasts-*` work branches from updated `ma
 **Commits:** `abde2f2` introduces the foundational ADR, RSS and URL-fetch primitives.
 Commit `b44e89a` adds SQLite persistence and the first status log. API contract work is tracked by draft [PR #167](https://github.com/ajbergh/ViiB-MediaHub/pull/167).
 
-**Validation status:** Podcast-specific Go/Vitest/Playwright tests have been added. Focused CI identified a SQL literal bug and a nondeterministic refresh-collision test fixture; both were fixed. The [podcast smoke job for commit `4427c45`](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/45049685563) **passed**, including podcast Go parser/DB/API tests and URL-policy vet checks. That run's full backend and browser jobs were still pending at this checkpoint. A targeted `podcast-slice` CI job now runs `TestPodcast*` plus the RSS parser and URL-security tests in the parser, DB and API packages alongside the original full-suite jobs. The current HEAD is **not yet confirmed green**. GitHub Actions is authoritative for the required Go 1.26 toolchain. A prior backend run failed due to an unused import in the refresh worker; that import has been removed on the current branch. Full CI remains unverified. Do not mark tests green without a GitHub Actions run.
+**Validation status:** Focused podcast Go parser/DB/API and public-URL policy vet, frontend checks, and synthetic browser E2E **passed** on [CI run for commit `1b5fcf0`](https://github.com/ajbergh/ViiB-MediaHub/actions/runs/45050987329). This includes the raster artwork proxy, conservative GUID matching, and followed/show filtering covered by that revision. Earlier CI found and fixed a missing import, SQL quote issue, and nondeterministic refresh fixture. The new episode-progress CAS tests and their first-write revision guard were subsequently added; **the latest branch HEAD has not yet been confirmed green**. Full backend validation remains pending/in progress. GitHub Actions uses the required Go 1.26.11 toolchain; no cross-platform release qualification is claimed.
 
 **Next vertical delivery:** Verify artwork proxy Go/Playwright and full CI, expand RSS compatibility, then address GUID changes; playback and downloads remain separately gated. The cross-project `docs/ROADMAP.md` links this plan as an unmerged domain roadmap, not a shipping feature. Keep playback and offline work explicitly later. Music playback remains untouched.
