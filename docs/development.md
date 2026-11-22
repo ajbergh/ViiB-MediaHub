@@ -41,6 +41,31 @@ Windows/browser mode:
 .\scripts\dev.ps1
 ```
 
+If the Wails app is already running and RSS imports work there, reuse its
+existing Go backend for the Vite browser UI rather than launching another API:
+
+```powershell
+.\scripts\dev.ps1 -UseWailsBackend
+```
+
+This verifies `GET http://127.0.0.1:34115/api/v2/podcasts/feeds` before
+starting Vite and points `/api` at the verified Wails backend. The regular
+`dev.ps1` starts its own Go API on port 8080 but refuses to use that port
+when another process already occupies it, preventing stale APIs from
+silently serving the new UI.
+
+If starting Vite directly (`npm run dev`), select the correct API target
+explicitly in the same PowerShell terminal:
+
+```powershell
+$env:VIIB_API_PROXY_TARGET = "http://127.0.0.1:34115"
+npm run dev
+```
+
+Unset afterward with `Remove-Item Env:VIIB_API_PROXY_TARGET`. The Vite
+console prints the effective proxy target. Without an override it uses 8080.
+Do not point Vite at a non-loopback API server.
+
 macOS/Linux manual development:
 
 ```bash

@@ -700,3 +700,20 @@ the valid-feed test; production still uses the public-IP-validated connector.
 running Go backend match, record the observed HTTP status/response and
 retest a real public HTTPS feed in both web/Vite and Wails. Keep the PR draft
 until runtime reproduction and required CI are green.
+
+### Web-only RSS 404 follow-up — 2026-11-22
+
+User confirmed Wails RSS subscriptions work, while the Vite browser UI gives
+the unstructured `Podcasts API endpoint unavailable (HTTP 404)` message.
+This narrows the failure to **development runtime/proxy parity**, not RSS
+ingestion. Wails normally runs Go at 127.0.0.1:34115 while Vite was
+hard-coded to 127.0.0.1:8080. A stale or mismatched Go process is probable;
+the exact 8080 PID and HTTP response have not been inspected.
+
+Fix on this branch: Vite supports the explicitly local
+`VIIB_API_PROXY_TARGET`, and Windows `dev.ps1 -UseWailsBackend` probes
+and reuses the working Wails backend. Default `dev.ps1` refuses a
+pre-occupied 8080 rather than attaching to a stale process. Both modes
+verify the live Podcast collection endpoint before starting Vite. This
+is a **targeted dev-configuration remedy**, not yet a confirmed runtime
+pass on the user's machine or an expanded release acceptance result.

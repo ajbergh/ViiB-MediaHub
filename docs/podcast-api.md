@@ -114,3 +114,24 @@ the specific public-feed URL and current HTTPS/secret-query/security policy;
 don't weaken SSRF protections to hide an HTTP problem. Include the HTTP status
 and ViiB diagnostic token (if present) when reporting a failure, not private
 feed URLs or credentials.
+
+## Browser UI with a working Wails backend
+
+When RSS import works in Wails but Vite web development returns
+`Podcasts API endpoint unavailable (HTTP 404)`, verify the two Go origins.
+Wails normally serves at `127.0.0.1:34115`; Vite historically defaulted
+to `127.0.0.1:8080`. A stale process on 8080 can serve old routes.
+
+On Windows, keep the working Wails app open and launch:
+
+```powershell
+.\scripts\dev.ps1 -UseWailsBackend
+```
+
+The script verifies that `/api/v2/podcasts/feeds` serves the expected JSON
+and configures Vite to proxy all `/api` requests to the same known-working
+Go backend. Alternatively run
+`$env:VIIB_API_PROXY_TARGET = "http://127.0.0.1:34115"` followed by
+`npm run dev`. Restart Vite whenever the proxy environment variable
+changes. Default `dev.ps1` refuses to silently use an already-occupied
+port 8080.
