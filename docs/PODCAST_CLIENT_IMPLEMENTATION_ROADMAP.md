@@ -786,12 +786,12 @@ unimplemented remote-media feature should be implied by the new API state.
 
 ### 2026-11-22 — secure public audio transport / early inline playback
 
-- **POD-02C (partial):** Dedicated \`podcast/media.go\` fetcher supports
+- **POD-02C (partial):** Dedicated `podcast/media.go` fetcher supports
   HTTPS-only validated public RSS enclosures, DNS-pinned dial, safe redirect
   policy, strict supported audio MIME values, 206-only publisher responses,
   single ranged reads bounded to 2 MiB, validated Content-Range/byte count,
   rejection of 200 full-body fallbacks, compressed/multipart and non-audio
-  responses. API \`GET /episodes/{id}/media\` joins active subscriptions,
+  responses. API `GET /episodes/{id}/media` joins active subscriptions,
   never accepts arbitrary URLs, returns safe error envelopes and no-store
   206 responses. Publisher signed queries and older HTTP enclosures are
   intentionally not supported while credentials/policy remain unresolved.
@@ -813,7 +813,7 @@ unimplemented remote-media feature should be implied by the new API state.
   downloadable media and offline playback. Media CDN acceptance must be
   confirmed with real public HTTPS feeds; synthetic tests alone cannot
   certify functional playback on all desktop/browser targets.
-- CI checks are still a gate. Early test CI caught \`localhost\` passing
+- CI checks are still a gate. Early test CI caught `localhost` passing
   shape-only media validation; the upstream dial-time policy would have
   rejected local IPs, and the media URL validator now also rejects localhost
   and internal DNS suffixes before lookup.

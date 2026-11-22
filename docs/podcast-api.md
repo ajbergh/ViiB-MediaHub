@@ -198,14 +198,14 @@ a saved position.
 
 `GET /episodes/continue?limit=12` lists saved positions for uncompleted
 episodes on currently followed podcasts. The endpoint is local-only and
-read-only; the UI links back to the show. Until the media transport/player
-milestones are implemented, **Continue Listening is a saved-position
-library view, not a functioning Resume button**.
+read-only; the UI links back to the show. The new inline player can
+resume an episode after selecting it from that show; Continue Listening
+cards do not yet deep-link to or auto-start an individual episode.
 
 
 ## Secure early-access episode streaming
 
-\`GET /api/v2/podcasts/episodes/{id}/media\` looks up an episode by its
+`GET /api/v2/podcasts/episodes/{id}/media` looks up an episode by its
 stable SQLite ID **and requires that its show is still followed**. Callers
 cannot supply a remote source URL. Unknown/unfollowed episodes return 404;
 unsupported private URLs, non-audio enclosures and unsafe upstream responses
@@ -219,18 +219,18 @@ private destinations, mixed public/private DNS sets, protocol downgrades,
 environment HTTP proxies and non-public address literals are refused.
 Publisher audio must identify as a supported audio MIME type.
 
-A client may send one \`Range: bytes=N-M\` or \`bytes=N-\`. The server caps
+A client may send one `Range: bytes=N-M` or `bytes=N-`. The server caps
 each request to **2 MiB**, reissues the bounded range to the publisher and
-requires a genuine upstream \`206 Partial Content\` with consistent
-\`Content-Range\`, total size (maximum 16 GiB), length, content type and
-identity encoding. Requests without a Range are treated as \`bytes=0-\`
-but also capped to 2 MiB. Entire upstream \`200\` bodies, multipart ranges,
+requires a genuine upstream `206 Partial Content` with consistent
+`Content-Range`, total size (maximum 16 GiB), length, content type and
+identity encoding. Requests without a Range are treated as `bytes=0-`
+but also capped to 2 MiB. Entire upstream `200` bodies, multipart ranges,
 compressed replies, HTML/SVG, mismatched sizes and oversized/lying
 responses are rejected before returning any bytes.
 
-Successful responses include \`Content-Type\`, \`Content-Range\`,
-\`Content-Length\`, \`Accept-Ranges: bytes\`, \`Cache-Control:
-private, no-store\` and \`X-Content-Type-Options: nosniff\`. Publisher
+Successful responses include `Content-Type`, `Content-Range`,
+`Content-Length`, `Accept-Ranges: bytes`, `Cache-Control:
+private, no-store` and `X-Content-Type-Options: nosniff`. Publisher
 headers and upstream errors are not reflected. Malformed ranges return
 416; unsupported enclosure/metadata 422; publisher transport errors 502.
 
@@ -249,5 +249,5 @@ cross-platform audio qualification remain pending.
 enclosure URLs or do not honor byte ranges. Those sources remain
 unsupported in this strict first slice. No automatic fall back to
 insecure remote fetch or whole-file buffering is permitted. A saved
-\`Continue Listening\` item links back to its show, not directly to an
+`Continue Listening` item links back to its show, not directly to an
 auto-starting media session.

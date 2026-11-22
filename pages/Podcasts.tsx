@@ -327,6 +327,7 @@ export const PodcastShow: React.FC = () => {
   const [revision, setRevision] = useState(0);
   const lastCheckedRef = useRef<number | null>(null);
   const navigate = useNavigate();
+  useEffect(() => { setListeningEpisode(null); }, [id]);
   useEffect(() => {
     let mounted = true;
     void api.getSetting('podcasts_preview_enabled')
