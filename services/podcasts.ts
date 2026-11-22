@@ -86,8 +86,9 @@ export const podcastsAPI = {
   subscribe(url: string, signal?: AbortSignal): Promise<{ id: string; title: string; episodeCount: number }> {
     return request('/feeds', { method: 'POST', body: JSON.stringify({ url }), signal });
   },
-  listEpisodes(feedId: string, signal?: AbortSignal): Promise<{ episodes: PodcastEpisode[] }> {
-    return request('/feeds/' + encodeURIComponent(feedId) + '/episodes', { signal });
+  listEpisodes(feedId: string, signal?: AbortSignal, offset = 0, limit = 50): Promise<{ episodes: PodcastEpisode[]; nextOffset: number | null }> {
+    const query = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+    return request('/feeds/' + encodeURIComponent(feedId) + '/episodes?' + query.toString(), { signal });
   },
   refresh(feedId: string, signal?: AbortSignal): Promise<{status: 'queued'}> {
     return request('/feeds/' + encodeURIComponent(feedId) + '/refresh', { method: 'POST', signal });

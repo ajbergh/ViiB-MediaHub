@@ -199,26 +199,42 @@ ORDER BY s.subscribed_at DESC,f.id`)
     return result,rows.Err()
 }
 
-func (d *DB) ListPodcastEpisodes(ctx context.Context,feedID string,limit int) ([]PodcastEpisodeRecord,error){
-    if err:=d.EnsurePodcastSchema();err!=nil{return nil,err}
-    if limit<=0||limit>200{limit=100}
-    rows,err:=d.conn.QueryContext(ctx,`
+// ListPodcastEpisodes keeps legacy in-process callers working while page
+// requests expose a stable, bounded response shape to the public API.
+func (d *DB) ListPodcastEpisodes(ctx context.Context,feedID string,limit int) ([]PodcastEpisodeRecord,error) {
+    episodes,_,err:=d.ListPodcastEpisodesPage(ctx,feedID,limit,0)
+    return episodes,err
+}
+
+// ListPodcastEpisodesPage reads at most limit+1 rows to detect additional
+// episodes without a second COUNT query. Sort order is explicit and stable
+// for unchanged publisher snapshots. Callers should reset pagination after
+// refresh because newly published episodes can shift offsets.
+func (d *DB) ListPodcastEpisodesPage(ctx context.Context,feedID string,limit,offset int) ([]PodcastEpisodeRecord,bool,error) {
+    if err:=d.EnsurePodcastSchema();err!=nil{return nil,false,err}
+    if limit<=0 || limit>100 {limit=50}
+    if offset<0 {offset=0}
+    rows,err:=d.conn.QueryContext(ctx,\`
 SELECT id,feed_id,guid,title,description,enclosure_url,enclosure_mime,
  COALESCE(published_at,0),duration_ms
 FROM podcast_episodes WHERE feed_id=?
-ORDER BY published_at DESC,id LIMIT ?`,feedID,limit)
-    if err!=nil{return nil,err}
+ORDER BY COALESCE(published_at,0) DESC,id ASC LIMIT ? OFFSET ?
+\`,feedID,limit+1,offset)
+    if err!=nil{return nil,false,err}
     defer rows.Close()
-    result:=make([]PodcastEpisodeRecord,0)
+    result:=make([]PodcastEpisodeRecord,0,limit+1)
     for rows.Next(){
         var e PodcastEpisodeRecord
         if err:=rows.Scan(&e.ID,&e.FeedID,&e.GUID,&e.Title,&e.Description,
             &e.EnclosureURL,&e.EnclosureType,&e.PublishedAt,&e.DurationMs);err!=nil{
-            return nil,err
+            return nil,false,err
         }
         result=append(result,e)
     }
-    return result,rows.Err()
+    if err=rows.Err();err!=nil{return nil,false,err}
+    more:=len(result)>limit
+    if more{result=result[:limit]}
+    return result,more,nil
 }
 
 func (d *DB) UnsubscribePodcast(ctx context.Context,feedID string) error {

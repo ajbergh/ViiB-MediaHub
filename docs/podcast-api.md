@@ -18,7 +18,7 @@ RSS 2.0 feeds during initial implementation.
 | GET | `/feeds` | List followed show records with episode counts |
 | POST | `/feeds/preview` | Validate and retrieve one public HTTPS RSS feed; return first ten episodes and total |
 | POST | `/feeds` | Fetch/feed parse + subscribe + transactional episode snapshot; returns ID/title/count |
-| GET | `/feeds/{id}/episodes` | List up to 100 episodes in an existing followed show, newest-first |
+| GET | `/feeds/{id}/episodes?offset=0&limit=50` | Paginate episodes, default 50, maximum 100; response includes `nextOffset` (null on last page) |
 | DELETE | `/feeds/{id}` | Unfollow but retain cached episode metadata and progress |
 | GET | `/feeds/{id}/refresh` | Read last check/success, next refresh, bounded failures and error code |
 | POST | `/feeds/{id}/refresh` | Queue a durable manual refresh, return 202 immediately; requires Podcast Preview enabled |
@@ -59,6 +59,7 @@ Example successful response:
   SQLite leases, ETag/Last-Modified conditional requests, 304 handling,
   bounded exponential retry and history-safe reconciliation. Background
   network access occurs only while Podcast Preview is enabled.
+- Episode pages use `offset`/`limit` ordering by publication date and episode ID. Reload from offset 0 after feed refresh, since new releases can shift page boundaries.
 - Refresh is at-least-once after failure/restart; concurrent/multi-instance
   workers require additional integration qualification before production.
   Redirected subscription URL aliases are persisted transactionally and reuse existing show IDs when the requested URL redirects again. Publisher GUID moves and collisions between previously independent show identities remain unresolved.

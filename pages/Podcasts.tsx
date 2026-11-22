@@ -127,6 +127,8 @@ export const PodcastShow: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [feed, setFeed] = useState<PodcastFeed | null>(null);
   const [episodes, setEpisodes] = useState<PodcastEpisode[]>([]);
+  const [nextOffset, setNextOffset] = useState<number | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [confirmRemove, setConfirmRemove] = useState(false);
@@ -171,6 +173,7 @@ export const PodcastShow: React.FC = () => {
       if (controller.signal.aborted) return;
       setFeed(followed.feeds.find(item => item.id === id) ?? null);
       setEpisodes(result.episodes);
+      setNextOffset(result.nextOffset ?? null);
     }).catch(err => { if (!controller.signal.aborted) setError(readableError(err)); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
@@ -201,6 +204,24 @@ export const PodcastShow: React.FC = () => {
     const timer = window.setInterval(updateStatus, 10000);
     return () => { controller.abort(); window.clearInterval(timer); };
   }, [id]);
+
+  const loadMoreEpisodes = async () => {
+    if (!id || nextOffset === null || loadingMore) return;
+    setLoadingMore(true);
+    setError('');
+    try {
+      const page = await podcastsAPI.listEpisodes(id, undefined, nextOffset);
+      setEpisodes(previous => {
+        const seen = new Set(previous.map(episode => episode.id));
+        return [...previous, ...page.episodes.filter(episode => !seen.has(episode.id))];
+      });
+      setNextOffset(page.nextOffset ?? null);
+    } catch (err) {
+      setError(readableError(err));
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const requestRefresh = async () => {
     if (!id) return;
@@ -262,7 +283,7 @@ export const PodcastShow: React.FC = () => {
         </div>
       </header>
       <section>
-        <h2 className="mb-4 text-lg font-bold text-text-main">Episodes ({episodes.length})</h2>
+        <h2 className="mb-4 text-lg font-bold text-text-main">Episodes ({episodes.length} loaded)</h2>
         {episodes.length === 0 && <p className="text-text-secondary">No episodes are available in this feed.</p>}
         <div className="space-y-2">
           {episodes.map(episode => <article key={episode.id} className="rounded-lg border border-surface-3 bg-surface-2 p-4">
@@ -272,6 +293,11 @@ export const PodcastShow: React.FC = () => {
             <p className="mt-2 text-xs text-text-subtle">Streaming and downloads are coming in a later phase.</p>
           </article>)}
         </div>
+        {nextOffset !== null && <button type="button" disabled={loadingMore}
+          onClick={() => void loadMoreEpisodes()}
+          className="mt-5 w-full rounded-lg border border-surface-3 bg-surface-2 px-4 py-3 text-sm font-semibold text-text-main hover:bg-surface-highlight disabled:opacity-50">
+          {loadingMore ? 'Loading more episodes…' : 'Load more episodes'}
+        </button>}
       </section>
     </>}
   </main>;

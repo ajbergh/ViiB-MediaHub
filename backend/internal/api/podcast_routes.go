@@ -10,6 +10,7 @@ import (
     "errors"
     "io"
     "net/http"
+    "strconv"
     "strings"
     "time"
 
@@ -133,12 +134,32 @@ func (a *API) listPodcastEpisodes(w http.ResponseWriter,r *http.Request) {
         respondV2Error(w,r,http.StatusNotFound,"podcast_not_found","Podcast subscription not found",false,nil)
         return
     }
-    episodes,err:=a.db.ListPodcastEpisodes(r.Context(),id,100)
+    limit:=50
+    offset:=0
+    if raw:=r.URL.Query().Get("limit");raw!=""{
+        parsed,parseErr:=strconv.Atoi(raw)
+        if parseErr!=nil || parsed<1 || parsed>100 {
+            respondV2Error(w,r,http.StatusBadRequest,"invalid_pagination","Episode limit must be between 1 and 100",false,nil)
+            return
+        }
+        limit=parsed
+    }
+    if raw:=r.URL.Query().Get("offset");raw!=""{
+        parsed,parseErr:=strconv.Atoi(raw)
+        if parseErr!=nil || parsed<0 || parsed>100000 {
+            respondV2Error(w,r,http.StatusBadRequest,"invalid_pagination","Episode offset must be between 0 and 100000",false,nil)
+            return
+        }
+        offset=parsed
+    }
+    episodes,hasMore,err:=a.db.ListPodcastEpisodesPage(r.Context(),id,limit,offset)
     if err!=nil{
         respondV2Error(w,r,http.StatusInternalServerError,"podcast_library_unavailable","Unable to list episodes",true,nil)
         return
     }
-    respondV2JSON(w,http.StatusOK,map[string]any{"episodes":episodes})
+    var nextOffset any
+    if hasMore {nextOffset=offset+len(episodes)}
+    respondV2JSON(w,http.StatusOK,map[string]any{"episodes":episodes,"nextOffset":nextOffset})
 }
 
 func (a *API) unsubscribePodcastFeed(w http.ResponseWriter,r *http.Request) {

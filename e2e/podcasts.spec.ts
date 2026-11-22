@@ -55,7 +55,7 @@ test('Podcasts follows public RSS and browses episodes without playback', async 
         id: 'ep-1', feedId, guid: 'ep-1', title: 'First episode',
         description: 'Publisher episode description', enclosureUrl: '',
         enclosureType: 'audio/mpeg', publishedAt: 1795377600000, durationMs: 1800000,
-      }] } });
+      }], nextOffset: null } });
     }
     if (u.pathname === '/api/v2/podcasts/feeds/' + feedId && req.method() === 'DELETE') {
       mutations.push('unfollow');
@@ -111,4 +111,47 @@ test('Podcasts stays visible with automatic refresh disabled by default', async 
   await expect(page.getByRole('link', { name: 'Podcasts', exact: true })).toBeVisible();
   await expect(page.getByText('No podcasts followed yet')).toBeVisible();
   expect(podcastMutations).toBe(0);
+});
+
+
+test('show detail paginates episodes without duplicates', async ({ page }) => {
+  const requestedOffsets: number[] = [];
+  await page.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.origin !== 'http://127.0.0.1:4173') return route.abort();
+    if (url.pathname === '/api/settings/podcasts_preview_enabled') {
+      return route.fulfill({ json: { key: 'podcasts_preview_enabled', value: '' } });
+    }
+    if (url.pathname === '/api/v2/podcasts/feeds') return route.fulfill({ json: { feeds: [{
+      id: feedId, url: feedURL, title: 'Paged Podcast', author: 'Publisher',
+      description: '', imageUrl: '', language: 'en', episodeCount: 3,
+    }] } });
+    if (url.pathname === '/api/v2/podcasts/feeds/' + feedId + '/episodes') {
+      const offset = Number(url.searchParams.get('offset') || '0');
+      requestedOffsets.push(offset);
+      if (offset === 0) return route.fulfill({ json: { episodes: [{
+        id: 'ep-1', feedId, guid: 'one', title: 'Episode One', description: '',
+        enclosureUrl: '', enclosureType: 'audio/mpeg', publishedAt: 0, durationMs: 0,
+      }], nextOffset: 1 } });
+      return route.fulfill({ json: { episodes: [{
+        id: 'ep-2', feedId, guid: 'two', title: 'Episode Two', description: '',
+        enclosureUrl: '', enclosureType: 'audio/mpeg', publishedAt: 0, durationMs: 0,
+      }], nextOffset: null } });
+    }
+    if (url.pathname === '/api/v2/podcasts/feeds/' + feedId + '/refresh')
+      return route.fulfill({ json: {
+        lastCheckedAt: 0, lastSuccessAt: 0, nextRefreshAt: 0,
+        failures: 0, refreshing: false,
+      } });
+    if (url.pathname.startsWith('/api/'))
+      return route.fulfill({ status: 503, json: { error: 'Unrelated fixture API' } });
+    return route.continue();
+  });
+  await page.goto('/podcasts/show/' + feedId);
+  await expect(page.getByRole('heading', { name: 'Episode One' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Load more episodes' })).toBeVisible();
+  await page.getByRole('button', { name: 'Load more episodes' }).click();
+  await expect(page.getByRole('heading', { name: 'Episode Two' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Load more episodes' })).toHaveCount(0);
+  expect(requestedOffsets).toEqual([0, 1]);
 });
