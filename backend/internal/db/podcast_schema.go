@@ -131,6 +131,7 @@ CREATE INDEX IF NOT EXISTS idx_podcast_queue_order
             "ALTER TABLE podcast_feeds ADD COLUMN refresh_failures INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE podcast_feeds ADD COLUMN refresh_lease_until INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE podcast_downloads ADD COLUMN mime TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE podcast_downloads ADD COLUMN staged_sha256 TEXT",
         )
     }
     if err != nil { err = fmt.Errorf("create podcast schema: %w", err) }
