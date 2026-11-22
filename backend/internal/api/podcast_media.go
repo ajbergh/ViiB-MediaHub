@@ -24,7 +24,7 @@ func (a *API) getPodcastEpisodeMedia(w http.ResponseWriter,r *http.Request) {
             "Podcast episode not found",false,nil)
         return
     }
-    source,_,err:=a.db.PodcastMediaSource(r.Context(),id)
+    source,declaredType,err:=a.db.PodcastMediaSource(r.Context(),id)
     if errors.Is(err,sql.ErrNoRows){
         respondV2Error(w,r,http.StatusNotFound,"podcast_episode_not_found",
             "Podcast episode not found",false,nil)
@@ -64,7 +64,11 @@ func (a *API) getPodcastEpisodeMedia(w http.ResponseWriter,r *http.Request) {
         }
         stream:=a.podcastMediaStream
         if stream==nil{stream=podcast.NewFetcher(false).StreamMedia}
-        if streamErr:=stream(ctx,source,w);streamErr!=nil{
+        // Complete-episode streaming needs the request lifetime rather than
+        // the 28s bounded-segment fetch deadline.
+        streamCtx,streamCancel:=context.WithTimeout(r.Context(),4*time.Hour)
+        defer streamCancel()
+        if streamErr:=stream(streamCtx,source,declaredType,w);streamErr!=nil{
             // StreamMedia only returns errors before writing headers except
             // for interrupted transfers; never write JSON into an audio body.
             if streamErr==podcast.ErrInvalidMedia{
