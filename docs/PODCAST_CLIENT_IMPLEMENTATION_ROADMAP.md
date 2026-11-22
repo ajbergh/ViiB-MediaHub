@@ -433,7 +433,7 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 - [ ] **POD-01A (in progress):** Added additive `EnsurePodcastSchema()`, isolated tables/indexes, transaction-safe feed/episode snapshot upserts, listing, unsubscribe and reopen/progress-preservation tests. Resume-state update methods, schema upgrades, backup/restore qualification and CI confirmation remain.
 - [ ] **POD-01B (in progress):** Implemented bounded RSS 2.0/iTunes parser, plain-text notes, DTD block, HTTPS-default fetcher, public-IP DNS pinning, redirect/size/304 controls and unit tests. Full reserved-address audit, feed identity churn, download/media policy and CI confirmation remain.
 - [ ] **POD-01C:** Feed identity/aliases, incremental reconciliation and polling refresh job with configurable rate limits, 304 behavior and error state.
-- [ ] **POD-01D:** Typed Go API and TS clients for feed preview/follow/unfollow, list/show/episodes and manual refresh; OpenAPI schemas.
+- [ ] **POD-01D (in progress):** Added guarded REST preview/subscribe/list/episodes/unsubscribe handlers under `/api/v2/podcasts`, typed `services/podcasts.ts` client and tests. Show detail endpoint, async refresh, endpoint pagination and OpenAPI schemas remain.
 - [ ] **POD-01E:** First Podcasts navigation, Following list, Show Detail and empty/loading/error states.
 
 **Exit:** Paste a real supported RSS URL, see show and episodes, restart process, retain subscriptions/episode IDs, refresh without duplicates; malicious remote URLs blocked.
@@ -661,12 +661,14 @@ Branch strategy: short-lived `feature/podcasts-*` work branches from updated `ma
 | POD-00D | **In progress** | `backend/internal/podcast/testdata/basic.xml`, parser/fetch tests | More fixture formats, ID churn, OPML, media range, integration coverage |
 | POD-01A | **In progress** | `backend/internal/db/podcast_schema.go`, `podcast_repository.go`, tests | Durable progress API, migrations across future versions, verified backup/restore |
 | POD-01B | **In progress** | `backend/internal/podcast/feed.go`, `fetch.go`, unit tests | Expanded SSRF and RSS-format qualification, CI |
-| POD-01C–E | **Not started** | None | Refresh job, HTTP API + TS client, Podcasts navigation and following UI |
+| POD-01C | **Not started** | None | Refresh job, aliases/identity reconciliation and feed update scheduling |
+| POD-01D | **In progress** | `backend/internal/api/podcast_routes.go`, `services/podcasts.ts`, API/TS tests and server mount | Async refresh, show details, pagination, OpenAPI, CI |
+| POD-01E | **Not started** | None | Podcasts navigation and Following UI |
 | Phase 2–8 | **Not started** | None | Discovery, player, offline downloads and remaining features |
 
 **Commits:** `abde2f2` introduces the foundational ADR, RSS and URL-fetch primitives.
-The follow-up schema/repository commit and status update will be identified by the branch history.
+Commit `b44e89a` adds SQLite persistence and the first status log. API contract work is tracked by draft [PR #167](https://github.com/ajbergh/ViiB-MediaHub/pull/167).
 
 **Validation status:** Go unit tests have been authored but are **not yet CI verified** in this checkpoint. The local execution environment does not have the repo's required Go 1.26 toolchain or dependency cache. Do not mark tests green without a GitHub Actions run.
 
-**Next vertical delivery:** Verify Go CI, resolve any compiler/staticcheck findings, then implement guarded subscription APIs and a minimal browser-accessible Following surface with fixtures. Keep music playback untouched.
+**Next vertical delivery:** Verify Go CI, resolve compiler/staticcheck findings, expand browser/API tests, add a guarded Following surface, then implement a durable refresh scheduler. Keep music playback untouched.
