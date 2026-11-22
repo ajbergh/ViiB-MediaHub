@@ -54,7 +54,7 @@ Example successful response:
   are reduced to plain text. Malformed/unsupported feeds return an error.
 - Long-running subscribe/preview requests are currently synchronous; a
   durable background refresh job is planned, not present.
-- No custom ports, credentials, signed/token query parameters, or private
+- No custom ports or authenticated/tokenized feeds; query parameters are restricted to `feed=rss`, `feed=rss2`, `feed=podcast`, `format=rss` or `format=xml`. Private
   feed access in this preview. These require a separate security design.
 - Publisher enclosure URLs are catalog metadata only and **not** an
   implemented streaming or download endpoint.

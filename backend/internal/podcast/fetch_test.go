@@ -33,7 +33,8 @@ func TestPublicURLValidation(t *testing.T) {
     for _, value := range []string{
         "file:///etc/passwd", "http://example.org/feed", "https://127.0.0.1/feed",
         "https://user:pass@example.org/feed", "https://example.org:1234/rss",
-        "https://example.org/feed?access_token=secret", "https://[::1]/feed",
+        "https://example.org/feed?access_token=secret",
+        "https://example.org/feed?public=secret-unknown-key", "https://[::1]/feed",
     } {
         if _, err := ValidatePublicURL(value, false); !errors.Is(err, ErrBlockedURL) {
             t.Errorf("unsafe URL accepted: %q err=%v", value, err)

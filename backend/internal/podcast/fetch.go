@@ -83,11 +83,21 @@ func ValidatePublicURL(raw string, allowHTTP bool) (*url.URL, error) {
             return nil, ErrBlockedURL
         }
     }
-    // Authenticated/tokenized publisher feeds are outside the initial public
-    // RSS feature. They need encrypted backend storage and redacted export.
-    for key := range u.Query() {
+    // Public feed query strings are restricted to known non-secret variants
+    // until private-feed encrypted storage, redaction and export are in place.
+    // Rejecting only keys named "token" would miss secret values under an
+    // arbitrary parameter name.
+    params, err := url.ParseQuery(u.RawQuery)
+    if err != nil { return nil, ErrBlockedURL }
+    for key, values := range params {
+        if len(values) != 1 { return nil, ErrBlockedURL }
+        value := strings.ToLower(values[0])
         switch strings.ToLower(key) {
-        case "token", "key", "apikey", "api_key", "auth", "authorization", "signature", "sig", "password", "pass", "secret", "access_token":
+        case "feed":
+            if value != "rss" && value != "rss2" && value != "podcast" { return nil, ErrBlockedURL }
+        case "format":
+            if value != "rss" && value != "xml" { return nil, ErrBlockedURL }
+        default:
             return nil, ErrBlockedURL
         }
     }
