@@ -129,6 +129,23 @@ describe('library persistence failures', () => {
   expect(state.songs[0].title).toBe(song.title); finish(); await pending;
   expect(state.songs[0].title).toBe('Changed'); expect(state.songInfoModalSong.title).toBe('Changed');
  });
+ it('publishes only selected album fields after one successful batch', async () => {
+  const state = createTestLibraryState() as any;
+  const [first, second, unrelated] = songs(3);
+  Object.assign(state, { songs: [first, second, unrelated], queue: [first, unrelated], currentSong: second, songInfoModalSong: first });
+  const persist = vi.spyOn(libraryOperationsV2, 'updateAlbumMetadata');
+  persist.mockRejectedValueOnce(new Error('write failed'));
+  const ids = [first.id, second.id];
+  await expect(state.updateAlbumMetadata(ids, { album: 'New album' })).rejects.toThrow('write failed');
+  expect(state.songs).toEqual([first, second, unrelated]);
+  persist.mockResolvedValueOnce([first, second].map(song => ({ ...song, album: 'New album', title: 'Do not overwrite' })));
+  await expect(state.updateAlbumMetadata(ids, { album: 'New album' })).resolves.toEqual({ album: 'New album', artist: first.artist });
+  expect(persist).toHaveBeenLastCalledWith(ids, { album: 'New album' });
+  expect(state.songs).toEqual([{ ...first, album: 'New album' }, { ...second, album: 'New album' }, unrelated]);
+  expect(state.currentSong.album).toBe('New album');
+  expect(state.songInfoModalSong.album).toBe('New album');
+  expect(state.queue[1]).toBe(unrelated);
+ });
  it('never creates a local phantom playlist after server creation fails', async () => {
   const state=createTestLibraryState() as any;
   vi.spyOn(backendService,'createPlaylist').mockRejectedValue(new Error('server unavailable'));

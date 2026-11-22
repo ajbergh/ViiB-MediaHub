@@ -17,7 +17,7 @@
 
 import { getDB, closeDB } from './db';
 import { deleteDB } from 'idb';
-import { Song, Playlist } from '../types';
+import { Song, Playlist, AlbumMetadataPatch } from '../types';
 
 export const libraryService = {
   async getAllSongs(): Promise<Song[]> {
@@ -47,6 +47,20 @@ export const libraryService = {
       return tx.store.put(durableSong);
     }));
     await tx.done;
+  },
+
+  async updateAlbumMetadata(songIds: string[], patch: AlbumMetadataPatch): Promise<void> {
+    const db = await getDB();
+    const tx = db.transaction('songs', 'readwrite');
+    const songs = await Promise.all(songIds.map(id => tx.store.get(id)));
+    if (songs.some(song => !song)) {
+      await tx.done;
+      throw new Error('A track is no longer in the library. Reopen the album editor and try again.');
+    }
+    await Promise.all([
+      ...songs.map(song => tx.store.put({ ...song!, ...patch, ...(patch.year !== undefined && { originalYear: patch.year }) })),
+      tx.done,
+    ]);
   },
 
   async clearSongs(): Promise<void> {

@@ -2,7 +2,8 @@
  * Client for local database maintenance. Backup, diagnostics, repair, and
  * restore preview/staging use longer timeouts; activation remains offline.
  */
-import { requestJSON } from './httpClient';
+import { APIError, requestJSON } from './httpClient';
+import type { AlbumMetadataPatch, Song } from '../types';
 
 const BASE = '/api/v2/operations';
 
@@ -60,5 +61,21 @@ export const libraryOperationsV2 = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     });
+  },
+  async updateAlbumMetadata(songIds: string[], patch: AlbumMetadataPatch): Promise<Song[]> {
+    try {
+      return await requestJSON(`${BASE}/albums/metadata`, {
+        method: 'PATCH',
+        retry: false,
+        timeoutMs: 120_000,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...patch, songIds }),
+      });
+    } catch (error) {
+      if (error instanceof APIError && error.status === 404 && error.code === 'http_404') {
+        throw new Error('The running ViiB backend does not support bulk album edits. Update and restart it, then try again.', { cause: error });
+      }
+      throw error;
+    }
   },
 };

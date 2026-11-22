@@ -9,13 +9,15 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useStore, useAlbumCovers } from '../store';
-import { Play, Pause, Clock, ArrowLeft, Disc, Download, MoreHorizontal, ExternalLink, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
+import { Play, Pause, Clock, ArrowLeft, Disc, Download, MoreHorizontal, ExternalLink, ChevronDown, ChevronUp, RefreshCw, Pencil } from 'lucide-react';
 import { formatTime, generateGradient } from '../utils';
 import { ContextMenuType, Song } from '../types';
 import { Virtuoso, Components } from 'react-virtuoso';
 import api from '../services/api';
 import { LikeButton } from '../components/LikeButton';
 import { AlbumLikeButton } from '../components/AlbumLikeButton';
+import { AlbumMetadataDialog } from '../components/AlbumMetadataDialog';
+import { Button } from '../components/ui/Button';
 import { isPlexSourcePath, resolveAlbumArtwork } from '../lib/artwork';
 
 const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
@@ -44,6 +46,7 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
         setShowFullDesc,
         isRefreshing,
         handleRefreshMetadata,
+        openMetadataEditor,
     } = context;
 
     return (
@@ -153,6 +156,9 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
                             <MoreHorizontal size={32} />
                         </button>
                     </div>
+                    <Button size="sm" onClick={openMetadataEditor} leftIcon={<Pencil size={14} aria-hidden="true" />}>
+                        Edit metadata
+                    </Button>
                     {metadata?.url && (
                         <a
                             href={metadata.url}
@@ -218,27 +224,19 @@ const AlbumFooter: React.FC<{ context?: any }> = ({ context }) => {
 export const AlbumDetail: React.FC = () => {
     const { albumName, artistName } = useParams<{ albumName: string; artistName?: string }>();
     const navigate = useNavigate();
-    const { songs, playSong, togglePlay, currentSong, isPlaying, openContextMenu, fetchAlbumMetadata, albumMetadata, clearAlbumMetadata } = useStore();
+    const { songs, playSong, togglePlay, currentSong, isPlaying, openContextMenu, fetchAlbumMetadata, albumMetadata, clearAlbumMetadata, updateAlbumMetadata, showToast } = useStore();
     const albumCovers = useAlbumCovers();
     const [showFullDesc, setShowFullDesc] = useState(false);
     const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [metadataEditor, setMetadataEditor] = useState<{ album: string; artist: string; tracks: Song[] } | null>(null);
 
     useEffect(() => {
         setScrollParent(document.querySelector('main'));
     }, []);
 
-    const decodedAlbumName = useMemo(() => {
-        try {
-            return decodeURIComponent(albumName || '');
-        } catch {
-            return albumName || '';
-        }
-    }, [albumName]);
-
-    const decodedArtistName = useMemo(() => {
-        try { return decodeURIComponent(artistName || ''); } catch { return artistName || ''; }
-    }, [artistName]);
+    const decodedAlbumName = albumName ?? '';
+    const decodedArtistName = artistName ?? '';
 
     const albumSongs = useMemo(() => {
         return songs.filter(s => {
@@ -363,6 +361,11 @@ export const AlbumDetail: React.FC = () => {
         setShowFullDesc,
         isRefreshing,
         handleRefreshMetadata,
+        openMetadataEditor: () => setMetadataEditor({
+            album: decodedAlbumName,
+            artist,
+            tracks: albumSongs.filter(track => (track.albumArtist || track.artist) === artist),
+        }),
     };
 
     const components: Components<any, any> = {
@@ -443,6 +446,20 @@ export const AlbumDetail: React.FC = () => {
                     );
                 }}
              />
+            {metadataEditor && (
+                <AlbumMetadataDialog
+                    {...metadataEditor}
+                    onClose={() => setMetadataEditor(null)}
+                    onSave={async (ids, patch) => {
+                        const updated = await updateAlbumMetadata(ids, patch);
+                        setMetadataEditor(null);
+                        if (updated.album !== decodedAlbumName || updated.artist !== decodedArtistName) {
+                            navigate(`/album/${encodeURIComponent(updated.album)}/${encodeURIComponent(updated.artist)}`, { replace: true });
+                        }
+                        showToast({ type: 'success', message: `Updated metadata for ${ids.length} ${ids.length === 1 ? 'track' : 'tracks'}` });
+                    }}
+                />
+            )}
         </div>
     );
 };

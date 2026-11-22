@@ -4,8 +4,10 @@ package api
 import (
 	"archive/zip"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -61,6 +63,7 @@ func (a *API) V2LibraryOperationRoutes() chi.Router {
 	r.Get("/diagnostics", a.libraryDiagnosticsV2)
 	r.Post("/repair", a.repairLibraryV2)
 	r.Patch("/songs/{id}/metadata", a.updateSongMetadataV2)
+	r.Patch("/albums/metadata", a.updateAlbumMetadataV2)
 	r.Get("/backups", a.listBackupsV2)
 	r.Post("/backups", a.createBackupV2)
 	r.Post("/restore/preview", a.previewRestoreV2)
@@ -121,6 +124,34 @@ func (a *API) updateSongMetadataV2(w http.ResponseWriter, r *http.Request) {
 	transformSongForAPI(&song)
 	a.scanner.EmitEvent(scanner.LibraryEvent{Type: "library_updated", Message: "Song metadata updated", UpdatedSongs: 1})
 	respondV2JSON(w, http.StatusOK, song)
+}
+
+func (a *API) updateAlbumMetadataV2(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 512*1024)
+	var request struct {
+		metadataRequest
+		SongIDs []string `json:"songIds"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		respondV2Error(w, r, http.StatusBadRequest, "invalid_request", "Album metadata patch is not valid JSON", false, nil)
+		return
+	}
+	if request.WriteBack {
+		respondV2Error(w, r, http.StatusNotImplemented, "tag_writeback_unavailable", "Source-file tag write-back is not enabled in this build; database metadata was not changed", false, nil)
+		return
+	}
+	songs, err := a.db.UpdateAlbumMetadata(request.SongIDs, request.SongMetadataPatch)
+	if errors.Is(err, sql.ErrNoRows) {
+		respondV2Error(w, r, http.StatusNotFound, "song_not_found", "A track is no longer in the library. Reopen the album editor and try again.", false, nil)
+		return
+	}
+	if err != nil {
+		respondV2Error(w, r, http.StatusBadRequest, "metadata_update_failed", err.Error(), false, nil)
+		return
+	}
+	transformLibrarySongsForAPI(songs)
+	a.scanner.EmitEvent(scanner.LibraryEvent{Type: "library_updated", Message: "Album metadata updated", UpdatedSongs: len(songs)})
+	respondV2JSON(w, http.StatusOK, songs)
 }
 
 func (a *API) backupsDir() string { return filepath.Join(a.dataDir, "backups") }
