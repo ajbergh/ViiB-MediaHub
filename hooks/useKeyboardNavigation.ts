@@ -26,8 +26,10 @@ import { useStore } from '../store';
 export function useKeyboardNavigation() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       // Don't trigger shortcuts when typing in inputs
       const target = e.target as HTMLElement;
+      if (e.key === ' ' && target.closest?.('button, summary, select')) return;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
         // Allow Escape to blur inputs
         if (e.key === 'Escape') {

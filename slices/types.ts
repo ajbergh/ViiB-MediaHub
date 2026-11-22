@@ -24,6 +24,7 @@
 import React from 'react';
 import { Song, Playlist, SmartMix, ArtistMetadata, AlbumMetadata, SpotifyProfile, LogEntry, AudioSettings, VisualizerMode, ContextMenuType, MilkdropSettings, HomeLayoutVariant, PlaybackContext } from '../types';
 import { SmartPlaylistFilter, SmartPlaylistSource, SmartPlaylistValidation, DJPersona, DJSetPlan, DJPhaseResult, DJNarration } from '../services/api';
+import type { PartyStageLayout, VisualizerScene } from '../lib/visualizerScenes';
 
 export interface PlayerSlice {
   isPlaying: boolean;
@@ -34,6 +35,13 @@ export interface PlayerSlice {
   volume: number;
   audioSettings: AudioSettings;
   isEqOpen: boolean;
+  visualizerScenes: VisualizerScene[];
+  activeVisualizerSceneId: string | null;
+  artworkOverlayEnabled: boolean;
+  partyStageLayout: PartyStageLayout;
+  partyTrackInfoPinned: boolean;
+  partySceneRotationEnabled: boolean;
+  partySceneLocked: boolean;
   
   // Milkdrop visualization settings
   milkdropSettings: MilkdropSettings;
@@ -62,6 +70,15 @@ export interface PlayerSlice {
   playQueueItem: (index: number) => void;
   
   setLowPowerVisuals: (enabled: boolean) => void;
+  setArtworkOverlayEnabled: (enabled: boolean) => void;
+  saveVisualizerScene: (name: string) => void;
+  applyVisualizerScene: (id: string) => void;
+  toggleVisualizerSceneFavorite: (id: string) => void;
+  removeVisualizerScene: (id: string) => void;
+  setPartyStageLayout: (layout: PartyStageLayout) => void;
+  setPartyTrackInfoPinned: (pinned: boolean) => void;
+  setPartySceneRotationEnabled: (enabled: boolean) => void;
+  setPartySceneLocked: (locked: boolean) => void;
   setVisualizerMode: (mode: VisualizerMode) => void;
   setVisualizerBackgroundMode: (mode: VisualizerMode) => void;
   setVisualizerArtworkOpacity: (opacity: number) => void;

@@ -25,8 +25,9 @@ import { splitArtistNames } from './lib/artistNames';
 import { catalogDeltas, compareLibraryText } from './lib/libraryIndex';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
+import { shallow } from 'zustand/shallow';
 import { deduplicatingPersistStorage } from './lib/deduplicatingPersistStorage';
-import { Album, Artist } from './types';
+import { Album, Artist, MilkdropSettings } from './types';
 import { AppState } from './slices/types';
 import { createPlayerSlice } from './slices/playerSlice';
 import { createLibrarySlice } from './slices/librarySlice';
@@ -35,6 +36,21 @@ import { createUISlice } from './slices/uiSlice';
 import { createAIDJSlice } from './slices/aiDjSlice';
 import { createDJMixerSlice } from './slices/djMixerSlice';
 import { buildAlbumCoverIndex, isAuthoritativePlexArtwork, isPlexSourcePath } from './lib/artwork';
+
+let lastMilkdropSettings: MilkdropSettings | undefined;
+let milkdropPreferences: MilkdropSettings | undefined;
+
+function persistedMilkdropSettings(settings: MilkdropSettings) {
+  // Keep the persisted reference stable across playback ticks and preset changes.
+  if (settings !== lastMilkdropSettings || !milkdropPreferences) {
+    lastMilkdropSettings = settings;
+    const preferences = { ...settings, currentPreset: null };
+    if (!milkdropPreferences || !shallow(milkdropPreferences, preferences)) {
+      milkdropPreferences = preferences;
+    }
+  }
+  return milkdropPreferences;
+}
 
 export const useStore = create<AppState>()(
   persist(
@@ -70,6 +86,13 @@ export const useStore = create<AppState>()(
       // We do NOT persist 'songs' here anymore because they are in IndexedDB
       partialize: (state) => ({ 
           audioSettings: state.audioSettings,
+          visualizerScenes: state.visualizerScenes,
+          activeVisualizerSceneId: state.activeVisualizerSceneId,
+          artworkOverlayEnabled: state.artworkOverlayEnabled,
+          milkdropSettings: persistedMilkdropSettings(state.milkdropSettings),
+          partyStageLayout: state.partyStageLayout,
+          partyTrackInfoPinned: state.partyTrackInfoPinned,
+          partySceneRotationEnabled: state.partySceneRotationEnabled,
           showSmartMixes: state.showSmartMixes,
           homeLayoutVariant: state.homeLayoutVariant,
           hasCompletedSetup: state.hasCompletedSetup,
@@ -97,7 +120,7 @@ export const useStore = create<AppState>()(
           djMixer: state.djMixer,
       }),
       // Deep merge audioSettings to preserve nested values properly
-      merge: (persistedState: any, currentState: AppState) => {
+      merge: (persistedState: unknown, currentState: AppState): AppState => {
         const persisted = persistedState as Partial<AppState>;
         console.log('🔄 Zustand: Rehydrating state from localStorage', { 
           persistedAudioSettings: persisted?.audioSettings,
@@ -111,6 +134,7 @@ export const useStore = create<AppState>()(
             ...currentState.audioSettings,
             ...(persisted?.audioSettings || {})
           },
+          milkdropSettings: { ...currentState.milkdropSettings, ...persisted?.milkdropSettings, currentPreset: null },
           // Supply new defaults to old preference objects while preserving an
           // explicit Canvas/WebGL choice saved by a returning user.
           djMixer: { ...currentState.djMixer, ...(persisted?.djMixer || {}) },

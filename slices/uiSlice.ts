@@ -59,7 +59,13 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
   localSearchTab: 'all',
 
   setQueueOpen: (isOpen) => set({ isQueueOpen: isOpen }),
-  setNowPlayingOpen: (isOpen) => set({ isNowPlayingOpen: isOpen }),
+  setNowPlayingOpen: (isOpen) => {
+    const { isPartyMode, setPartyMode } = get();
+    if (!isOpen && isPartyMode) setPartyMode(false);
+    set(state => isOpen && !state.isNowPlayingOpen
+      ? { isNowPlayingOpen: true, milkdropSettings: { ...state.milkdropSettings, currentPreset: null } }
+      : { isNowPlayingOpen: isOpen });
+  },
   setShowSmartMixes: (show) => set({ showSmartMixes: show }),
   setHomeLayoutVariant: (variant) => set({ homeLayoutVariant: variant }),
   setHasCompletedSetup: (completed) => set({ hasCompletedSetup: completed }),
@@ -70,17 +76,12 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
     } else {
       exitFullscreen();
     }
-    set({ isPartyMode: enabled });
+    set({ isPartyMode: enabled, partySceneLocked: false });
   },
   
   togglePartyMode: () => {
-    const current = get().isPartyMode;
-    if (current) {
-      exitFullscreen();
-    } else {
-      enterFullscreen();
-    }
-    set({ isPartyMode: !current });
+    const { isPartyMode, setPartyMode } = get();
+    setPartyMode(!isPartyMode);
   },
 
   setSkinnyMode: (enabled) => set((state) => ({

@@ -16,6 +16,7 @@
 import React, { useState, useMemo } from 'react';
 import { X, Search, Star, Shuffle } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { useFocusTrap } from '../../hooks/useFocusTrap';
 
 interface MilkdropPresetSelectorProps {
   /** All available preset keys */
@@ -47,6 +48,7 @@ export const MilkdropPresetSelector: React.FC<MilkdropPresetSelectorProps> = ({
   className = ''
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const dialogRef = useFocusTrap<HTMLDivElement>(true, onClose);
   
   // Filter and organize presets
   const { favoritePresets, filteredPresets } = useMemo(() => {
@@ -86,7 +88,7 @@ export const MilkdropPresetSelector: React.FC<MilkdropPresetSelectorProps> = ({
   
   return (
     <div className={`fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm ${className}`}>
-      <div className="bg-surface-1 rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Milkdrop Presets" className="bg-surface-1 rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-surface-3">
           <h2 className="text-lg font-semibold text-text-main">
@@ -98,6 +100,7 @@ export const MilkdropPresetSelector: React.FC<MilkdropPresetSelectorProps> = ({
               onClick={selectRandom}
               className="p-1.5 text-text-secondary hover:text-text-main"
               title="Random preset"
+              aria-label="Random Milkdrop preset"
             >
               <Shuffle size={18} />
             </Button>
@@ -105,6 +108,7 @@ export const MilkdropPresetSelector: React.FC<MilkdropPresetSelectorProps> = ({
               variant="ghost"
               onClick={onClose}
               className="p-1.5 text-text-secondary hover:text-text-main"
+              aria-label="Close Milkdrop presets"
             >
               <X size={20} />
             </Button>
@@ -123,8 +127,8 @@ export const MilkdropPresetSelector: React.FC<MilkdropPresetSelectorProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search presets..."
+              aria-label="Search Milkdrop presets"
               className="w-full pl-10 pr-4 py-2 bg-surface-2 border border-surface-3 rounded-lg text-text-main placeholder:text-text-subtle focus:outline-none focus:ring-2 focus:ring-brand/50 focus:border-brand"
-              autoFocus
             />
           </div>
         </div>
@@ -226,30 +230,30 @@ const PresetItem: React.FC<PresetItemProps> = ({
   return (
     <div
       className={`
-        group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer
+        group flex items-center gap-2 rounded-lg pr-2
         transition-colors duration-150
         ${isActive 
           ? 'bg-brand/20 text-text-main' 
           : 'hover:bg-surface-2 text-text-secondary hover:text-text-main'
         }
       `}
-      onClick={() => onSelect(preset)}
     >
-      <span className="flex-1 truncate text-sm">
-        {formatPresetName(preset)}
-      </span>
-      
-      {isActive && (
-        <span className="text-xs font-medium text-brand">Playing</span>
-      )}
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm"
+        aria-pressed={isActive}
+        onClick={() => onSelect(preset)}
+      >
+        <span className="flex-1 truncate">{formatPresetName(preset)}</span>
+        {isActive && <span className="shrink-0 text-xs font-medium text-brand">Playing</span>}
+      </button>
       
       <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggleFavorite(preset);
-        }}
+        type="button"
+        onClick={() => onToggleFavorite(preset)}
+        aria-pressed={isFavorite}
         className={`
-          p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity
+          p-1 rounded opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity
           ${isFavorite 
             ? 'text-accent-yellow opacity-100' 
             : 'text-text-subtle hover:text-accent-yellow'
