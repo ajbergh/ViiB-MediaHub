@@ -21,7 +21,7 @@ test('Podcasts follows public RSS and browses episodes without playback', async 
     if (u.pathname === '/api/v2/podcasts/feeds' && req.method() === 'GET') {
       return route.fulfill({ json: { feeds: subscribed ? [{
         id: feedId, url: feedURL, title: 'Independent Podcast', author: 'Publisher',
-        description: 'A sample RSS feed', imageUrl: '', language: 'en',
+        description: 'A sample RSS feed', imageUrl: 'https://images.publisher.example/show.png', language: 'en',
         episodeCount: 1,
       }] : [] } });
     }
@@ -41,6 +41,10 @@ test('Podcasts follows public RSS and browses episodes without playback', async 
       return route.fulfill({ status: 201, json: {
         id: feedId, title: 'Independent Podcast', episodeCount: 1,
       } });
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/artwork') {
+      return route.fulfill({ status: 200, contentType: 'image/png',
+        body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/6u0AAAAASUVORK5CYII=', 'base64') });
     }
     if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/refresh') {
       if (req.method() === 'POST') {
@@ -80,6 +84,9 @@ test('Podcasts follows public RSS and browses episodes without playback', async 
   await page.getByRole('button', { name: 'Follow podcast' }).click();
   await expect(page).toHaveURL('/podcasts/show/' + feedId);
   await expect(page.getByRole('heading', { name: 'First episode' })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Independent Podcast cover art' })).toHaveAttribute(
+    'src', '/api/v2/podcasts/feeds/' + feedId + '/artwork'
+  );
   await page.getByRole('button', { name: 'Refresh feed' }).click();
   await expect(page.getByText('Refresh queued. Episodes will update when the publisher responds.')).toBeVisible();
   expect(refreshed).toBe(1);

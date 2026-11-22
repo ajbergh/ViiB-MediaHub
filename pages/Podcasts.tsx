@@ -11,6 +11,21 @@ function readableError(error: unknown): string {
   return error instanceof Error ? error.message : 'The podcast service is unavailable.';
 }
 
+/** Publisher images only load through the public-network-validated local API. */
+const PodcastArtwork: React.FC<{ feedId: string; title: string; imageURL?: string; large?: boolean }> = ({ feedId, title, imageURL, large = false }) => {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [feedId, imageURL]);
+  return <span className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-surface-highlight text-brand ${large ? 'size-20' : 'size-14'}`}>
+    <Headphones size={large ? 40 : 25} aria-hidden="true"/>
+    {imageURL && !failed && <img
+      src={'/api/v2/podcasts/feeds/' + encodeURIComponent(feedId) + '/artwork'}
+      alt={title + ' cover art'} loading="lazy" referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+      className="absolute inset-0 h-full w-full object-cover"
+    />}
+  </span>;
+};
+
 /** Early RSS subscription experience; deliberately has no fake player or download actions. */
 export const Podcasts: React.FC = () => {
   const [feeds, setFeeds] = useState<PodcastFeed[]>([]);
@@ -109,7 +124,7 @@ export const Podcasts: React.FC = () => {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {feeds.map(feed => <Link key={feed.id} to={'/podcasts/show/' + encodeURIComponent(feed.id)}
               className="flex items-start gap-4 rounded-xl border border-surface-3 bg-surface-2 p-4 transition-colors hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-brand">
-              <span className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-surface-highlight text-brand"><Headphones size={25}/></span>
+              <PodcastArtwork feedId={feed.id} title={feed.title} imageURL={feed.imageUrl}/>
               <span className="min-w-0">
                 <span className="block truncate font-semibold text-text-main">{feed.title}</span>
                 <span className="block truncate text-xs text-text-secondary">{feed.author || 'Independent publisher'}</span>
@@ -254,7 +269,7 @@ export const PodcastShow: React.FC = () => {
     {error && <p role="alert" className="rounded-lg border border-error/30 p-3 text-error">{error}</p>}
     {!loading && feed && <>
       <header className="flex items-start gap-5 rounded-xl border border-surface-3 bg-surface-2 p-6">
-        <span className="flex size-20 shrink-0 items-center justify-center rounded-xl bg-surface-highlight text-brand"><Headphones size={40}/></span>
+        <PodcastArtwork feedId={feed.id} title={feed.title} imageURL={feed.imageUrl} large/>
         <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-bold text-text-main">{feed.title}</h1>
           <p className="mt-1 text-sm text-text-secondary">{feed.author}</p>
