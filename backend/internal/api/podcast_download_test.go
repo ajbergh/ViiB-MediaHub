@@ -659,3 +659,90 @@ func TestPodcastStagedResumeFileSurvivesAgedTempSweep(t *testing.T){
  a.cleanupPodcastAbandonedParts(dir,now)
  if _,err:=os.Stat(f.Name());err!=nil{t.Fatalf("checkpoint swept: %v",err)}
 }
+
+func TestPodcastResumeRecovers416AndChangedFirstRangeByOneCleanRestart(t *testing.T){
+ for _,tc:=range []struct{name string;staleError error;changedETag bool}{
+    {"416 range no longer valid",podcast.ErrInvalidMediaRange,false},
+    {"strong ETag changed",nil,true},
+ }{
+  t.Run(tc.name,func(t *testing.T){
+    d,id:=seedPodcastDownload(t);defer d.Close()
+    ctx:=context.Background()
+    a:=&API{db:d,dataDir:t.TempDir()}
+    dir,err:=a.podcastStorageDir();if err!=nil{t.Fatal(err)}
+    f,err:=os.CreateTemp(dir,".part-*");if err!=nil{t.Fatal(err)}
+    prefix:=[]byte("ID3a")
+    if _,err:=f.Write(prefix);err!=nil{t.Fatal(err)}
+    if err:=f.Sync();err!=nil{t.Fatal(err)}
+    if err:=f.Close();err!=nil{t.Fatal(err)}
+    source,_,err:=d.PodcastMediaSource(ctx,id);if err!=nil{t.Fatal(err)}
+    sourceHash:=sha256.Sum256([]byte(source))
+    prefixHash:=sha256.Sum256(prefix)
+    if _,err:=d.EnqueuePodcastDownload(ctx,id);err!=nil{t.Fatal(err)}
+    if _,err:=d.ClaimPodcastDownload(ctx,"old",time.Now());err!=nil{t.Fatal(err)}
+    if err:=d.SavePodcastDownloadCheckpoint(ctx,id,"old",db.PodcastResumeCheckpoint{
+      TempFilename:filepath.Base(f.Name()),Bytes:4,Total:8,ETag:"\"old\"",
+      MIME:"audio/mpeg",SHA256:hex.EncodeToString(prefixHash[:]),
+      SourceSHA256:hex.EncodeToString(sourceHash[:]),
+    });err!=nil{t.Fatal(err)}
+    claimed,err:=d.ClaimPodcastDownload(ctx,"new",time.Now().Add(5*time.Minute))
+    if err!=nil||claimed!=id{t.Fatalf("reclaimed: %s %v",claimed,err)}
+    calls:=0
+    a.podcastDownloadFetch=func(_ context.Context,_ string,header string,_ string)(podcast.MediaSegment,error){
+        calls++
+        if calls==1{
+            if header!="bytes=4-2097155"{t.Fatalf("expected resumed range, got %q",header)}
+            if tc.staleError!=nil{return podcast.MediaSegment{},tc.staleError}
+            if tc.changedETag{return podcast.MediaSegment{
+                Start:4,End:7,Total:8,MIME:"audio/mpeg",
+                ETag:"\"new\"",Data:[]byte("bcde")},nil}
+        }
+        if calls==2{
+            if header!="bytes=0-2097151"{t.Fatalf("not restarted from zero: %q",header)}
+            return podcast.MediaSegment{Start:0,End:7,Total:8,
+                MIME:"audio/mpeg",ETag:"\"new\"",Data:[]byte("ID3abcde")},nil
+        }
+        t.Fatalf("unbounded publisher retry %d",calls)
+        return podcast.MediaSegment{},errors.New("unbounded requests")
+    }
+    if err:=a.transferPodcastDownload(ctx,id,"new");err!=nil{t.Fatal(err)}
+    if calls!=2{t.Fatalf("want single clean restart, calls=%d",calls)}
+    file,err:=d.PodcastCompletedDownload(ctx,id);if err!=nil{t.Fatal(err)}
+    data,err:=os.ReadFile(filepath.Join(dir,file.Filename))
+    if err!=nil||string(data)!="ID3abcde"{t.Fatalf("mixed/stale bytes published: %q %v",data,err)}
+  })
+ }
+}
+
+func TestPodcastResume416RetryOccursAtMostOnce(t *testing.T){
+ d,id:=seedPodcastDownload(t);defer d.Close()
+ ctx:=context.Background()
+ a:=&API{db:d,dataDir:t.TempDir()}
+ dir,err:=a.podcastStorageDir();if err!=nil{t.Fatal(err)}
+ f,err:=os.CreateTemp(dir,".part-*");if err!=nil{t.Fatal(err)}
+ if _,err:=f.Write([]byte("ID3a"));err!=nil{t.Fatal(err)}
+ if err:=f.Close();err!=nil{t.Fatal(err)}
+ source,_,err:=d.PodcastMediaSource(ctx,id);if err!=nil{t.Fatal(err)}
+ sourceHash:=sha256.Sum256([]byte(source))
+ prefixHash:=sha256.Sum256([]byte("ID3a"))
+ if _,err:=d.EnqueuePodcastDownload(ctx,id);err!=nil{t.Fatal(err)}
+ if _,err:=d.ClaimPodcastDownload(ctx,"old",time.Now());err!=nil{t.Fatal(err)}
+ if err:=d.SavePodcastDownloadCheckpoint(ctx,id,"old",db.PodcastResumeCheckpoint{
+    TempFilename:filepath.Base(f.Name()),Bytes:4,Total:8,
+    MIME:"audio/mpeg",ETag:"\"old\"",
+    SHA256:hex.EncodeToString(prefixHash[:]),SourceSHA256:hex.EncodeToString(sourceHash[:]),
+ });err!=nil{t.Fatal(err)}
+ if _,err:=d.ClaimPodcastDownload(ctx,"new",time.Now().Add(5*time.Minute));err!=nil{t.Fatal(err)}
+ calls:=0
+ a.podcastDownloadFetch=func(_ context.Context,_ string,_ string,_ string)(podcast.MediaSegment,error){
+     calls++
+     return podcast.MediaSegment{},podcast.ErrInvalidMediaRange
+ }
+ if err:=a.transferPodcastDownload(ctx,id,"new");!errors.Is(err,podcast.ErrInvalidMediaRange){
+     t.Fatalf("expected final 416 after one restart, got %v",err)
+ }
+ if calls!=2{t.Fatalf("expected bounded two requests, got %d",calls)}
+ if _,err:=os.Lstat(filepath.Join(dir,id+".audio"));!errors.Is(err,os.ErrNotExist){
+    t.Fatalf("failed resume published audio: %v",err)
+ }
+}
