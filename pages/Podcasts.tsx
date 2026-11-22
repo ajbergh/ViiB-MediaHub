@@ -29,6 +29,7 @@ const PodcastArtwork: React.FC<{ feedId: string; title: string; imageURL?: strin
 /** Early RSS subscription experience; deliberately has no fake player or download actions. */
 export const Podcasts: React.FC = () => {
   const [feeds, setFeeds] = useState<PodcastFeed[]>([]);
+  const [followingQuery, setFollowingQuery] = useState('');
   const [url, setURL] = useState('');
   const [preview, setPreview] = useState<PodcastPreview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -114,15 +115,24 @@ export const Podcasts: React.FC = () => {
       </section>
 
       <section aria-label="Followed podcasts">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-xl font-semibold text-text-main">Following</h2>
-          <button type="button" aria-label="Refresh subscribed podcasts" onClick={() => setRevision(value => value + 1)} className="rounded-md p-2 text-text-secondary hover:bg-surface-2"><RefreshCw size={18}/></button>
+          <div className="flex flex-1 items-center justify-end gap-2">
+            <input type="search" aria-label="Search followed podcasts"
+              placeholder="Search your podcasts" value={followingQuery}
+              onChange={event => setFollowingQuery(event.target.value)}
+              className="w-full max-w-xs rounded-md border border-surface-3 bg-surface-1 px-3 py-2 text-sm text-text-main focus-visible:outline-2 focus-visible:outline-brand" />
+            <button type="button" aria-label="Refresh subscribed podcasts" onClick={() => setRevision(value => value + 1)} className="rounded-md p-2 text-text-secondary hover:bg-surface-2"><RefreshCw size={18}/></button>
+          </div>
         </div>
         {loading && <p role="status" className="text-text-secondary">Loading subscriptions…</p>}
         {!loading && feeds.length === 0 && <p className="rounded-xl border border-surface-3 bg-surface-2 p-8 text-center text-text-secondary">No podcasts followed yet. Add an RSS feed above to get started.</p>}
         {!loading && feeds.length > 0 && (
+          <>
+          {feeds.filter(feed => (feed.title + ' ' + feed.author).toLowerCase().includes(followingQuery.trim().toLowerCase())).length === 0 &&
+            <p className="rounded-lg border border-surface-3 bg-surface-2 p-5 text-sm text-text-secondary">No followed podcasts match this search.</p>}
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {feeds.map(feed => <Link key={feed.id} to={'/podcasts/show/' + encodeURIComponent(feed.id)}
+            {feeds.filter(feed => (feed.title + ' ' + feed.author).toLowerCase().includes(followingQuery.trim().toLowerCase())).map(feed => <Link key={feed.id} to={'/podcasts/show/' + encodeURIComponent(feed.id)}
               className="flex items-start gap-4 rounded-xl border border-surface-3 bg-surface-2 p-4 transition-colors hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-brand">
               <PodcastArtwork feedId={feed.id} title={feed.title} imageURL={feed.imageUrl}/>
               <span className="min-w-0">
@@ -132,6 +142,7 @@ export const Podcasts: React.FC = () => {
               </span>
             </Link>)}
           </div>
+          </>
         )}
       </section>
     </main>
@@ -142,6 +153,7 @@ export const PodcastShow: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [feed, setFeed] = useState<PodcastFeed | null>(null);
   const [episodes, setEpisodes] = useState<PodcastEpisode[]>([]);
+  const [episodeFilter, setEpisodeFilter] = useState('');
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -298,10 +310,16 @@ export const PodcastShow: React.FC = () => {
         </div>
       </header>
       <section>
-        <h2 className="mb-4 text-lg font-bold text-text-main">Episodes ({episodes.length} loaded)</h2>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-bold text-text-main">Episodes ({episodes.length} loaded)</h2>
+          <input type="search" aria-label="Filter loaded episodes" placeholder="Filter loaded episodes"
+            value={episodeFilter} onChange={event => setEpisodeFilter(event.target.value)}
+            className="w-full max-w-xs rounded-md border border-surface-3 bg-surface-1 px-3 py-2 text-sm text-text-main focus-visible:outline-2 focus-visible:outline-brand" />
+        </div>
+        <p className="mb-3 text-xs text-text-subtle">Episode filtering applies to loaded pages only. Load more to browse the full back catalog.</p>
         {episodes.length === 0 && <p className="text-text-secondary">No episodes are available in this feed.</p>}
         <div className="space-y-2">
-          {episodes.map(episode => <article key={episode.id} className="rounded-lg border border-surface-3 bg-surface-2 p-4">
+          {episodes.filter(episode => (episode.title + ' ' + episode.description).toLowerCase().includes(episodeFilter.trim().toLowerCase())).map(episode => <article key={episode.id} className="rounded-lg border border-surface-3 bg-surface-2 p-4">
             <h3 className="font-semibold text-text-main">{episode.title}</h3>
             <p className="mt-1 text-xs text-text-subtle">{episode.publishedAt ? new Date(episode.publishedAt).toLocaleDateString() : 'Date unavailable'}{episode.durationMs ? ` · ${Math.round(episode.durationMs / 60000)} min` : ''}</p>
             {episode.description && <p className="mt-2 line-clamp-3 text-sm text-text-secondary">{episode.description}</p>}

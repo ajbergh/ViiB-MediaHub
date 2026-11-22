@@ -161,6 +161,10 @@ test('show detail paginates episodes without duplicates', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Load more episodes' })).toBeVisible();
   await page.getByRole('button', { name: 'Load more episodes' }).click();
   await expect(page.getByRole('heading', { name: 'Episode Two' })).toBeVisible();
+  await page.getByRole('searchbox', { name: 'Filter loaded episodes' }).fill('Two');
+  await expect(page.getByRole('heading', { name: 'Episode Two' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Episode One' })).toHaveCount(0);
+  await page.getByRole('searchbox', { name: 'Filter loaded episodes' }).clear();
   await expect(page.getByRole('button', { name: 'Load more episodes' })).toHaveCount(0);
   expect(requestedOffsets).toEqual([0, 1]);
 });
