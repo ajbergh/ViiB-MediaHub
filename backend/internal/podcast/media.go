@@ -53,7 +53,9 @@ func ValidateMediaURL(raw string, allowHTTP bool) (*url.URL,error) {
     if parsed.Scheme!="https" && !(allowHTTP && parsed.Scheme=="http"){return nil,ErrBlockedURL}
     if parsed.Port()!="" {
         port,err:=strconv.Atoi(parsed.Port())
-        if err!=nil||port<1||port>65535{return nil,ErrBlockedURL}
+        if err!=nil || !(parsed.Scheme=="https"&&port==443 || parsed.Scheme=="http"&&port==80){
+            return nil,ErrBlockedURL
+        }
     }
     hostname:=strings.ToLower(strings.TrimSuffix(parsed.Hostname(),"."))
     if hostname=="localhost"||strings.HasSuffix(hostname,".localhost")||
@@ -74,7 +76,8 @@ func SupportedPodcastAudioMIME(raw string) string {
     base,_,err:=mime.ParseMediaType(strings.TrimSpace(raw))
     if err!=nil{return ""}
     switch strings.ToLower(base){
-    case "audio/mpeg","audio/mp4","audio/x-m4a","audio/aac",
+    case "audio/mpeg","audio/mp3","audio/x-mp3","audio/mpeg3",
+        "audio/mp4","audio/x-m4a","audio/aac","audio/x-aac",
         "audio/ogg","audio/opus","audio/wav","audio/x-wav",
         "audio/flac","audio/x-flac","audio/webm","application/ogg":
         return strings.ToLower(base)
