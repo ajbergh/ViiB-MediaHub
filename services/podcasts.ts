@@ -1,7 +1,8 @@
 /**
  * First typed public-RSS Podcast API client. Subscriptions and episode
  * metadata are backend-owned; do not persist them in the music Zustand store.
- * The player/download/discovery APIs will be added only as implemented.
+ * Streaming, revisioned listening progress and the early-access offline
+ * download endpoints are local Go APIs; provider URLs remain backend-only.
  */
 const BASE = '/api/v2/podcasts';
 
@@ -26,6 +27,18 @@ export interface PodcastContinueEpisode extends PodcastEpisode {
   positionMs: number;
   listenedMs: number;
   progressRevision: number;
+}
+export interface PodcastDownload {
+  id: string;
+  episodeId: string;
+  status: 'queued' | 'downloading' | 'completed' | 'failed' | 'canceled' | 'paused';
+  bytesReceived: number;
+  expectedBytes: number;
+  verifiedSize: number;
+  errorCode?: string;
+  createdAt: number;
+  updatedAt: number;
+  completedAt: number;
 }
 export interface PodcastProgress {
   episodeId: string;
@@ -130,6 +143,18 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const podcastsAPI = {
   mediaURL(episodeId: string): string {
     return BASE + '/episodes/' + encodeURIComponent(episodeId) + '/media';
+  },
+  listDownloads(signal?: AbortSignal): Promise<{ downloads: PodcastDownload[] }> {
+    return request('/downloads', { signal });
+  },
+  queueDownload(episodeId: string, signal?: AbortSignal): Promise<{ download: PodcastDownload }> {
+    return request('/episodes/' + encodeURIComponent(episodeId) + '/download', { method: 'POST', signal });
+  },
+  cancelDownload(episodeId: string, signal?: AbortSignal): Promise<{ download: PodcastDownload }> {
+    return request('/episodes/' + encodeURIComponent(episodeId) + '/download', { method: 'DELETE', signal });
+  },
+  getDownload(episodeId: string, signal?: AbortSignal): Promise<{ download: PodcastDownload }> {
+    return request('/episodes/' + encodeURIComponent(episodeId) + '/download', { signal });
   },
   listContinueListening(limit = 12, signal?: AbortSignal): Promise<{ episodes: PodcastContinueEpisode[] }> {
     return request('/episodes/continue?limit=' + encodeURIComponent(String(limit)), { signal });

@@ -127,6 +127,24 @@ describe('podcastsAPI', () => {
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toMatchObject({ expectedRevision: 1, isPlayed: true });
   });
 
+  it('queues, lists and cancels offline work without handling publisher URLs', async () => {
+    const row = { episodeId: 'episode/1', id: 'episode/1', status: 'queued', bytesReceived: 0, expectedBytes: 0 };
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 202, json: async () => ({ download: row }) }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(podcastsAPI.queueDownload('episode/1')).resolves.toEqual({ download: row });
+    expect(fetchMock).toHaveBeenCalledWith('/api/v2/podcasts/episodes/episode%2F1/download', expect.objectContaining({
+      method: 'POST',
+    }));
+    const cancelMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ download: { ...row, status: 'canceled' } }) }));
+    vi.stubGlobal('fetch', cancelMock);
+    await expect(podcastsAPI.cancelDownload('episode/1')).resolves.toMatchObject({ download: { status: 'canceled' } });
+    expect(cancelMock).toHaveBeenCalledWith('/api/v2/podcasts/episodes/episode%2F1/download', expect.objectContaining({ method: 'DELETE' }));
+    const listMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ downloads: [row] }) }));
+    vi.stubGlobal('fetch', listMock);
+    expect((await podcastsAPI.listDownloads()).downloads).toEqual([row]);
+    expect(listMock.mock.calls[0][0]).toBe('/api/v2/podcasts/downloads');
+  });
+
   it('handles an empty list and 204 unsubscribe', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ feeds: [] }) })

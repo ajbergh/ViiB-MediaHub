@@ -5,7 +5,7 @@ import { ArrowLeft, Download, Headphones, Loader2, Plus, RefreshCw, Rss, Trash2 
 import { api } from '../services/api';
 import { podcastEpisodeToTrack, queuePodcastEpisode, type PodcastQueuePosition } from '../lib/podcastPlayback';
 import { useStore } from '../store';
-import { podcastsAPI, PodcastAPIError, type PodcastFeed, type PodcastEpisode, type PodcastPreview, type PodcastRefreshStatus, type PodcastOPMLImportPreview, type PodcastContinueEpisode } from '../services/podcasts';
+import { podcastsAPI, PodcastAPIError, type PodcastFeed, type PodcastEpisode, type PodcastPreview, type PodcastRefreshStatus, type PodcastOPMLImportPreview, type PodcastContinueEpisode, type PodcastDownload } from '../services/podcasts';
 
 const inputClass = 'w-full rounded-lg border border-surface-3 bg-surface-1 px-4 py-3 text-text-main outline-none focus-visible:ring-2 focus-visible:ring-brand';
 
@@ -28,7 +28,7 @@ const PodcastArtwork: React.FC<{ feedId: string; title: string; imageURL?: strin
   </span>;
 };
 
-/** Public RSS subscriptions and shared-player playback; offline downloads remain planned. */
+/** Public RSS subscriptions, shared playback and early-access offline downloads. */
 function queueEpisodeAction(episode: PodcastEpisode, feed: PodcastFeed, position: PodcastQueuePosition) {
   const player = useStore.getState();
   if (!queuePodcastEpisode(episode, feed, position, player)) return;
@@ -361,6 +361,9 @@ export const PodcastShow: React.FC = () => {
   const [episodeFilter, setEpisodeFilter] = useState('');
   const [playedFilter, setPlayedFilter] = useState<'all' | 'played' | 'unplayed'>('all');
   const [updatingEpisode, setUpdatingEpisode] = useState<string | null>(null);
+  const [downloads, setDownloads] = useState<Record<string, PodcastDownload>>({});
+  const [workingDownload, setWorkingDownload] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState('');
   // Bulk edits are explicitly limited to currently loaded episode pages.
   // Each revision is freshly read; conflict errors are reported, not forced.
   const [bulkTarget, setBulkTarget] = useState<boolean | null>(null);
@@ -424,6 +427,40 @@ export const PodcastShow: React.FC = () => {
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [id, revision]);
+
+  // Download status is polled through one bounded subscription-scoped list.
+  // Never fetch or render remote signed enclosure URLs in the browser.
+  useEffect(() => {
+    if (!id) return;
+    const controller = new AbortController();
+    const poll = () => {
+      void podcastsAPI.listDownloads(controller.signal)
+        .then(({ downloads: rows }) => {
+          if (controller.signal.aborted) return;
+          setDownloads(Object.fromEntries(rows.map(row => [row.episodeId, row])));
+        })
+        .catch(() => { /* Streaming remains available on older backend builds. */ });
+    };
+    poll();
+    const timer = window.setInterval(poll, 3500);
+    return () => { controller.abort(); window.clearInterval(timer); };
+  }, [id]);
+
+  const changeDownload = async (episode: PodcastEpisode, cancel: boolean) => {
+    if (workingDownload) return;
+    setDownloadError('');
+    setWorkingDownload(episode.id);
+    try {
+      const { download } = cancel
+        ? await podcastsAPI.cancelDownload(episode.id)
+        : await podcastsAPI.queueDownload(episode.id);
+      setDownloads(current => ({ ...current, [episode.id]: download }));
+    } catch (err) {
+      setDownloadError(readableError(err));
+    } finally {
+      setWorkingDownload(null);
+    }
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -604,6 +641,7 @@ export const PodcastShow: React.FC = () => {
       </header>
 
       <section>
+        {downloadError && <p role="alert" className="mb-3 rounded-lg border border-error/30 p-3 text-sm text-error">{downloadError}</p>}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-bold text-text-main">Episodes ({episodes.length} loaded)</h2>
           <div aria-label="Loaded episode bulk actions" className="flex flex-wrap items-center gap-2">
@@ -691,7 +729,32 @@ export const PodcastShow: React.FC = () => {
                   Add to Queue
                 </button>
               </>}
-              <span className="text-xs text-text-subtle">Uses the shared ViiB music/Plex queue. Offline downloads are planned.</span>
+              {episode.hasAudio && (() => {
+                const status = downloads[episode.id];
+                const active = status?.status === 'queued' || status?.status === 'downloading';
+                const completed = status?.status === 'completed';
+                const label = active ? 'Cancel download' : completed ? 'Downloaded' :
+                  status?.status === 'failed' || status?.status === 'canceled' ? 'Retry download' : 'Download episode';
+                const percent = status?.expectedBytes ? Math.min(100,
+                  Math.floor(100 * status.bytesReceived / status.expectedBytes)) : null;
+                return <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" disabled={workingDownload !== null || completed}
+                    onClick={() => void changeDownload(episode, active)}
+                    aria-label={label + ' ' + episode.title}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-surface-3 px-3 py-1.5 text-xs font-semibold text-text-secondary hover:text-text-main disabled:opacity-50">
+                    <Download size={14} aria-hidden="true" />
+                    {workingDownload === episode.id ? 'Working…' : label}
+                  </button>
+                  {status && <span role="status" className="text-xs text-text-subtle">
+                    {completed ? 'Available offline' : status.status === 'downloading'
+                      ? `Downloading${percent === null ? '' : ' ' + percent + '%'}`
+                      : status.status === 'failed' ? `Download failed: ${status.errorCode || 'unavailable'}`
+                      : status.status === 'canceled' ? 'Download canceled'
+                      : 'Download queued'}
+                  </span>}
+                </div>;
+              })()}
+              <span className="text-xs text-text-subtle">Uses the shared ViiB music/Plex player and queue.</span>
             </div>
           </article>)}
         </div>

@@ -9,6 +9,7 @@ test('Podcasts follows public RSS and uses shared playback, queue and played wor
   let refreshed = 0;
   let progressPlayed = false;
   let progressRevision = 0;
+  let podcastDownloadStatus: 'queued' | 'canceled' | null = null;
   const mutations: string[] = [];
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -54,6 +55,20 @@ test('Podcasts follows public RSS and uses shared playback, queue and played wor
     if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/artwork') {
       return route.fulfill({ status: 200, contentType: 'image/png',
         body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/6u0AAAAASUVORK5CYII=', 'base64') });
+    }
+    if (u.pathname === '/api/v2/podcasts/downloads' && req.method() === 'GET') {
+      return route.fulfill({ json: { downloads: podcastDownloadStatus
+        ? [{ episodeId: 'ep-1', id: 'ep-1', status: podcastDownloadStatus,
+            bytesReceived: 0, expectedBytes: 0, verifiedSize: 0, createdAt: 1, updatedAt: 1, completedAt: 0 }]
+        : [] } });
+    }
+    if (u.pathname === '/api/v2/podcasts/episodes/ep-1/download') {
+      if (req.method() === 'POST') podcastDownloadStatus = 'queued';
+      else if (req.method() === 'DELETE') podcastDownloadStatus = 'canceled';
+      else return route.fulfill({ status: 405 });
+      return route.fulfill({ status: req.method() === 'POST' ? 202 : 200,
+        json: { download: { episodeId: 'ep-1', id: 'ep-1', status: podcastDownloadStatus,
+          bytesReceived: 0, expectedBytes: 0, verifiedSize: 0, createdAt: 1, updatedAt: 1, completedAt: 0 } } });
     }
     if (u.pathname === '/api/v2/podcasts/episodes/ep-1/progress') {
       if (req.method() === 'GET') {
@@ -139,7 +154,12 @@ test('Podcasts follows public RSS and uses shared playback, queue and played wor
   await page.getByRole('button', { name: 'Refresh feed' }).click();
   await expect(page.getByText('Refresh queued. Episodes will update when the publisher responds.')).toBeVisible();
   expect(refreshed).toBe(1);
-  await expect(page.getByText('Uses the shared ViiB music/Plex queue. Offline downloads are planned.')).toBeVisible();
+  await expect(page.getByText('Uses the shared ViiB music/Plex player and queue.')).toBeVisible();
+  await page.getByRole('button', { name: 'Download episode First episode' }).click();
+  await expect(page.getByText('Download queued')).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel download First episode' }).click();
+  await expect(page.getByText('Download canceled')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Retry download First episode' })).toBeVisible();
   await page.getByRole('button', { name: 'Play First episode next' }).click();
   await expect(page.getByRole('button', { name: 'Queue, 2 tracks' }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Add First episode to queue' }).click();
