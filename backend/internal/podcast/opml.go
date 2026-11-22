@@ -60,8 +60,7 @@ func ExportOPML(subscriptions []OPMLSubscription) ([]byte,error) {
     data,err:=xml.MarshalIndent(doc,"","  ")
     if err!=nil{return nil,fmt.Errorf("%w: cannot encode subscriptions",ErrInvalidOPMLExport)}
     result:=append([]byte(xml.Header),data...)
-    result=append(result,'
-')
+    result=append(result,byte(10))
     if len(result)>MaxOPMLBytes{
         return nil,fmt.Errorf("%w: export exceeds size limit",ErrInvalidOPMLExport)
     }

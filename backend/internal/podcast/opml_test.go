@@ -29,7 +29,7 @@ func TestPodcastExportOPMLRoundTripAndEscaping(t *testing.T){
     }
     if err=xml.Unmarshal(doc,&parsed);err!=nil{t.Fatal(err)}
     if parsed.Version!="2.0"||len(parsed.Body.Outlines)!=2 ||
-        parsed.Body.Outlines[0].Text!="News & <Science> "Daily""||
+        parsed.Body.Outlines[0].Text!="News & <Science> \"Daily\""||
         parsed.Body.Outlines[0].XMLURL!="https://example.org/rss?feed=rss" {
         t.Fatalf("OPML round trip mismatch: %+v",parsed)
     }
