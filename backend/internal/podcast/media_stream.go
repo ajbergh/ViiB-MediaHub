@@ -6,6 +6,7 @@ import (
     "errors"
     "io"
     "net/http"
+    "strconv"
     "strings"
 )
 
@@ -65,7 +66,7 @@ func (f *Fetcher) StreamMedia(ctx context.Context,raw,declaredType string,w http
     }
     audioType:=SupportedPodcastAudioMIME(response.Header.Get("Content-Type"))
     if audioType=="" && (response.Header.Get("Content-Type")=="" ||
-        response.Header.Get("Content-Type")=="application/octet-stream"){
+        strings.HasPrefix(strings.ToLower(response.Header.Get("Content-Type")),"application/octet-stream")){
         audioType=SupportedPodcastAudioMIME(declaredType)
     }
     if audioType==""{return ErrInvalidMedia}
@@ -74,7 +75,7 @@ func (f *Fetcher) StreamMedia(ctx context.Context,raw,declaredType string,w http
     w.Header().Set("X-Content-Type-Options","nosniff")
     w.Header().Set("Accept-Ranges","none")
     if response.ContentLength>=0{
-        w.Header().Set("Content-Length",response.Header.Get("Content-Length"))
+        w.Header().Set("Content-Length",strconv.FormatInt(response.ContentLength,10))
     }
     w.WriteHeader(http.StatusOK)
     // Readers and writers remain streaming. When the upstream does not

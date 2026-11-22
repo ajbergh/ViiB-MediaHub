@@ -77,7 +77,7 @@ test('Podcasts follows public RSS and browses episodes without playback', async 
     if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/episodes') {
       return route.fulfill({ json: { episodes: [{
         id: 'ep-1', feedId, guid: 'ep-1', title: 'First episode',
-        description: 'Publisher episode description', enclosureUrl: 'https://publisher.example/episode.mp3',
+        description: 'Publisher episode description', hasAudio: true,
         enclosureType: 'audio/mpeg', publishedAt: 1795377600000, durationMs: 1800000,
       }], nextOffset: null } });
     }
@@ -103,11 +103,11 @@ test('Podcasts follows public RSS and browses episodes without playback', async 
   await expect(page).toHaveURL('/podcasts/show/' + feedId);
   await expect(page.getByRole('heading', { name: 'First episode' })).toBeVisible();
   await page.getByRole('button', { name: 'Listen to First episode' }).click();
-  await expect(page.getByRole('region', { name: 'Podcast episode player' })).toBeVisible();
-  await expect(page.getByLabel('Podcast audio: First episode')).toHaveAttribute(
-    'src', '/api/v2/podcasts/episodes/ep-1/media',
-  );
-  await page.getByRole('button', { name: 'Close podcast player' }).click();
+  // Podcasts use the same app-level Player and audio elements as local/Plex.
+  // No separate podcast-only controls or audio element are mounted.
+  await expect(page.getByRole('region', { name: 'Podcast episode player' })).toHaveCount(0);
+  await expect(page.locator('audio[src="/api/v2/podcasts/episodes/ep-1/media"]')).toHaveCount(1);
+  await expect(page.getByText('First episode')).toHaveCount(2);
 
   await expect(page.getByRole('img', { name: 'Independent Podcast cover art' })).toHaveAttribute(
     'src', '/api/v2/podcasts/feeds/' + feedId + '/artwork'
@@ -122,7 +122,7 @@ test('Podcasts follows public RSS and browses episodes without playback', async 
   await page.getByRole('button', { name: 'Refresh feed' }).click();
   await expect(page.getByText('Refresh queued. Episodes will update when the publisher responds.')).toBeVisible();
   expect(refreshed).toBe(1);
-  await expect(page.getByText('Streaming is early access; downloads are coming in a later phase.')).toBeVisible();
+  await expect(page.getByText('Play in the ViiB music player. Offline downloads are planned.')).toBeVisible();
   await page.getByRole('button', { name: 'Unfollow', exact: true }).click();
   await page.getByRole('button', { name: 'Confirm', exact: true }).click();
   await expect(page).toHaveURL('/podcasts');
@@ -178,11 +178,11 @@ test('show detail paginates episodes without duplicates', async ({ page }) => {
       requestedOffsets.push(offset);
       if (offset === 0) return route.fulfill({ json: { episodes: [{
         id: 'ep-1', feedId, guid: 'one', title: 'Episode One', description: '',
-        enclosureUrl: '', enclosureType: 'audio/mpeg', publishedAt: 0, durationMs: 0,
+        hasAudio: false, enclosureType: 'audio/mpeg', publishedAt: 0, durationMs: 0,
       }], nextOffset: 1 } });
       return route.fulfill({ json: { episodes: [{
         id: 'ep-2', feedId, guid: 'two', title: 'Episode Two', description: '',
-        enclosureUrl: '', enclosureType: 'audio/mpeg', publishedAt: 0, durationMs: 0,
+        hasAudio: false, enclosureType: 'audio/mpeg', publishedAt: 0, durationMs: 0,
       }], nextOffset: null } });
     }
     if (url.pathname === '/api/v2/podcasts/feeds/' + feedId + '/refresh')
