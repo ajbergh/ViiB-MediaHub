@@ -149,7 +149,7 @@ func TestPodcastCompletedFileDeletePreservesHistoryAndRestoresOnlinePlayback(t *
  diskPath:=filepath.Join(a.dataDir,"podcasts","episodes",file.Filename)
  if _,err=os.Stat(diskPath);err!=nil{t.Fatal(err)}
  offline:=request("GET","/episodes/"+id+"/media")
- if offline.Code!=206||offline.Body.String()!="ID3!"{t.Fatalf("offline playback: %d %q",offline.Code,offline.Body.String())}
+ if offline.Code!=http.StatusOK||offline.Body.String()!="ID3!"{t.Fatalf("offline playback: %d %q",offline.Code,offline.Body.String())}
  removed:=request("DELETE","/episodes/"+id+"/download")
  if removed.Code!=204{t.Fatalf("delete: %d %s",removed.Code,removed.Body.String())}
  if _,err=os.Lstat(diskPath);!errors.Is(err,os.ErrNotExist){t.Fatalf("file remains: %v",err)}
