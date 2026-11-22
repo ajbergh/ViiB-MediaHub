@@ -8,7 +8,7 @@
 
 - Open **Podcasts** from the Sidebar without connecting Spotify or enabling podcast refresh.
 - Follow a supported **public HTTPS RSS 2.0** feed by pasting its URL; preview its title and first episodes before following.
-- Browse followed shows, load additional episode pages, search followed show titles/authors and filter the **currently loaded** episode list.
+- Browse followed shows, load additional episode pages, search followed show titles/authors and filter the **currently loaded** episode list by title/description, Played, Unplayed, In progress (unplayed with a saved position), or Not started (unplayed with no saved position). The visible count and empty state reflect loaded episodes, not the full archive.
 - Stream public audio with **Listen** using the same persistent ViiB music/Plex player, queue, volume, EQ, Now Playing and OS Media Session hooks. Supported publishers provide byte-range seeking; not all CDN origins honor random byte ranges.
 - Return to **Podcasts → Continue Listening** to resume an unfinished followed episode. State is stored in podcast-specific SQLite tables, not music listening statistics.
 - On podcast episodes, use **Play Next** or **Add to Queue** to insert items into the existing audio queue. When the player is idle, these actions start playback. The existing Queue view can reorder or remove queued items.

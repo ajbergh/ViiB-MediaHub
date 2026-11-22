@@ -523,7 +523,7 @@ export const PodcastShow: React.FC = () => {
   const [episodes, setEpisodes] = useState<PodcastEpisode[]>([]);
 
   const [episodeFilter, setEpisodeFilter] = useState('');
-  const [playedFilter, setPlayedFilter] = useState<'all' | 'played' | 'unplayed'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'played' | 'unplayed' | 'in_progress' | 'not_started'>('all');
   const [updatingEpisode, setUpdatingEpisode] = useState<string | null>(null);
   const [downloads, setDownloads] = useState<Record<string, PodcastDownload>>({});
   const [downloadStorage, setDownloadStorage] = useState<PodcastStorage | null>(null);
@@ -826,6 +826,22 @@ export const PodcastShow: React.FC = () => {
       setWorking(false);
     }
   };
+  // The Go API pages episodes by subscription; these status filters deliberately
+  // operate on loaded rows only, without implying that the full RSS archive
+  // has been searched or changing the shared playback queue.
+  const visibleEpisodes = episodes.filter(episode => {
+    const played = Boolean(episode.isPlayed);
+    const hasPosition = (episode.positionMs ?? 0) > 0;
+    const matchesText = (episode.title + ' ' + episode.description)
+      .toLowerCase().includes(episodeFilter.trim().toLowerCase());
+    return matchesText && (
+      statusFilter === 'all' ||
+      (statusFilter === 'played' && played) ||
+      (statusFilter === 'unplayed' && !played) ||
+      (statusFilter === 'in_progress' && !played && hasPosition) ||
+      (statusFilter === 'not_started' && !played && !hasPosition)
+    );
+  });
   return <main className="mx-auto w-full max-w-5xl space-y-6 p-5 pb-28 sm:p-8">
     <Link to="/podcasts" className="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-main"><ArrowLeft size={17}/> Back to Podcasts</Link>
     {loading && <p role="status" className="text-text-secondary">Loading episodes…</p>}
@@ -919,12 +935,14 @@ export const PodcastShow: React.FC = () => {
               Mark loaded unplayed
             </button>
           </div>
-          <label htmlFor="podcast-played-filter" className="text-sm text-text-secondary">Played status</label>
-          <select id="podcast-played-filter" aria-label="Filter episodes by played status"
-            value={playedFilter} onChange={event => setPlayedFilter(event.target.value as 'all' | 'played' | 'unplayed')}
+          <label htmlFor="podcast-status-filter" className="text-sm text-text-secondary">Episode status</label>
+          <select id="podcast-status-filter" aria-label="Filter episodes by status"
+            value={statusFilter} onChange={event => setStatusFilter(event.target.value as typeof statusFilter)}
             className="rounded-md border border-surface-3 bg-surface-1 px-3 py-2 text-sm text-text-main">
             <option value="all">All episodes</option>
             <option value="unplayed">Unplayed</option>
+            <option value="in_progress">In progress</option>
+            <option value="not_started">Not started</option>
             <option value="played">Played</option>
           </select>
           <input type="search" aria-label="Filter loaded episodes" placeholder="Filter loaded episodes"
@@ -948,9 +966,14 @@ export const PodcastShow: React.FC = () => {
         </div>}
         {bulkSummary && <p role="status" className="mb-3 text-sm text-text-secondary">{bulkSummary}</p>}
         {episodes.length === 0 && <p className="text-text-secondary">No episodes are available in this feed.</p>}
+        {episodes.length > 0 && <p role="status" className="mb-3 text-xs text-text-subtle">
+          Showing {visibleEpisodes.length} of {episodes.length} loaded episodes.
+        </p>}
+        {episodes.length > 0 && visibleEpisodes.length === 0 && <p className="mb-3 text-sm text-text-secondary">
+          No loaded episodes match these filters. Clear the filters or load more episodes.
+        </p>}
         <div className="space-y-2">
-          {episodes.filter(episode => (episode.title + ' ' + episode.description).toLowerCase().includes(episodeFilter.trim().toLowerCase()) &&
-          (playedFilter === 'all' || (playedFilter === 'played') === Boolean(episode.isPlayed))).map(episode => <article key={episode.id} className="rounded-lg border border-surface-3 bg-surface-2 p-4">
+          {visibleEpisodes.map(episode => <article key={episode.id} className="rounded-lg border border-surface-3 bg-surface-2 p-4">
             <h3 className="font-semibold text-text-main">{episode.title}</h3>
             <p className="mt-1 text-xs text-text-subtle">{episode.publishedAt ? new Date(episode.publishedAt).toLocaleDateString() : 'Date unavailable'}{episode.durationMs ? ` · ${Math.round(episode.durationMs / 60000)} min` : ''}</p>
             {episode.description && <p className="mt-2 line-clamp-3 text-sm text-text-secondary">{episode.description}</p>}

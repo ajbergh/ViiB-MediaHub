@@ -145,11 +145,11 @@ test('Podcasts follows public RSS and uses shared playback, queue and played wor
   );
   await page.getByRole('button', { name: 'Mark First episode played' }).click();
   await expect(page.getByRole('button', { name: 'Mark First episode unplayed' })).toBeVisible();
-  await page.getByRole('combobox', { name: 'Filter episodes by played status' }).selectOption('unplayed');
+  await page.getByRole('combobox', { name: 'Filter episodes by status' }).selectOption('unplayed');
   await expect(page.getByRole('heading', { name: 'First episode' })).toHaveCount(0);
-  await page.getByRole('combobox', { name: 'Filter episodes by played status' }).selectOption('played');
+  await page.getByRole('combobox', { name: 'Filter episodes by status' }).selectOption('played');
   await expect(page.getByRole('heading', { name: 'First episode' })).toBeVisible();
-  await page.getByRole('combobox', { name: 'Filter episodes by played status' }).selectOption('all');
+  await page.getByRole('combobox', { name: 'Filter episodes by status' }).selectOption('all');
   await page.getByRole('button', { name: 'Mark loaded episodes unplayed' }).click();
   await expect(page.getByRole('group', { name: 'Confirm bulk episode change' })).toContainText('Saved positions will be kept.');
   await page.getByRole('button', { name: 'Confirm mark loaded unplayed' }).click();
@@ -232,6 +232,11 @@ test('show detail paginates episodes without duplicates', async ({ page }) => {
       return route.fulfill({ json: { episodes: [{
         id: 'ep-2', feedId, guid: 'two', title: 'Episode Two', description: '',
         hasAudio: false, enclosureType: 'audio/mpeg', publishedAt: 0, durationMs: 0,
+        positionMs: 120000, isPlayed: false,
+      }, {
+        id: 'ep-3', feedId, guid: 'three', title: 'Episode Three', description: '',
+        hasAudio: false, enclosureType: 'audio/mpeg', publishedAt: 0, durationMs: 0,
+        positionMs: 0, isPlayed: true,
       }], nextOffset: null } });
     }
     if (url.pathname === '/api/v2/podcasts/feeds/' + feedId + '/refresh')
@@ -251,6 +256,24 @@ test('show detail paginates episodes without duplicates', async ({ page }) => {
   await page.getByRole('searchbox', { name: 'Filter loaded episodes' }).fill('Two');
   await expect(page.getByRole('heading', { name: 'Episode Two' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Episode One' })).toHaveCount(0);
+  await page.getByRole('searchbox', { name: 'Filter loaded episodes' }).clear();
+  const status = page.getByRole('combobox', { name: 'Filter episodes by status' });
+  await status.selectOption('in_progress');
+  await expect(page.getByRole('heading', { name: 'Episode Two' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Episode One' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Episode Three' })).toHaveCount(0);
+  await expect(page.getByText('Showing 1 of 3 loaded episodes.')).toBeVisible();
+  await status.selectOption('not_started');
+  await expect(page.getByRole('heading', { name: 'Episode One' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Episode Two' })).toHaveCount(0);
+  await status.selectOption('played');
+  await expect(page.getByRole('heading', { name: 'Episode Three' })).toBeVisible();
+  await status.selectOption('unplayed');
+  await expect(page.getByRole('heading', { name: 'Episode Three' })).toHaveCount(0);
+  await expect(page.getByText('Showing 2 of 3 loaded episodes.')).toBeVisible();
+  await status.selectOption('all');
+  await page.getByRole('searchbox', { name: 'Filter loaded episodes' }).fill('not a real episode');
+  await expect(page.getByText('No loaded episodes match these filters.', { exact: false })).toBeVisible();
   await page.getByRole('searchbox', { name: 'Filter loaded episodes' }).clear();
   await expect(page.getByRole('button', { name: 'Load more episodes' })).toHaveCount(0);
   expect(requestedOffsets).toEqual([0, 1]);
