@@ -1,156 +1,31 @@
-/**
- * Stardust Halo Visualization - WebGL Fragment Shader
- * 
- * Renders a pulsing particle halo with stardust bursts on bass hits.
- * Uses procedural particle simulation for expanding trails.
- * 
+/** Audio-reactive stardust scene for the album overlay and fullscreen background. */
+import { sceneFragmentHeader } from './scene';
 
- */
-
-export const stardustFragmentShader = `#version 300 es
-precision mediump float;
-
-uniform vec2 u_resolution;
-uniform float u_time;
-uniform vec3 u_color;
-uniform vec3 u_accentColor;
-uniform sampler2D u_frequencyTexture;
-uniform sampler2D u_waveformTexture;
-uniform float u_bass;
-uniform float u_mid;
-uniform float u_treble;
-
-in vec2 v_uv;
-out vec4 fragColor;
-
-#define NUM_WAVES 12
-#define PARTICLES_PER_WAVE 8
-#define PI 3.14159265359
-#define TWO_PI 6.28318530718
-
-// Note: hash and hash2f functions are provided by noiseGLSL injection
-
+export const stardustFragmentShader = `${sceneFragmentHeader}
 void main() {
-    vec2 center = vec2(0.5);
-    vec2 uv = v_uv - center;
-    
-    float aspect = u_resolution.x / u_resolution.y;
-    uv.x *= aspect;
-    
-    float dist = length(uv);
-    
-    vec3 totalColor = vec3(0.0);
-    float totalAlpha = 0.0;
-    
-    // Stardust color palette (precalculated)
-    vec3 cyanColor = vec3(0.545, 0.784, 0.965);
-    vec3 whiteColor = vec3(1.0);
-    
-    // Halo ring parameters
-    float haloRadius = 0.3 * (1.0 + u_bass * 0.3);
-    float maxRadius = haloRadius * 2.5;
-    
-    // Early exit if outside max particle range
-    if (dist > maxRadius + 0.1) {
-        fragColor = vec4(0.0);
-        return;
+    // A tilted orbital halo with a nebula core and two layers of drifting stars.
+    vec2 p = scenePosition();
+    float angle = -0.46 + 0.06 * sin(u_time * 0.29);
+    vec2 orbit = mat2(cos(angle), sin(angle), -sin(angle), cos(angle)) * p;
+    orbit.y *= 2.18;
+    float r = length(orbit);
+    float a = atan(orbit.y, orbit.x + 0.00001);
+    float bass = energy(u_bass);
+    float dust = 0.5 + 0.5 * snoise(orbit * 14.0 + vec2(u_time * 0.19, -u_time * 0.11));
+    vec3 violet = vec3(0.53, 0.20, 1.0);
+    vec3 ice = vec3(0.27, 0.77, 1.0);
+    vec3 light = violet * exp(-length(p) * 7.2) * (0.22 + bass * 0.30);
+    for (int i = 0; i < 3; i++) {
+        float layer = float(i);
+        float radius = 0.20 + layer * 0.075 + bass * 0.035;
+        float d = r - radius + sin(a * (3.0 + layer) - u_time + layer) * 0.012;
+        vec3 tint = mix(violet, ice, layer * 0.5);
+        light += tint * filament(d, 0.005 + layer * 0.0015) * (0.09 + dust * 0.39);
+        light += tint * exp(-abs(d) * 32.0) * dust * 0.16;
     }
-    
-    // Draw halo ring (fast analytical glow)
-    float ringDist = abs(dist - haloRadius);
-    float ringGlow = exp(-ringDist * 50.0) * (0.3 + u_bass * 0.4);
-    totalColor += cyanColor * ringGlow;
-    totalAlpha += ringGlow;
-    
-    // Particle simulation with reduced iterations
-    float spawnInterval = 0.1; // Slower spawn rate
-    int numWaves = min(int(u_time / spawnInterval), NUM_WAVES);
-    
-    // Precompute spawn bass threshold
-    float bassThreshold = 0.3;
-    
-    for (int wave = 0; wave < NUM_WAVES; wave++) {
-        if (wave > numWaves) break;
-        
-        float waveTime = float(wave) * spawnInterval;
-        float age = u_time - waveTime;
-        
-        // Skip old waves early
-        if (age > 1.5) continue;
-        
-        float waveSeed = hash(float(wave));
-        
-        // Skip if bass was low at spawn
-        if (u_bass < bassThreshold && waveSeed > 0.3) continue;
-        
-        // Number of particles in this wave (reduced max)
-        int numInWave = int(u_bass * float(PARTICLES_PER_WAVE));
-        if (numInWave < 1) continue;
-        
-        // Life decay factor (precomputed for wave)
-        float lifeDecay = 1.0 / (maxRadius - haloRadius);
-        
-        for (int p = 0; p < PARTICLES_PER_WAVE; p++) {
-            if (p >= numInWave) break;
-            
-            float seed = hash(float(wave) * 100.0 + float(p));
-            
-            // Particle properties
-            float particleAngle = TWO_PI * seed + float(wave) * 0.15;
-            float speed = 0.5 + seed * 1.5 + u_bass * 2.0;
-            
-            // Particle position (expands from halo)
-            float particleDist = haloRadius + age * speed * 0.12;
-            
-            // Early exit if particle too far
-            if (particleDist > maxRadius) continue;
-            
-            // Life fades with distance
-            float life = 1.0 - (particleDist - haloRadius) * lifeDecay;
-            if (life <= 0.0) continue;
-            
-            // Particle position in UV space
-            float ca = cos(particleAngle);
-            float sa = sin(particleAngle);
-            vec2 particlePos = vec2(ca, sa) * particleDist;
-            
-            // Distance from this pixel to particle
-            vec2 delta = uv - particlePos;
-            float pDistSq = dot(delta, delta);
-            
-            // Early exit if too far (faster than computing full glow)
-            float maxGlowDistSq = 0.008;
-            if (pDistSq > maxGlowDistSq) continue;
-            
-            // Simplified glow (avoid exp in tight loop)
-            float glowSize = 0.015 + seed * 0.008;
-            float particleGlow = max(0.0, 1.0 - sqrt(pDistSq) / glowSize) * life;
-            particleGlow = particleGlow * particleGlow; // Smooth falloff
-            
-            // Color
-            vec3 particleColor = mix(cyanColor, whiteColor, particleGlow * 0.5);
-            
-            totalColor += particleColor * particleGlow * 0.8;
-            totalAlpha += particleGlow * 0.4;
-        }
-    }
-    
-    // Treble sparkles on halo (reduced count)
-    if (u_treble > 0.35) {
-        for (int i = 0; i < 8; i++) {
-            float sparkleAngle = float(i) * 0.785398 + u_time * 0.5; // PI/4 * i
-            vec2 sparklePos = vec2(cos(sparkleAngle), sin(sparkleAngle)) * haloRadius;
-            
-            vec2 sparkleDelta = uv - sparklePos;
-            float sparkleDist = dot(sparkleDelta, sparkleDelta);
-            float sparklePhase = sin(u_time * 5.0 + float(i)) * 0.5 + 0.5;
-            float sparkle = max(0.0, 1.0 - sparkleDist * 2000.0) * sparklePhase * u_treble;
-            
-            totalColor += whiteColor * sparkle;
-            totalAlpha += sparkle * 0.3;
-        }
-    }
-    
-    fragColor = vec4(totalColor, clamp(totalAlpha, 0.0, 1.0));
+    float stars = starGrid(p + vec2(u_time * 0.011, 0.0), 18.0, 0.9);
+    stars += starGrid(p - vec2(u_time * 0.006, 0.0), 33.0, 1.7) * 0.64;
+    light += mix(ice, vec3(1.0), 0.45) * stars * (0.47 + energy(u_treble) * 0.37);
+    fragColor = sceneColor(light);
 }
 `;

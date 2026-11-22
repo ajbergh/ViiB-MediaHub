@@ -197,7 +197,11 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
             
             {visualsActive && !artworkVisualizer && !fullscreenVisualizer && (audioSettings.visualizerMode === "SPECTRUM" || audioSettings.visualizerMode === "WAVE") && (
                 <div className="absolute inset-0 z-0 opacity-40">
-                    <Visualizer mode={audioSettings.visualizerMode} lowPower={lowPower} barColor={VIIB_COLOR_VALUES.visualizerMuted} />
+                    {audioSettings.visualizerMode === 'WAVE' && !lowPower ? (
+                        <WebGLVisualizer mode="WAVE" isActive />
+                    ) : (
+                        <Visualizer mode={audioSettings.visualizerMode} lowPower={lowPower} barColor={VIIB_COLOR_VALUES.visualizerMuted} />
+                    )}
                 </div>
             )}
 

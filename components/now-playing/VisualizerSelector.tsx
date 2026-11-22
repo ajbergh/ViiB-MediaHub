@@ -48,16 +48,16 @@ interface VisualizerOption {
 
 const VISUALIZER_OPTIONS: VisualizerOption[] = [
     { mode: 'OFF', name: 'Off', icon: <EyeOff size={20} />, description: 'No visualization', color: 'text-text-subtle' },
-    { mode: 'WAVE', name: 'Wave', icon: <Waves size={20} />, description: 'Smooth waveform', color: 'text-cyan-400' },
+    { mode: 'WAVE', name: 'Wave', icon: <Waves size={20} />, description: 'Braided neon waveform', color: 'text-cyan-400' },
     { mode: 'SPECTRUM', name: 'Spectrum', icon: <BarChart2 size={20} />, description: 'Circular bars', color: 'text-green-400' },
-    { mode: 'FLAME_SPECTRUM', name: 'Flames', icon: <Flame size={20} />, description: 'Rising flames', color: 'text-orange-500' },
-    { mode: 'STARDUST_HALO', name: 'Stardust', icon: <Star size={20} />, description: 'Particle ring', color: 'text-cyan-300' },
-    { mode: 'AURORA_RIBBON', name: 'Aurora', icon: <Sparkles size={20} />, description: 'Flowing ribbon', color: 'text-emerald-400' },
-    { mode: 'ELECTRIC_ARC', name: 'Electric', icon: <Zap size={20} />, description: 'Lightning arcs', color: 'text-cyan-400' },
-    { mode: 'GRASS_OSCILLOSCOPE', name: 'Grass', icon: <Wind size={20} />, description: 'Swaying blades', color: 'text-lime-400' },
+    { mode: 'FLAME_SPECTRUM', name: 'Flames', icon: <Flame size={20} />, description: 'Fire crown with drifting embers', color: 'text-orange-500' },
+    { mode: 'STARDUST_HALO', name: 'Stardust', icon: <Star size={20} />, description: 'Glowing orbits in a star field', color: 'text-cyan-300' },
+    { mode: 'AURORA_RIBBON', name: 'Aurora', icon: <Sparkles size={20} />, description: 'Layered aurora curtains', color: 'text-emerald-400' },
+    { mode: 'ELECTRIC_ARC', name: 'Electric', icon: <Zap size={20} />, description: 'Branching lightning', color: 'text-cyan-400' },
+    { mode: 'GRASS_OSCILLOSCOPE', name: 'Grass', icon: <Wind size={20} />, description: 'Backlit grass in rolling waves', color: 'text-lime-400' },
     { mode: 'FIREFLY_FIELD', name: 'Fireflies', icon: <Sparkles size={20} />, description: 'Drifting lights', color: 'text-amber-300' },
-    { mode: 'TUNNEL_WAVEFORM', name: 'Tunnel', icon: <Circle size={20} />, description: '3D ring tunnel', color: 'text-violet-400' },
-    { mode: 'WIND_FIELD', name: 'Wind', icon: <Wind size={20} />, description: 'Flowing particles', color: 'text-sky-300' },
+    { mode: 'TUNNEL_WAVEFORM', name: 'Tunnel', icon: <Circle size={20} />, description: 'Warping waveform gates', color: 'text-violet-400' },
+    { mode: 'WIND_FIELD', name: 'Wind', icon: <Wind size={20} />, description: 'Curving trails of light', color: 'text-sky-300' },
     { mode: 'MILKDROP', name: 'Milkdrop', icon: <Layers size={20} />, description: 'Classic WebGL', color: 'text-purple-400' },
 ];
 

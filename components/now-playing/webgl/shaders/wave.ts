@@ -1,68 +1,31 @@
-/**
- * Wave Visualization - WebGL Fragment Shader
- * 
- * Renders a smooth glowing waveform using SDF techniques.
- * The waveform is sampled from the audio texture and rendered
- * with analytical glow (no post-processing needed).
- * 
- */
+/** Audio-reactive wave scene for the album overlay and fullscreen background. */
+import { sceneFragmentHeader } from './scene';
 
-export const waveFragmentShader = `#version 300 es
-precision mediump float;
-
-uniform vec2 u_resolution;
-uniform float u_time;
-uniform vec3 u_color;
-uniform vec3 u_accentColor;
-uniform sampler2D u_waveformTexture;
-uniform sampler2D u_frequencyTexture;
-uniform float u_bass;
-uniform float u_mid;
-uniform float u_treble;
-
-in vec2 v_uv;
-out vec4 fragColor;
-
+export const waveFragmentShader = `${sceneFragmentHeader}
 void main() {
-    vec2 uv = v_uv;
-    
-    // Sample waveform at this x position
-    float waveValue = texture(u_waveformTexture, vec2(uv.x, 0.5)).r;
-    
-    // Convert from 0-1 to centered position (0.25 to 0.75 of screen height)
-    float waveY = waveValue * 0.5 + 0.25;
-    
-    // Add some bass-driven vertical movement
-    waveY += (u_bass - 0.5) * 0.1;
-    
-    // Distance from current pixel to wave
-    float dist = abs(uv.y - waveY);
-    
-    // Analytical glow layers
-    float core = exp(-dist * 150.0);           // Sharp white core
-    float glow1 = exp(-dist * 40.0) * 0.8;     // Primary glow
-    float glow2 = exp(-dist * 15.0) * 0.4;     // Outer glow
-    float glow3 = exp(-dist * 5.0) * 0.15;     // Ambient spread
-    
-    // Color mixing
-    vec3 coreColor = vec3(1.0);                // White core
-    vec3 glowColor = u_color;                  // Primary color glow
-    vec3 outerColor = mix(u_color, u_accentColor, 0.5); // Accent for outer
-    
-    // Combine layers
-    vec3 color = coreColor * core +
-                 glowColor * glow1 +
-                 outerColor * glow2 +
-                 u_accentColor * glow3;
-    
-    // Overall intensity based on audio energy
-    float intensity = 0.7 + u_mid * 0.3;
-    color *= intensity;
-    
-    // Alpha from total glow
-    float alpha = core + glow1 + glow2 * 0.5 + glow3 * 0.25;
-    alpha = clamp(alpha, 0.0, 1.0);
-    
-    fragColor = vec4(color, alpha);
+    // A braided waveform with travelling highlights and a mirrored reflection.
+    float x = v_uv.x;
+    float y = v_uv.y - 0.53;
+    float bass = energy(u_bass);
+    float envelope = sin(x * 3.14159);
+    float trace = wave(x) * (0.22 + 0.21 * bass);
+    float phase = x * 19.0 - u_time * (2.0 + bass);
+    float twist = sin(phase) * (0.04 + bass * 0.10) * envelope;
+    vec3 blue = vec3(0.12, 0.72, 1.0);
+    vec3 pink = vec3(1.0, 0.13, 0.60);
+    vec3 light = vec3(0.0);
+    for (int i = 0; i < 3; i++) {
+        float strand = float(i) - 1.0;
+        float line = trace * (0.70 + 0.22 * float(i)) + twist * strand;
+        vec3 tint = mix(blue, pink, 0.5 + 0.5 * sin(phase * 0.52 + strand));
+        float shine = 0.30 + 0.34 * pow(0.5 + 0.5 * sin(phase + strand), 4.0);
+        light += tint * filament(y - line, 0.004 + 0.002 * bass) * shine;
+        light += tint * filament(y + 0.20 + line * 0.52, 0.004) * 0.16;
+    }
+    float gridX = abs(fract(x * 24.0) - 0.5);
+    float gridY = abs(fract(y * 13.0) - 0.5);
+    light += blue * (1.0 - smoothstep(0.0, 0.025, min(gridX, gridY))) * exp(-abs(y) * 6.5) * 0.085;
+    light += pink * starGrid(scenePosition(), 26.0, 1.5) * (0.10 + energy(u_treble) * 0.42);
+    fragColor = sceneColor(light);
 }
 `;

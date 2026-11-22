@@ -144,7 +144,7 @@ export class WebGLVisualizerRenderer {
         try {
             // Initialize resource managers
             this.shaderCache = new ShaderCache(gl);
-            this.audioManager = new AudioTextureManager(gl);
+            this.audioManager = new AudioTextureManager(gl, this.isWebGL2);
             this.spriteAtlas = new SpriteAtlas(gl);
             
             // Create fullscreen quad geometry
