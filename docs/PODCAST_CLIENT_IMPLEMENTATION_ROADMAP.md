@@ -670,6 +670,6 @@ Branch strategy: short-lived `feature/podcasts-*` work branches from updated `ma
 **Commits:** `abde2f2` introduces the foundational ADR, RSS and URL-fetch primitives.
 Commit `b44e89a` adds SQLite persistence and the first status log. API contract work is tracked by draft [PR #167](https://github.com/ajbergh/ViiB-MediaHub/pull/167).
 
-**Validation status:** Go/Vitest/Playwright tests have been authored and the first draft CI runs started, but the current HEAD has **not yet been confirmed green**. The local execution environment does not have the repo's required Go 1.26 toolchain or dependency cache. Do not mark tests green without a GitHub Actions run.
+**Validation status:** Podcast-specific Go/Vitest/Playwright tests have been added. A targeted `podcast-slice` CI job now runs `TestPodcast*` in the parser, DB and API packages alongside the original full-suite jobs. The current HEAD is **not yet confirmed green**. The local execution environment does not have the repo's required Go 1.26 toolchain or dependency cache. Do not mark tests green without a GitHub Actions run.
 
 **Next vertical delivery:** Verify CI and remediate failures; add backend worker tests, address URL/identity edge cases, then expand secure enclosure/artwork handling. Music playback remains untouched.
