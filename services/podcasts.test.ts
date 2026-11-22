@@ -139,7 +139,7 @@ describe('podcastsAPI', () => {
     vi.stubGlobal('fetch', cancelMock);
     await expect(podcastsAPI.cancelDownload('episode/1')).resolves.toMatchObject({ download: { status: 'canceled' } });
     expect(cancelMock).toHaveBeenCalledWith('/api/v2/podcasts/episodes/episode%2F1/download', expect.objectContaining({ method: 'DELETE' }));
-    const listMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ downloads: [row] }) }));
+    const listMock = vi.fn(async (_url: string) => ({ ok: true, status: 200, json: async () => ({ downloads: [row] }) }));
     vi.stubGlobal('fetch', listMock);
     expect((await podcastsAPI.listDownloads()).downloads).toEqual([row]);
     expect(listMock.mock.calls[0][0]).toBe('/api/v2/podcasts/downloads');
