@@ -29,11 +29,12 @@
 
 ## Optional offline downloads (early-access build)
 
-1. On a followed show, choose **Download episode** on a supported audio episode. The background worker downloads one episode at a time in validated 2-MiB or smaller byte ranges (up to **512 MiB per episode**) into ViiB's private podcast storage.
+1. On a followed show, choose **Download episode** on a supported audio episode. The background worker downloads one episode at a time in validated 2-MiB or smaller byte ranges (up to **512 MiB per episode**) into ViiB's private podcast storage. The podcast download budget is **2 GiB** across completed files and active reservations, shown near the episode list.
 2. Watch the queued/downloading progress next to the episode. You can **Cancel download** while it is queued/in progress or **Retry download** after a cancel/failure. If the publisher doesn't honor byte ranges, the download fails with `download_range_required`; ordinary online streaming may still work.
 3. Once the episode says **Available offline**, use the existing Listen/Resume action. The shared player reads a local byte-range response from the **same episode-ID URL**, independent of the publisher connection. Completed audio is subscription-scoped; unfollowing does not expose it through the API.
+4. To reclaim space, choose **Remove download** beside an offline episode, then confirm **Remove copy**. The offline file is removed without erasing the episode or its saved playback position; later Listen returns to publisher streaming. If the episode is currently selected for playback, switch to another episode or music first. If the file is still in use on Windows, the API reports an error instead of claiming it was deleted.
 
-**Current limitations:** Downloads deliberately restart from byte zero after a crash, not a validated partial resume. No disk-free preflight, global storage quota, manual completed-file delete, automatic cleanup, 200-only offline download fallback, or full platform qualification exists yet. Avoid relying on this build for guaranteed offline access until a true disconnect/restart test passes on your environment.
+**Current limitations:** Downloads deliberately restart from byte zero after a crash, not a validated partial resume. The 2 GiB library budget is not a physical disk-free threshold; low disk space can still fail a transfer. Automatic orphan cleanup/retention, 200-only offline download fallback, durable corruption-repair and full platform qualification are still absent. Avoid relying on this build for guaranteed offline access until a true disconnect/restart test passes on your environment.
 
 ## Feed refresh
 
@@ -48,7 +49,7 @@ Following and playback do not require the optional refresh setting. The **Enable
 
 Public RSS and artwork retrieval remain strict public-Internet operations. The Go backend validates DNS/IP and redirects, blocks local/private addresses, and restricts media size and MIME. Public audio enclosures may be HTTP(S) and contain CDN-signed query parameters, but those remote URLs stay backend-only; the browser receives only local episode-ID media routes. Do not bypass these restrictions for a problematic publisher.
 
-**Not implemented / not qualified yet:** Podcast Index directory search, authenticated/private RSS, durable curated Up Next/Inbox or starred workflow, chapter/transcript features, advanced download retention/quota/partial resume, checksum repair after tampering, comprehensive native media-key testing, all-publisher HTTP behavior, and release qualification across Windows/macOS/Linux. Initial offline download and local-range playback exist on the feature branch, **but real network-disconnected restart acceptance remains open**. A 200-only publisher may stream from the beginning but reject nonzero seeking; offline downloading currently requires 206 support.
+**Not implemented / not qualified yet:** Podcast Index directory search, authenticated/private RSS, durable curated Up Next/Inbox or starred workflow, chapter/transcript features, advanced retention/disk-free preflight/partial resume, checksum repair after tampering, comprehensive native media-key testing, all-publisher HTTP behavior, and release qualification across Windows/macOS/Linux. Initial offline download and local-range playback exist on the feature branch, **but real network-disconnected restart acceptance remains open**. A 200-only publisher may stream from the beginning but reject nonzero seeking; offline downloading currently requires 206 support.
 
 ## Development and troubleshooting
 

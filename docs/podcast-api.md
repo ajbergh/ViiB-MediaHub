@@ -20,10 +20,10 @@ RSS 2.0 feeds during initial implementation.
 | GET | `/feeds/{id}` | Read one followed show by stable ID; 404 when unknown or unfollowed |
 | GET | `/episodes/continue?limit=12` | Recently listened, uncompleted episodes on followed shows; bound 1–50, no publisher network requests |
 | GET | `/episodes/{id}/progress` | Revisioned durable progress; 404 for unknown episodes |
-| GET | `/downloads` | Up to 100 recent statuses for followed episodes, without raw publisher URLs or internal disk paths |
+| GET | `/downloads` | Up to 100 recent statuses for followed episodes, without raw publisher URLs or internal disk paths. Also returns `storage.usedBytes` and `storage.maxBytes` for the 2 GiB aggregate podcast reservation budget, including completed and in-flight work |
 | GET | `/episodes/{id}/download` | Fetch one subscribed episode's persisted download status; 404 when absent |
 | POST | `/episodes/{id}/download` | Queue/retry a public supported audio enclosure; 202 for queued/current/completed record, idempotent; the worker starts independently |
-| DELETE | `/episodes/{id}/download` | Cancel queued/in-progress download; 409 if already completed. Completed-file deletion is not implemented |
+| DELETE | `/episodes/{id}/download` | Cancel queued/in-progress work and return its status (200), or explicitly remove a completed offline file with 204. Filesystem conflicts return 409; episode and listening progress are preserved |
 | GET | `/episodes/{id}/media` | Prefer subscription-scoped completed offline files served with local HTTP byte ranges; otherwise proxy validated public 206 publisher ranges (maximum 2 MiB) or bounded streaming 200 fallback. Nonzero seeks on 200-only origins return 416 |
 
 | PUT | `/episodes/{id}/progress` | Save position/listened/played with `expectedRevision` CAS; 409 on stale writes |
@@ -94,7 +94,7 @@ CI qualification must pass before this preview is marked ready.
 
 ## Troubleshooting RSS preview/follow failures
 
-**Expected on this draft feature branch:** supported public HTTPS RSS 2.0 feeds can be previewed and followed without enabling optional automatic refresh. Public podcast audio plays and seeks through the shared ViiB player on the user-tested build. Offline downloads, podcast directory search and private authenticated feeds remain separate roadmap milestones.
+**Expected on this draft feature branch:** supported public HTTPS RSS 2.0 feeds can be previewed and followed without enabling optional automatic refresh. Public podcast audio plays and seeks through the shared ViiB player on the user-tested build. Early-access 206-only offline downloads and deletion are implemented but not cross-platform qualified; podcast directory search, robust retention, and private authenticated feeds remain separate roadmap milestones.
 
 The previous generic frontend message `The podcast request could not be
 completed` meant the HTTP response had no recognized V2 JSON error envelope.
@@ -255,5 +255,6 @@ Player component, although desktop/Wails acceptance remains pending.
 
 **Still pending:** cross-device sync, reliable seeking on hosts that do
 not provide ranges, private/paywalled authentication, expiry handling
-for signed CDN URLs, downloaded audio, advanced podcast speed/silence
-processing and representative real-provider compatibility tests.
+for signed CDN URLs, offline disk-free preflight/retention/integrity repair,
+advanced podcast speed/silence processing and representative real-provider
+and cross-platform offline acceptance tests.
