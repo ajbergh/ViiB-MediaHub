@@ -57,7 +57,7 @@ func TestPodcastMediaSegment206AndBoundedOpenRange(t *testing.T) {
         }
         if r.URL.Path!="/media"{http.NotFound(w,r);return}
         if r.Header.Get("Accept-Encoding")!="identity"{t.Errorf("compression was not disabled")}
-        if r.Header.Get("Range")!="bytes=0-2097151"&&r.Header.Get("Range")!="bytes=2097152-2097199"{
+        if r.Header.Get("Range")!="bytes=0-2097151"&&r.Header.Get("Range")!="bytes=2097152-4194303"{
             t.Errorf("unexpected upstream Range: %q",r.Header.Get("Range"))
         }
         var first,last int
