@@ -38,6 +38,27 @@ type MediaSegment struct {
     Start int64
     End int64
     Total int64
+    // Strong validator metadata may be used internally by the downloader;
+    // never serialize publisher response headers to the renderer.
+    ETag string
+    LastModified string
+}
+
+// StrongMediaETag accepts only bounded, well-formed strong HTTP entity tags.
+// Weak tags cannot safely identify a specific representation for If-Range.
+func StrongMediaETag(value string)string{
+    v:=strings.TrimSpace(value)
+    if len(v)<2||len(v)>256||v[0]!='"'||v[len(v)-1]!='"'{return ""}
+    for i:=1;i<len(v)-1;i++{
+        if v[i]<0x21||v[i]>0x7e||v[i]=='"'{return ""}
+    }
+    return v
+}
+
+func stableMediaLastModified(value string)string{
+    stamp,err:=http.ParseTime(strings.TrimSpace(value))
+    if err!=nil{return ""}
+    return stamp.UTC().Format(http.TimeFormat)
 }
 
 // ValidateMediaURL applies the NETWORK policy to publisher enclosures,
@@ -127,7 +148,15 @@ func (f *Fetcher) FetchMediaSegment(ctx context.Context,raw,rangeHeader string)(
 // only when its RSS enclosure explicitly declared a supported audio type.
 // The body is still sniffed, so obvious HTML/XML cannot masquerade as audio.
 func (f *Fetcher) FetchMediaSegmentWithHint(ctx context.Context,raw,rangeHeader,declaredType string)(MediaSegment,error){
+    return f.FetchMediaSegmentWithIfRange(ctx,raw,rangeHeader,declaredType,"")
+}
+
+// Offline transfers send If-Range only with a syntactically valid *strong*
+// ETag. A changed representation should trigger upstream 200, rejected here
+// instead of splicing two different publisher files into one local download.
+func (f *Fetcher) FetchMediaSegmentWithIfRange(ctx context.Context,raw,rangeHeader,declaredType,ifRange string)(MediaSegment,error){
     var segment MediaSegment
+    if ifRange!=""&&StrongMediaETag(ifRange)!=ifRange{return segment,ErrInvalidMedia}
     u,err:=ValidateMediaURL(raw,true)
     if err!=nil{return segment,err}
     start,end,err:=parseMediaRange(rangeHeader)
@@ -146,6 +175,7 @@ func (f *Fetcher) FetchMediaSegmentWithHint(ctx context.Context,raw,rangeHeader,
             req.Header.Del("Authorization")
             req.Header.Del("Cookie")
             req.Header.Set("Range",fmt.Sprintf("bytes=%d-%d",start,end))
+            if ifRange!=""{req.Header.Set("If-Range",ifRange)}else{req.Header.Del("If-Range")}
             req.Header.Set("Accept-Encoding","identity")
             return nil
         },
@@ -153,6 +183,7 @@ func (f *Fetcher) FetchMediaSegmentWithHint(ctx context.Context,raw,rangeHeader,
     request,err:=http.NewRequestWithContext(ctx,http.MethodGet,u.String(),nil)
     if err!=nil{return segment,ErrBlockedURL}
     request.Header.Set("Range",fmt.Sprintf("bytes=%d-%d",start,end))
+    if ifRange!=""{request.Header.Set("If-Range",ifRange)}
     request.Header.Set("Accept","audio/*, application/ogg;q=0.9")
     request.Header.Set("Accept-Encoding","identity")
     request.Header.Set("User-Agent","ViiB-MediaHub-Podcast/1.0")
@@ -192,5 +223,7 @@ func (f *Fetcher) FetchMediaSegmentWithHint(ctx context.Context,raw,rangeHeader,
     if sniffed:=http.DetectContentType(data);strings.Contains(sniffed,"html")||
         strings.Contains(sniffed,"xml")||
         strings.Contains(sniffed,"svg"){return segment,ErrInvalidMedia}
-    return MediaSegment{Data:data,MIME:audioType,Start:start,End:last,Total:total},nil
+    return MediaSegment{Data:data,MIME:audioType,Start:start,End:last,Total:total,
+        ETag:StrongMediaETag(response.Header.Get("ETag")),
+        LastModified:stableMediaLastModified(response.Header.Get("Last-Modified"))},nil
 }

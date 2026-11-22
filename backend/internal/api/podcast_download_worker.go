@@ -123,6 +123,8 @@ func (a *API) processPodcastDownload(ctx context.Context){
             code="download_unsupported"
         case errors.Is(err,errPodcastDownloadTooLarge):
             code="download_too_large"
+        case errors.Is(err,errPodcastPublisherChanged):
+            code="download_publisher_changed"
         case errors.Is(err,db.ErrPodcastOfflineQuotaExceeded):
             code="download_quota_exceeded"
         case errors.Is(err,errPodcastDiskSpaceLow):
@@ -163,6 +165,7 @@ func (a *API) cleanupUnsubscribedPodcastFiles(ctx context.Context){
     }
 }
 
+var errPodcastPublisherChanged=errors.New("publisher audio changed during ranged transfer")
 var errPodcastDownloadTooLarge=errors.New("podcast audio exceeds offline size limit")
 var errPodcastDiskSpaceLow=errors.New("insufficient podcast destination disk space")
 
@@ -265,18 +268,37 @@ func (a *API) transferPodcastDownload(ctx context.Context,id,owner string) error
     defer func(){_ = out.Close();_ = os.Remove(tempPath)}()
     if err:=out.Chmod(0600);err!=nil{return err}
     fetch:=a.podcastDownloadFetch
+    var requestedIfRange string
     if fetch==nil{
         fetcher:=podcast.NewFetcher(false)
-        fetch=fetcher.FetchMediaSegmentWithHint
+        fetch=func(ctx context.Context,raw,header,declared string)(podcast.MediaSegment,error){
+            return fetcher.FetchMediaSegmentWithIfRange(ctx,raw,header,declared,requestedIfRange)
+        }
     }
     hash:=sha256.New()
     var received,total int64
-    var mime string
+    var mime,firstETag,firstLastModified string
     for {
         if err:=ctx.Err();err!=nil{return err}
         header:=fmt.Sprintf("bytes=%d-%d",received,received+podcastDownloadChunkBytes-1)
         seg,err:=fetch(ctx,raw,header,declared)
-        if err!=nil{return err}
+        if err!=nil{
+            if received>0&&requestedIfRange!=""&&errors.Is(err,podcast.ErrPublisherNoRange){
+                return errPodcastPublisherChanged
+            }
+            return err
+        }
+        // Stable validators avoid mixing two versions of an enclosure.
+        // Origins with no validators retain the initial 206-only behavior;
+        // they are not eligible for future persisted partial resume.
+        if received==0{
+            firstETag=podcast.StrongMediaETag(seg.ETag)
+            firstLastModified=seg.LastModified
+            requestedIfRange=firstETag
+        }else if firstETag!=""&&podcast.StrongMediaETag(seg.ETag)!=firstETag ||
+            firstLastModified!=""&&seg.LastModified!=firstLastModified {
+            return errPodcastPublisherChanged
+        }
         if seg.Start!=received||seg.Total<=0||seg.Total>db.MaxPodcastDownloadBytes||
             seg.End!=received+int64(len(seg.Data))-1||len(seg.Data)==0||
             int64(len(seg.Data))>podcastDownloadChunkBytes{

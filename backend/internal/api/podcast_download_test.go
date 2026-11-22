@@ -42,11 +42,11 @@ func TestPodcastDownloadQueueTransferAndOfflineRange(t *testing.T) {
   if !strings.Contains(raw,"signature=keep-private")||mime!="audio/mpeg"{t.Fatalf("missing publisher metadata")}
   if calls==1 {
    if rangeHeader!="bytes=0-2097151"{t.Fatalf("first range %q",rangeHeader)}
-   return podcast.MediaSegment{Start:0,End:3,Total:8,MIME:"audio/mpeg",Data:[]byte("ID3a")},nil
+   return podcast.MediaSegment{Start:0,End:3,Total:8,MIME:"audio/mpeg",ETag:"\"episode-v1\"",Data:[]byte("ID3a")},nil
   }
   if calls==2 {
    if rangeHeader!="bytes=4-2097155"{t.Fatalf("second range %q",rangeHeader)}
-   return podcast.MediaSegment{Start:4,End:7,Total:8,MIME:"audio/mpeg",Data:[]byte("bcde")},nil
+   return podcast.MediaSegment{Start:4,End:7,Total:8,MIME:"audio/mpeg",ETag:"\"episode-v1\"",Data:[]byte("bcde")},nil
   }
   t.Fatal("too many publisher requests");return podcast.MediaSegment{},errors.New("too many")
  }}
@@ -396,4 +396,29 @@ func TestPodcastUnfollowCleanupRefusesUnsafeFile(t *testing.T){
     if err!=nil||!info.IsDir(){t.Fatalf("unsafe object removed: %v",err)}
     used,err:=d.PodcastOfflineStorage(ctx)
     if err!=nil||used!=4{t.Fatalf("unsafe orphan should remain flagged: %d %v",used,err)}
+}
+
+func TestPodcastDownloadRejectsPublisherRepresentationChangedMidTransfer(t *testing.T){
+    d,id:=seedPodcastDownload(t);defer d.Close()
+    calls:=0
+    a:=&API{db:d,dataDir:t.TempDir(),podcastDownloadFetch:func(context.Context,string,string,string)(podcast.MediaSegment,error){
+        calls++
+        if calls==1{
+            return podcast.MediaSegment{Start:0,End:3,Total:8,MIME:"audio/mpeg",ETag:"\"first\"",Data:[]byte("ID3a")},nil
+        }
+        return podcast.MediaSegment{Start:4,End:7,Total:8,MIME:"audio/mpeg",ETag:"\"changed\"",Data:[]byte("bcde")},nil
+    }}
+    w:=httptest.NewRecorder()
+    a.PodcastRoutes().ServeHTTP(w,httptest.NewRequest(http.MethodPost,"/episodes/"+id+"/download",nil))
+    if w.Code!=202{t.Fatalf("queue: %d",w.Code)}
+    a.processPodcastDownload(context.Background())
+    record,err:=d.GetPodcastDownload(context.Background(),id)
+    if err!=nil||record.Status!="failed"||record.ErrorCode!="download_publisher_changed"{
+        t.Fatalf("publisher version transition was not rejected: %+v %v",record,err)
+    }
+    if calls!=2{t.Fatalf("expected two chunks, got %d",calls)}
+    path:=filepath.Join(a.dataDir,"podcasts","episodes",id+".audio")
+    if _,err:=os.Lstat(path);!errors.Is(err,os.ErrNotExist){
+        t.Fatalf("mixed-version audio published: %v",err)
+    }
 }
