@@ -24,6 +24,9 @@ func (a *API) getPodcastEpisodeMedia(w http.ResponseWriter,r *http.Request) {
             "Podcast episode not found",false,nil)
         return
     }
+    // Completed verified downloads are served before any remote fetch.
+    // Local audio uses the same episode-ID URL and shared ViiB player.
+    if a.servePodcastOfflineMedia(w,r,id) { return }
     source,declaredType,err:=a.db.PodcastMediaSource(r.Context(),id)
     if errors.Is(err,sql.ErrNoRows){
         respondV2Error(w,r,http.StatusNotFound,"podcast_episode_not_found",

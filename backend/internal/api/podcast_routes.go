@@ -1,6 +1,5 @@
-// podcast_routes.go exposes the first, intentionally limited public-RSS
-// subscription API. Podcast playback, feed scheduling and downloads remain
-// separate roadmap milestones.
+// podcast_routes.go exposes public-RSS subscriptions, shared playback,
+// and an isolated early-access download queue under the existing local API.
 package api
 
 import (
@@ -29,6 +28,10 @@ type podcastFeedRequest struct {
 func (a *API) PodcastRoutes() chi.Router {
     r := chi.NewRouter()
     r.Get("/episodes/continue", a.listContinueListening)
+    r.Get("/downloads", a.listPodcastDownloads)
+    r.Get("/episodes/{id}/download", a.getPodcastDownload)
+    r.Post("/episodes/{id}/download", a.queuePodcastDownload)
+    r.Delete("/episodes/{id}/download", a.cancelPodcastDownload)
     r.Get("/episodes/{id}/media", a.getPodcastEpisodeMedia)
     r.Get("/episodes/{id}/progress", a.getPodcastEpisodeProgress)
     r.Put("/episodes/{id}/progress", a.updatePodcastEpisodeProgress)

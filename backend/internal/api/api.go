@@ -105,6 +105,14 @@ type API struct {
 	podcastRefreshWG      sync.WaitGroup
 	podcastRefreshWake    chan struct{}
 	podcastFetcher        podcastFeedFetcher
+	podcastDownloadMu     sync.Mutex
+	podcastDownloadOn     bool
+	podcastDownloadClosed bool
+	podcastDownloadCancel context.CancelFunc
+	podcastDownloadWG     sync.WaitGroup
+	podcastDownloadWake   chan struct{}
+	podcastDownloadOwner  string
+	podcastDownloadFetch  func(context.Context,string,string,string)(podcast.MediaSegment,error)
 	jobSchedulerMu         sync.Mutex
 	jobSchedulerOn         bool
 	jobWake                chan struct{}
@@ -187,6 +195,7 @@ func New(database *db.DB, dataDir string) *API {
 	api.startReleaseMetadataWorker()
 	api.startPlexSyncScheduler()
 	api.startPodcastRefresher()
+	api.startPodcastDownloader()
 	dm.Start()
 	// Initialize Last.FM client if configured
 	api.initLastFMClient()
