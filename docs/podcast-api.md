@@ -4,7 +4,7 @@ This documents **only currently implemented endpoints** in
 [`backend/internal/api/podcast_routes.go`](../backend/internal/api/podcast_routes.go).
 The full prospective API is tracked in the
 [Podcast implementation roadmap](PODCAST_CLIENT_IMPLEMENTATION_ROADMAP.md).
-No Podcast Index search, paid feeds or private RSS credential support is implemented yet. An initial 206-range-only offline download job/verified file path is implemented on the draft feature branch, not yet cross-platform qualified. Public HTTP(S) audio streams through the shared music/Plex player via a local episode-ID route. Core playback and seeking are user-verified on the tested build; native cross-platform qualification remains open. OPML 2.0
+No Podcast Index search, paid feeds or private RSS credential support is implemented yet. An early 206-range and bounded 200-only offline download job/verified-file path is implemented on the draft feature branch, not yet cross-platform qualified. Public HTTP(S) audio streams through the shared music/Plex player via a local episode-ID route. Core playback and seeking are user-verified on the tested build; native cross-platform qualification remains open. OPML 2.0
 subscription export and safe import preview are available; neither exports
 nor imports listening history.
 
@@ -83,7 +83,7 @@ Example successful response:
   `format=xml`; private feeds require a separate encrypted-credential and
   export-redaction design.
 - Artwork URLs are filtered at RSS parse, save and refresh; unsafe or tokenized artwork references are not persisted. The proxy resolves only subscribed show IDs, verifies public DNS at connection and each redirect, limits response size and sniffs actual raster content (never serves HTML or SVG). Browser caching is private for up to 15 minutes.
-- Publisher enclosure URLs are backend-only and never serialized into public episode JSON. The subscription-scoped `GET /episodes/{id}/media` serves verified completed local files first via HTTP Range, otherwise guarded public 206 ranges or a bounded streaming-200 fallback. Initial download storage exists under a private fixed episode-ID path. **True disconnected restart and all-OS offline acceptance remain open**; 200-only upstream origins currently cannot be downloaded.
+- Publisher enclosure URLs are backend-only and never serialized into public episode JSON. The subscription-scoped `GET /episodes/{id}/media` serves verified completed local files first via HTTP Range, otherwise guarded public 206 ranges or a bounded streaming-200 fallback. Initial download storage exists under a private fixed episode-ID path. **True disconnected restart and all-OS offline acceptance remain open**; a bounded 200-only offline fallback now exists but is not representative-provider qualified.
 - **Podcasts** is a permanent Sidebar destination. RSS preview/follow and browsing work without opting in. Background and manual feed refreshing are controlled by an optional `podcasts_preview_enabled` setting on the Podcast Show page or in **Settings → Integrations & Spotify**. Disabled by default.
 - Existing song, Spotify, DJ and music download APIs are untouched.
 
@@ -94,7 +94,7 @@ CI qualification must pass before this preview is marked ready.
 
 ## Troubleshooting RSS preview/follow failures
 
-**Expected on this draft feature branch:** supported public HTTPS RSS 2.0 feeds can be previewed and followed without enabling optional automatic refresh. Public podcast audio plays and seeks through the shared ViiB player on the user-tested build. Early-access 206-only offline downloads and deletion are implemented but not cross-platform qualified; podcast directory search, robust retention, and private authenticated feeds remain separate roadmap milestones.
+**Expected on this draft feature branch:** supported public HTTPS RSS 2.0 feeds can be previewed and followed without enabling optional automatic refresh. Public podcast audio plays and seeks through the shared ViiB player on the user-tested build. Early-access bounded 206-range and 200-only offline downloads, plus completed-copy deletion, are implemented but not cross-platform qualified; podcast directory search, robust retention, and private authenticated feeds remain separate roadmap milestones.
 
 The previous generic frontend message `The podcast request could not be
 completed` meant the HTTP response had no recognized V2 JSON error envelope.
@@ -270,3 +270,8 @@ Unfollowing a show revokes its queued and active transfer leases in the same SQL
 ### In-progress publisher representation validation
 
 The podcast downloader keeps a bounded **strong ETag** (when present) and normalized Last-Modified from the first valid 206 range response. Subsequent ranges send `If-Range` using the same strict public-network fetcher; a changed ETag or Last-Modified returns safe download failure code `download_publisher_changed` rather than publishing mixed content. No validator or weak-only ETag permits basic range downloading, **not** restart resume. The validator is internal and is never returned in the public Downloads list or persisted in the shared music catalog. Persisted, validator-gated crash resume remains POD-04B work.
+
+
+### Bounded 200-only publisher downloads (2026-11-22)
+
+When the first strict 206 request returns `ErrPublisherNoRange`, the private download worker may fetch the enclosure **without Range** through the same guarded public-host transport. Only HTTP 200 with a supported audio MIME (or RSS audio declaration for generic octet stream) and no HTML/XML/SVG sniff signature is accepted. The response is streamed to a private temporary file, not buffered in Go memory, with a strict 512 MiB cap even for unknown `Content-Length`. The worker reserves 512 MiB in SQLite and checks destination free space for 512 MiB plus 128 MiB safety margin before starting. Final actual bytes are reconciled, SHA-256 recorded and publication remains atomic; cancellation cannot publish a revoked lease. After completion the existing shared player's local episode media route serves offline HTTP byte ranges. This does not enable nonzero online seeking against a publisher that ignores range requests. Safe persisted partial resume remains unimplemented.
