@@ -50,8 +50,8 @@ type rssChannel struct {
     Description string `xml:"description"`
     Language string `xml:"language"`
     Author string `xml:"http://www.itunes.com/dtds/podcast-1.0.dtd author"`
-    Image struct { URL string `xml:"url"` } `xml:"image"`
     ItunesImage struct { Href string `xml:"href,attr"` } `xml:"http://www.itunes.com/dtds/podcast-1.0.dtd image"`
+    Image struct { URL string `xml:"url"` } `xml:"image"`
     Items []rssItem `xml:"item"`
 }
 type rssItem struct {
