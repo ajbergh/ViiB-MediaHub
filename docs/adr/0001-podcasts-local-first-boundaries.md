@@ -94,6 +94,7 @@ remain open roadmap items and must not be marked complete.
   without enabling a feature flag. Public RSS preview/following, local show
   detail and paginated episode browsing are exposed as **Early Access**. No
   unfinished player, directory search or download buttons are presented.
+- Episode progress now has private DB read/update primitives with optimistic revision checks. The player completion threshold, write throttling and single-owner audio session remain future decisions; these methods alone do not imply a working player.
 - The backend setting `podcasts_preview_enabled` is retained as a
   backwards-compatible, default-off opt-in for **background and manual feed
   refresh**, not navigation. It can be enabled in Settings or on a show page.
