@@ -5,7 +5,7 @@ import { ArrowLeft, Download, Headphones, Loader2, Plus, RefreshCw, Rss, Trash2 
 import { api } from '../services/api';
 import { podcastEpisodeToTrack, queuePodcastEpisode, type PodcastQueuePosition } from '../lib/podcastPlayback';
 import { useStore } from '../store';
-import { podcastsAPI, PodcastAPIError, type PodcastFeed, type PodcastEpisode, type PodcastPreview, type PodcastRefreshStatus, type PodcastOPMLImportPreview, type PodcastContinueEpisode, type PodcastDownload } from '../services/podcasts';
+import { podcastsAPI, PodcastAPIError, type PodcastFeed, type PodcastEpisode, type PodcastPreview, type PodcastRefreshStatus, type PodcastOPMLImportPreview, type PodcastContinueEpisode, type PodcastDownload, type PodcastStorage } from '../services/podcasts';
 
 const inputClass = 'w-full rounded-lg border border-surface-3 bg-surface-1 px-4 py-3 text-text-main outline-none focus-visible:ring-2 focus-visible:ring-brand';
 
@@ -362,6 +362,9 @@ export const PodcastShow: React.FC = () => {
   const [playedFilter, setPlayedFilter] = useState<'all' | 'played' | 'unplayed'>('all');
   const [updatingEpisode, setUpdatingEpisode] = useState<string | null>(null);
   const [downloads, setDownloads] = useState<Record<string, PodcastDownload>>({});
+  const [downloadStorage, setDownloadStorage] = useState<PodcastStorage | null>(null);
+  const [confirmDeleteDownload, setConfirmDeleteDownload] = useState<string | null>(null);
+  const selectedPodcastId = useStore(state => state.currentSong?.podcastEpisodeId);
   const [workingDownload, setWorkingDownload] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState('');
   // Bulk edits are explicitly limited to currently loaded episode pages.
@@ -435,9 +438,10 @@ export const PodcastShow: React.FC = () => {
     const controller = new AbortController();
     const poll = () => {
       void podcastsAPI.listDownloads(controller.signal)
-        .then(({ downloads: rows }) => {
+        .then(({ downloads: rows, storage }) => {
           if (controller.signal.aborted) return;
           setDownloads(Object.fromEntries(rows.map(row => [row.episodeId, row])));
+          if (storage) setDownloadStorage(storage);
         })
         .catch(() => { /* Streaming remains available on older backend builds. */ });
     };
@@ -446,15 +450,29 @@ export const PodcastShow: React.FC = () => {
     return () => { controller.abort(); window.clearInterval(timer); };
   }, [id]);
 
-  const changeDownload = async (episode: PodcastEpisode, cancel: boolean) => {
+  const changeDownload = async (episode: PodcastEpisode, action: 'queue' | 'cancel' | 'remove') => {
     if (workingDownload) return;
+    if (action === 'remove' && selectedPodcastId === episode.id) {
+      setDownloadError('Stop or switch away from this episode before removing its offline copy.');
+      return;
+    }
     setDownloadError('');
     setWorkingDownload(episode.id);
     try {
-      const { download } = cancel
-        ? await podcastsAPI.cancelDownload(episode.id)
-        : await podcastsAPI.queueDownload(episode.id);
-      setDownloads(current => ({ ...current, [episode.id]: download }));
+      if (action === 'remove') {
+        await podcastsAPI.removeDownload(episode.id);
+        setDownloads(current => {
+          const next = { ...current };
+          delete next[episode.id];
+          return next;
+        });
+        setConfirmDeleteDownload(null);
+      } else {
+        const { download } = action === 'cancel'
+          ? await podcastsAPI.cancelDownload(episode.id)
+          : await podcastsAPI.queueDownload(episode.id);
+        setDownloads(current => ({ ...current, [episode.id]: download }));
+      }
     } catch (err) {
       setDownloadError(readableError(err));
     } finally {
@@ -642,6 +660,10 @@ export const PodcastShow: React.FC = () => {
 
       <section>
         {downloadError && <p role="alert" className="mb-3 rounded-lg border border-error/30 p-3 text-sm text-error">{downloadError}</p>}
+        {downloadStorage && <p className="mb-3 text-xs text-text-subtle">
+          Offline podcast storage: {(downloadStorage.usedBytes / (1024 * 1024)).toFixed(0)} MiB
+          {' / '}{(downloadStorage.maxBytes / (1024 * 1024 * 1024)).toFixed(1)} GiB reserved
+        </p>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-bold text-text-main">Episodes ({episodes.length} loaded)</h2>
           <div aria-label="Loaded episode bulk actions" className="flex flex-wrap items-center gap-2">
@@ -733,13 +755,31 @@ export const PodcastShow: React.FC = () => {
                 const status = downloads[episode.id];
                 const active = status?.status === 'queued' || status?.status === 'downloading';
                 const completed = status?.status === 'completed';
-                const label = active ? 'Cancel download' : completed ? 'Downloaded' :
+                const label = active ? 'Cancel download' :
                   status?.status === 'failed' || status?.status === 'canceled' ? 'Retry download' : 'Download episode';
                 const percent = status?.expectedBytes ? Math.min(100,
                   Math.floor(100 * status.bytesReceived / status.expectedBytes)) : null;
                 return <div className="flex flex-wrap items-center gap-2">
-                  <button type="button" disabled={workingDownload !== null || completed}
-                    onClick={() => void changeDownload(episode, active)}
+                  {completed ? <>
+                    <button type="button" disabled={workingDownload !== null || selectedPodcastId === episode.id}
+                      onClick={() => setConfirmDeleteDownload(episode.id)}
+                      aria-label={'Remove offline copy of ' + episode.title}
+                      className="rounded-md border border-surface-3 px-3 py-1.5 text-xs font-semibold text-text-secondary disabled:opacity-50">
+                      Remove download
+                    </button>
+                    {selectedPodcastId === episode.id && <span className="text-xs text-text-subtle">Switch away before removing</span>}
+                    {confirmDeleteDownload === episode.id && <span role="group" aria-label={'Confirm remove download ' + episode.title}
+                      className="flex items-center gap-2 text-xs text-text-secondary">
+                      <span>Remove offline audio? Listening history remains.</span>
+                      <button type="button" disabled={workingDownload !== null}
+                        onClick={() => void changeDownload(episode, 'remove')}
+                        aria-label={'Confirm remove offline copy of ' + episode.title}
+                        className="rounded-md bg-brand px-2 py-1.5 font-semibold text-surface-0">Remove copy</button>
+                      <button type="button" onClick={() => setConfirmDeleteDownload(null)}
+                        className="rounded-md border border-surface-3 px-2 py-1.5">Keep</button>
+                    </span>}
+                  </> : <button type="button" disabled={workingDownload !== null}
+                    onClick={() => void changeDownload(episode, active ? 'cancel' : 'queue')}
                     aria-label={label + ' ' + episode.title}
                     className="inline-flex items-center gap-1.5 rounded-md border border-surface-3 px-3 py-1.5 text-xs font-semibold text-text-secondary hover:text-text-main disabled:opacity-50">
                     <Download size={14} aria-hidden="true" />

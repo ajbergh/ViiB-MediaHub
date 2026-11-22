@@ -28,6 +28,10 @@ export interface PodcastContinueEpisode extends PodcastEpisode {
   listenedMs: number;
   progressRevision: number;
 }
+export interface PodcastStorage {
+  usedBytes: number;
+  maxBytes: number;
+}
 export interface PodcastDownload {
   id: string;
   episodeId: string;
@@ -144,13 +148,17 @@ export const podcastsAPI = {
   mediaURL(episodeId: string): string {
     return BASE + '/episodes/' + encodeURIComponent(episodeId) + '/media';
   },
-  listDownloads(signal?: AbortSignal): Promise<{ downloads: PodcastDownload[] }> {
+  listDownloads(signal?: AbortSignal): Promise<{ downloads: PodcastDownload[]; storage?: PodcastStorage }> {
     return request('/downloads', { signal });
   },
   queueDownload(episodeId: string, signal?: AbortSignal): Promise<{ download: PodcastDownload }> {
     return request('/episodes/' + encodeURIComponent(episodeId) + '/download', { method: 'POST', signal });
   },
   cancelDownload(episodeId: string, signal?: AbortSignal): Promise<{ download: PodcastDownload }> {
+    return request('/episodes/' + encodeURIComponent(episodeId) + '/download', { method: 'DELETE', signal });
+  },
+  // Completed-file DELETE returns 204; never expose local disk paths.
+  removeDownload(episodeId: string, signal?: AbortSignal): Promise<void> {
     return request('/episodes/' + encodeURIComponent(episodeId) + '/download', { method: 'DELETE', signal });
   },
   getDownload(episodeId: string, signal?: AbortSignal): Promise<{ download: PodcastDownload }> {

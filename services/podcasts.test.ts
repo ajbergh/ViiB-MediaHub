@@ -145,6 +145,14 @@ describe('podcastsAPI', () => {
     expect(listMock.mock.calls[0][0]).toBe('/api/v2/podcasts/downloads');
   });
 
+  it('removes a completed offline file via 204 without exposing paths', async () => {
+    const mock = vi.fn(async (_url: string, _options?: RequestInit) => ({ ok: true, status: 204 }));
+    vi.stubGlobal('fetch', mock);
+    await expect(podcastsAPI.removeDownload('ep-1')).resolves.toBeUndefined();
+    expect(mock).toHaveBeenCalledWith('/api/v2/podcasts/episodes/ep-1/download',
+      expect.objectContaining({ method: 'DELETE' }));
+  });
+
   it('handles an empty list and 204 unsubscribe', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ feeds: [] }) })

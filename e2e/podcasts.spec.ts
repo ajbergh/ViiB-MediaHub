@@ -9,7 +9,7 @@ test('Podcasts follows public RSS and uses shared playback, queue and played wor
   let refreshed = 0;
   let progressPlayed = false;
   let progressRevision = 0;
-  let podcastDownloadStatus: 'queued' | 'canceled' | null = null;
+  let podcastDownloadStatus: 'queued' | 'canceled' | 'completed' | null = null;
   const mutations: string[] = [];
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -60,12 +60,17 @@ test('Podcasts follows public RSS and uses shared playback, queue and played wor
       return route.fulfill({ json: { downloads: podcastDownloadStatus
         ? [{ episodeId: 'ep-1', id: 'ep-1', status: podcastDownloadStatus,
             bytesReceived: 0, expectedBytes: 0, verifiedSize: 0, createdAt: 1, updatedAt: 1, completedAt: 0 }]
-        : [] } });
+        : [], storage: { usedBytes: 0, maxBytes: 2147483648 } } });
     }
     if (u.pathname === '/api/v2/podcasts/episodes/ep-1/download') {
       if (req.method() === 'POST') podcastDownloadStatus = 'queued';
-      else if (req.method() === 'DELETE') podcastDownloadStatus = 'canceled';
-      else return route.fulfill({ status: 405 });
+      else if (req.method() === 'DELETE') {
+        if (podcastDownloadStatus === 'completed') {
+          podcastDownloadStatus = null;
+          return route.fulfill({ status: 204, body: '' });
+        }
+        podcastDownloadStatus = 'canceled';
+      } else return route.fulfill({ status: 405 });
       return route.fulfill({ status: req.method() === 'POST' ? 202 : 200,
         json: { download: { episodeId: 'ep-1', id: 'ep-1', status: podcastDownloadStatus,
           bytesReceived: 0, expectedBytes: 0, verifiedSize: 0, createdAt: 1, updatedAt: 1, completedAt: 0 } } });
@@ -160,6 +165,9 @@ test('Podcasts follows public RSS and uses shared playback, queue and played wor
   await page.getByRole('button', { name: 'Cancel download First episode' }).click();
   await expect(page.getByText('Download canceled')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Retry download First episode' })).toBeVisible();
+  // The selected playing episode is protected from offline file removal.
+  podcastDownloadStatus = 'completed';
+  await expect(page.getByRole('button', { name: 'Remove offline copy of First episode' })).toBeDisabled({ timeout: 15000 });
   await page.getByRole('button', { name: 'Play First episode next' }).click();
   await expect(page.getByRole('button', { name: 'Queue, 2 tracks' }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Add First episode to queue' }).click();
