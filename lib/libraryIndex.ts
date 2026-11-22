@@ -28,6 +28,21 @@ export function patchCatalogSong(songs: Song[], id: string, patch: Partial<Song>
   return updated;
 }
 
+export function patchCatalogSongs(songs: Song[], patches: ReadonlyMap<string, Partial<Song>>): Song[] {
+  const changes: CatalogSongChange[] = [];
+  const updated = songs.map(before => {
+    const patch = patches.get(before.id);
+    if (!patch) return before;
+    const after = { ...before, ...patch };
+    if (sameSong(before, after)) return before;
+    changes.push({ before, after });
+    return after;
+  });
+  if (changes.length === 0) return songs;
+  catalogDeltas.set(updated, { previous: new WeakRef(songs), changes, orderChanged: false });
+  return updated;
+}
+
 // An optimistic patch and a server delta can share the same base snapshot.
 // Express the server result relative to the array currently shown by the store.
 export function rebaseCatalogDelta(songs: Song[], current: Song[]) {

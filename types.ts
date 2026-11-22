@@ -30,6 +30,8 @@
 
 export type PlaybackContext = 'ai_dj' | 'album' | 'playlist' | 'queue' | 'search' | 'spotify' | 'artist' | 'liked' | 'smart_mix';
 
+export type AlbumMetadataPatch = Partial<Pick<Song, 'album' | 'albumArtist' | 'artist' | 'year' | 'genre'>>;
+
 export interface Song {
   playbackContext?: PlaybackContext;
   id: string;
