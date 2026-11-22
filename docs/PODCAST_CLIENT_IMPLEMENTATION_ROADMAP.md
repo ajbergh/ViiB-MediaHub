@@ -442,9 +442,9 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 
 - [ ] **POD-02A:** Podcast Index adapter, server-side credential management, status and pagination; no-key fallback/direct RSS works.
 - [ ] **POD-02B:** Discover search UI, results with artwork, preview/follow, feed detail and episode filter.
-- [ ] **POD-02C (in progress):** Subscription-scoped HTTPS audio proxy now handles bounded 2 MiB single-byte ranges, strict 206 Content-Range/MIME/length checks, DNS pinning, redirect/SSRF and upstream error mapping. Real publisher compatibility, alternate enclosures, local offline media and cross-platform tests remain.
-- [ ] **POD-02D (in progress):** Revision-safe progress REST/SQLite, inline HTMLAudio transport, browser↔music stop/pause handoff and throttled playback-driven progress writes implemented; global single-owner coordinator, OS/media keys, background playback and cross-platform validation remain.
-- [ ] **POD-02E (in progress):** Inline early-access show-player shell with play/pause, native timeline seek, +/-15/30s, speed selection, saved resume and guarded local stream URL; app-global Now Playing, art, error/retry/buffering/latency UX and media-key integration remain.
+- [ ] **POD-02C (in progress):** Subscription-scoped public HTTP/HTTPS audio proxy accepts signed CDN queries with DNS/rebinding and redirect checks; strict 206 bounded Range or guarded streaming 200 fallback. Private/authenticated publisher feeds, offline source and real provider acceptance remain.
+- [ ] **POD-02D (in progress):** Podcast playback is now owned by the existing ViiB audio elements/queue and media-session hook, with podcast-only CAS progress tracking and crossfade exclusion. Real OS media key, Windows Wails and mixed-source testing remain.
+- [ ] **POD-02E (in progress):** Same global ViiB player now plays podcast episodes with existing music/Plex controls, queue, art, volume, EQ and Now Playing. Podcast-specific long-form speed/skip enhancements, real-provider streaming and cross-platform qualification remain.
 - [ ] **POD-02F (in progress):** Durable Continue Listening query/API and linked library cards, plus manual played/unplayed episode controls; playback-driven resume, queue/starred operations and full CI remain.
 
 **Exit:** Discovery or RSS → subscribe → stream → pause → quit/reopen → resume at expected position; music, Spotify and DJ behavior unchanged.
@@ -821,3 +821,45 @@ unimplemented remote-media feature should be implied by the new API state.
 Next slice: verify full CI and cross-platform media streaming, then
 centralize single-owner media-session handling (including Windows
 SMTC/media keys) before the persistent queue and optional offline pipeline.
+
+
+### 2026-11-22 — user-tested playback failure and shared-player correction
+
+The user verified RSS subscriptions in both Vite dev and Wails for two
+feeds, but reported the podcast-only inline audio player could not start
+episodes. They also explicitly required **the same persistent music/Plex
+player**, not a second playback surface.
+
+**Implemented on the draft branch, pending fresh validation:**
+
+- Removed the separate podcast playback component from the UI path.
+  `Listen` now passes a transient podcast episode queue into the
+  existing app-level ViiB Player using the same shared audio engine,
+  transports, volume/EQ, Now Playing and media-session handlers. Playback
+  persists across show-page navigation. Music-only play counts and
+  listening analytics are intentionally excluded from podcast items.
+- Restored podcast resume/progress through a revisioned,
+  single-transport progress tracker: counted listening intervals,
+  periodic/pause/change/end saves, explicit completion, seek-safe
+  elapsed time and CAS conflict stop.
+- Separated media-enclosure URL validation from RSS/OPML feed URL rules.
+  Public HTTP/HTTPS publisher audio links may contain signed CDN queries,
+  while private/local DNS, nonpublic resolved IPs, invalid ports,
+  untrusted redirects and TLS downgrades remain blocked.
+- Added a bounded streaming HTTP 200 fallback for publishers that ignore
+  Range at byte zero. Genuine 206 range publishers retain 2 MiB requests;
+  200-only publishers stream without whole-file buffering (1 GiB limit)
+  and return 416 for unsupported nonzero random seeks.
+- A backend-only `enclosureUrl` field now has a public `hasAudio` flag.
+  Signed publisher URLs are no longer serialized into episode/preview
+  JSON or the music queue; the UI uses only local episode-ID URLs.
+- Added signed CDN, full-200 publisher, redaction, shared-player adapter,
+  progress-tracker and Playwright interaction tests. A CI red run exposed
+  an incorrectly escaped hostname validation character class and
+  text-only audio fixture; both were fixed on the branch.
+
+**Not yet verified:** the actual two reported feeds' playback without
+their RSS URLs/network traces; browser/Wails runtime acceptance remains
+required. OS controls follow the same hooks as music, but native
+acceptance on Windows/macOS and recovery from publisher-specific
+failure modes remain open. Full CI must be green before merge.

@@ -203,51 +203,57 @@ resume an episode after selecting it from that show; Continue Listening
 cards do not yet deep-link to or auto-start an individual episode.
 
 
-## Secure early-access episode streaming
+## Podcast episode playback through the shared ViiB Player
 
-`GET /api/v2/podcasts/episodes/{id}/media` looks up an episode by its
-stable SQLite ID **and requires that its show is still followed**. Callers
-cannot supply a remote source URL. Unknown/unfollowed episodes return 404;
-unsupported private URLs, non-audio enclosures and unsafe upstream responses
-return an error, never an untrusted remote response.
+The show page's **Listen** action sends episodes into the existing app-level
+Player/queue. The same audio elements, EQ, output routing, volume, Now Playing,
+queue controls, media keys and Windows media-session integration used by
+local/Plex music now own podcast audio. The podcast does **not** mount a
+separate audio player or register competing Media Session handlers. Podcast
+queue entries are transient adapters: episodes are **not** saved as music
+songs and are excluded from music play-count/DJ analytics.
 
-The backend uses the shared DNS-pinned, public-IP-only podcast fetcher.
-For this milestone, media sources are **public HTTPS**, with default TLS
-port only, no URL user credentials, no secret-bearing query parameters and
-no internal/local DNS hostnames. Redirects are revalidated on each hop;
-private destinations, mixed public/private DNS sets, protocol downgrades,
-environment HTTP proxies and non-public address literals are refused.
-Publisher audio must identify as a supported audio MIME type.
+`GET /api/v2/podcasts/episodes/{id}/media` resolves the enclosure only
+for a currently followed episode. Raw enclosure URLs never enter renderer
+JSON or music storage; episode metadata exposes `hasAudio` and the UI
+constructs a same-origin media URL from the stable episode ID. Signed
+publisher CDN query parameters remain backend-only. Other than the
+publisher metadata already stored in local SQLite, no remote credentials
+are persisted by the renderer. Subscription/OPML feed URL restrictions are
+intentionally **separate** from media enclosure URL validation.
 
-A client may send one `Range: bytes=N-M` or `bytes=N-`. The server caps
-each request to **2 MiB**, reissues the bounded range to the publisher and
-requires a genuine upstream `206 Partial Content` with consistent
-`Content-Range`, total size (maximum 16 GiB), length, content type and
-identity encoding. Requests without a Range are treated as `bytes=0-`
-but also capped to 2 MiB. Entire upstream `200` bodies, multipart ranges,
-compressed replies, HTML/SVG, mismatched sizes and oversized/lying
-responses are rejected before returning any bytes.
+Publisher enclosures can use public HTTP or HTTPS; URL credentials,
+private/local/special-use IPs, DNS rebinding, mixed public/private DNS
+sets and HTTPS-to-HTTP redirect downgrades remain blocked. Nondefault
+ports, invalid schemes, and nonpublic DNS suffixes are refused.
+Every remote connection rechecks and pins the public IP, including
+after redirects. Upstream auth headers/cookies are not forwarded.
 
-Successful responses include `Content-Type`, `Content-Range`,
-`Content-Length`, `Accept-Ranges: bytes`, `Cache-Control:
-private, no-store` and `X-Content-Type-Options: nosniff`. Publisher
-headers and upstream errors are not reflected. Malformed ranges return
-416; unsupported enclosure/metadata 422; publisher transport errors 502.
+For a publisher supporting byte ranges, the endpoint requests at most
+2 MiB and requires genuine HTTP `206 Partial Content`, correct
+`Content-Range`/total/length, and a supported audio MIME. Publisher
+`application/octet-stream` is accepted only when RSS declares a
+supported audio type and obvious HTML/XML is rejected. Successful
+responses set `Content-Range`, `Content-Length`, `Accept-Ranges:
+bytes`, `Cache-Control: private, no-store` and `nosniff`.
 
-The **Listen** action on a show page opens an early-access native HTML
-audio player fed only by this same-origin endpoint. Pause/play, +/- seek,
-speed changes, per-episode position recovery and revision-checked progress
-writes are implemented. Starting podcasts pauses active music; starting
-music pauses the current podcast. The Spotify/music queue is not replaced
-or serialized into podcast state. This is **not yet the final unified
-audio-session coordinator**: OS media keys, global player persistence
-across route transitions, a dedicated queue, wide publisher MIME/query
-compatibility, CDN signed URL credentials, download/retry behavior and
-cross-platform audio qualification remain pending.
+**Compatibility fallback:** Some public hosts ignore Range and
+return HTTP 200. For initial byte-zero requests only, the backend
+re-fetches without Range and **streams** a verified audio body to the
+same player as HTTP 200, using bounded transfer (maximum 1 GiB,
+without whole-file memory buffering). The player can listen, pause and
+resume while the connection is active. Publishers that cannot seek
+return HTTP 416 for requests starting beyond byte zero; random
+seeking may be unavailable even though playback works.
 
-**Known limitations:** many real publishers issue signed/tokenized
-enclosure URLs or do not honor byte ranges. Those sources remain
-unsupported in this strict first slice. No automatic fall back to
-insecure remote fetch or whole-file buffering is permitted. A saved
-`Continue Listening` item links back to its show, not directly to an
-auto-starting media session.
+The shared player restores the saved podcast position when metadata
+loads and records progress in podcast SQLite with optimistic revisions,
+roughly every 10 seconds and when paused, switched or completed.
+Music listening and DJ metrics remain untouched. Background playback
+across Podcasts page navigation is supported through the persistent
+Player component, although desktop/Wails acceptance remains pending.
+
+**Still pending:** cross-device sync, reliable seeking on hosts that do
+not provide ranges, private/paywalled authentication, expiry handling
+for signed CDN URLs, downloaded audio, advanced podcast speed/silence
+processing and representative real-provider compatibility tests.

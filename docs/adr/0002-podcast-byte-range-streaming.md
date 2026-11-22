@@ -1,56 +1,59 @@
-# ADR 0002 — Strict bounded publisher audio streaming for Podcasts
+# ADR 0002 — Publisher audio through one shared ViiB Player
 
 - **Date:** 2026-11-22
-- **Status:** Accepted for experimental media endpoint; full publisher and platform qualification pending
-- **Scope:** POD-02C, partial POD-02D/E
+- **Status:** Implemented on draft feature branch; cross-platform acceptance pending
+- **Scope:** POD-02C, POD-02D, POD-02E
 - **Depends on:** [ADR 0001](0001-podcasts-local-first-boundaries.md)
 
 ## Decision
 
-Podcast audio is not a music song. The app resolves a selected episode's
-enclosure only from the local podcast SQLite collection and only while the
-show is actively followed. Browsers and Wails receive an API URL keyed by
-the episode ID; they never receive an upstream publisher URL to stream.
+There is exactly **one regular audio player** for local music, Plex,
+Spotify and podcasts. Podcast episode rows are mapped to transient
+`Song`-compatible queue entries with a distinct `source: podcast` and
+an episode ID. The existing `components/Player.tsx`,
+`hooks/useAudioPlayer.ts`, volume/EQ, output routing, Now Playing,
+queue and `useMediaSession` own the audio and OS controls.
+No podcast-only HTMLAudio player exists. Podcast queue entries do not
+enter the music SQLite catalog or music listening/AI-DJ statistics.
+Crossfades and music preloading are disabled for podcast transitions.
 
-The Go API retrieves small byte-range segments over the existing public
-HTTPS DNS-pinned podcast connector. Each remote request is limited to a
-single range capped at 2 MiB and requires an actual 206 Partial Content
-response. Validation checks the publisher's Content-Range (start, end,
-total), audio content type, byte count, and disabled compression. Invalid
-publishers cannot make the backend buffer or forward arbitrary whole files
-and cannot supply HTML/SVG. Every redirect repeats URL and public-IP policy.
+Podcast listening positions and played state remain in podcast-owned
+SQLite tables. The audio hook uses a revision-checked progress tracker;
+it restores position, counts actual playback rather than seeks, writes
+periodically, and flushes on pause/change/end. A stale revision blocks
+subsequent writes and surfaces an actionable toast.
 
-Enclosure URL rules are intentionally conservative: no credentials, unknown
-query params or signed URLs; no private/local DNS, nonstandard ports or
-plain HTTP. This sacrifices compatibility with certain podcast networks
-until the credentials, retention and redaction policy is designed. It is
-safer to show an unsupported source than weaken SSRF protection.
+## Network and media boundary
 
-The early player is an isolated HTMLAudio instance inside show details.
-Starting a podcast pauses the music transport; resuming the music transport
-pauses the inline podcast. Listening state is persisted independently with
-the existing optimistic-revision API and throttled writes. The music song,
-DJ and Spotify playlists/states are not rewritten.
+The browser sees only a local episode-ID proxy route.
+Raw publisher enclosure URLs (which can contain expiring signed tokens)
+never enter episode JSON. The backend independently validates public
+HTTP/HTTPS destinations, IP/dial-time DNS, redirects, and MIME and strips
+publisher credentials/headers. Private networks, rebinds and HTTPS
+downgrades are blocked.
 
-## Failure policy
+When supported, publishers must return valid HTTP 206 and the server
+proxies no more than 2 MiB at a time, validating Content-Range and audio
+type. A verified 200 response to Range indicates a non-range publisher:
+the server re-fetches without Range and forwards the full audio as a
+bounded streaming 200 response (maximum 1 GiB) without buffering it in
+memory or bypassing SSRF checks. Nonzero random seeks against such
+publishers return 416 rather than silently playing from the wrong byte.
 
-- 404: unknown or unfollowed episode.
-- 416: invalid/unsupported single-range request.
-- 422: unsupported publisher URL, type or media envelope.
-- 502: publisher failed, timed out or returned an invalid media response.
-- Never reflect source addresses, upstream response bodies or credentials.
+Plain HTTP audio is permitted for compatibility only when the host is
+public, at the default port, and is not reached by a downgrade from
+HTTPS. Source query parameters are retained backend-side to allow signed
+CDN enclosures. The feed subscription/OPML export policy remains strictly
+separate and does not permit private feed tokens.
 
-## Known limitations / acceptance gates
+## Acceptance gates
 
-A true global media-session owner is still needed: OS/media keys and
-Windows SMTC continue to belong to the existing music player in this
-early slice. Navigating away from show details stops the inline podcast,
-and no downloadable local media source is available. Streaming behavior
-against representative real publishers, seek correctness across 2 MiB
-ranges, CDN redirects, platform decoders, background playback and
-failure/retry UX must be tested before general release.
+Synthetic Go/API/TypeScript and browser tests must pass. Retest actual
+public HTTPS/HTTP RSS podcast audio in both Vite and Wails, including
+initial play, page navigation, volume, pause/resume, seek where supported,
+queue navigation and music/Plex handoff. Cross-platform native codecs
+and signed URL expiry behavior have not yet been proven. Downloads and
+offline sources remain unimplemented.
 
-Audio and subtitle/video compatibility is deliberately not inferred from
-RSS metadata. Podcast enclosures must be independently validated at fetch.
-The implementation is documented in [Podcast API](../podcast-api.md) and
-[roadmap](../PODCAST_CLIENT_IMPLEMENTATION_ROADMAP.md).
+See the [Podcast API](../podcast-api.md) and the
+[implementation roadmap](../PODCAST_CLIENT_IMPLEMENTATION_ROADMAP.md).
