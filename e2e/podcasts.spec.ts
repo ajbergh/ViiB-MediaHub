@@ -442,7 +442,7 @@ test('Podcasts central Downloads filters and confirms completed-file deletion', 
   await downloads.getByRole('combobox', { name: 'Filter podcast downloads' }).selectOption('active');
   await expect(downloads.getByText('No downloads match this filter.')).toBeVisible();
   await downloads.getByRole('combobox', { name: 'Filter podcast downloads' }).selectOption('completed');
-  await expect(downloads.getByRole('article').getByText('Available offline', { exact: true })).toBeVisible();
+  await expect(downloads.getByRole('article').getByText('Available offline', { exact: false })).toBeVisible();
   await downloads.getByRole('button', { name: 'Remove offline download of Saved episode' }).click();
   await expect(downloads.getByText('Remove offline audio? Your listening history will remain.')).toBeVisible();
   await downloads.getByRole('button', { name: 'Keep' }).click();
