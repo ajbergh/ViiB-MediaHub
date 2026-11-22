@@ -41,6 +41,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/mediafetch"
 	"github.com/ajbergh/viib-mediahub/internal/plex"
+	"github.com/ajbergh/viib-mediahub/internal/podcast"
 	"github.com/ajbergh/viib-mediahub/internal/releasedate"
 	"github.com/ajbergh/viib-mediahub/internal/scanner"
 	"github.com/ajbergh/viib-mediahub/internal/semantic"
