@@ -33,6 +33,7 @@ func (a *API) PodcastRoutes() chi.Router {
     r.Post("/feeds/preview", a.previewPodcastFeed)
     r.Post("/feeds", a.subscribePodcastFeed)
     r.Get("/feeds/{id}/artwork", a.getPodcastArtwork)
+    r.Get("/feeds/{id}", a.getPodcastFeed)
     r.Get("/feeds/{id}/episodes", a.listPodcastEpisodes)
     r.Get("/feeds/{id}/refresh", a.getPodcastRefresh)
     r.Post("/feeds/{id}/refresh", a.schedulePodcastRefresh)
@@ -125,6 +126,23 @@ func (a *API) listPodcastFeeds(w http.ResponseWriter,r *http.Request) {
         return
     }
     respondV2JSON(w,http.StatusOK,map[string]any{"feeds":feeds})
+}
+
+// getPodcastFeed is a subscription-scoped detail endpoint; ID lookups
+// don't require loading every followed show to display a single page.
+func (a *API) getPodcastFeed(w http.ResponseWriter,r *http.Request) {
+    feed,err:=a.db.GetSubscribedPodcast(r.Context(),chi.URLParam(r,"id"))
+    if errors.Is(err,sql.ErrNoRows){
+        respondV2Error(w,r,http.StatusNotFound,"podcast_not_found",
+            "Podcast subscription not found",false,nil)
+        return
+    }
+    if err!=nil{
+        respondV2Error(w,r,http.StatusInternalServerError,"podcast_library_unavailable",
+            "Unable to read podcast details",true,nil)
+        return
+    }
+    respondV2JSON(w,http.StatusOK,map[string]any{"feed":feed})
 }
 
 func (a *API) listPodcastEpisodes(w http.ResponseWriter,r *http.Request) {

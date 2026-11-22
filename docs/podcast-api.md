@@ -16,6 +16,7 @@ RSS 2.0 feeds during initial implementation.
 | Method | Path | Behavior |
 |---|---|---|
 | GET | `/feeds` | List followed show records with episode counts |
+| GET | `/feeds/{id}` | Read one followed show by stable ID; 404 when unknown or unfollowed |
 | GET | `/export/opml` | Download OPML 2.0 of currently followed public feeds (up to 5,000 subscriptions / 2 MiB); no listening history or private data |
 | POST | `/feeds/preview` | Validate and retrieve one public HTTPS RSS feed; return first ten episodes and total |
 | POST | `/feeds` | Fetch/feed parse + subscribe + transactional episode snapshot; returns ID/title/count |

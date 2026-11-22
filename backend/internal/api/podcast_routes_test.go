@@ -40,9 +40,14 @@ func TestPodcastRoutesListAndUnsubscribe(t *testing.T) {
     if err!=nil{t.Fatal(err)}
     response=check(http.MethodGet,"/feeds","",http.StatusOK)
     if !bytes.Contains(response.Body.Bytes(),[]byte("Example Podcast")){t.Fatalf("missing podcast in response: %s",response.Body.String())}
+    response=check(http.MethodGet,"/feeds/"+id,"",http.StatusOK)
+    if !bytes.Contains(response.Body.Bytes(),[]byte("Example Podcast")) {
+        t.Fatalf("show detail missing: %s",response.Body.String())
+    }
     response=check(http.MethodGet,"/feeds/"+id+"/episodes","",http.StatusOK)
     if !bytes.Contains(response.Body.Bytes(),[]byte("Episode A")){t.Fatalf("missing episode: %s",response.Body.String())}
     check(http.MethodDelete,"/feeds/"+id,"",http.StatusNoContent)
+    check(http.MethodGet,"/feeds/"+id,"",http.StatusNotFound)
     check(http.MethodGet,"/feeds/"+id+"/episodes","",http.StatusNotFound)
     check(http.MethodDelete,"/feeds/"+id,"",http.StatusNotFound)
 }

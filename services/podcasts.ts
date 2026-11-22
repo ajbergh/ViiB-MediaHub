@@ -107,6 +107,9 @@ export const podcastsAPI = {
     const response = await requestResponse('/export/opml', { signal, headers: { Accept: 'application/xml' } });
     return response.blob();
   },
+  getFeed(feedId: string, signal?: AbortSignal): Promise<{ feed: PodcastFeed }> {
+    return request('/feeds/' + encodeURIComponent(feedId), { signal });
+  },
   listSubscriptions(signal?: AbortSignal): Promise<{ feeds: PodcastFeed[] }> {
     return request('/feeds', { signal });
   },

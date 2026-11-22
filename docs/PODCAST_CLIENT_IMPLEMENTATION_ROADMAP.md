@@ -433,7 +433,7 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 - [ ] **POD-01A (in progress):** Added additive `EnsurePodcastSchema()`, isolated tables/indexes, transaction-safe feed/episode snapshot upserts, listing, unsubscribe and reopen/progress-preservation tests. Revision-checked durable episode progress methods and restart/conflict tests now added; schema upgrades, player integration, backup/restore qualification and CI remain.
 - [ ] **POD-01B (in progress):** Implemented bounded RSS 2.0/iTunes parser, plain-text notes, DTD block, HTTPS-default fetcher, public-IP DNS pinning, redirect/size/304 controls and unit tests. Full reserved-address audit, feed identity churn, download/media policy and CI confirmation remain.
 - [ ] **POD-01C (in progress):** Added crash-recoverable SQLite refresh leases, due scheduling, 304/ETag handling, bounded retry backoff and transaction-safe episode reconciliation preserving history. Dedicated serial polling worker started via API constructor and closed by API lifecycle; opt-in traffic gate, manual API, show-page Refresh control and worker/API/E2E tests implemented. Transactional public redirect aliases on follow and refresh, canonical/original-alias collision rollback, ID-reuse tests and a preview→subscribe original-URL fixture are implemented; Conservative GUID migration with strict metadata matching is implemented; real publisher churn, stress and full CI remain.
-- [ ] **POD-01D (in progress):** Added guarded REST preview/subscribe/list/episodes/unsubscribe handlers under `/api/v2/podcasts`, typed `services/podcasts.ts` client and tests plus [provisional API documentation](podcast-api.md). Show detail endpoint, cursor pagination, OpenAPI schemas and full API integration qualification remain; bounded offset pagination is implemented; durable manual refresh/status endpoints are implemented.
+- [ ] **POD-01D (in progress):** Added guarded REST preview/subscribe/list/episodes/unsubscribe handlers under `/api/v2/podcasts`, typed `services/podcasts.ts` client and tests plus [provisional API documentation](podcast-api.md). Single-show detail endpoint and bounded offset pagination now implemented; cursor pagination, OpenAPI schemas and full API integration qualification remain; durable manual refresh/status endpoints are implemented.
 - [ ] **POD-01E (in progress):** Added an always-accessible Podcasts (Early Access) section with RSS preview/follow form, Following grid, show detail, episode list, unsubscribe confirmation, loading/error/empty states. SSRF-guarded raster artwork proxy, safe URL filtering, followed/show cover art, local Following search and filter-loaded-episodes UI with tests implemented; visual/compatibility review remains.
 
 **Exit:** Paste a real supported RSS URL, see show and episodes, restart process, retain subscriptions/episode IDs, refresh without duplicates; malicious remote URLs blocked.
@@ -736,3 +736,12 @@ with `no-store` and attachment headers; the UI downloads the result using
 the typed Podcasts client. No OPML import, history backup, private RSS,
 media download or streaming is implied. New backend and frontend/browser
 tests require verification on the latest commit.
+
+
+### Phase 1 efficiency improvement — direct podcast detail API
+
+Added `GET /api/v2/podcasts/feeds/{id}` to resolve an individual followed
+show. The detail view now loads the one show and its first episode page
+instead of retrieving the entire Following collection. Unfollowed/unknown
+IDs return the standard structured 404. Backend handler and frontend
+browser/client tests updated, pending the latest commit's CI.

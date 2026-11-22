@@ -222,15 +222,18 @@ export const PodcastShow: React.FC = () => {
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
+    setError('');
     void Promise.all([
-      podcastsAPI.listSubscriptions(controller.signal),
+      podcastsAPI.getFeed(id ?? '', controller.signal),
       podcastsAPI.listEpisodes(id ?? '', controller.signal),
-    ]).then(([followed, result]) => {
+    ]).then(([details, result]) => {
       if (controller.signal.aborted) return;
-      setFeed(followed.feeds.find(item => item.id === id) ?? null);
+      setFeed(details.feed);
       setEpisodes(result.episodes);
       setNextOffset(result.nextOffset ?? null);
-    }).catch(err => { if (!controller.signal.aborted) setError(readableError(err)); })
+    }).catch(err => {
+      if (!controller.signal.aborted) { setFeed(null); setError(readableError(err)); }
+    })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [id, revision]);

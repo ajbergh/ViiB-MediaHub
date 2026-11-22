@@ -42,6 +42,13 @@ test('Podcasts follows public RSS and browses episodes without playback', async 
         id: feedId, title: 'Independent Podcast', episodeCount: 1,
       } });
     }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId && req.method() === 'GET') {
+      return route.fulfill({ json: { feed: {
+        id: feedId, url: feedURL, title: 'Independent Podcast', author: 'Publisher',
+        description: 'A sample RSS feed', imageUrl: 'https://images.publisher.example/show.png',
+        language: 'en', episodeCount: 1,
+      } } });
+    }
     if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/artwork') {
       return route.fulfill({ status: 200, contentType: 'image/png',
         body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/6u0AAAAASUVORK5CYII=', 'base64') });
@@ -135,6 +142,12 @@ test('show detail paginates episodes without duplicates', async ({ page }) => {
       id: feedId, url: feedURL, title: 'Paged Podcast', author: 'Publisher',
       description: '', imageUrl: '', language: 'en', episodeCount: 3,
     }] } });
+    if (url.pathname === '/api/v2/podcasts/feeds/' + feedId) return route.fulfill({
+      json: { feed: {
+        id: feedId, url: feedURL, title: 'Paged Podcast', author: 'Publisher',
+        description: '', imageUrl: '', language: 'en', episodeCount: 3,
+      } },
+    });
     if (url.pathname === '/api/v2/podcasts/feeds/' + feedId + '/episodes') {
       const offset = Number(url.searchParams.get('offset') || '0');
       requestedOffsets.push(offset);

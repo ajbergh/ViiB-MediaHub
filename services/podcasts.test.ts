@@ -69,6 +69,16 @@ describe('podcastsAPI', () => {
     }));
   });
 
+  it('looks up a single followed show by ID', async () => {
+    const record = { id: 'id/one', title: 'Following', url: 'https://example.org/rss' };
+    const fetchMock = vi.fn(async () => ({
+      ok: true, status: 200, json: async () => ({ feed: record }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await podcastsAPI.getFeed('id/one')).toEqual({ feed: record });
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v2/podcasts/feeds/id%2Fone');
+  });
+
   it('handles an empty list and 204 unsubscribe', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ feeds: [] }) })

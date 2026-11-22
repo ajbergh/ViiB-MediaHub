@@ -189,6 +189,21 @@ ORDER BY s.subscribed_at DESC,f.id`)
     return result,rows.Err()
 }
 
+// GetSubscribedPodcast returns exactly one followed show, without scanning
+// the user's entire Following collection or exposing unfollowed metadata.
+func (d *DB) GetSubscribedPodcast(ctx context.Context,feedID string) (PodcastFeedRecord,error) {
+    var record PodcastFeedRecord
+    if err:=d.EnsurePodcastSchema();err!=nil{return record,err}
+    err:=d.conn.QueryRowContext(ctx,`
+SELECT f.id,f.canonical_url,f.title,f.author,f.description,f.image_url,f.language,
+ (SELECT COUNT(*) FROM podcast_episodes e WHERE e.feed_id=f.id)
+FROM podcast_subscriptions s JOIN podcast_feeds f ON f.id=s.feed_id
+WHERE f.id=?
+`,feedID).Scan(&record.ID,&record.URL,&record.Title,&record.Author,
+        &record.Description,&record.ImageURL,&record.Language,&record.EpisodeCount)
+    return record,err
+}
+
 // ListPodcastEpisodes keeps legacy in-process callers working while page
 // requests expose a stable, bounded response shape to the public API.
 func (d *DB) ListPodcastEpisodes(ctx context.Context,feedID string,limit int) ([]PodcastEpisodeRecord,error) {
