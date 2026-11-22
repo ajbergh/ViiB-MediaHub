@@ -161,29 +161,7 @@ WHERE id=?`,result.Feed.Title,result.Feed.Author,result.Feed.Description,
         if err!=nil{return err}
         // Preserve history rows rather than deleting truncated back catalogs.
         if _,err=tx.ExecContext(ctx,`UPDATE podcast_episodes SET listed_in_feed=0 WHERE feed_id=?`,target.ID);err!=nil{return err}
-        for _,e:=range result.Feed.Episodes{
-            if strings.TrimSpace(e.Title)==""{continue}
-            key:=strings.TrimSpace(e.GUID)
-            if key!=""{key="guid:"+key}else if strings.TrimSpace(e.EnclosureURL)!=""{
-                key="enclosure:"+strings.TrimSpace(e.EnclosureURL)
-            }else{continue}
-            episodeID:=podcastStableID(target.ID,key)
-            var published any
-            if !e.PublishedAt.IsZero(){published=e.PublishedAt.UnixMilli()}
-            _,err=tx.ExecContext(ctx,`
-INSERT INTO podcast_episodes (
- id,feed_id,identity_key,guid,title,description,enclosure_url,
- enclosure_mime,published_at,duration_ms,created_at,updated_at
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-ON CONFLICT(feed_id,identity_key) DO UPDATE SET
- title=excluded.title,description=excluded.description,
- enclosure_url=excluded.enclosure_url,enclosure_mime=excluded.enclosure_mime,
- published_at=excluded.published_at,duration_ms=excluded.duration_ms,
- listed_in_feed=1,updated_at=excluded.updated_at
-`,episodeID,target.ID,key,e.GUID,e.Title,e.Description,e.EnclosureURL,
-                e.EnclosureType,published,e.DurationSeconds*1000,millis,millis)
-            if err!=nil{return fmt.Errorf("reconcile podcast episode: %w",err)}
-        }
+        if err=upsertPodcastEpisodes(ctx,tx,target.ID,result.Feed.Episodes,millis);err!=nil{return err}
     }
     etag:=target.ETag
     modified:=target.LastModified

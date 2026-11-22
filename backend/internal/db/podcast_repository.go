@@ -135,35 +135,7 @@ ON CONFLICT(feed_id) DO NOTHING`,feedID,now)
         if err != nil { return "", fmt.Errorf("subscribe podcast feed: %w",err) }
     }
 
-    for _, episode := range feed.Episodes {
-        if strings.TrimSpace(episode.Title) == "" { continue }
-        key := strings.TrimSpace(episode.GUID)
-        if key != "" {
-            key = "guid:" + key
-        } else if strings.TrimSpace(episode.EnclosureURL) != "" {
-            key = "enclosure:" + strings.TrimSpace(episode.EnclosureURL)
-        } else {
-            // A feed item without a publisher identity is not safely durable.
-            continue
-        }
-        episodeID := podcastStableID(feedID,key)
-        var published any
-        if !episode.PublishedAt.IsZero() { published=episode.PublishedAt.UnixMilli() }
-        _, err = tx.ExecContext(ctx,`
-INSERT INTO podcast_episodes (
- id,feed_id,identity_key,guid,title,description,enclosure_url,
- enclosure_mime,published_at,duration_ms,created_at,updated_at
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-ON CONFLICT(feed_id,identity_key) DO UPDATE SET
- title=excluded.title,description=excluded.description,
- enclosure_url=excluded.enclosure_url,enclosure_mime=excluded.enclosure_mime,
- published_at=excluded.published_at,duration_ms=excluded.duration_ms,
- listed_in_feed=1,updated_at=excluded.updated_at
-`,episodeID,feedID,key,episode.GUID,episode.Title,episode.Description,
-            episode.EnclosureURL,episode.EnclosureType,published,
-            episode.DurationSeconds*1000,now,now)
-        if err != nil { return "", fmt.Errorf("save podcast episode: %w",err) }
-    }
+    if err=upsertPodcastEpisodes(ctx,tx,feedID,feed.Episodes,now);err!=nil{return "",err}
 
     if schedule {
         // Never overwrite a queued manual refresh (next_refresh_at=0).
