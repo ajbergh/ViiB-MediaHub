@@ -75,11 +75,37 @@ out of scope until backend encryption, redaction and export rules are tested.
 
 ## Known limits of this first milestone
 
-The initial RSS parser is intentionally RSS 2.0 with iTunes namespace fields,
+At the original foundation-only checkpoint, the RSS parser was intentionally RSS 2.0 with iTunes namespace fields,
 not Atom, Podcasting 2.0 chapters or private feeds. A successfully parsed feed
 is not automatically a verified playable episode. There is no periodic
-refresh, no network browsing UI, no streaming or downloads yet. These remain
-open roadmap items and must not be marked complete.
+refresh or browsing UI. Later feature-branch commits introduced a bounded refresh
+worker and a subscription/browsing UI; directory search, streaming and downloads
+remain open roadmap items and must not be marked complete.
+
+## Implementation decisions recorded after the original ADR
+
+**2026-11-22 feature-branch revisions** (not claims about merged `main`):
+
+- The originally proposed refresh dispatcher has been chosen and implemented
+  separately from `operation_jobs`: a serial, cancelable RSS polling worker
+  with durable SQLite leases, conditional requests, bounded retry and explicit
+  shutdown. This does not yet certify high-scale or multiple-instance behavior.
+- `Podcasts` is a **permanent left-sidebar item** and `/podcasts` is available
+  without enabling a feature flag. Public RSS preview/following, local show
+  detail and paginated episode browsing are exposed as **Early Access**. No
+  unfinished player, directory search or download buttons are presented.
+- The backend setting `podcasts_preview_enabled` is retained as a
+  backwards-compatible, default-off opt-in for **background and manual feed
+  refresh**, not navigation. It can be enabled in Settings or on a show page.
+  Public feed URL validation and loopback Host/Origin protections still apply.
+- HTTPS publisher feed redirects are tracked as URL aliases, with history
+  preserved across refreshes. Conflicting known canonical identities are
+  rejected rather than merged automatically. GUID-change reconciliation remains
+  an unresolved design/qualification gate.
+- Draft [PR #167](https://github.com/ajbergh/ViiB-MediaHub/pull/167)
+  contains these slices. [The podcast roadmap](../PODCAST_CLIENT_IMPLEMENTATION_ROADMAP.md)
+  records checklist status and CI evidence. This ADR does **not** promote the
+  feature to shipping/qualified or waive player/download security gates.
 
 ## Source anchors
 
