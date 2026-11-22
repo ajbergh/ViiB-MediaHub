@@ -203,7 +203,10 @@ func (a *API) unsubscribePodcastFeed(w http.ResponseWriter,r *http.Request) {
         respondV2Error(w,r,http.StatusInternalServerError,"podcast_unsubscribe_failed","Unable to remove subscription",true,nil)
         return
     }
-    // Historical episode positions/media metadata remain in SQLite.
+    // Reclaim completed downloaded files promptly, with asynchronous retries
+    // when the file is busy. Historical episode state is not removed.
+    a.cleanupUnsubscribedPodcastFiles(r.Context())
+    a.wakePodcastDownloader()
     w.WriteHeader(http.StatusNoContent)
 }
 

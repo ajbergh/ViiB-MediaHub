@@ -105,6 +105,7 @@ func (a *API) closePodcastDownloader(){
 // for offline downloads until a separate bounded-streaming implementation.
 func (a *API) processPodcastDownload(ctx context.Context){
     if a.db==nil || a.dataDir=="" {return}
+    a.cleanupUnsubscribedPodcastFiles(ctx)
     owner:=a.podcastDownloadOwner
     if owner==""{owner="manual-podcast-test-worker"} // only used for injected tests
     id,err:=a.db.ClaimPodcastDownload(ctx,owner,time.Now())
@@ -131,6 +132,34 @@ func (a *API) processPodcastDownload(ctx context.Context){
         }
         // Cancellation revoked the lease, so this UPDATE is a no-op.
         _=a.db.FailPodcastDownload(context.Background(),id,owner,code)
+    }
+}
+
+// Reclaim a bounded batch of completed files from unfollowed feeds without
+// touching saved listening positions or accepting user-defined disk paths.
+// Successful deletion clears the database record and its quota reservation;
+// busy files (notably Windows players) are retried on the next worker pass.
+func (a *API) cleanupUnsubscribedPodcastFiles(ctx context.Context){
+    if a.db==nil||a.dataDir==""{return}
+    files,err:=a.db.ListUnsubscribedPodcastCompletedFiles(ctx,32)
+    if err!=nil||len(files)==0{return}
+    dir,err:=a.podcastStorageDir()
+    if err!=nil{return}
+    a.podcastDownloadFileMu.Lock()
+    defer a.podcastDownloadFileMu.Unlock()
+    for _,file:=range files{
+        if ctx.Err()!=nil{return}
+        if !safePodcastEpisodeID.MatchString(file.EpisodeID)||
+            file.Filename!=file.EpisodeID+".audio"{continue}
+        path:=filepath.Join(dir,file.Filename)
+        info,err:=os.Lstat(path)
+        if err==nil{
+            if !info.Mode().IsRegular(){continue}
+            if err=os.Remove(path);err!=nil{continue}
+        }else if !errors.Is(err,os.ErrNotExist){continue}
+        if err:=a.db.DeleteUnsubscribedPodcastCompletedFile(ctx,file.EpisodeID);err==nil{
+            a.clearPodcastOfflineVerification(file.EpisodeID)
+        }
     }
 }
 

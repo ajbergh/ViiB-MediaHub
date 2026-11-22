@@ -314,3 +314,86 @@ func TestPodcastDownloadDiskFreePreflightAcceptsBudgetedSpace(t *testing.T){
     t.Fatalf("ample disk unexpectedly refused: %+v, probes %d, err %v",row,calls,err)
  }
 }
+
+func TestPodcastUnfollowReclaimsCompletedFileAndRetainsHistory(t *testing.T){
+    d,id:=seedPodcastDownload(t);defer d.Close()
+    ctx:=context.Background()
+    a:=&API{db:d,dataDir:t.TempDir(),podcastDownloadFetch:func(context.Context,string,string,string)(podcast.MediaSegment,error){
+        return podcast.MediaSegment{Start:0,End:3,Total:4,MIME:"audio/mpeg",Data:[]byte("ID3!")},nil
+    }}
+    subs,err:=d.ListSubscribedPodcasts(ctx)
+    if err!=nil||len(subs)!=1{t.Fatalf("subscriptions: %+v %v",subs,err)}
+    feedID:=subs[0].ID
+    router:=a.PodcastRoutes()
+    req:=func(method,path string)*httptest.ResponseRecorder{
+        t.Helper()
+        out:=httptest.NewRecorder()
+        router.ServeHTTP(out,httptest.NewRequest(method,path,nil))
+        return out
+    }
+    if got:=req("POST","/episodes/"+id+"/download");got.Code!=202{t.Fatalf("queue: %d",got.Code)}
+    a.processPodcastDownload(ctx)
+    file,err:=d.PodcastCompletedDownload(ctx,id);if err!=nil{t.Fatal(err)}
+    path:=filepath.Join(a.dataDir,"podcasts","episodes",file.Filename)
+    if _,err=os.Lstat(path);err!=nil{t.Fatal(err)}
+    if _,err:=d.SetPodcastProgress(ctx,id,18000,22000,0,false);err!=nil{t.Fatal(err)}
+    if got:=req("DELETE","/feeds/"+feedID);got.Code!=204{
+        t.Fatalf("unsubscribe: %d %s",got.Code,got.Body.String())
+    }
+    if _,err=os.Lstat(path);!errors.Is(err,os.ErrNotExist){
+        t.Fatalf("unfollowed file remains: %v",err)
+    }
+    used,err:=d.PodcastOfflineStorage(ctx)
+    if err!=nil||used!=0{t.Fatalf("unfollow storage not released: %d %v",used,err)}
+    if got:=req("GET","/episodes/"+id+"/download");got.Code!=404{
+        t.Fatalf("unfollow download still visible: %d",got.Code)
+    }
+    progress,err:=d.GetPodcastProgress(ctx,id)
+    if err!=nil||progress.PositionMs!=18000||progress.ListenedMs!=22000{
+        t.Fatalf("unfollow changed listening history: %+v %v",progress,err)
+    }
+}
+
+func TestPodcastUnfollowRevokesActiveTransferLease(t *testing.T){
+    d,id:=seedPodcastDownload(t);defer d.Close()
+    ctx:=context.Background()
+    if _,err:=d.EnqueuePodcastDownload(ctx,id);err!=nil{t.Fatal(err)}
+    claimed,err:=d.ClaimPodcastDownload(ctx,"worker-active",time.Now())
+    if err!=nil||claimed!=id{t.Fatalf("claim: %q %v",claimed,err)}
+    subs,err:=d.ListSubscribedPodcasts(ctx)
+    if err!=nil||len(subs)!=1{t.Fatalf("subscriptions: %+v %v",subs,err)}
+    if err:=d.UnsubscribePodcast(ctx,subs[0].ID);err!=nil{t.Fatal(err)}
+    if err:=d.UpdatePodcastDownloadBytes(ctx,id,"worker-active",1,4);!errors.Is(err,sql.ErrNoRows){
+        t.Fatalf("unfollow did not revoke lease: %v",err)
+    }
+    if err:=d.CompletePodcastDownload(ctx,id,"worker-active",id+".audio",
+        "audio/mpeg",strings.Repeat("a",64),4);!errors.Is(err,sql.ErrNoRows){
+        t.Fatalf("unfollowed worker completed audio: %v",err)
+    }
+    used,err:=d.PodcastOfflineStorage(ctx)
+    if err!=nil||used!=0{t.Fatalf("unfollowed transfer reserved disk: %d %v",used,err)}
+}
+
+func TestPodcastUnfollowCleanupRefusesUnsafeFile(t *testing.T){
+    d,id:=seedPodcastDownload(t);defer d.Close()
+    ctx:=context.Background()
+    a:=&API{db:d,dataDir:t.TempDir(),podcastDownloadFetch:func(context.Context,string,string,string)(podcast.MediaSegment,error){
+        return podcast.MediaSegment{Start:0,End:3,Total:4,MIME:"audio/mpeg",Data:[]byte("ID3!")},nil
+    }}
+    router:=a.PodcastRoutes()
+    out:=httptest.NewRecorder()
+    router.ServeHTTP(out,httptest.NewRequest("POST","/episodes/"+id+"/download",nil))
+    if out.Code!=202{t.Fatalf("queue: %d",out.Code)}
+    a.processPodcastDownload(ctx)
+    path:=filepath.Join(a.dataDir,"podcasts","episodes",id+".audio")
+    if err:=os.Remove(path);err!=nil{t.Fatal(err)}
+    if err:=os.Mkdir(path,0700);err!=nil{t.Fatal(err)}
+    subs,err:=d.ListSubscribedPodcasts(ctx)
+    if err!=nil||len(subs)!=1{t.Fatal(err)}
+    if err:=d.UnsubscribePodcast(ctx,subs[0].ID);err!=nil{t.Fatal(err)}
+    a.cleanupUnsubscribedPodcastFiles(ctx)
+    info,err:=os.Stat(path)
+    if err!=nil||!info.IsDir(){t.Fatalf("unsafe object removed: %v",err)}
+    used,err:=d.PodcastOfflineStorage(ctx)
+    if err!=nil||used!=4{t.Fatalf("unsafe orphan should remain flagged: %d %v",used,err)}
+}
