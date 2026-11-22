@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { ArrowLeft, Download, Headphones, Loader2, Plus, RefreshCw, Rss, Trash2 } from 'lucide-react';
 import { api } from '../services/api';
-import { podcastsAPI, PodcastAPIError, type PodcastFeed, type PodcastEpisode, type PodcastPreview, type PodcastRefreshStatus, type PodcastOPMLImportPreview } from '../services/podcasts';
+import { podcastsAPI, PodcastAPIError, type PodcastFeed, type PodcastEpisode, type PodcastPreview, type PodcastRefreshStatus, type PodcastOPMLImportPreview, type PodcastContinueEpisode } from '../services/podcasts';
 
 const inputClass = 'w-full rounded-lg border border-surface-3 bg-surface-1 px-4 py-3 text-text-main outline-none focus-visible:ring-2 focus-visible:ring-brand';
 
@@ -29,6 +29,7 @@ const PodcastArtwork: React.FC<{ feedId: string; title: string; imageURL?: strin
 /** Early RSS subscription experience; deliberately has no fake player or download actions. */
 export const Podcasts: React.FC = () => {
   const [feeds, setFeeds] = useState<PodcastFeed[]>([]);
+  const [continueEpisodes, setContinueEpisodes] = useState<PodcastContinueEpisode[]>([]);
   const [followingQuery, setFollowingQuery] = useState('');
   const [exporting, setExporting] = useState(false);
   const [opml, setOPML] = useState<PodcastOPMLImportPreview | null>(null);
@@ -50,6 +51,9 @@ export const Podcasts: React.FC = () => {
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
+    void podcastsAPI.listContinueListening(12, controller.signal)
+      .then(({ episodes }) => { if (!controller.signal.aborted) setContinueEpisodes(episodes); })
+      .catch(() => { if (!controller.signal.aborted) setContinueEpisodes([]); });
     void podcastsAPI.listSubscriptions(controller.signal)
       .then(({ feeds }) => { if (!controller.signal.aborted) { setFeeds(feeds); setError(''); } })
       .catch(err => { if (!controller.signal.aborted) setError(readableError(err)); })
@@ -232,7 +236,7 @@ export const Podcasts: React.FC = () => {
             <button type="button" disabled={importMode !== 'idle' || opml.feeds.every(feed => feed.alreadyFollowed)}
               onClick={() => void importOPMLFeeds()}
               className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-surface-0 disabled:opacity-50">
-              Import {opml.feeds.filter(feed => !feed.alreadyFollowed).length} feeds
+              Import {opml.feeds.filter(feed => !feed.alreadyFollowed).length} feed{opml.feeds.filter(feed => !feed.alreadyFollowed).length === 1 ? '' : 's'}
             </button>
             {importMode === 'import' && <button type="button" onClick={() => importController.current?.abort()}
               className="rounded-md border border-surface-3 px-3 py-2 text-sm text-text-main">Cancel import</button>}
@@ -247,6 +251,18 @@ export const Podcasts: React.FC = () => {
           <ul className="mt-1 list-inside list-disc">{importFailures.map((message, index) => <li key={index}>{message}</li>)}</ul>
         </div>}
       </section>
+
+      {continueEpisodes.length > 0 && <section aria-label="Continue listening">
+        <h2 className="mb-3 text-xl font-bold text-text-main">Continue Listening</h2>
+        <div className="grid gap-3 md:grid-cols-2">
+          {continueEpisodes.map(episode => <Link key={episode.id} to={'/podcasts/show/' + encodeURIComponent(episode.feedId)}
+            className="rounded-xl border border-surface-3 bg-surface-2 p-4 hover:bg-surface-highlight">
+            <p className="text-xs font-semibold text-brand">{episode.feedTitle}</p>
+            <h3 className="mt-1 font-semibold text-text-main">{episode.title}</h3>
+            <p className="mt-1 text-xs text-text-secondary">Saved at {Math.floor(episode.positionMs / 60000)} min · View episode</p>
+          </Link>)}
+        </div>
+      </section>}
 
       <section aria-label="Followed podcasts">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -293,6 +309,7 @@ export const PodcastShow: React.FC = () => {
   const [feed, setFeed] = useState<PodcastFeed | null>(null);
   const [episodes, setEpisodes] = useState<PodcastEpisode[]>([]);
   const [episodeFilter, setEpisodeFilter] = useState('');
+  const [playedFilter, setPlayedFilter] = useState<'all' | 'played' | 'unplayed'>('all');
   const [updatingEpisode, setUpdatingEpisode] = useState<string | null>(null);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -478,6 +495,14 @@ export const PodcastShow: React.FC = () => {
       <section>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-bold text-text-main">Episodes ({episodes.length} loaded)</h2>
+          <label htmlFor="podcast-played-filter" className="text-sm text-text-secondary">Played status</label>
+          <select id="podcast-played-filter" aria-label="Filter episodes by played status"
+            value={playedFilter} onChange={event => setPlayedFilter(event.target.value as 'all' | 'played' | 'unplayed')}
+            className="rounded-md border border-surface-3 bg-surface-1 px-3 py-2 text-sm text-text-main">
+            <option value="all">All episodes</option>
+            <option value="unplayed">Unplayed</option>
+            <option value="played">Played</option>
+          </select>
           <input type="search" aria-label="Filter loaded episodes" placeholder="Filter loaded episodes"
             value={episodeFilter} onChange={event => setEpisodeFilter(event.target.value)}
             className="w-full max-w-xs rounded-md border border-surface-3 bg-surface-1 px-3 py-2 text-sm text-text-main focus-visible:outline-2 focus-visible:outline-brand" />
@@ -485,7 +510,8 @@ export const PodcastShow: React.FC = () => {
         <p className="mb-3 text-xs text-text-subtle">Episode filtering applies to loaded pages only. Load more to browse the full back catalog.</p>
         {episodes.length === 0 && <p className="text-text-secondary">No episodes are available in this feed.</p>}
         <div className="space-y-2">
-          {episodes.filter(episode => (episode.title + ' ' + episode.description).toLowerCase().includes(episodeFilter.trim().toLowerCase())).map(episode => <article key={episode.id} className="rounded-lg border border-surface-3 bg-surface-2 p-4">
+          {episodes.filter(episode => (episode.title + ' ' + episode.description).toLowerCase().includes(episodeFilter.trim().toLowerCase()) &&
+          (playedFilter === 'all' || (playedFilter === 'played') === Boolean(episode.isPlayed))).map(episode => <article key={episode.id} className="rounded-lg border border-surface-3 bg-surface-2 p-4">
             <h3 className="font-semibold text-text-main">{episode.title}</h3>
             <p className="mt-1 text-xs text-text-subtle">{episode.publishedAt ? new Date(episode.publishedAt).toLocaleDateString() : 'Date unavailable'}{episode.durationMs ? ` · ${Math.round(episode.durationMs / 60000)} min` : ''}</p>
             {episode.description && <p className="mt-2 line-clamp-3 text-sm text-text-secondary">{episode.description}</p>}

@@ -20,6 +20,9 @@ export interface PodcastEpisode {
   listenedMs?: number;
   progressRevision?: number;
 }
+export interface PodcastContinueEpisode extends PodcastEpisode {
+  feedTitle: string;
+}
 export interface PodcastProgress {
   episodeId: string;
   positionMs: number;
@@ -121,6 +124,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 export const podcastsAPI = {
+  listContinueListening(limit = 12, signal?: AbortSignal): Promise<{ episodes: PodcastContinueEpisode[] }> {
+    return request('/episodes/continue?limit=' + encodeURIComponent(String(limit)), { signal });
+  },
   getProgress(episodeId: string, signal?: AbortSignal): Promise<PodcastProgress> {
     return request('/episodes/' + encodeURIComponent(episodeId) + '/progress', { signal });
   },
