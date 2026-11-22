@@ -189,8 +189,8 @@ func (f *Fetcher) FetchMediaSegmentWithHint(ctx context.Context,raw,rangeHeader,
     }
     data,err:=io.ReadAll(io.LimitReader(response.Body,length+1))
     if err!=nil||int64(len(data))!=length{return segment,ErrInvalidMedia}
-    if sniffed:=http.DetectContentType(data);strings.HasPrefix(sniffed,"text/")||
-        strings.Contains(sniffed,"html")||strings.Contains(sniffed,"xml")||
+    if sniffed:=http.DetectContentType(data);strings.Contains(sniffed,"html")||
+        strings.Contains(sniffed,"xml")||
         strings.Contains(sniffed,"svg"){return segment,ErrInvalidMedia}
     return MediaSegment{Data:data,MIME:audioType,Start:start,End:last,Total:total},nil
 }

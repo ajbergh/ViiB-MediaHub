@@ -60,7 +60,7 @@ func (f *Fetcher) StreamMedia(ctx context.Context,raw,declaredType string,w http
     if err!=nil && !errors.Is(err,io.EOF){return ErrMediaUnavailable}
     if len(peek)==0{return ErrInvalidMedia}
     sniffed:=http.DetectContentType(peek)
-    if strings.HasPrefix(sniffed,"text/")||strings.Contains(sniffed,"html")||
+    if strings.Contains(sniffed,"html")||
         strings.Contains(sniffed,"xml")||strings.Contains(sniffed,"svg"){
         return ErrInvalidMedia
     }
