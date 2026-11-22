@@ -16,6 +16,7 @@ RSS 2.0 feeds during initial implementation.
 | Method | Path | Behavior |
 |---|---|---|
 | GET | `/feeds` | List followed show records with episode counts |
+| GET | `/export/opml` | Download OPML 2.0 of currently followed public feeds (up to 5,000 subscriptions / 2 MiB); no listening history or private data |
 | POST | `/feeds/preview` | Validate and retrieve one public HTTPS RSS feed; return first ten episodes and total |
 | POST | `/feeds` | Fetch/feed parse + subscribe + transactional episode snapshot; returns ID/title/count |
 | GET | `/feeds/{id}/artwork` | Proxy the followed show's HTTPS public raster artwork; max 2 MiB; PNG/JPEG/WebP/GIF only; no arbitrary URL parameter |
@@ -135,3 +136,19 @@ Go backend. Alternatively run
 `npm run dev`. Restart Vite whenever the proxy environment variable
 changes. Default `dev.ps1` refuses to silently use an already-occupied
 port 8080.
+
+
+### Export followed podcasts
+
+The **Export OPML** button on the Podcasts → Following page downloads
+`viib-podcasts.opml` from `GET /api/v2/podcasts/export/opml`. This
+contains currently followed public RSS feed URLs and show names only;
+it is suitable for transferring subscriptions to another podcast client.
+The server validates every URL before producing the document, escapes
+publisher names as XML attributes, fails closed on unsupported/private
+URLs, and sends `Cache-Control: no-store`.
+
+OPML is **not** a listening-state or download backup; positions, playback
+history, offline media and credentials are deliberately omitted. The
+planned OPML **import** workflow will offer a preview, duplicate handling
+and a partial-failure report in a later roadmap phase.

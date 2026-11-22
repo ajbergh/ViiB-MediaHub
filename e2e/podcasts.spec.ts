@@ -168,3 +168,43 @@ test('show detail paginates episodes without duplicates', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Load more episodes' })).toHaveCount(0);
   expect(requestedOffsets).toEqual([0, 1]);
 });
+
+
+test('following subscriptions export as a standard OPML download', async ({ page }) => {
+  const xml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<opml version="2.0"><head><title>ViiB MediaHub Podcasts</title></head>' +
+    '<body><outline type="rss" text="Example &amp; Friends" title="Example &amp; Friends" xmlUrl="https://publisher.example/rss.xml"></outline></body></opml>';
+  let exportCalls = 0;
+  await page.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.origin !== 'http://127.0.0.1:4173') return route.abort();
+    if (url.pathname === '/api/v2/podcasts/feeds' && route.request().method() === 'GET') {
+      return route.fulfill({ json: { feeds: [{
+        id: feedId, url: feedURL, title: 'Example & Friends', author: 'Publisher',
+        description: '', imageUrl: '', language: 'en', episodeCount: 1,
+      }] } });
+    }
+    if (url.pathname === '/api/v2/podcasts/export/opml') {
+      exportCalls++;
+      expect(route.request().method()).toBe('GET');
+      return route.fulfill({ status: 200, contentType: 'application/xml; charset=utf-8',
+        headers: { 'content-disposition': 'attachment; filename="viib-podcasts.opml"' },
+        body: xml });
+    }
+    if (url.pathname.startsWith('/api/')) return route.fulfill({ status: 503,
+      json: { error: { code: 'fixture_unavailable', message: 'Synthetic fixture only' } } });
+    return route.continue();
+  });
+  await page.goto('/podcasts');
+  const button = page.getByRole('button', { name: 'Export followed podcasts as OPML' });
+  await expect(button).toBeEnabled();
+  const downloadPromise = page.waitForEvent('download');
+  await button.click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('viib-podcasts.opml');
+  expect(exportCalls).toBe(1);
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  expect(Buffer.concat(chunks).toString('utf8')).toBe(xml);
+});

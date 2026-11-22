@@ -57,3 +57,18 @@ func TestPodcastExportOnlyFollowedFeedsAndIsValidOPML(t *testing.T){
         t.Fatalf("OPML invalid: %+v",parsed)
     }
 }
+
+
+func TestPodcastOPMLExportEmptyAndNoCache(t *testing.T) {
+    database,err:=db.New(filepath.Join(t.TempDir(),"empty-opml.db"))
+    if err!=nil{t.Fatal(err)}
+    defer database.Close()
+    response:=httptest.NewRecorder()
+    (&API{db:database}).PodcastRoutes().ServeHTTP(response,httptest.NewRequest(http.MethodGet,"/export/opml",nil))
+    if response.Code!=http.StatusOK||!strings.Contains(response.Body.String(),"<body>") {
+        t.Fatalf("expected valid empty OPML: %d %s",response.Code,response.Body.String())
+    }
+    if response.Header().Get("Cache-Control")!="no-store" {
+        t.Fatalf("OPML response should never be cached: %+v",response.Header())
+    }
+}

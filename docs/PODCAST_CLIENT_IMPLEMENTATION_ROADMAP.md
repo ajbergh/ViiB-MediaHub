@@ -456,7 +456,7 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 - [ ] **POD-03C:** Streaming-to-offline source preference and local media HTTP Range.
 - [ ] **POD-03D:** Download buttons/progress badges, manual delete, dedicated Podcasts Downloads filter/view, SSE snapshot reconciliation.
 - [ ] **POD-03E:** Integration tests for intermittent network, no Content-Length, disk full, corrupt file, interruption, path escape and true offline playback.
-- [ ] **POD-03F:** OPML export and minimal docs/empty-state tutorial.
+- [x] **POD-03F (early delivery, CI pending):** OPML 2.0 export of followed public RSS subscriptions implemented with XML-escaping, URL revalidation and strict size limits. Exports no progress, downloads or credentials; API/client/Playwright tests and basic docs added. Import is explicitly deferred to POD-04E.
 
 **MVP exit / milestone:** Manual search + feed + subscribe + stream + queue + speed + resume + offline download and playback across reboot on Windows/macOS/Linux and local-Go browser builds. No P0 security or data-loss regressions. **Do not merge this as one giant PR.**
 
@@ -665,6 +665,7 @@ Branch strategy: short-lived `feature/podcasts-*` work branches from updated `ma
 | POD-01C | **In progress** | Refresh worker, alias collision guards on subscribe/refresh, conservative GUID reconciliation and history-preservation tests | Real publisher/scale qualification and full CI |
 | POD-01D | **In progress** | Podcast preview/follow/list/episodes/unfollow/refresh REST; bounded episode offset pagination, TS client + tests | Show details, cursor pagination, OpenAPI, full CI |
 | POD-01E | **In progress** | Permanent Sidebar, followed/show + Load more, local library filters, SSRF-guarded artwork proxy/UI with tests | Full CI, wider publisher compatibility, UX refinement |
+| POD-03F | **Implemented, CI pending** | OPML subscription export API, UI action, safe XML encoder and tests | End-to-end CI and desktop/browser acceptance; import remains POD-04E |
 | Phase 2–8 | **Not started** | None | Discovery, player, offline downloads and remaining features |
 
 **Commits:** `abde2f2` introduces the foundational ADR, RSS and URL-fetch primitives.
@@ -717,3 +718,21 @@ pre-occupied 8080 rather than attaching to a stale process. Both modes
 verify the live Podcast collection endpoint before starting Vite. This
 is a **targeted dev-configuration remedy**, not yet a confirmed runtime
 pass on the user's machine or an expanded release acceptance result.
+
+
+### 2026-11-22 — user-verified web/Wails RSS parity and OPML milestone
+
+The user confirmed the RSS error is resolved and RSS following is functional
+in the Wails and browser-development builds. The web-only HTTP 404 incident
+recorded above is **resolved in the user's development environment** after
+the port/proxy configuration remedy. CI and release qualification are
+separate gates; do not interpret this verification as a production release.
+
+The next isolated feature introduces OPML 2.0 **export only**, ahead of the
+original POD-03F milestone because it is useful for subscription portability
+without introducing playback or external network requests. The backend
+exports only followed public feeds through a bounded, escaped XML encoder,
+with `no-store` and attachment headers; the UI downloads the result using
+the typed Podcasts client. No OPML import, history backup, private RSS,
+media download or streaming is implied. New backend and frontend/browser
+tests require verification on the latest commit.
