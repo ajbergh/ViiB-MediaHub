@@ -578,7 +578,13 @@ export const PodcastShow: React.FC = () => {
   }, [id]);
 
   const saveAutoDownload = async (policy: PodcastAutoDownloadPolicy) => {
-    if (!id || autoDownloadSaving) return;
+    if (!id || autoDownloadSaving || !autoDownload) return;
+    const previous = autoDownload;
+    // These are controlled form inputs. Update them immediately on change,
+    // then reconcile with the Go-owned setting (or roll back on failure).
+    // Deferring all state until the request resolves makes checkboxes and
+    // selects appear to ignore the user's click in React/Playwright.
+    setAutoDownload(policy);
     setAutoDownloadSaving(true);
     setAutoDownloadMessage('');
     try {
@@ -588,6 +594,7 @@ export const PodcastShow: React.FC = () => {
         ? 'Automatic downloads enabled for new episodes discovered on future feed refreshes.'
         : 'Automatic downloads turned off. Existing downloads are unchanged.');
     } catch (err) {
+      setAutoDownload(previous);
       setAutoDownloadMessage(readableError(err));
     } finally {
       setAutoDownloadSaving(false);
