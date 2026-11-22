@@ -328,6 +328,9 @@ func (a *API) transferPodcastDownload(ctx context.Context,id,owner string) error
                         case <-ticker.C:
                             if leaseErr:=a.db.UpdatePodcastDownloadBytes(streamCtx,id,owner,
                                 streamed.Load(),db.MaxPodcastDownloadBytes);leaseErr!=nil{
+                                // A normal completion may cancel the context
+                                // while the final heartbeat query exits.
+                                if streamCtx.Err()!=nil{return}
                                 leaseFailures<-leaseErr
                                 stopStream()
                                 return
