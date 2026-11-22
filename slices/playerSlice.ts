@@ -23,11 +23,12 @@
 
 import { StateCreator } from 'zustand';
 import { AppState, PlayerSlice, StreamingError, StreamingStats, StreamingEvent } from './types';
-import { EQ_PRESETS } from '../utils';
+import { EQ_PRESETS, generateId } from '../utils';
 import { libraryService } from '../services/libraryService';
 import { api } from '../services/api';
 import { AudioSettings, MilkdropSettings } from '../types';
 import { managedObjectUrls } from '../lib/playbackLifecycle';
+import { nextFavoriteScene, starterVisualizerScenes, type VisualizerScene } from '../lib/visualizerScenes';
 
 // Maximum retry attempts for streaming errors
 const MAX_RETRY_ATTEMPTS = 3;
@@ -88,6 +89,17 @@ const defaultMilkdropSettings: MilkdropSettings = {
     favoritePresets: []
 };
 
+function sceneSettings(state: AppState, scene: VisualizerScene): Partial<PlayerSlice> {
+    const audioSettings = { ...state.audioSettings, ...scene.layers };
+    saveAudioSettingsToBackend(audioSettings);
+    return {
+        audioSettings,
+        artworkOverlayEnabled: scene.overlayEnabled,
+        activeVisualizerSceneId: scene.id,
+        milkdropSettings: { ...state.milkdropSettings, currentPreset: scene.milkdropPreset },
+    };
+}
+
 export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (set, get) => ({
     isPlaying: false,
     playbackGeneration: 0,
@@ -118,6 +130,13 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
     // Milkdrop visualization state
     milkdropSettings: { ...defaultMilkdropSettings },
     milkdropPresetKeys: [],
+    visualizerScenes: starterVisualizerScenes,
+    activeVisualizerSceneId: null,
+    artworkOverlayEnabled: false,
+    partyStageLayout: 'artwork',
+    partyTrackInfoPinned: false,
+    partySceneRotationEnabled: false,
+    partySceneLocked: false,
     
     // Buffering state for streaming
     isBuffering: false,
@@ -284,11 +303,18 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
             }
         }
 
-        set({
-            currentSong: playableSong,
-            currentSongIndex: validIndex,
-            queue: finalQueue,
-            isPlaying: true
+        set(state => {
+            const trackChanged = state.currentSong?.id !== playableSong.id || state.currentSongIndex !== validIndex;
+            const scene = trackChanged && state.isPartyMode && state.partySceneRotationEnabled && !state.partySceneLocked
+                ? nextFavoriteScene(state.visualizerScenes, state.activeVisualizerSceneId)
+                : undefined;
+            return {
+                ...(scene ? sceneSettings(state, scene) : {}),
+                currentSong: playableSong,
+                currentSongIndex: validIndex,
+                queue: finalQueue,
+                isPlaying: true,
+            };
         });
     },
 
@@ -419,6 +445,48 @@ export const createPlayerSlice: StateCreator<AppState, [], [], PlayerSlice> = (s
             playSong(queue[index], queue, undefined, index);
         }
     },
+
+    setArtworkOverlayEnabled: (enabled) => set({ artworkOverlayEnabled: enabled }),
+    saveVisualizerScene: (name) => set(state => {
+        const trimmed = name.trim().slice(0, 48);
+        if (!trimmed) return state;
+        const {
+            visualizerMode, visualizerArtworkOpacity, visualizerFullscreenEnabled,
+            visualizerFullscreenOpacity, visualizerBackgroundMode,
+        } = state.audioSettings;
+        const scene: VisualizerScene = {
+            id: generateId(),
+            name: trimmed,
+            favorite: false,
+            overlayEnabled: state.artworkOverlayEnabled,
+            milkdropPreset: state.milkdropSettings.currentPreset,
+            layers: {
+                visualizerMode, visualizerArtworkOpacity, visualizerFullscreenEnabled,
+                visualizerFullscreenOpacity, visualizerBackgroundMode,
+            },
+        };
+        return {
+            visualizerScenes: [...state.visualizerScenes, scene],
+            activeVisualizerSceneId: scene.id,
+        };
+    }),
+    applyVisualizerScene: (id) => set(state => {
+        const scene = state.visualizerScenes.find(item => item.id === id);
+        return scene ? sceneSettings(state, scene) : state;
+    }),
+    toggleVisualizerSceneFavorite: (id) => set(state => ({
+        visualizerScenes: state.visualizerScenes.map(scene => scene.id === id
+            ? { ...scene, favorite: !scene.favorite }
+            : scene),
+    })),
+    removeVisualizerScene: (id) => set(state => ({
+        visualizerScenes: state.visualizerScenes.filter(scene => scene.id !== id),
+        activeVisualizerSceneId: state.activeVisualizerSceneId === id ? null : state.activeVisualizerSceneId,
+    })),
+    setPartyStageLayout: (partyStageLayout) => set({ partyStageLayout }),
+    setPartyTrackInfoPinned: (partyTrackInfoPinned) => set({ partyTrackInfoPinned }),
+    setPartySceneRotationEnabled: (partySceneRotationEnabled) => set({ partySceneRotationEnabled }),
+    setPartySceneLocked: (partySceneLocked) => set({ partySceneLocked }),
 
     setLowPowerVisuals: (enabled) => set(state => {
         const audioSettings = { ...state.audioSettings, lowPowerVisuals: enabled };

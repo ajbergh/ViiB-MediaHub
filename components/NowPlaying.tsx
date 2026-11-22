@@ -3,16 +3,16 @@
  *
  * Full-screen track view with playback controls, lyrics, queue and visualizers.
  * The background uses cover artwork when available, otherwise a deterministic
- * album-name gradient. Artwork is capped at 500px normally; party mode uses a
- * 70vh width capped at 80vw. The Spotify download button queues the streaming
+ * album-name gradient. Party mode keeps the artwork at its pre-fullscreen size.
+ * The Spotify download button queues the streaming
  * track for offline download; it does not save artwork. Player state comes from
  * Zustand and cover URLs from the current song or useAlbumCovers.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useId, useRef } from 'react';
 import { useStore, useAlbumCovers } from '../store';
-import { X, Play, Pause, SkipBack, SkipForward, Shuffle, ListMusic, Activity, SlidersHorizontal, Volume2, Download, Loader2, CheckCircle, Layers, Maximize2, Minimize2, Info, Sparkles, FileText, Tag, Calendar, BarChart3, Clock, Radio, Disc, Mic2 } from 'lucide-react';
-import { formatTime, generateGradient, cssUrl, getAudioFormatInfo } from '../utils';
+import { X, Play, Pause, SkipBack, SkipForward, Shuffle, PanelRightClose, PanelRightOpen, Activity, SlidersHorizontal, Volume2, Download, Loader2, CheckCircle, Layers, Maximize2, Minimize2, Info, Sparkles, FileText, Tag, Calendar, BarChart3, Clock, Radio, Disc, Mic2 } from 'lucide-react';
+import { formatTime, getAudioFormatInfo } from '../utils';
 import { ContextMenuType, VisualizerMode } from '../types';
 import { api } from '../services/api';
 import { Visualizer } from './Visualizer';
@@ -21,6 +21,8 @@ import { QueueList } from './now-playing/QueueList';
 import { WebGLVisualizer } from './now-playing/webgl';
 import { MilkdropVisualizer } from './now-playing/MilkdropVisualizer';
 import { VisualizerSelector } from './now-playing/VisualizerSelector';
+import { PartyStageControls, PartyTrackIntro } from './now-playing/PartyStage';
+import { TrackArtwork, useTrackArtwork } from './now-playing/TrackArtwork';
 import { LikeButton } from './LikeButton';
 import { Button } from './ui/Button';
 import { VIIB, VIIB_COLOR_VALUES } from './ui/tokens';
@@ -46,6 +48,9 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
         openContextMenu,
         audioSettings,
         setVisualizerMode,
+        artworkOverlayEnabled,
+        setArtworkOverlayEnabled,
+        partySceneLocked,
         toggleEqPanel,
         showToast,
         // Milkdrop state
@@ -54,6 +59,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
         setMilkdropPresetKeys,
         // Party mode state
         isPartyMode,
+        partyStageLayout,
         togglePartyMode,
         setPartyMode,
         openSongInfoModal,
@@ -62,26 +68,47 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
     
     const albumCovers = useAlbumCovers();
     const [activeTab, setActiveTab] = useState<'QUEUE' | 'LYRICS' | 'INFO'>('LYRICS');
+    const [isDrawerOpen, setIsDrawerOpen] = useState(true);
+    const drawerId = useId();
+    const drawerLabel = isDrawerOpen ? 'Collapse now playing drawer' : 'Expand now playing drawer';
     const [isDownloading, setIsDownloading] = useState(false);
-    const [showVisualizerOverlay, setShowVisualizerOverlay] = useState(false);
     const [showVisualizerSelector, setShowVisualizerSelector] = useState(false);
+    const [lyricsFocus, setLyricsFocus] = useState(false);
     const [showPartyControls, setShowPartyControls] = useState(false);
+    const artworkRef = useRef<HTMLDivElement>(null);
+    const [partyArtworkSize, setPartyArtworkSize] = useState<{ width: number; height: number }>();
+    const selectorTrigger = useRef<HTMLElement | null>(null);
+    const coverUrl = currentSong?.coverUrl || (currentSong && albumCovers[currentSong.album]) || undefined;
+    const artwork = useTrackArtwork(currentSong?.id ?? '', coverUrl, currentSong?.album ?? '', currentSong?.title.charAt(0) ?? '');
+    const lyricsStage = isPartyMode ? partyStageLayout === 'lyrics' : lyricsFocus;
+    const visualizerStage = isPartyMode && partyStageLayout === 'visualizer';
+
+    const closeVisualizerSelector = useCallback(() => {
+        setShowVisualizerSelector(false);
+        window.requestAnimationFrame(() => selectorTrigger.current?.focus());
+    }, []);
+
+    const handlePartyModeToggle = () => {
+        if (!isPartyMode && artworkRef.current) {
+            // Capture the artwork before fullscreen changes the viewport size.
+            const { width, height } = artworkRef.current.getBoundingClientRect();
+            setPartyArtworkSize({ width, height });
+        }
+        togglePartyMode();
+    };
     
-    // Handle escape key to exit party mode or close now playing
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                if (isPartyMode) {
-                    setPartyMode(false);
-                } else {
-                    setNowPlayingOpen(false);
-                }
-            }
+            if (e.key !== 'Escape' || showVisualizerSelector || (!isPartyMode && !lyricsFocus)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (isPartyMode) setPartyMode(false);
+            else setLyricsFocus(false);
         };
         
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isPartyMode, setPartyMode, setNowPlayingOpen]);
+        window.addEventListener('keydown', handleKeyDown, true);
+        return () => window.removeEventListener('keydown', handleKeyDown, true);
+    }, [showVisualizerSelector, isPartyMode, lyricsFocus, setPartyMode]);
     
     // Auto-hide controls in party mode after inactivity
     useEffect(() => {
@@ -95,15 +122,17 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
             timeout = setTimeout(() => setShowPartyControls(false), 3000);
         };
         
-        window.addEventListener('mousemove', showControls);
-        window.addEventListener('click', showControls);
+        window.addEventListener('pointermove', showControls);
+        window.addEventListener('pointerdown', showControls);
+        window.addEventListener('focusin', showControls);
         
         // Show initially then fade
         showControls();
         
         return () => {
-            window.removeEventListener('mousemove', showControls);
-            window.removeEventListener('click', showControls);
+            window.removeEventListener('pointermove', showControls);
+            window.removeEventListener('pointerdown', showControls);
+            window.removeEventListener('focusin', showControls);
             clearTimeout(timeout);
         };
     }, [isPartyMode]);
@@ -112,11 +141,55 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
 
     const lowPower = !!audioSettings.lowPowerVisuals;
     const visualsActive = isPlaying && audioSettings.visualizerEnabled;
-    const artworkVisualizer = visualsActive && showVisualizerOverlay && audioSettings.visualizerMode !== "OFF";
-    const fullscreenVisualizer = visualsActive && !artworkVisualizer && audioSettings.visualizerFullscreenEnabled && audioSettings.visualizerBackgroundMode !== "OFF";
+    const artworkVisualizer = visualsActive && artworkOverlayEnabled && audioSettings.visualizerMode !== "OFF";
+    const backgroundEnabled = audioSettings.visualizerFullscreenEnabled && audioSettings.visualizerBackgroundMode !== 'OFF';
+    const fullscreenVisualizer = visualsActive && (backgroundEnabled || visualizerStage);
+    const backgroundMode = backgroundEnabled ? audioSettings.visualizerBackgroundMode : 'AURORA_RIBBON';
+    const backgroundOpacity = backgroundEnabled ? (audioSettings.visualizerFullscreenOpacity ?? 20) / 100 : 0.82;
     const lightweightMode = audioSettings.visualizerMode === "WAVE" ? "WAVE" : "SPECTRUM";
-
-    const coverUrl = currentSong.coverUrl || albumCovers[currentSong.album];
+    const artworkOpacity = artworkVisualizer && (lowPower || audioSettings.visualizerMode !== 'MILKDROP')
+        ? (audioSettings.visualizerArtworkOpacity ?? 30) / 100 : 1;
+    const backgroundMilkdrop = fullscreenVisualizer && !lowPower && backgroundMode === 'MILKDROP';
+    const liveMilkdropSettings = partySceneLocked
+        ? { ...milkdropSettings, presetCycleEnabled: false }
+        : milkdropSettings;
+    const toggleArtworkOverlay = () => setArtworkOverlayEnabled(!artworkOverlayEnabled);
+    const artworkSize = isPartyMode && partyArtworkSize
+        ? (lyricsStage ? { height: Math.min(partyArtworkSize.height, partyArtworkSize.width) } : partyArtworkSize)
+        : undefined;
+    const mainLayout = lyricsStage
+        ? 'grid grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-3 md:grid-rows-1 md:grid-cols-[minmax(0,0.75fr)_minmax(0,1.65fr)] md:gap-10'
+        : isPartyMode
+            ? 'flex items-center justify-center'
+            : `grid md:grid-rows-1 [container-type:inline-size] transition-[grid-template-columns,grid-template-rows,gap] duration-300 ease-out motion-reduce:transition-none ${isDrawerOpen
+                ? 'grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4 md:gap-12'
+                : 'grid-rows-[auto_minmax(0,0fr)] md:grid-cols-[minmax(0,1fr)_minmax(0,0fr)] gap-0 items-center'}`;
+    const trackHeading = (
+        <>
+            <h1 className="mb-2 truncate text-section font-bold leading-tight md:text-display" title={currentSong.title}>
+                {currentSong.title}
+            </h1>
+            <h2
+                className="cursor-pointer truncate text-card font-medium text-text-secondary transition-colors hover:text-text-main hover:underline md:text-section"
+                onContextMenu={(e) => openContextMenu(e, ContextMenuType.ARTIST, {
+                    name: currentSong.artist,
+                    songCount: songs.filter(s => s.artist === currentSong.artist).length,
+                })}
+            >
+                {currentSong.artist}
+            </h2>
+        </>
+    );
+    const partyTrackHeading = isPartyMode && (
+        <PartyTrackIntro
+            key={`${currentSong.id}:${currentSongIndex}`}
+            className={visualizerStage
+                ? 'absolute inset-x-4 bottom-3 max-w-2xl drop-shadow-lg md:left-16 md:right-auto md:w-[calc(50%-5.5rem)]'
+                : 'mb-2 w-full min-w-0 text-center'}
+        >
+            {trackHeading}
+        </PartyTrackIntro>
+    );
     
     // Check if current track is a streaming Spotify track (not downloaded)
     const isSpotifyStreaming = currentSong.spotifyId && currentSong.isStreaming;
@@ -172,46 +245,47 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
     };
 
     return (
-        <div className={`fixed inset-0 ${VIIB.zIndex.nowPlaying} bg-surface-0 text-text-main flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-10 duration-300 motion-reduce:animate-none motion-reduce:transition-none`}>
+        <div className={`fixed inset-0 ${VIIB.zIndex.nowPlaying} bg-surface-0 text-text-main flex flex-col overflow-clip animate-in fade-in slide-in-from-bottom-10 duration-300 motion-reduce:animate-none motion-reduce:transition-none`}>
             {/* Dynamic Background */}
-            <div 
-                className={lowPower ? "absolute inset-0 z-0 bg-surface-1 pointer-events-none" : "absolute inset-0 z-0 opacity-30 blur-3xl scale-110 pointer-events-none transition-all duration-1000 motion-reduce:transition-none"}
-                style={{ 
-                    background: lowPower ? undefined : coverUrl ? `${cssUrl(coverUrl)} center/cover` : generateGradient(currentSong.album),
-                }}
-            />
+            <div aria-hidden="true" className={lowPower ? "absolute inset-0 z-0 bg-surface-1 pointer-events-none" : "absolute inset-0 z-0 opacity-40 blur-3xl scale-110 pointer-events-none"}>
+                {!lowPower && <TrackArtwork transition={artwork} backdrop />}
+            </div>
             
             {visualsActive && !artworkVisualizer && !fullscreenVisualizer && (audioSettings.visualizerMode === "SPECTRUM" || audioSettings.visualizerMode === "WAVE") && (
                 <div className="absolute inset-0 z-0 opacity-40">
-                    <Visualizer mode={audioSettings.visualizerMode} lowPower={lowPower} barColor={VIIB_COLOR_VALUES.visualizerMuted} />
+                    {audioSettings.visualizerMode === 'WAVE' && !lowPower ? (
+                        <WebGLVisualizer mode="WAVE" isActive />
+                    ) : (
+                        <Visualizer mode={audioSettings.visualizerMode} lowPower={lowPower} barColor={VIIB_COLOR_VALUES.visualizerMuted} />
+                    )}
                 </div>
             )}
 
             {/* Fullscreen Background Visualizer - Behind all UI when enabled */}
             {/* Uses separate visualizerBackgroundMode so it can differ from album art overlay */}
             {fullscreenVisualizer && lowPower && (
-                <div className="absolute inset-0 z-[1] opacity-30 pointer-events-none">
-                    <Visualizer mode={lightweightMode} lowPower />
+                <div className="absolute inset-0 z-[1] pointer-events-none" style={{ opacity: visualizerStage ? backgroundOpacity : 0.3 }}>
+                    <Visualizer mode={backgroundMode === 'WAVE' ? 'WAVE' : 'SPECTRUM'} lowPower />
                 </div>
             )}
             {fullscreenVisualizer && !lowPower && (
                 <>
-                    {audioSettings.visualizerBackgroundMode === 'MILKDROP' ? (
+                    {backgroundMode === 'MILKDROP' ? (
                         <MilkdropVisualizer
-                            settings={milkdropSettings}
+                            settings={liveMilkdropSettings}
                             isActive={true}
                             onPresetChange={setMilkdropPreset}
                             onPresetsLoaded={setMilkdropPresetKeys}
                             className="z-[1] pointer-events-none"
-                            style={{ opacity: (audioSettings.visualizerFullscreenOpacity ?? 20) / 100 }}
+                            style={{ opacity: backgroundOpacity }}
                         />
                     ) : (
                         <div 
                             className="absolute inset-0 z-[1] pointer-events-none"
-                            style={{ opacity: (audioSettings.visualizerFullscreenOpacity ?? 20) / 100 }}
+                            style={{ opacity: backgroundOpacity }}
                         >
                             <WebGLVisualizer 
-                                mode={audioSettings.visualizerBackgroundMode}
+                                mode={backgroundMode}
                                 isActive={true}
                             />
                         </div>
@@ -222,8 +296,8 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
             <div className={lowPower ? "absolute inset-0 z-0 bg-surface-0/40 pointer-events-none" : "absolute inset-0 z-0 bg-surface-0/70 backdrop-blur-[60px] pointer-events-none"}></div>
 
             {/* Header - Hidden in party mode unless mouse active */}
-            <div className={`relative z-10 flex items-center justify-between gap-2 p-4 md:p-8 transition-opacity duration-300 ${
-                isPartyMode ? (showPartyControls ? 'opacity-100' : 'opacity-0') : 'opacity-100'
+            <div inert={showVisualizerSelector} className={`relative z-10 flex items-center justify-between gap-2 p-4 md:p-8 transition-opacity duration-300 motion-reduce:transition-none ${
+                isPartyMode ? (showPartyControls ? 'opacity-100' : 'opacity-0 has-[:focus-visible]:opacity-100') : 'opacity-100'
             }`}>
                 <Button
                     onClick={() => {
@@ -249,7 +323,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                 </div>
                 <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                     <Button
-                        onClick={togglePartyMode}
+                        onClick={handlePartyModeToggle}
                         variant="ghost"
                         className={`rounded-full p-1.5 sm:p-2 backdrop-blur-md ${
                             isPartyMode 
@@ -262,7 +336,10 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                         {isPartyMode ? <Minimize2 size={24} /> : <Maximize2 size={24} />}
                     </Button>
                     <Button
-                        onClick={() => setShowVisualizerSelector(true)}
+                        onClick={event => {
+                            selectorTrigger.current = event.currentTarget;
+                            setShowVisualizerSelector(true);
+                        }}
                         variant="ghost"
                         className={`rounded-full p-1.5 sm:p-2 backdrop-blur-md ${
                             audioSettings.visualizerMode !== 'OFF' || audioSettings.visualizerFullscreenEnabled 
@@ -285,98 +362,83 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                     </Button>
                     {!isPartyMode && (
                         <Button
-                            onClick={() => setActiveTab('QUEUE')}
+                            onClick={() => setLyricsFocus(!lyricsFocus)}
                             variant="ghost"
-                            className={`rounded-full p-1.5 sm:p-2 backdrop-blur-md ${activeTab === 'QUEUE' ? 'text-text-main bg-surface-1/60 ring-1 ring-text-main/10' : 'text-text-secondary bg-surface-1/40 hover:text-text-main hover:bg-surface-1/60'}`}
-                            title="Queue"
-                            aria-label="Show queue"
+                            className={`rounded-full p-1.5 sm:p-2 ${lyricsFocus ? 'bg-brand/20 text-brand' : 'bg-surface-1/40 text-text-secondary'}`}
+                            title={lyricsFocus ? 'Exit Lyrics Focus' : 'Lyrics Focus'}
+                            aria-label={lyricsFocus ? 'Exit Lyrics Focus' : 'Lyrics Focus'}
+                            aria-pressed={lyricsFocus}
                         >
-                            <ListMusic size={24} />
+                            <Mic2 size={22} />
+                        </Button>
+                    )}
+                    {!isPartyMode && !lyricsFocus && (
+                        <Button
+                            onClick={() => setIsDrawerOpen(open => !open)}
+                            variant="ghost"
+                            className={`rounded-full p-1.5 sm:p-2 backdrop-blur-md ${isDrawerOpen ? 'text-text-main bg-surface-1/60 ring-1 ring-text-main/10' : 'text-text-secondary bg-surface-1/40 hover:text-text-main hover:bg-surface-1/60'}`}
+                            title={drawerLabel}
+                            aria-label={drawerLabel}
+                            aria-expanded={isDrawerOpen}
+                            aria-controls={drawerId}
+                        >
+                            {isDrawerOpen ? <PanelRightClose size={24} /> : <PanelRightOpen size={24} />}
                         </Button>
                     )}
                 </div>
             </div>
 
             {/* Main Content */}
-            <div className={`relative z-10 flex-1 min-h-0 flex ${isPartyMode ? 'items-center justify-center' : 'flex-col md:flex-row gap-4 md:gap-12'} px-4 md:px-16 overflow-hidden`}>
+            <div inert={showVisualizerSelector} className={`relative z-10 flex-1 min-h-0 px-4 md:px-16 overflow-clip ${mainLayout}`}>
                 {/* Left Side: Artwork & Metadata - Full screen centered in party mode */}
-                <div className={`flex flex-col ${isPartyMode ? 'items-center justify-center' : 'shrink-0 md:flex-1 justify-center max-w-2xl mx-auto w-full min-h-0'}`}>
-                    <div 
-                        className={`aspect-square bg-surface-2 rounded-xl shadow-2xl relative group overflow-hidden cursor-pointer ring-1 ring-surface-3/60 ${
-                            isPartyMode 
-                                ? 'w-[70vh] max-w-[80vw] max-h-[60vh] mb-8'
-                                : 'w-auto h-[32vh] sm:h-[34vh] md:h-[46vh] max-h-[34vh] md:max-h-[46vh] max-w-[80vw] md:max-w-[500px] mx-auto mb-4 md:mb-10'
-                        }`}
-                        onClick={() => setShowVisualizerOverlay(!showVisualizerOverlay)}
+                {!visualizerStage && <div className="mx-auto flex w-full min-h-0 min-w-0 max-w-2xl flex-col justify-center">
+                    <div
+                        ref={artworkRef}
+                        className={`aspect-square bg-surface-2 rounded-xl shadow-2xl relative group overflow-hidden cursor-pointer ring-1 ring-surface-3/60 w-auto h-[32vh] sm:h-[34vh] md:h-[46vh] mx-auto ${lyricsStage
+                            ? 'max-h-[21dvh] max-w-full md:max-h-[37dvh] mb-2 md:mb-5'
+                            : 'max-h-[34vh] md:max-h-[46vh] max-w-[80vw] md:max-w-[500px] mb-4 md:mb-10'}`}
+                        style={artworkSize}
+                        onClick={toggleArtworkOverlay}
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Toggle artwork visualizer"
+                        aria-pressed={artworkOverlayEnabled}
+                        onKeyDown={event => {
+                            if (event.key !== 'Enter' && event.key !== ' ') return;
+                            event.preventDefault();
+                            event.stopPropagation();
+                            toggleArtworkOverlay();
+                        }}
                         onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, currentSong)}
                     >
-                         {/* Album Art - opacity controlled by artwork setting when legacy visualizer is active */}
-                         {coverUrl ? (
-                            <img 
-                                src={coverUrl} 
-                                alt="Album Art" 
-                                className="w-full h-full object-contain transition-opacity duration-300"
-                                style={{
-                                    // Legacy visualizers: album art dims, visualizer at full opacity
-                                    // Milkdrop: album art stays full, visualizer dims
-                                    opacity: artworkVisualizer && (lowPower || audioSettings.visualizerMode !== 'MILKDROP')
-                                        ? (audioSettings.visualizerArtworkOpacity ?? 30) / 100
-                                        : 1
-                                }}
-                            />
-                         ) : (
-                             <div 
-                                className="w-full h-full flex items-center justify-center text-display font-bold text-text-subtle/30 transition-opacity duration-300"
-                                style={{ 
-                                    background: generateGradient(currentSong.album),
-                                    // Legacy visualizers: album art dims, visualizer at full opacity
-                                    // Milkdrop: album art stays full, visualizer dims
-                                    opacity: artworkVisualizer && (lowPower || audioSettings.visualizerMode !== 'MILKDROP')
-                                        ? (audioSettings.visualizerArtworkOpacity ?? 30) / 100
-                                        : 1
-                                }}
-                            >
-                                {currentSong.title.charAt(0)}
-                            </div>
-                         )}
-                         
-                         {artworkVisualizer && (
+                        <div className="absolute inset-0 transition-opacity duration-300 motion-reduce:transition-none" style={{ opacity: artworkOpacity }}>
+                            <TrackArtwork transition={artwork} />
+                        </div>
+
+                        {artworkVisualizer && (
                             <div className="absolute inset-0 pointer-events-none">
                                 {lowPower ? (
                                     <Visualizer mode={lightweightMode} lowPower />
                                 ) : audioSettings.visualizerMode === "MILKDROP" ? (
-                                    <MilkdropVisualizer settings={milkdropSettings} isActive
-                                        onPresetChange={setMilkdropPreset} onPresetsLoaded={setMilkdropPresetKeys}
-                                        style={{ opacity: 1 - ((audioSettings.visualizerArtworkOpacity ?? 30) / 100) }} />
+                                    (!backgroundMilkdrop || liveMilkdropSettings.currentPreset) && (
+                                        <MilkdropVisualizer settings={liveMilkdropSettings} isActive
+                                            managesPresets={!backgroundMilkdrop}
+                                            onPresetChange={setMilkdropPreset} onPresetsLoaded={setMilkdropPresetKeys}
+                                            style={{ opacity: 1 - ((audioSettings.visualizerArtworkOpacity ?? 30) / 100) }} />
+                                    )
                                 ) : (
                                     <WebGLVisualizer mode={audioSettings.visualizerMode} isActive />
                                 )}
                             </div>
-                         )}
+                        )}
                     </div>
                     
-                    {/* Track info - centered in party mode */}
-                    <div className={`flex ${isPartyMode ? 'flex-col items-center text-center' : 'items-end justify-between'} mb-2`}>
-                        <div className={`flex flex-col min-w-0 ${isPartyMode ? 'items-center' : 'pr-4'}`}>
-                            <h1 className={`font-bold truncate leading-tight mb-2 ${
-                                isPartyMode ? 'text-display md:text-4xl max-w-[80vw]' : 'text-section md:text-display'
-                            }`} title={currentSong.title}>
-                                {currentSong.title}
-                            </h1>
-                            <h2 
-                                className={`text-text-secondary font-medium truncate cursor-pointer hover:underline hover:text-text-main transition-colors ${
-                                    isPartyMode ? 'text-section max-w-[80vw]' : 'text-card md:text-section'
-                                }`}
-                                onContextMenu={(e) => openContextMenu(e, ContextMenuType.ARTIST, {
-                                    name: currentSong.artist,
-                                    songCount: songs.filter(s => s.artist === currentSong.artist).length,
-                                })}
-                            >
-                                {currentSong.artist}
-                            </h2>
+                    {isPartyMode ? partyTrackHeading : (
+                    <div className="mb-2 flex items-end justify-between gap-2">
+                        <div className="flex min-w-0 flex-col pr-4">
+                            {trackHeading}
 
                             {/* Inline Song Metadata Strip */}
-                            {!isPartyMode && (
                                 <div className="flex items-center gap-2 mt-2 flex-wrap">
                                     {/* Audio Format Badge */}
                                     {(() => {
@@ -431,9 +493,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                                         Info
                                     </button>
                                 </div>
-                            )}
                         </div>
-                        {!isPartyMode && (
                             <div className="flex items-center gap-3">
                                 {/* Download button for streaming Spotify tracks */}
                                 {isSpotifyStreaming && (
@@ -460,13 +520,28 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                                 )}
                                 <LikeButton songId={currentSong.id} size={32} />
                             </div>
-                        )}
                     </div>
-                </div>
+                    )}
+                </div>}
 
-                {/* Right Side: Tabs - Hidden in party mode */}
-                {!isPartyMode && (
-                    <div className="flex-1 flex flex-col h-full min-h-0 max-w-xl mx-auto w-full bg-surface-1/30 rounded-t-2xl md:rounded-2xl ring-1 ring-surface-3/60 backdrop-blur-md overflow-hidden">
+                {lyricsStage && (
+                    <section aria-label="Lyrics stage" className="relative flex min-h-0 min-w-0 flex-col overflow-clip rounded-2xl border border-surface-border bg-surface-0/65 bg-gradient-to-br from-brand/10 to-transparent">
+                        <div data-lyrics-scroll className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-contain [mask-image:linear-gradient(to_bottom,transparent,black_12%,black_86%,transparent)]">
+                            <LyricsView song={currentSong} currentTime={currentTime} onSeek={onSeek} isVisible presentation="stage" />
+                        </div>
+                    </section>
+                )}
+
+                {/* Keep the drawer mounted so collapsing preserves tab content and scroll position. */}
+                {!isPartyMode && !lyricsFocus && (
+                    <aside
+                        id={drawerId}
+                        aria-label="Queue, lyrics, and track info"
+                        inert={!isDrawerOpen}
+                        className={`min-h-0 flex flex-col max-w-xl w-full md:w-[calc(50cqw_-_1.5rem)] justify-self-center self-stretch bg-surface-1/30 rounded-t-2xl md:rounded-2xl ring-1 ring-surface-3/60 backdrop-blur-md overflow-hidden transition-[transform,opacity] duration-300 ease-out motion-reduce:transition-none ${isDrawerOpen
+                            ? 'translate-x-0 opacity-100'
+                            : 'translate-x-full opacity-0'}`}
+                    >
                         {/* Tabs Header */}
                         <div className="flex items-center border-b border-surface-3/60 p-2 gap-2">
                             <Button
@@ -494,10 +569,10 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                         </div>
 
                         {/* Tab Content */}
-                        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 md:p-6 relative">
+                        <div data-lyrics-scroll className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 md:p-6 relative">
                             {activeTab === 'LYRICS' && (
                                 <div className="h-full flex flex-col">
-                                    <LyricsView song={currentSong} currentTime={currentTime} onSeek={onSeek} />
+                                    <LyricsView song={currentSong} currentTime={currentTime} onSeek={onSeek} isVisible={isDrawerOpen} />
                                 </div>
                             )}
 
@@ -592,15 +667,17 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                                 </div>
                             )}
                         </div>
-                    </div>
+                    </aside>
                 )}
+                {visualizerStage && partyTrackHeading}
             </div>
 
             {/* Bottom Controls - Hidden in party mode unless mouse active */}
-            <div className={`relative z-10 px-4 py-4 sm:px-8 sm:py-6 md:px-16 md:py-8 bg-gradient-to-t from-surface-0 via-surface-0/80 to-transparent transition-opacity duration-300 ${
-                isPartyMode ? (showPartyControls ? 'opacity-100' : 'opacity-0 pointer-events-none') : 'opacity-100'
+            <div inert={showVisualizerSelector} className={`relative z-10 px-4 py-4 sm:px-8 sm:py-6 md:px-16 md:py-8 bg-gradient-to-t from-surface-0 via-surface-0/80 to-transparent transition-opacity duration-300 motion-reduce:transition-none ${
+                isPartyMode ? (showPartyControls ? 'opacity-100' : 'opacity-0 pointer-events-none has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100') : 'opacity-100'
             }`}>
                  <div className="max-w-4xl mx-auto w-full flex flex-col gap-4 md:gap-6">
+                    {isPartyMode && <PartyStageControls />}
                      {/* Seek Bar */}
                     <div className="flex items-center gap-4 text-xs font-mono font-medium text-text-secondary">
                         <span className="w-10 text-right">{formatTime(currentTime)}</span>
@@ -690,10 +767,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
             </div>
             
             {/* Visualizer Layer Selector Modal */}
-            <VisualizerSelector 
-                isOpen={showVisualizerSelector} 
-                onClose={() => setShowVisualizerSelector(false)} 
-            />
+            {showVisualizerSelector && <VisualizerSelector isOpen onClose={closeVisualizerSelector} />}
         </div>
     );
 };

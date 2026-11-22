@@ -1,123 +1,31 @@
-/**
- * Grass Oscilloscope Visualization - WebGL Fragment Shader
- * 
- * Renders vertical grass blades at the bottom that grow and sway with audio.
- * Uses bezier curves approximation for organic blade shapes.
- * 
- */
+/** Audio-reactive grass scene for the album overlay and fullscreen background. */
+import { sceneFragmentHeader } from './scene';
 
-export const grassFragmentShader = `#version 300 es
-precision mediump float;
-
-uniform vec2 u_resolution;
-uniform float u_time;
-uniform vec3 u_color;
-uniform vec3 u_accentColor;
-uniform sampler2D u_frequencyTexture;
-uniform sampler2D u_waveformTexture;
-uniform float u_bass;
-uniform float u_mid;
-uniform float u_treble;
-
-in vec2 v_uv;
-out vec4 fragColor;
-
-#define NUM_BLADES 80
-#define PI 3.14159265359
-
-// Quadratic bezier distance approximation
-float sdBezier(vec2 p, vec2 p0, vec2 p1, vec2 p2) {
-    // Simplified bezier distance using sampling
-    float minDist = 10000.0;
-    
-    for (int i = 0; i <= 16; i++) {
-        float t = float(i) / 16.0;
-        float u = 1.0 - t;
-        vec2 bezierPoint = u * u * p0 + 2.0 * u * t * p1 + t * t * p2;
-        float d = length(p - bezierPoint);
-        minDist = min(minDist, d);
-    }
-    
-    return minDist;
-}
-
+export const grassFragmentShader = `${sceneFragmentHeader}
 void main() {
-    vec2 uv = v_uv;
-    float aspect = u_resolution.x / u_resolution.y;
-    
-    vec3 totalColor = vec3(0.0);
-    float totalAlpha = 0.0;
-    
-    float bladeSpacing = 1.0 / float(NUM_BLADES);
-    
-    for (int i = 0; i < NUM_BLADES; i++) {
-        float fi = float(i);
-        
-        // Blade x position
-        float bladeX = (fi + 0.5) * bladeSpacing;
-        
-        // Sample waveform for this blade
-        float waveformIndex = fi / float(NUM_BLADES);
-        float waveValue = texture(u_waveformTexture, vec2(waveformIndex, 0.5)).r;
-        float amplitude = abs(waveValue - 0.5) * 2.0;
-        
-        // Blade height based on amplitude
-        float baseHeight = 0.1;
-        float maxHeight = 0.5;
-        float bladeHeight = baseHeight + amplitude * maxHeight;
-        
-        // Sway based on time and position
-        float swayPhase = u_time * 3.0 + fi * 0.2;
-        float swayAmount = sin(swayPhase) * 0.02 * amplitude;
-        
-        // Stereo offset (simplified)
-        float stereoOffset = (u_treble - u_bass) * 0.01;
-        swayAmount += stereoOffset;
-        
-        // Blade bezier control points
-        vec2 p0 = vec2(bladeX, 0.0);                              // Base at bottom
-        vec2 p1 = vec2(bladeX + swayAmount * 0.3, bladeHeight * 0.5);  // Middle control
-        vec2 p2 = vec2(bladeX + swayAmount, bladeHeight);             // Tip
-        
-        // Distance to blade
-        float dist = sdBezier(uv, p0, p1, p2);
-        
-        // Blade thickness (tapers toward tip)
-        float baseThickness = 0.004;
-        float thickness = baseThickness * (1.0 + amplitude * 0.5);
-        
-        // Glow
-        float bladeMask = 1.0 - smoothstep(0.0, thickness, dist);
-        float glow = exp(-dist * dist / (thickness * thickness * 8.0)) * 0.5;
-        
-        // Color gradient based on position
-        float hue = 90.0 + fi * 2.0; // Green range
-        
-        // Convert HSL-ish to RGB (simplified)
-        float h = mod(hue, 360.0) / 60.0;
-        float c = 0.7;
-        float x = c * (1.0 - abs(mod(h, 2.0) - 1.0));
-        vec3 rgb;
-        if (h < 1.0) rgb = vec3(c, x, 0.0);
-        else if (h < 2.0) rgb = vec3(x, c, 0.0);
-        else if (h < 3.0) rgb = vec3(0.0, c, x);
-        else if (h < 4.0) rgb = vec3(0.0, x, c);
-        else if (h < 5.0) rgb = vec3(x, 0.0, c);
-        else rgb = vec3(c, 0.0, x);
-        
-        // Make brighter
-        vec3 bladeColor = rgb + vec3(0.3, 0.5, 0.2);
-        
-        // Gradient from base to tip (darker at base)
-        float heightRatio = (uv.y / bladeHeight);
-        heightRatio = clamp(heightRatio, 0.0, 1.0);
-        bladeColor *= 0.6 + heightRatio * 0.4;
-        
-        // Apply
-        totalColor += bladeColor * (bladeMask + glow);
-        totalAlpha += bladeMask + glow * 0.5;
+    // Backlit rows of grass follow the waveform and recede toward a soft horizon.
+    vec2 p = scenePosition();
+    float x = v_uv.x;
+    float bass = energy(u_bass);
+    vec3 light = vec3(0.09, 0.33, 0.25) * exp(-abs(p.y + 0.055) * 10.0) * 0.55;
+    for (int i = 0; i < 4; i++) {
+        float row = float(i);
+        float ground = -0.12 - row * 0.135;
+        float blades = 88.0 - row * 15.0;
+        float rise = p.y - ground;
+        float bend = rise * rise * (2.1 * sin(x * 9.0 - u_time * 1.4 + row) + 1.4);
+        float slot = (x - bend / max(u_resolution.x / u_resolution.y, 1.0)) * blades + row * 0.49;
+        float id = floor(slot);
+        float sampleX = clamp(id / blades, 0.0, 1.0);
+        float blade = 0.07 + hash(id + row * 71.0) * 0.12 + abs(wave(sampleX)) * 0.17 + bass * 0.065;
+        float tip = clamp(rise / blade, 0.0, 1.0);
+        float silhouette = 1.0 - smoothstep(0.04, 0.22 * (1.0 - tip) + 0.045, abs(fract(slot) - 0.5));
+        float mask = smoothstep(-0.014, 0.008, rise) * (1.0 - smoothstep(blade * 0.87, blade, rise));
+        vec3 leaf = mix(vec3(0.035, 0.30, 0.24), vec3(0.59, 0.96, 0.32), tip);
+        light += leaf * mask * silhouette * (0.34 + row * 0.12);
     }
-    
-    fragColor = vec4(totalColor, clamp(totalAlpha, 0.0, 1.0));
+    light += vec3(0.67, 0.96, 0.36) * starGrid(p - vec2(u_time * 0.013, u_time * 0.016), 24.0, 1.8)
+        * (0.20 + energy(u_treble) * 0.48);
+    fragColor = sceneColor(light);
 }
 `;

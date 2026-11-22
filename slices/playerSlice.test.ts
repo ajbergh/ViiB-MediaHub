@@ -9,6 +9,7 @@ import { libraryService } from '../services/libraryService';
 import { api } from '../services/api';
 import { managedObjectUrls } from '../lib/playbackLifecycle';
 import type { Song } from '../types';
+import type { VisualizerScene } from '../lib/visualizerScenes';
 vi.mock('../store',()=>({useStore:{getState:()=>({})}}));
 const song=(id:string):Song=>({id,title:id,artist:'Artist',album:'Album',duration:120,url:'/audio/'+id,addedAt:1});
 function setup() {
@@ -81,6 +82,62 @@ describe('playback ownership',()=>{
   await state.playSong(a);const live=state.currentSong;expect(live.url).toBe('blob:owned-1');
   await state.playSong(song('b'));await state.playSong(live);await vi.advanceTimersByTimeAsync(1100);expect(revoke).not.toHaveBeenCalledWith(live.url);
   managedObjectUrls.release(live.url);await state.playSong(live);expect(state.currentSong.url).toBe('blob:owned-2');
+ });
+});
+
+describe('Party Mode visualizer scenes', () => {
+ it('saves and restores both layers and the Milkdrop preset without replacing audio preferences', () => {
+  vi.useFakeTimers();
+  const state = setup();
+  state.setArtworkOverlayEnabled(true);
+  state.setVisualizerMode('ELECTRIC_ARC');
+  state.setVisualizerArtworkOpacity(64);
+  state.setVisualizerBackgroundMode('MILKDROP');
+  state.setVisualizerFullscreenEnabled(false);
+  state.setVisualizerFullscreenOpacity(72);
+  state.setMilkdropPreset('Favorite preset');
+  state.saveVisualizerScene('  Encore  ');
+  const saved = (state.visualizerScenes as VisualizerScene[]).find(scene => scene.name === 'Encore');
+  expect(saved).toBeDefined();
+  state.applyVisualizerScene('solar-flare');
+  state.setCrossfade(4);
+  state.applyVisualizerScene(saved!.id);
+  expect(state.artworkOverlayEnabled).toBe(true);
+  expect(state.audioSettings).toMatchObject({
+   visualizerMode: 'ELECTRIC_ARC',
+   visualizerArtworkOpacity: 64,
+   visualizerBackgroundMode: 'MILKDROP',
+   visualizerFullscreenEnabled: false,
+   visualizerFullscreenOpacity: 72,
+   crossfadeDuration: 4,
+  });
+  expect(state.milkdropSettings.currentPreset).toBe('Favorite preset');
+  vi.clearAllTimers();
+ });
+
+ it('rotates through favorites at playback boundaries and holds the scene while locked', async () => {
+  vi.useFakeTimers();
+  const state = setup();
+  const tracks = [song('a'), song('b'), song('c'), song('d'), song('e')];
+  state.setPartySceneRotationEnabled(true);
+  state.toggleVisualizerSceneFavorite('electric-night');
+  await state.playSong(tracks[0], tracks);
+  expect(state.activeVisualizerSceneId).toBeNull();
+  state.isPartyMode = true;
+  await state.playSong(tracks[1], tracks);
+  expect(state.activeVisualizerSceneId).toBe('deep-space');
+  await state.playSong(tracks[1], tracks);
+  expect(state.activeVisualizerSceneId).toBe('deep-space');
+  state.setPartySceneLocked(true);
+  await state.playSong(tracks[2], tracks);
+  expect(state.activeVisualizerSceneId).toBe('deep-space');
+  state.setPartySceneLocked(false);
+  await state.playSong(tracks[3], tracks);
+  expect(state.activeVisualizerSceneId).toBe('northern-lights');
+  state.setPartySceneRotationEnabled(false);
+  await state.playSong(tracks[4], tracks);
+  expect(state.activeVisualizerSceneId).toBe('northern-lights');
+  vi.clearAllTimers();
  });
 });
 

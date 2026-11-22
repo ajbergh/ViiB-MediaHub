@@ -11,8 +11,8 @@
  * - Automatic texture unit management
  * 
  * Texture Format:
- * - Frequency: 256x1 LUMINANCE/UNSIGNED_BYTE (normalized amplitude per frequency bin)
- * - Waveform: 256x1 LUMINANCE/UNSIGNED_BYTE (time-domain samples, 128 = center)
+ * - Frequency: 256x1 single channel (normalized amplitude per frequency bin)
+ * - Waveform: 256x1 single channel (time-domain samples, 128 = center)
  * 
  * @module AudioTextureManager
  */
@@ -26,6 +26,8 @@ export interface AudioEnergy {
 
 export class AudioTextureManager {
     private gl: WebGL2RenderingContext | WebGLRenderingContext;
+    private readonly format: number;
+    private readonly internalFormat: number;
     private frequencyTexture: WebGLTexture | null = null;
     private waveformTexture: WebGLTexture | null = null;
     private textureWidth: number = 256;
@@ -42,8 +44,11 @@ export class AudioTextureManager {
         overall: 0
     };
 
-    constructor(gl: WebGL2RenderingContext | WebGLRenderingContext) {
+    constructor(gl: WebGL2RenderingContext | WebGLRenderingContext, isWebGL2: boolean) {
         this.gl = gl;
+        const gl2 = gl as WebGL2RenderingContext;
+        this.format = isWebGL2 ? gl2.RED : gl.LUMINANCE;
+        this.internalFormat = isWebGL2 ? gl2.R8 : gl.LUMINANCE;
         this.frequencyData = new Uint8Array(this.textureWidth);
         this.waveformData = new Uint8Array(this.textureWidth);
         
@@ -63,7 +68,7 @@ export class AudioTextureManager {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, this.textureWidth, 1, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, null);
+        gl.texImage2D(gl.TEXTURE_2D, 0, this.internalFormat, this.textureWidth, 1, 0, this.format, gl.UNSIGNED_BYTE, null);
         
         // Create waveform texture
         this.waveformTexture = gl.createTexture();
@@ -72,7 +77,8 @@ export class AudioTextureManager {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, this.textureWidth, 1, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, null);
+        this.waveformData.fill(128);
+        gl.texImage2D(gl.TEXTURE_2D, 0, this.internalFormat, this.textureWidth, 1, 0, this.format, gl.UNSIGNED_BYTE, this.waveformData);
         
         gl.bindTexture(gl.TEXTURE_2D, null);
     }
@@ -137,10 +143,10 @@ export class AudioTextureManager {
         
         // Upload to GPU
         gl.bindTexture(gl.TEXTURE_2D, this.frequencyTexture);
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.textureWidth, 1, gl.LUMINANCE, gl.UNSIGNED_BYTE, this.frequencyData);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.textureWidth, 1, this.format, gl.UNSIGNED_BYTE, this.frequencyData);
         
         gl.bindTexture(gl.TEXTURE_2D, this.waveformTexture);
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.textureWidth, 1, gl.LUMINANCE, gl.UNSIGNED_BYTE, this.waveformData);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.textureWidth, 1, this.format, gl.UNSIGNED_BYTE, this.waveformData);
         
         gl.bindTexture(gl.TEXTURE_2D, null);
     }

@@ -1,119 +1,30 @@
-/**
- * Wind Field Visualization - WebGL Fragment Shader
- * 
- * Renders flowing particle wind effect with bass intensity and treble sparkles.
- * Uses procedural particle simulation with turbulence.
- * 
+/** Audio-reactive wind scene for the album overlay and fullscreen background. */
+import { sceneFragmentHeader } from './scene';
 
- */
-
-export const windFragmentShader = `#version 300 es
-precision mediump float;
-
-uniform vec2 u_resolution;
-uniform float u_time;
-uniform vec3 u_color;
-uniform vec3 u_accentColor;
-uniform sampler2D u_frequencyTexture;
-uniform sampler2D u_waveformTexture;
-uniform float u_bass;
-uniform float u_mid;
-uniform float u_treble;
-
-in vec2 v_uv;
-out vec4 fragColor;
-
-#define NUM_PARTICLES 50
-#define PI 3.14159265359
-
-// Note: hash and hash2f functions are provided by noiseGLSL injection
-
+export const windFragmentShader = `${sceneFragmentHeader}
 void main() {
-    vec2 uv = v_uv;
-    float aspect = u_resolution.x / u_resolution.y;
-    uv.x *= aspect;
-    
-    vec3 totalColor = vec3(0.0);
-    float totalAlpha = 0.0;
-    
-    // Wind particle color (precomputed)
-    vec3 windColor = vec3(0.7, 0.85, 1.0);
-    vec3 sparkleColor = vec3(1.0);
-    
-    // Wind direction varies over time (precomputed)
-    float windAngle = sin(u_time * 0.2) * PI * 0.2;
-    float cosWind = cos(windAngle);
-    float sinWind = sin(windAngle);
-    float windSpeed = 1.0 + u_bass * 2.0;
-    
-    // Maximum glow distance squared for early exit
-    float maxGlowDistSq = 0.002;
-    
-    // Base intensity factor
-    float baseBrightness = 0.5 + u_bass * 0.5;
-    
-    // Treble sparkle threshold
-    bool enableSparkles = u_treble > 0.4;
-    float sparkleTimeSeed = floor(u_time * 10.0);
-    
-    for (int i = 0; i < NUM_PARTICLES; i++) {
-        float fi = float(i);
-        
-        // Seed for this particle (precomputed hash)
-        float seed = hash(fi * 12.9898);
-        float seed2 = hash(fi * 78.233);
-        
-        // Base velocity
-        float baseVx = 1.0 + seed * 2.0;
-        float baseVy = (seed2 - 0.5) * 0.5;
-        
-        // Apply wind direction (precomputed cos/sin)
-        vec2 velocity = vec2(
-            baseVx * cosWind - baseVy * sinWind,
-            baseVx * sinWind + baseVy * cosWind
-        ) * windSpeed;
-        
-        // Starting position (wraps around)
-        float startX = hash(fi * 1.234);
-        float startY = hash(fi * 2.345);
-        
-        // Current position with time
-        vec2 pos = vec2(startX, startY) + velocity * u_time * 0.05;
-        
-        // Add sinusoidal drift (simplified)
-        pos.y += sin(pos.x * 5.0 + u_time * 0.5) * 0.03;
-        
-        // Wrap position
-        pos.x = mod(pos.x * aspect, aspect);
-        pos.y = mod(pos.y, 1.0);
-        
-        // Distance from this pixel to particle (squared for early exit)
-        vec2 delta = uv - pos;
-        float pDistSq = dot(delta, delta);
-        
-        // Early exit if too far
-        if (pDistSq > maxGlowDistSq) continue;
-        
-        // Particle properties
-        float size = 1.0 + seed * 2.0;
-        float opacity = 0.3 + seed2 * 0.4;
-        
-        // Particle glow (simplified, no exp)
-        float glowSize = 0.005 + size * 0.003;
-        float glowSizeSq = glowSize * glowSize;
-        float glow = max(0.0, 1.0 - pDistSq / glowSizeSq) * opacity * baseBrightness;
-        
-        // Sparkle on treble (simplified check)
-        bool isSparkle = enableSparkles && hash2f(vec2(fi, sparkleTimeSeed)) < 0.15;
-        
-        // Color
-        vec3 particleColor = isSparkle ? sparkleColor : windColor;
-        float sparkleMultiplier = isSparkle ? 2.5 : 1.0;
-        
-        totalColor += particleColor * glow * sparkleMultiplier;
-        totalAlpha += glow * 0.4;
+    // Long-exposure streamlines curl around the center, showing flow and depth.
+    vec2 p = scenePosition();
+    float mid = energy(u_mid);
+    float treble = energy(u_treble);
+    float radius = length(p);
+    float theta = 0.23 + 0.96 * exp(-radius * 2.6) + 0.21 * sin(u_time * 0.52);
+    vec2 flow = mat2(cos(theta), sin(theta), -sin(theta), cos(theta)) * p;
+    vec3 teal = vec3(0.14, 0.95, 0.82);
+    vec3 amber = vec3(1.0, 0.62, 0.21);
+    vec3 light = teal * exp(-radius * 4.1) * 0.09;
+    for (int i = 0; i < 3; i++) {
+        float layer = float(i);
+        float curl = sin(flow.x * (4.0 + layer) + u_time * 0.55 + layer) * (0.043 + mid * 0.034);
+        float track = (flow.y + curl) * (13.0 + layer * 6.0) + layer * 0.33;
+        float row = floor(track);
+        float across = abs(fract(track) - 0.5);
+        float direction = flow.x * (3.0 + layer * 1.9) - u_time * (0.54 + layer * 0.23) + hash(row + layer * 23.0);
+        float trail = pow(0.5 + 0.5 * cos(direction * TAU), 3.4);
+        vec3 tint = mix(teal, amber, layer * 0.28 + 0.12 * sin(row));
+        light += tint * filament(across, 0.058) * trail * (0.22 + mid * 0.30);
     }
-    
-    fragColor = vec4(totalColor, clamp(totalAlpha, 0.0, 1.0));
+    light += amber * starGrid(flow - vec2(u_time * 0.11, 0.0), 30.0, 1.5) * (0.16 + treble * 0.45);
+    fragColor = sceneColor(light);
 }
 `;

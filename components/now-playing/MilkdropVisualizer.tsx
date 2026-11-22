@@ -39,6 +39,8 @@ interface MilkdropVisualizerProps {
   settings: MilkdropSettings;
   /** Whether the visualizer is currently visible/active */
   isActive: boolean;
+  /** Only one layer chooses presets when the artwork and background share them. */
+  managesPresets?: boolean;
   /** Callback when preset changes (for state sync) */
   onPresetChange?: (presetName: string) => void;
   /** Callback when presets are loaded (provides preset keys) */
@@ -58,6 +60,7 @@ interface MilkdropVisualizerProps {
 export const MilkdropVisualizer: React.FC<MilkdropVisualizerProps> = ({
   settings,
   isActive,
+  managesPresets = true,
   onPresetChange,
   onPresetsLoaded,
   className = '',
@@ -69,8 +72,10 @@ export const MilkdropVisualizer: React.FC<MilkdropVisualizerProps> = ({
   const animationRef = useRef<number>(0);
   const presetsRef = useRef<Record<string, object>>({});
   const presetKeysRef = useRef<string[]>([]);
-  const latestRef = useRef({ settings, onPresetChange, onPresetsLoaded });
-  latestRef.current = { settings, onPresetChange, onPresetsLoaded };
+  const loadedPresetRef = useRef<string | null>(null);
+  const requestedPresetRef = useRef<string | null>(null);
+  const latestRef = useRef({ settings, managesPresets, onPresetChange, onPresetsLoaded });
+  latestRef.current = { settings, managesPresets, onPresetChange, onPresetsLoaded };
   
   const [isLoaded, setIsLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -130,28 +135,22 @@ export const MilkdropVisualizer: React.FC<MilkdropVisualizerProps> = ({
     }
   }, [canvasSize, isLoaded]);
   
-  // Load a random preset (avoiding current if possible)
-  const loadRandomPreset = useCallback(() => {
-    if (!visualizerRef.current || presetKeysRef.current.length === 0) return;
-    
+  const loadPreset = useCallback((key: string, blendDuration: number) => {
+    const preset = presetsRef.current[key];
+    if (!visualizerRef.current || !preset || loadedPresetRef.current === key) return false;
+    visualizerRef.current.loadPreset(preset, blendDuration);
+    loadedPresetRef.current = key;
+    return true;
+  }, []);
+
+  const loadRandomPreset = useCallback((blendDuration: number, publish: boolean) => {
     const keys = presetKeysRef.current;
-    const currentPreset = settings.currentPreset;
-    
-    // Try to pick a different preset
-    let randomKey: string;
-    if (keys.length > 1 && currentPreset) {
-      const filteredKeys = keys.filter(k => k !== currentPreset);
-      randomKey = filteredKeys[Math.floor(Math.random() * filteredKeys.length)];
-    } else {
-      randomKey = keys[Math.floor(Math.random() * keys.length)];
+    const candidates = keys.length > 1 ? keys.filter(key => key !== loadedPresetRef.current) : keys;
+    const randomKey = candidates[Math.floor(Math.random() * candidates.length)];
+    if (randomKey && loadPreset(randomKey, blendDuration) && publish) {
+      latestRef.current.onPresetChange?.(randomKey);
     }
-    
-    visualizerRef.current.loadPreset(
-      presetsRef.current[randomKey],
-      settings.blendDuration
-    );
-    onPresetChange?.(randomKey);
-  }, [settings.currentPreset, settings.blendDuration, onPresetChange]);
+  }, [loadPreset]);
   
   // Initialize Butterchurn
   useEffect(() => {
@@ -237,22 +236,16 @@ export const MilkdropVisualizer: React.FC<MilkdropVisualizerProps> = ({
         console.log(`[Milkdrop] Loaded ${presetKeysRef.current.length} presets`);
         
         // Notify parent of available presets
-        onPresetsLoaded?.(presetKeysRef.current);
-        
-        // Load initial preset
-        if (settings.currentPreset && presetsRef.current[settings.currentPreset]) {
-          visualizerRef.current.loadPreset(
-            presetsRef.current[settings.currentPreset],
-            0 // Instant load for initial preset
-          );
+        const { settings: current, managesPresets: ownsPreset, onPresetsLoaded: publishPresets } = latestRef.current;
+        publishPresets?.(presetKeysRef.current);
+
+        const requestedPreset = current.currentPreset;
+        requestedPresetRef.current = requestedPreset;
+        if (requestedPreset && presets[requestedPreset]) {
+          loadPreset(requestedPreset, 0);
         } else {
-          // Load random preset
-          const randomKey = presetKeysRef.current[
-            Math.floor(Math.random() * presetKeysRef.current.length)
-          ];
-          visualizerRef.current.loadPreset(presetsRef.current[randomKey], 0);
-          // A saved extra preset will be restored once the worker finishes.
-          if (!settings.currentPreset) onPresetChange?.(randomKey);
+          // An explicitly requested preset from an extra pack is restored once available.
+          loadRandomPreset(0, ownsPreset && !requestedPreset);
         }
         
         setIsLoaded(true);
@@ -279,9 +272,10 @@ export const MilkdropVisualizer: React.FC<MilkdropVisualizerProps> = ({
         visualizerRef.current.loseGLContext?.();
         visualizerRef.current = null;
       }
+      loadedPresetRef.current = null;
       setIsLoaded(false);
     };
-  }, [isActive]);
+  }, [isActive, loadPreset, loadRandomPreset]);
   
   // Render loop
   useEffect(() => {
@@ -325,24 +319,26 @@ export const MilkdropVisualizer: React.FC<MilkdropVisualizerProps> = ({
         presetKeysRef.current = Object.keys(presets);
         publish?.(presetKeysRef.current);
         if (wasMissing && presets[pendingPreset]) {
-          visualizerRef.current?.loadPreset(presets[pendingPreset], current.blendDuration);
+          loadPreset(pendingPreset, current.blendDuration);
         }
       }).catch(err => {
         if (!disposed) console.warn('[Milkdrop] Keeping base presets:', err);
       });
     });
     return () => { disposed = true; cancel(); };
-  }, [isLoaded, isActive]);
+  }, [isLoaded, isActive, loadPreset]);
   
   // Handle preset changes
   useEffect(() => {
-    if (!isLoaded || !settings.currentPreset) return;
-    
-    const preset = presetsRef.current[settings.currentPreset];
-    if (preset && visualizerRef.current) {
-      visualizerRef.current.loadPreset(preset, settings.blendDuration);
+    if (!isLoaded) return;
+    const previousRequest = requestedPresetRef.current;
+    requestedPresetRef.current = settings.currentPreset;
+    if (settings.currentPreset) {
+      loadPreset(settings.currentPreset, settings.blendDuration);
+    } else if (previousRequest && managesPresets) {
+      loadRandomPreset(settings.blendDuration, true);
     }
-  }, [settings.currentPreset, settings.blendDuration, isLoaded]);
+  }, [settings.currentPreset, settings.blendDuration, isLoaded, managesPresets, loadPreset, loadRandomPreset]);
   
   // Handle quality/resolution changes
   useEffect(() => {
@@ -353,14 +349,14 @@ export const MilkdropVisualizer: React.FC<MilkdropVisualizerProps> = ({
   
   // Auto-cycle presets
   useEffect(() => {
-    if (!isLoaded || !isActive || !settings.presetCycleEnabled) return;
+    if (!isLoaded || !isActive || !managesPresets || !settings.presetCycleEnabled) return;
     
     const cycleInterval = setInterval(() => {
-      loadRandomPreset();
+      loadRandomPreset(latestRef.current.settings.blendDuration, true);
     }, settings.presetCycleInterval * 1000);
     
     return () => clearInterval(cycleInterval);
-  }, [isLoaded, isActive, settings.presetCycleEnabled, settings.presetCycleInterval, loadRandomPreset]);
+  }, [isLoaded, isActive, managesPresets, settings.currentPreset, settings.presetCycleEnabled, settings.presetCycleInterval, loadRandomPreset]);
   
   // Error state
   if (error) {
