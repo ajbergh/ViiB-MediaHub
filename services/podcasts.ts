@@ -66,6 +66,11 @@ export interface PodcastPreview {
   };
   episodeCount: number;
 }
+export interface PodcastOPMLImportPreview {
+  feeds: Array<{ title: string; url: string; alreadyFollowed: boolean }>;
+  invalidCount: number;
+  duplicateCount: number;
+}
 export class PodcastAPIError extends Error {
   constructor(readonly status: number, readonly code: string, message: string) {
     super(message);
@@ -122,6 +127,11 @@ export const podcastsAPI = {
   setProgress(episodeId: string, progress: Pick<PodcastProgress, 'positionMs' | 'listenedMs' | 'isPlayed'> & { expectedRevision: number }, signal?: AbortSignal): Promise<PodcastProgress> {
     return request('/episodes/' + encodeURIComponent(episodeId) + '/progress', {
       method: 'PUT', body: JSON.stringify(progress), signal,
+    });
+  },
+  previewOPML(xml: string, signal?: AbortSignal): Promise<PodcastOPMLImportPreview> {
+    return request('/import/opml/preview', {
+      method: 'POST', body: xml, headers: { 'Content-Type': 'application/xml' }, signal,
     });
   },
   async exportOPML(signal?: AbortSignal): Promise<Blob> {

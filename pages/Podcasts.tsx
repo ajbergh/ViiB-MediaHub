@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { ArrowLeft, Download, Headphones, Loader2, Plus, RefreshCw, Rss, Trash2 } from 'lucide-react';
 import { api } from '../services/api';
-import { podcastsAPI, type PodcastFeed, type PodcastEpisode, type PodcastPreview, type PodcastRefreshStatus } from '../services/podcasts';
+import { podcastsAPI, PodcastAPIError, type PodcastFeed, type PodcastEpisode, type PodcastPreview, type PodcastRefreshStatus, type PodcastOPMLImportPreview } from '../services/podcasts';
 
 const inputClass = 'w-full rounded-lg border border-surface-3 bg-surface-1 px-4 py-3 text-text-main outline-none focus-visible:ring-2 focus-visible:ring-brand';
 
@@ -31,6 +31,12 @@ export const Podcasts: React.FC = () => {
   const [feeds, setFeeds] = useState<PodcastFeed[]>([]);
   const [followingQuery, setFollowingQuery] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [opml, setOPML] = useState<PodcastOPMLImportPreview | null>(null);
+  const [importMode, setImportMode] = useState<'idle' | 'preview' | 'import'>('idle');
+  const [importDone, setImportDone] = useState(0);
+  const [importSummary, setImportSummary] = useState('');
+  const [importFailures, setImportFailures] = useState<string[]>([]);
+  const importController = useRef<AbortController | null>(null);
   const [url, setURL] = useState('');
   const [preview, setPreview] = useState<PodcastPreview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -39,6 +45,7 @@ export const Podcasts: React.FC = () => {
   const [notice, setNotice] = useState('');
   const [revision, setRevision] = useState(0);
   const navigate = useNavigate();
+  useEffect(() => () => { importController.current?.abort(); }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -83,6 +90,69 @@ export const Podcasts: React.FC = () => {
     }
   }, [preview, navigate, url]);
 
+
+  const previewOPMLFile = async (file?: File) => {
+    if (!file || importMode !== 'idle') return;
+    setOPML(null);
+    setImportSummary('');
+    setImportFailures([]);
+    setError('');
+    if (file.size > 512 * 1024) {
+      setError('OPML file is larger than the supported 512 KB limit.');
+      return;
+    }
+    setImportMode('preview');
+    try {
+      // Raw XML is uploaded only for validation and never persisted in UI state.
+      setOPML(await podcastsAPI.previewOPML(await file.text()));
+      setImportDone(0);
+    } catch (err) {
+      setError(readableError(err));
+    } finally {
+      setImportMode('idle');
+    }
+  };
+
+  const importOPMLFeeds = async () => {
+    if (!opml || importMode !== 'idle') return;
+    const candidates = opml.feeds.filter(feed => !feed.alreadyFollowed);
+    const controller = new AbortController();
+    importController.current = controller;
+    setImportMode('import');
+    setImportDone(0);
+    setImportFailures([]);
+    setImportSummary('');
+    setError('');
+    let success = 0;
+    let failures = 0;
+    let processed = 0;
+    const failedNames: string[] = [];
+    try {
+      for (const candidate of candidates) {
+        if (controller.signal.aborted) break;
+        try {
+          await podcastsAPI.subscribe(candidate.url, controller.signal);
+          success++;
+          setOPML(current => current ? {
+            ...current, feeds: current.feeds.map(feed => feed.url === candidate.url
+              ? { ...feed, alreadyFollowed: true } : feed),
+          } : null);
+        } catch (err) {
+          if (controller.signal.aborted) break;
+          failures++;
+          failedNames.push(`${candidate.title}: ${err instanceof PodcastAPIError ? err.code : 'request_failed'}`);
+        }
+        processed++;
+        setImportDone(processed);
+      }
+    } finally {
+      importController.current = null;
+      setImportFailures(failedNames);
+      setImportSummary(`Followed ${success} podcast${success === 1 ? '' : 's'}; ${failures} failed.${controller.signal.aborted ? ' Import canceled.' : ''}`);
+      if (success > 0) setRevision(current => current + 1);
+      setImportMode('idle');
+    }
+  };
 
   const exportFollowing = async () => {
     if (exporting) return;
@@ -135,6 +205,46 @@ export const Podcasts: React.FC = () => {
           <button type="button" disabled={working} onClick={() => void subscribe()} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 font-semibold text-surface-0 disabled:opacity-50">
             <Plus size={16}/> Follow podcast
           </button>
+        </div>}
+      </section>
+
+      <section aria-label="Import podcasts from OPML" className="rounded-xl border border-surface-3 bg-surface-2 p-5">
+        <h2 className="mb-2 text-lg font-semibold text-text-main">Import podcast subscriptions</h2>
+        <p className="mb-3 text-sm text-text-secondary">Choose an OPML 2.0 file from another podcast app. Preview happens without contacting publishers; following each feed begins only when you confirm.</p>
+        <label htmlFor="podcast-opml-file" className="mb-2 block text-sm font-semibold text-text-main">OPML file</label>
+        <input id="podcast-opml-file" type="file" accept=".opml,.xml,application/xml,text/xml"
+          disabled={importMode !== 'idle'} aria-label="Choose OPML file"
+          onChange={event => {
+            const file = event.target.files?.[0];
+            event.target.value = '';
+            void previewOPMLFile(file);
+          }} className="block max-w-full text-sm text-text-secondary file:mr-3 file:rounded-md file:border file:border-surface-3 file:bg-surface-1 file:px-3 file:py-2 file:text-text-main" />
+        {importMode === 'preview' && <p role="status" className="mt-3 text-sm text-text-secondary">Checking OPML file…</p>}
+        {opml && <div className="mt-4 space-y-3 rounded-lg border border-surface-3 bg-surface-1 p-4">
+          <p className="text-sm font-semibold text-text-main">{opml.feeds.length} supported feeds, {opml.feeds.filter(feed => feed.alreadyFollowed).length} already followed</p>
+          {(opml.invalidCount > 0 || opml.duplicateCount > 0) &&
+            <p className="text-xs text-text-secondary">{opml.invalidCount} unsupported or private feeds skipped; {opml.duplicateCount} duplicates skipped.</p>}
+          <ul className="space-y-1 text-xs text-text-secondary">
+            {opml.feeds.slice(0, 8).map(feed => <li key={feed.url}>{feed.title}{feed.alreadyFollowed ? ' · Following' : ''}</li>)}
+          </ul>
+          {opml.feeds.length > 8 && <p className="text-xs text-text-subtle">And {opml.feeds.length - 8} more feeds…</p>}
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="button" disabled={importMode !== 'idle' || opml.feeds.every(feed => feed.alreadyFollowed)}
+              onClick={() => void importOPMLFeeds()}
+              className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-surface-0 disabled:opacity-50">
+              Import {opml.feeds.filter(feed => !feed.alreadyFollowed).length} feeds
+            </button>
+            {importMode === 'import' && <button type="button" onClick={() => importController.current?.abort()}
+              className="rounded-md border border-surface-3 px-3 py-2 text-sm text-text-main">Cancel import</button>}
+            {importMode === 'import' && <span role="status" className="text-xs text-text-secondary">
+              Processed {importDone} feeds…
+            </span>}
+          </div>
+        </div>}
+        {importSummary && <p role="status" className="mt-3 text-sm text-text-secondary">{importSummary}</p>}
+        {importFailures.length > 0 && <div className="mt-3 text-xs text-text-secondary">
+          <p className="font-semibold">Feeds that could not be followed</p>
+          <ul className="mt-1 list-inside list-disc">{importFailures.map((message, index) => <li key={index}>{message}</li>)}</ul>
         </div>}
       </section>
 

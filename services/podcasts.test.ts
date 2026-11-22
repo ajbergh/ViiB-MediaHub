@@ -59,6 +59,20 @@ describe('podcastsAPI', () => {
     expect(mock.mock.calls[0][1].method).toBe('POST');
   });
 
+  it('previews OPML via backend XML parser before requesting any feeds', async () => {
+    const preview = { feeds: [{ title: 'Public', url: 'https://example.org/feed.xml', alreadyFollowed: false }], invalidCount: 0, duplicateCount: 0 };
+    const fetchMock = vi.fn(async (_url: string, _options?: RequestInit) => ({
+      ok: true, status: 200, json: async () => preview,
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const xml = '<opml version="2.0"><body/></opml>';
+    expect(await podcastsAPI.previewOPML(xml)).toEqual(preview);
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v2/podcasts/import/opml/preview');
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({
+      method: 'POST', body: xml, headers: { Accept: 'application/json', 'Content-Type': 'application/xml' },
+    });
+  });
+
   it('exports OPML from the same-origin backend without JSON parsing', async () => {
     const blob = new Blob(['<opml version="2.0"></opml>'], { type: 'application/xml' });
     const fetchMock = vi.fn(async () => ({ ok: true, status: 200, blob: async () => blob }));
