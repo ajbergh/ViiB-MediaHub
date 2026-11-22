@@ -917,7 +917,7 @@ export const PodcastShow: React.FC = () => {
               </>}
               {episode.hasAudio && (() => {
                 const status = downloads[episode.id];
-                const active = status?.status === 'queued' || status?.status === 'downloading';
+                const active = status?.status === 'queued' || status?.status === 'downloading' || status?.status === 'paused';
                 const completed = status?.status === 'completed';
                 const label = active ? 'Cancel download' :
                   status?.status === 'failed' || status?.status === 'canceled' ? 'Retry download' : 'Download episode';
@@ -954,6 +954,8 @@ export const PodcastShow: React.FC = () => {
                       ? `Downloading${percent === null ? '' : ' ' + percent + '%'}`
                       : status.status === 'failed' ? `Download failed: ${status.errorCode || 'unavailable'}`
                       : status.status === 'canceled' ? 'Download canceled'
+                      : status.status === 'paused' && status.retryAfter
+                        ? `Retry scheduled for ${new Date(status.retryAfter).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
                       : 'Download queued'}
                   </span>}
                 </div>;

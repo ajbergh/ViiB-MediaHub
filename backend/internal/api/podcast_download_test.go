@@ -746,3 +746,65 @@ func TestPodcastResume416RetryOccursAtMostOnce(t *testing.T){
     t.Fatalf("failed resume published audio: %v",err)
  }
 }
+
+func TestPodcastTransientNetworkResumesVerifiedPartialWithoutRestart(t *testing.T){
+    d,id:=seedPodcastDownload(t);defer d.Close()
+    ctx:=context.Background()
+    a:=&API{db:d,dataDir:t.TempDir(),podcastDownloadOwner:"transient-old"}
+    fetchCalls:=0
+    a.podcastDownloadFetch=func(_ context.Context,_ string,header string,_ string)(podcast.MediaSegment,error){
+        fetchCalls++
+        switch fetchCalls{
+        case 1:
+            if header!="bytes=0-2097151"{t.Fatalf("initial range %q",header)}
+            return podcast.MediaSegment{Start:0,End:3,Total:8,MIME:"audio/mpeg",
+                ETag:"\"stable-v1\"",Data:[]byte("ID3a")},nil
+        case 2:
+            if header!="bytes=4-2097155"{t.Fatalf("interrupted range %q",header)}
+            return podcast.MediaSegment{},podcast.ErrMediaUnavailable
+        case 3:
+            if header!="bytes=4-2097155"{t.Fatalf("retry did not reuse prefix: %q",header)}
+            return podcast.MediaSegment{Start:4,End:7,Total:8,MIME:"audio/mpeg",
+                ETag:"\"stable-v1\"",Data:[]byte("bcde")},nil
+        default:
+            t.Fatalf("unbounded range requests: %d",fetchCalls)
+            return podcast.MediaSegment{},errors.New("unexpected")
+        }
+    }
+    route:=a.PodcastRoutes()
+    enqueue:=httptest.NewRecorder()
+    route.ServeHTTP(enqueue,httptest.NewRequest(http.MethodPost,"/episodes/"+id+"/download",nil))
+    if enqueue.Code!=http.StatusAccepted{t.Fatalf("queue: %d",enqueue.Code)}
+    a.processPodcastDownload(ctx)
+    paused,err:=d.GetPodcastDownload(ctx,id)
+    if err!=nil||paused.Status!="paused"||paused.BytesReceived!=4||
+       paused.ErrorCode!="download_unavailable"||paused.RetryAfter<=time.Now().UnixMilli(){
+        t.Fatalf("publisher outage lost checkpoint: %+v %v",paused,err)
+    }
+    // The old fsynced staged file is still present; a new lease must copy
+    // and verify it, not append to a possibly still-open old worker's file.
+    protected,err:=d.ActivePodcastStagedFilenames(ctx)
+    if err!=nil||len(protected)!=1{t.Fatalf("staged checkpoint not protected: %v %v",protected,err)}
+    dir,err:=a.podcastStorageDir();if err!=nil{t.Fatal(err)}
+    for filename:=range protected {
+        contents,err:=os.ReadFile(filepath.Join(dir,filename))
+        if err!=nil||string(contents)!="ID3a"{t.Fatalf("staged prefix lost: %q %v",contents,err)}
+    }
+    if got,err:=d.ClaimPodcastDownload(ctx,"too-soon",time.Now());err!=nil||got!=""{
+        t.Fatalf("retried before deadline: %q %v",got,err)
+    }
+    newOwner:="transient-new"
+    if got,err:=d.ClaimPodcastDownload(ctx,newOwner,time.UnixMilli(paused.RetryAfter));err!=nil||got!=id{
+        t.Fatalf("due retry not reclaimed: %q %v",got,err)
+    }
+    if err:=a.transferPodcastDownload(ctx,id,newOwner);err!=nil{t.Fatal(err)}
+    if fetchCalls!=3{t.Fatalf("redownloaded saved prefix: %d requests",fetchCalls)}
+    done,err:=d.GetPodcastDownload(ctx,id)
+    if err!=nil||done.Status!="completed"||done.VerifiedSize!=8{
+        t.Fatalf("transient resume did not publish: %+v %v",done,err)
+    }
+    file,err:=d.PodcastCompletedDownload(ctx,id)
+    if err!=nil{t.Fatal(err)}
+    final,err:=os.ReadFile(filepath.Join(dir,file.Filename))
+    if err!=nil||string(final)!="ID3abcde"{t.Fatalf("wrong audio: %q %v",final,err)}
+}

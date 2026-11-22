@@ -187,3 +187,95 @@ func TestPodcastDownloadDurableStagedCheckpointAndLeaseRecovery(t *testing.T){
  protected,err=d.ActivePodcastStagedFilenames(ctx)
  if err!=nil||protected[cp.TempFilename]{t.Fatalf("canceled staged file still protected: %v %v",protected,err)}
 }
+
+func TestPodcastTransientRetryBackoffRetainsCheckpointAndQuota(t *testing.T){
+    ctx:=context.Background()
+    d,err:=New(filepath.Join(t.TempDir(),"transient-retry.db"))
+    if err!=nil{t.Fatal(err)}
+    defer d.Close()
+    feedID,err:=d.SavePodcastFeedSnapshot(ctx,podcast.Feed{URL:"https://example.org/retry",
+        Title:"Retry show",Episodes:[]podcast.Episode{{GUID:"one",Title:"Interrupted",
+        EnclosureURL:"https://cdn.example.org/audio.mp3",EnclosureType:"audio/mpeg"}}},true)
+    if err!=nil{t.Fatal(err)}
+    eps,err:=d.ListPodcastEpisodes(ctx,feedID,10)
+    if err!=nil||len(eps)!=1{t.Fatalf("episodes %+v %v",eps,err)}
+    id:=eps[0].ID
+    if _,err:=d.EnqueuePodcastDownload(ctx,id);err!=nil{t.Fatal(err)}
+    owner:="retry-worker-1"
+    if got,err:=d.ClaimPodcastDownload(ctx,owner,time.Now());err!=nil||got!=id{
+        t.Fatalf("initial claim %q %v",got,err)
+    }
+    cp:=PodcastResumeCheckpoint{TempFilename:".part-123456789",Bytes:4,Total:8,ETag:"\"v1\"",
+        MIME:"audio/mpeg",SHA256:strings.Repeat("a",64),SourceSHA256:strings.Repeat("b",64)}
+    if err:=d.SavePodcastDownloadCheckpoint(ctx,id,owner,cp);err!=nil{t.Fatal(err)}
+    now:=time.Now()
+    delays:=[]time.Duration{15*time.Second,60*time.Second,240*time.Second}
+    for index,delay:=range delays{
+        paused,err:=d.PausePodcastDownloadForRetry(ctx,id,owner,"download_unavailable",now)
+        if err!=nil||!paused{t.Fatalf("pause %d: %v %v",index,paused,err)}
+        row,err:=d.GetPodcastDownload(ctx,id)
+        if err!=nil||row.Status!="paused"||row.BytesReceived!=4||row.ExpectedBytes!=8||
+           row.RetryAfter!=now.UnixMilli()+delay.Milliseconds(){
+            t.Fatalf("pause details %d: %+v %v",index,row,err)
+        }
+        used,err:=d.PodcastOfflineStorage(ctx)
+        if err!=nil||used!=8{t.Fatalf("pause released quota: %d %v",used,err)}
+        names,err:=d.ActivePodcastStagedFilenames(ctx)
+        if err!=nil||!names[cp.TempFilename]{t.Fatalf("checkpoint no longer GC protected: %v %v",names,err)}
+        if claimed,err:=d.ClaimPodcastDownload(ctx,"premature",now.Add(delay-time.Millisecond));err!=nil||claimed!=""{
+            t.Fatalf("early retry %q %v",claimed,err)
+        }
+        nextOwner:=fmt.Sprintf("retry-worker-%d",index+2)
+        claimed,err:=d.ClaimPodcastDownload(ctx,nextOwner,now.Add(delay))
+        if err!=nil||claimed!=id{t.Fatalf("due claim %d %q %v",index,claimed,err)}
+        checkpoint,err:=d.ReadPodcastDownloadResumeCheckpoint(ctx,id,nextOwner)
+        if err!=nil||checkpoint!=cp{t.Fatalf("checkpoint lost on retry: %+v vs %+v %v",checkpoint,cp,err)}
+        if err:=d.UpdatePodcastDownloadBytes(ctx,id,owner,4,8);!errors.Is(err,sql.ErrNoRows){
+            t.Fatalf("revoked worker updated retry %d: %v",index,err)
+        }
+        owner=nextOwner
+        now=now.Add(delay)
+    }
+    paused,err:=d.PausePodcastDownloadForRetry(ctx,id,owner,"download_unavailable",now)
+    if err!=nil||paused{t.Fatalf("unbounded retry accepted: %v %v",paused,err)}
+    if err:=d.FailPodcastDownload(ctx,id,owner,"download_unavailable");err!=nil{t.Fatal(err)}
+    row,err:=d.GetPodcastDownload(ctx,id)
+    if err!=nil||row.Status!="failed"{t.Fatalf("exhaustion not failed: %+v %v",row,err)}
+    used,err:=d.PodcastOfflineStorage(ctx)
+    if err!=nil||used!=0{t.Fatalf("quota not released: %d %v",used,err)}
+    if _,err:=d.EnqueuePodcastDownload(ctx,id);err!=nil{t.Fatal(err)}
+    retried,err:=d.ClaimPodcastDownload(ctx,"explicit-owner",time.Now())
+    if err!=nil||retried!=id{t.Fatalf("manual retry not reset: %q %v",retried,err)}
+    resumed,err:=d.ReadPodcastDownloadResumeCheckpoint(ctx,id,"explicit-owner")
+    if err!=nil||resumed.TempFilename!=""{t.Fatalf("manual retry reused stale prefix: %+v %v",resumed,err)}
+}
+
+func TestPodcastPausedRetryCancelAndUnfollowRevokeLease(t *testing.T){
+    ctx:=context.Background()
+    d,err:=New(filepath.Join(t.TempDir(),"paused-revocation.db"))
+    if err!=nil{t.Fatal(err)}
+    defer d.Close()
+    feedID,err:=d.SavePodcastFeedSnapshot(ctx,podcast.Feed{URL:"https://example.org/retry",
+        Title:"Retry show",Episodes:[]podcast.Episode{{GUID:"x",Title:"E",
+        EnclosureURL:"https://cdn.example.org/a.mp3",EnclosureType:"audio/mpeg"}}},true)
+    if err!=nil{t.Fatal(err)}
+    eps,err:=d.ListPodcastEpisodes(ctx,feedID,10)
+    if err!=nil||len(eps)!=1{t.Fatal(err)}
+    id:=eps[0].ID
+    start:=func(){
+        t.Helper()
+        if _,err:=d.EnqueuePodcastDownload(ctx,id);err!=nil{t.Fatal(err)}
+        if got,err:=d.ClaimPodcastDownload(ctx,"active",time.Now());err!=nil||got!=id{t.Fatalf("claim %q %v",got,err)}
+        if err:=d.UpdatePodcastDownloadBytes(ctx,id,"active",3,8);err!=nil{t.Fatal(err)}
+        if ok,err:=d.PausePodcastDownloadForRetry(ctx,id,"active","download_unavailable",time.Now());err!=nil||!ok{t.Fatalf("pause %v %v",ok,err)}
+    }
+    start()
+    canceled,err:=d.CancelPodcastDownload(ctx,id)
+    if err!=nil||canceled.Status!="canceled"{t.Fatalf("cancel paused: %+v %v",canceled,err)}
+    if got,err:=d.ClaimPodcastDownload(ctx,"late",time.Now().Add(24*time.Hour));err!=nil||got!=""{t.Fatalf("canceled claimed: %q %v",got,err)}
+    start()
+    if err:=d.UnsubscribePodcast(ctx,feedID);err!=nil{t.Fatal(err)}
+    if got,err:=d.ClaimPodcastDownload(ctx,"late",time.Now().Add(24*time.Hour));err!=nil||got!=""{t.Fatalf("unfollowed claimed: %q %v",got,err)}
+    used,err:=d.PodcastOfflineStorage(ctx)
+    if err!=nil||used!=0{t.Fatalf("unfollow retained reservation: %d %v",used,err)}
+}
