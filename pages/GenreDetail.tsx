@@ -8,7 +8,7 @@ import { ChevronLeft, Play, Shuffle, Clock, Music } from 'lucide-react';
 import { formatTime } from '../utils';
 import { ContextMenuType } from '../types';
 
-const genreGridClass = 'grid grid-cols-[44px_minmax(0,3fr)_minmax(0,2fr)_minmax(0,2fr)_80px] gap-4 items-center';
+const genreGridClass = 'grid grid-cols-[36px_minmax(0,1fr)_52px] md:grid-cols-[44px_minmax(0,3fr)_minmax(0,2fr)_minmax(0,2fr)_80px] gap-2 md:gap-4 items-center';
 
 export const GenreDetail: React.FC = () => {
   const { genreId } = useParams<{ genreId: string }>();
@@ -52,17 +52,18 @@ export const GenreDetail: React.FC = () => {
   return (
     <div className="h-full flex flex-col bg-surface-1 overflow-hidden">
       {/* Header */}
-      <div className="bg-gradient-to-b from-surface-3/80 to-surface-1 border-b border-surface-border p-8">
-        <button 
+      <div className="bg-gradient-to-b from-surface-3/80 to-surface-1 border-b border-surface-border px-4 py-6 sm:p-8">
+        <button
+          type="button"
           onClick={() => navigate(-1)}
-          className="flex items-center text-text-secondary hover:text-text-main mb-6 transition-colors text-sm font-medium"
+          className="min-h-[32px] px-2 -ml-2 inline-flex items-center gap-1 text-text-secondary hover:text-text-main mb-4 sm:mb-6 transition-colors text-sm font-medium rounded-md"
         >
-          <ChevronLeft size={18} className="mr-1" />
+          <ChevronLeft size={18} />
           Back
         </button>
 
-        <div className="flex items-end gap-6">
-          <div className="w-44 h-44 bg-surface-3 rounded-lg shadow-2xl flex items-center justify-center overflow-hidden">
+        <div className="flex flex-col sm:flex-row items-start sm:items-end gap-4 sm:gap-6">
+          <div className="w-36 h-36 sm:w-44 sm:h-44 shrink-0 bg-surface-3 rounded-lg shadow-2xl flex items-center justify-center overflow-hidden">
              {genreSongs[0]?.coverUrl ? (
                 <img src={genreSongs[0].coverUrl} alt={genreName} className="w-full h-full object-cover" />
              ) : (
@@ -70,7 +71,7 @@ export const GenreDetail: React.FC = () => {
              )}
           </div>
           
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-1">Genre</h4>
             <h1 className="text-display font-extrabold tracking-tight text-text-main mb-3">{genreName}</h1>
             <div className="flex items-center text-text-secondary text-sm">
@@ -80,8 +81,9 @@ export const GenreDetail: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex items-center gap-3 shrink-0">
             <button
+              type="button"
               onClick={handlePlay}
               className="flex items-center gap-2 px-7 py-3 bg-brand text-surface-0 rounded-full font-bold hover:bg-brand-hover transition-all shadow-lg hover:scale-105 active:scale-95"
             >
@@ -89,9 +91,11 @@ export const GenreDetail: React.FC = () => {
               Play
             </button>
             <button
+              type="button"
               onClick={handleShuffle}
               className="p-3 bg-surface-3 text-text-main rounded-full hover:bg-surface-highlight transition-all shadow-lg hover:scale-105 active:scale-95"
               title="Shuffle"
+              aria-label="Shuffle"
             >
               <Shuffle size={20} />
             </button>
@@ -100,13 +104,13 @@ export const GenreDetail: React.FC = () => {
       </div>
 
       {/* Virtualized Song List */}
-      <div className="flex-1 flex flex-col overflow-hidden px-6">
+      <div className="flex-1 flex flex-col overflow-hidden px-4 sm:px-6">
         <div className={`${genreGridClass} bg-surface-1 px-4 py-3 text-text-subtle text-xs uppercase tracking-wider font-semibold border-b border-surface-border`}>
           <div className="text-center">#</div>
           <div>Title</div>
-          <div>Artist</div>
-          <div>Album</div>
-          <div className="text-right"><Clock size={14} className="inline" /></div>
+          <div className="hidden md:block">Artist</div>
+          <div className="hidden md:block">Album</div>
+          <div className="flex items-center justify-end"><Clock size={14} aria-label="Duration" /></div>
         </div>
         <div className="flex-1 overflow-hidden">
           <Virtuoso
@@ -142,11 +146,14 @@ export const GenreDetail: React.FC = () => {
                     <div className={`font-semibold text-sm truncate ${isCurrentSong ? 'text-brand' : 'text-text-main'}`}>
                       {song.title}
                     </div>
+                    <div className="md:hidden text-xs text-text-secondary truncate mt-0.5">
+                      {song.artist}
+                    </div>
                   </div>
-                  <div className="text-sm text-text-secondary hover:text-text-main transition-colors truncate">
+                  <div className="hidden md:block text-sm text-text-secondary hover:text-text-main transition-colors truncate">
                     {song.artist}
                   </div>
-                  <div className="text-sm text-text-secondary hover:text-text-main transition-colors truncate">
+                  <div className="hidden md:block text-sm text-text-secondary hover:text-text-main transition-colors truncate">
                     {song.album}
                   </div>
                   <div className="text-text-secondary text-right font-mono text-xs tabular-nums">

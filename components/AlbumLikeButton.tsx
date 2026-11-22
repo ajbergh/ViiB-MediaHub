@@ -43,8 +43,9 @@ export const AlbumLikeButton: React.FC<AlbumLikeButtonProps> = ({
 
     return (
         <button
+            type="button"
             onClick={handleClick}
-            className={`transition-all hover:scale-110 ${
+            className={`min-w-[32px] min-h-[32px] inline-flex items-center justify-center shrink-0 transition-all hover:scale-110 ${
                 isLiked || showFilled
                     ? 'text-error hover:text-error'
                     : 'text-text-subtle hover:text-error'

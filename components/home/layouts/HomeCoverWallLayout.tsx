@@ -4,6 +4,7 @@ import React from 'react';
 import { useNavigate } from 'react-router';
 import { Music2 } from 'lucide-react';
 import { SmartMixCard } from '../../SmartMixCard';
+import { Skeleton } from '../../Skeleton';
 import { coverBackground } from '../../../utils';
 import { HomeAlbumCard } from '../HomeAlbumCard';
 import { HomeArtistCard } from '../HomeArtistCard';
@@ -16,6 +17,7 @@ import { HomeContent } from '../useHomeContent';
 
 interface HomeCoverWallLayoutProps {
   content: HomeContent;
+  isComputingSmartMixes?: boolean;
 }
 
 const CoverMosaic: React.FC<{ content: HomeContent }> = ({ content }) => {
@@ -27,18 +29,19 @@ const CoverMosaic: React.FC<{ content: HomeContent }> = ({ content }) => {
 
   return (
     <div className="relative min-h-[310px] overflow-hidden rounded-xl bg-surface-2 ring-1 ring-surface-3">
-      <div className="absolute inset-0 grid grid-cols-4 gap-2 p-3 sm:grid-cols-5 lg:grid-cols-7">
+      <div className="absolute inset-0 grid grid-cols-4 gap-2 p-3 sm:grid-cols-5 lg:grid-cols-7" aria-hidden="true">
         {albums.map((album, index) => (
           <button
             key={`${album.name}-${album.artist}-${index}`}
             type="button"
+            tabIndex={-1}
+            aria-hidden="true"
             onClick={() => content.navigateToAlbum(album)}
             onContextMenu={(e) => content.openAlbumMenu(e, album)}
             className={`group overflow-hidden rounded-lg bg-surface-3 shadow-lg ring-1 ring-black/20 transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70 ${
               index % 5 === 0 ? 'row-span-2' : ''
             } ${index % 7 === 0 ? 'col-span-2' : ''}`}
             style={{ background: coverBackground(album.coverUrl, album.name) }}
-            aria-label={`Open ${album.name}`}
           >
             {!album.coverUrl ? (
               <span className="flex h-full min-h-24 w-full items-center justify-center text-3xl font-bold text-white/30">
@@ -68,7 +71,10 @@ const CoverMosaic: React.FC<{ content: HomeContent }> = ({ content }) => {
   );
 };
 
-export const HomeCoverWallLayout: React.FC<HomeCoverWallLayoutProps> = ({ content }) => {
+export const HomeCoverWallLayout: React.FC<HomeCoverWallLayoutProps> = ({
+  content,
+  isComputingSmartMixes = Boolean(content.showSmartMixes && content.songs.length > 0 && content.smartMixes.length === 0),
+}) => {
   const navigate = useNavigate();
 
   return (
@@ -124,17 +130,26 @@ export const HomeCoverWallLayout: React.FC<HomeCoverWallLayoutProps> = ({ conten
         ))}
       </HomeShelf>
 
-      {content.showSmartMixes && content.smartMixes.length > 0 ? (
+      {content.showSmartMixes && (content.smartMixes.length > 0 || isComputingSmartMixes) ? (
         <HomeShelf title="Smart Mixes" subtitle="Generated mixes below the artwork view">
-          {content.smartMixes.map((mix) => (
-            <SmartMixCard
-              key={mix.id}
-              mix={mix}
-              onPlay={() => content.playMix(mix)}
-              onClick={() => content.navigateToSmartMix(mix)}
-              onContextMenu={(e) => content.openSmartMixMenu(e, mix)}
-            />
-          ))}
+          {content.smartMixes.length > 0
+            ? content.smartMixes.map((mix) => (
+                <SmartMixCard
+                  key={mix.id}
+                  mix={mix}
+                  onPlay={() => content.playMix(mix)}
+                  onClick={() => content.navigateToSmartMix(mix)}
+                  onContextMenu={(e) => content.openSmartMixMenu(e, mix)}
+                />
+              ))
+            : Array.from({ length: 5 }).map((_, idx) => (
+                <div key={idx} className="w-44 flex-shrink-0 rounded-lg p-3" aria-hidden="true">
+                  <Skeleton className="mb-3 aspect-square w-full rounded-md" />
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="mt-1.5 h-3 w-full" />
+                  <Skeleton className="mt-1 h-3 w-2/3" />
+                </div>
+              ))}
         </HomeShelf>
       ) : null}
 

@@ -225,7 +225,7 @@
   background: var(--dj-bg);
 }
 .dj-workstation[data-dj-waveform-orientation="vertical"] .dj-main-grid {
-  grid-template-columns: minmax(0, 1fr) 118px var(--dj-mixer-w) 118px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 144px var(--dj-mixer-w) 144px minmax(0, 1fr);
 }
 
 /* ── Panels ─────────────────────────────────────────── */
@@ -448,36 +448,60 @@
   align-items: stretch;
   gap: 4px;
   padding-right: 0;
-  padding-bottom: 6px;
+  padding-bottom: 5px;
   border-right: 0;
   border-bottom: 1px solid var(--dj-border-subtle);
 }
+.dj-waveform-lane[data-dj-waveform-orientation="vertical"] .dj-waveform-lane-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
 .dj-waveform-lane[data-dj-waveform-orientation="vertical"] .dj-deck-badge-sm {
-  width: 100%;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   font-size: 11px;
 }
+.dj-waveform-lane[data-dj-waveform-orientation="vertical"] .dj-waveform-zoom-group {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 22px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .dj-waveform-lane[data-dj-waveform-orientation="vertical"] .dj-waveform-toolbar {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 3px;
 }
 .dj-waveform-lane[data-dj-waveform-orientation="vertical"] .dj-waveform-toolbar .dj-segmented {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   width: 100%;
-}
-.dj-waveform-lane[data-dj-waveform-orientation="vertical"] .dj-waveform-toolbar .dj-waveform-band-selector {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.dj-waveform-lane[data-dj-waveform-orientation="vertical"] .dj-waveform-toolbar .dj-btn {
-  padding: 0 3px;
-  font-size: 10px;
   min-width: 0;
 }
-.dj-waveform-lane[data-dj-waveform-orientation="vertical"] .dj-waveform-toolbar .dj-select {
+.dj-waveform-lane[data-dj-waveform-orientation="vertical"] .dj-waveform-toolbar .dj-waveform-band-selector {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.dj-waveform-lane[data-dj-waveform-orientation="vertical"] .dj-waveform-lane-header .dj-btn {
+  min-height: 24px;
+  padding: 0 2px;
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+  min-width: 0;
+}
+.dj-waveform-lane[data-dj-waveform-orientation="vertical"] .dj-waveform-threeband-btn {
+  padding: 0 4px;
+}
+.dj-waveform-lane[data-dj-waveform-orientation="vertical"] .dj-waveform-lane-header .dj-select-wrap {
+  min-width: 0;
+  display: block;
+}
+.dj-waveform-lane[data-dj-waveform-orientation="vertical"] .dj-waveform-lane-header .dj-select {
   width: 100%;
-  padding: 0 14px 0 4px;
+  min-height: 24px;
+  padding: 0 12px 0 3px;
   font-size: 10px;
 }
 .dj-waveform-main-wrap { min-width: 0; min-height: 0; position: relative; border-radius: 3px; overflow: hidden; background: var(--dj-bg); border: 1px solid rgba(255, 255, 255, 0.05); }
@@ -908,7 +932,17 @@
 .dj-deck-inspector-tabs { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; padding: 8px; border-bottom: 1px solid var(--dj-border-subtle); }
 .dj-deck-inspector-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 8px 4px; color: var(--dj-text-secondary); font-size: 12px; }
 .dj-deck-inspector-body [role="tabpanel"][hidden] { display: none; }
-.dj-inspector-empty { padding: 12px; color: var(--dj-text-muted); }
+.dj-inspector-empty {
+  min-height: 128px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 20px 16px;
+  text-align: center;
+  color: var(--dj-text-secondary);
+}
 
 /* ── Mixer (Plan §9, §10A.13) ───────────────────────── */
 .dj-mixer {
@@ -977,14 +1011,18 @@
   position: absolute;
   inset: auto 0 var(--dj-library-h, 44px);
   z-index: 40;
-  height: clamp(280px, 50%, 640px);
-  max-height: calc(100% - 80px);
+  height: clamp(240px, 36%, 400px);
+  max-height: 38%;
   display: flex;
   flex-direction: column;
   background: var(--dj-bg-elevated);
   border-top: 1px solid var(--dj-border-light);
   box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.55);
   animation: dj-library-enter 150ms ease-out;
+}
+.dj-library-drawer[data-size="expanded"] {
+  height: clamp(320px, 56%, 640px);
+  max-height: calc(100% - 80px);
 }
 .dj-library-drawer[hidden] { display: none; }
 @keyframes dj-library-enter {

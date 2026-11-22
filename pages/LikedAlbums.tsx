@@ -17,6 +17,8 @@ import { VirtuosoGrid } from 'react-virtuoso';
 import { useNavigate } from 'react-router';
 import { AlbumLikeButton } from '../components/AlbumLikeButton';
 import { Page } from '../components/ui/Page';
+import { Button } from '../components/ui/Button';
+import { Menu, MenuItem } from '../components/ui/Menu';
 import { EmptyState } from '../components/EmptyState';
 import { EMPTY_STATE } from '../lib/emptyStateCopy';
 import { CardSizeSlider } from '../components/ui/CardSizeSlider';
@@ -32,14 +34,13 @@ const sortLabels: Record<LikedAlbumSortOption, string> = {
     'artist-desc': 'Artist (Z-A)',
 };
 
-const ListContainer = forwardRef<HTMLDivElement, any>(({ style, children, ...props }, ref) => (
+const ListContainer = forwardRef<HTMLDivElement, any>(({ style, children, className, ...props }, ref) => (
     <div
         ref={ref}
         {...props}
+        className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-[repeat(var(--card-cols,4),minmax(0,1fr))] ${className || ''}`}
         style={{
           ...style,
-          display: 'grid',
-          gridTemplateColumns: 'repeat(var(--card-cols, 4), minmax(0, 1fr))',
           gap: '0.5rem',
           paddingBottom: '8rem',
         }}
@@ -143,20 +144,20 @@ export const LikedAlbums: React.FC = () => {
                 </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 mb-6">
+            <div className="flex flex-wrap items-center justify-end gap-3 mb-6">
                 <CardSizeSlider value={cardCols} onChange={handleCardColsChange} />
                 <div className="relative">
-                    <button
-                        type="button"
+                    <Button
+                        variant="secondary"
                         onClick={() => setShowSortMenu(!showSortMenu)}
-                        className="flex items-center gap-2 px-4 py-2 bg-surface-3 hover:bg-surface-highlight rounded-full text-sm text-text-main transition-colors"
+                        className="rounded-full"
+                        leftIcon={<ArrowUpDown size={16} className="text-text-secondary" aria-hidden="true" />}
+                        rightIcon={<ChevronDown size={16} className={`text-text-secondary transition-transform ${showSortMenu ? 'rotate-180' : ''}`} aria-hidden="true" />}
                         aria-haspopup="menu"
                         aria-expanded={showSortMenu}
                     >
-                        <ArrowUpDown size={16} className="text-text-secondary" aria-hidden="true" />
-                        <span>{sortLabels[sortBy]}</span>
-                        <ChevronDown size={16} className={`text-text-secondary transition-transform ${showSortMenu ? 'rotate-180' : ''}`} aria-hidden="true" />
-                    </button>
+                        {sortLabels[sortBy]}
+                    </Button>
                     {showSortMenu && (
                         <>
                             <button
@@ -166,18 +167,20 @@ export const LikedAlbums: React.FC = () => {
                               className="fixed inset-0 z-40"
                               onClick={() => setShowSortMenu(false)}
                             />
-                            <div className="absolute right-0 top-full mt-2 bg-surface-2 border border-surface-border rounded-md shadow-xl z-50 py-1 min-w-[180px]">
+                            <Menu
+                                className="absolute right-0 top-full mt-2 z-50 min-w-[180px]"
+                                onRequestClose={() => setShowSortMenu(false)}
+                            >
                                 {(Object.keys(sortLabels) as LikedAlbumSortOption[]).map((option) => (
-                                    <button
-                                        type="button"
+                                    <MenuItem
                                         key={option}
                                         onClick={() => { setSortBy(option); setShowSortMenu(false); }}
-                                        className={`w-full text-left px-4 py-2 text-sm hover:bg-surface-hover transition-colors ${sortBy === option ? 'text-brand font-medium' : 'text-text-main'}`}
+                                        active={sortBy === option}
                                     >
                                         {sortLabels[option]}
-                                    </button>
+                                    </MenuItem>
                                 ))}
-                            </div>
+                            </Menu>
                         </>
                     )}
                 </div>
@@ -209,7 +212,7 @@ export const LikedAlbums: React.FC = () => {
                                 }
                             }}
                         >
-                            <div className="absolute top-5 right-5 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="absolute top-5 right-5 z-10 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity">
                                 <AlbumLikeButton albumKey={metadataKey} size={20} />
                             </div>
                             <div

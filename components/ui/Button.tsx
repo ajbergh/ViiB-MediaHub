@@ -6,7 +6,7 @@ import { ViibAccent, accentToBgClass } from './tokens';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost';
 
-export type ButtonSize = 'sm' | 'md' | 'lg';
+export type ButtonSize = 'sm' | 'md' | 'lg' | 'icon';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -27,8 +27,19 @@ export const Button: React.FC<ButtonProps> = ({
   type,
   ...rest
 }) => {
+  const hasPaddingOverride = /\bp(?:x|y)?-(?:\d+|\[)/.test(className ?? '');
   const sizeClass =
-    size === 'sm'
+    size === 'icon'
+      ? hasPaddingOverride
+        ? 'shrink-0'
+        : 'p-2 min-w-[32px] min-h-[32px] shrink-0'
+      : hasPaddingOverride
+      ? size === 'sm'
+        ? 'text-xs'
+        : size === 'lg'
+        ? 'text-sm'
+        : 'text-[13px]'
+      : size === 'sm'
       ? 'px-3 py-1.5 text-xs'
       : size === 'lg'
       ? 'px-6 py-2.5 text-sm'

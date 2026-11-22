@@ -56,7 +56,7 @@ export const PlaylistMenu: React.FC<{ playlist: Playlist; onClose: () => void }>
             <div className="border-t border-surface-border my-1"></div>
             
             <MenuItem icon={Pencil} label="Edit Playlist" onClick={() => handleAction(() => navigate(`/playlist/${encodeURIComponent(playlist.id)}`))} />
-            <MenuItem icon={Trash2} label="Delete Playlist" onClick={handleDeletePlaylist} />
+            <MenuItem icon={Trash2} label="Delete Playlist" destructive onClick={handleDeletePlaylist} />
         </>
     );
 };

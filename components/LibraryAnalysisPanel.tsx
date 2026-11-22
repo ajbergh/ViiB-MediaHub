@@ -21,9 +21,7 @@ import {
   normalizeAutomaticCuePointMode,
 } from '../services/jobsV2';
 import { api } from '../services/api';
-
-const actionClass = 'inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-black hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50';
-const secondaryClass = 'inline-flex items-center gap-2 rounded-lg bg-surface-2 px-4 py-2 text-sm font-semibold text-text-main hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-50';
+import { Button } from './ui/Button';
 
 /** Statuses in which a job still represents outstanding work. */
 const ACTIVE_STATUSES = new Set(['queued', 'running', 'paused', 'canceling']);
@@ -155,8 +153,8 @@ export const LibraryAnalysisPanel: React.FC = () => {
   return (
     <section className="rounded-xl border border-surface-highlight bg-surface-1 p-5">
       <div className="mb-4 flex items-center gap-3">
-        <Gauge className="text-brand" />
-        <h2 className="text-xl font-semibold">Track Analysis</h2>
+        <Gauge className="text-brand" aria-hidden="true" />
+        <h3 className="text-base font-semibold text-text-main">Track Analysis</h3>
       </div>
       <p className="mb-4 max-w-3xl text-sm text-text-secondary">
         Prepare tempo, key, phase-aligned beat grids, and energy features for local and available Plex tracks before you open the DJ panel.
@@ -169,17 +167,19 @@ export const LibraryAnalysisPanel: React.FC = () => {
         </div>
       )}
 
-      <div className="mb-4 flex flex-wrap gap-3">
+      <div className="mb-4 flex flex-wrap gap-2">
         {SELECTIONS.map(selection => (
-          <button
+          <Button
             key={`${selection.mode}-${selection.source}`}
-            className={selection.mode === 'missing' && selection.source === 'local' ? actionClass : secondaryClass}
+            variant={selection.mode === 'missing' && selection.source === 'local' ? 'primary' : 'secondary'}
+            size="sm"
             disabled={busy !== null || activeJob !== null}
             title={selection.hint}
             onClick={() => startAnalysis(selection.mode, selection.source)}
+            leftIcon={<RefreshCw size={15} aria-hidden="true" />}
           >
-            <RefreshCw size={16} />{selection.label}
-          </button>
+            {selection.label}
+          </Button>
         ))}
       </div>
 
@@ -196,11 +196,11 @@ export const LibraryAnalysisPanel: React.FC = () => {
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             {activeJob.status === 'paused' ? (
-              <button className={secondaryClass} disabled={busy !== null} onClick={resumeQueue}><Play size={15} />Resume</button>
+              <Button variant="secondary" size="sm" disabled={busy !== null} onClick={resumeQueue} leftIcon={<Play size={14} aria-hidden="true" />}>Resume</Button>
             ) : (
-              <button className={secondaryClass} disabled={busy !== null} onClick={pauseQueue}><Pause size={15} />Pause</button>
+              <Button variant="secondary" size="sm" disabled={busy !== null} onClick={pauseQueue} leftIcon={<Pause size={14} aria-hidden="true" />}>Pause</Button>
             )}
-            <button className={secondaryClass} disabled={busy !== null} onClick={cancelActive}><Square size={15} />Cancel</button>
+            <Button variant="secondary" size="sm" disabled={busy !== null} onClick={cancelActive} leftIcon={<Square size={14} aria-hidden="true" />}>Cancel</Button>
           </div>
         </div>
       ) : (

@@ -194,7 +194,8 @@ export const SpotifyArtistDetail: React.FC = () => {
                                 <img
                                     src={album.images[0].url}
                                     alt=""
-                                    className="aspect-square w-full object-cover rounded-lg mb-3"
+                                    loading="lazy"
+                                    className="aspect-square w-full object-cover rounded-lg mb-3 bg-surface-3"
                                 />
                             ) : (
                                 <div className="aspect-square bg-surface-3 rounded-lg mb-3 flex items-center justify-center">
@@ -220,11 +221,11 @@ export const SpotifyArtistDetail: React.FC = () => {
         );
     };
     return (
-        <div className="p-8 pb-32 text-text-main">
+        <div className="p-4 md:p-8 pb-32 text-text-main">
             <SpotifyAccountNotice />
             <Link
                 to="/spotify"
-                className="inline-flex items-center gap-2 text-text-secondary hover:text-text-main mb-6"
+                className="inline-flex items-center gap-2 min-h-[32px] text-text-secondary hover:text-text-main mb-6"
             >
                 <ArrowLeft size={18} />
                 Back to Spotify search
@@ -302,7 +303,7 @@ export const SpotifyArtistDetail: React.FC = () => {
                             }
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 text-text-secondary hover:underline"
+                            className="inline-flex items-center gap-2 min-h-[32px] text-text-secondary hover:underline"
                         >
                             Open in Spotify
                             <ExternalLink size={16} />
@@ -315,7 +316,7 @@ export const SpotifyArtistDetail: React.FC = () => {
                         {(!current || view.top.loading) && (
                             <p
                                 role="status"
-                                className="flex gap-2 text-text-secondary"
+                                className="flex items-center gap-2 text-text-secondary"
                             >
                                 <Loader2 size={18} className="animate-spin" />
                                 Loading top tracks…

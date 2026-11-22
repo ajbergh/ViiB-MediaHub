@@ -13,6 +13,7 @@
  */
 
 import React, { useEffect, useId, useRef } from 'react';
+import { Disc3, X } from 'lucide-react';
 import { useStore } from '../../../store';
 import type { DeckId } from '../../../slices/djMixerSlice';
 import { DJErrorBoundary } from './DJErrorBoundary';
@@ -80,6 +81,14 @@ export const DJDeckInspector = React.memo(function DJDeckInspector({ deck, open,
     document.getElementById(`${baseId}-tab-${next.id}`)?.focus();
   };
 
+  const emptyNotice = (hint: string) => (
+    <div className='dj-inspector-empty' role='status'>
+      <Disc3 size={24} className='opacity-60' aria-hidden='true' />
+      <p className='font-semibold text-[var(--dj-text-primary)]'>No track loaded on Deck {deck}</p>
+      <p className='text-xs text-[var(--dj-text-secondary)] max-w-xs'>{hint}</p>
+    </div>
+  );
+
   return (
     <section
       ref={rootRef}
@@ -87,6 +96,7 @@ export const DJDeckInspector = React.memo(function DJDeckInspector({ deck, open,
       data-dj-deck-inspector={deck}
       aria-label={`Deck ${deck} analysis and editing`}
       hidden={!open}
+      aria-hidden={!open}
       onKeyDown={handleKeyDown}
     >
       <div className='dj-deck-inspector-tabs' role='tablist' aria-label={`Deck ${deck} inspector sections`}>
@@ -96,41 +106,43 @@ export const DJDeckInspector = React.memo(function DJDeckInspector({ deck, open,
             onClick={() => onTabChange(id)} onKeyDown={event => moveTab(event, index)}>{label}</button>
         ))}
         <button type='button' className='dj-btn dj-btn-xs dj-btn-icon dj-btn-ghost' style={{ marginLeft: 'auto' }}
-          aria-label={`Close Deck ${deck} inspector`} onClick={() => { onClose(); triggerRef.current?.focus({ preventScroll: true }); }}>✕</button>
+          aria-label={`Close Deck ${deck} inspector`} onClick={() => { onClose(); triggerRef.current?.focus({ preventScroll: true }); }}>
+          <X size={14} aria-hidden='true' />
+        </button>
       </div>
       <div className='dj-deck-inspector-body'>
         <DJErrorBoundary componentName={`Deck ${deck} inspector`}>
-          <div role='tabpanel' id={`${baseId}-panel-analysis`} aria-labelledby={`${baseId}-tab-analysis`} hidden={tab !== 'analysis'}>
+          <div role='tabpanel' id={`${baseId}-panel-analysis`} aria-labelledby={`${baseId}-tab-analysis`} hidden={tab !== 'analysis'} aria-hidden={tab !== 'analysis'}>
             {/* Always mounted, as before the inspector existed; hidden without a track
                 because its empty-deck state reads as "not analysed". */}
-            <div hidden={!track}><DJEnergyInsights trackID={track?.id} deck={deck} /></div>
-            {!track && <p className='dj-inspector-empty'>Load a track to see energy insights and Mix Next recommendations.</p>}
+            <div hidden={!track} aria-hidden={!track}><DJEnergyInsights trackID={track?.id} deck={deck} /></div>
+            {!track && emptyNotice('Load a track from the Library drawer to view energy insights and Mix Next recommendations.')}
           </div>
-          <div role='tabpanel' id={`${baseId}-panel-audio`} aria-labelledby={`${baseId}-tab-audio`} hidden={tab !== 'audio'}>
+          <div role='tabpanel' id={`${baseId}-panel-audio`} aria-labelledby={`${baseId}-tab-audio`} hidden={tab !== 'audio'} aria-hidden={tab !== 'audio'}>
             {track ? <>
-              <p className='dj-inspector-empty'>Compare local and Spotify band overviews and inspect metadata for this deck. Overview duration compatibility does not establish beat alignment; use the deck waveform and Grid tools for timing.</p>
+              <p className='px-3 py-2 text-xs text-[var(--dj-text-muted)]'>Compare local and Spotify band overviews and inspect metadata for this deck. Overview duration compatibility does not establish beat alignment; use the deck waveform and Grid tools for timing.</p>
               {open && tab === 'audio' && <SongAudioMetadata key={track.id} songId={track.id} />}
-            </> : <p className='dj-inspector-empty'>Load a track to inspect its waveforms and audio metadata.</p>}
+            </> : emptyNotice('Load a track from the Library drawer to inspect its waveforms and audio metadata.')}
           </div>
-          <div role='tabpanel' id={`${baseId}-panel-key`} aria-labelledby={`${baseId}-tab-key`} hidden={tab !== 'key'}>
+          <div role='tabpanel' id={`${baseId}-panel-key`} aria-labelledby={`${baseId}-tab-key`} hidden={tab !== 'key'} aria-hidden={tab !== 'key'}>
             <DJKeyVerificationKeyboard trackID={track?.id} deck={deck} embedded />
-            {!track && <p className='dj-inspector-empty'>Load a track to verify its key.</p>}
+            {!track && emptyNotice('Load a track from the Library drawer to verify its musical key.')}
           </div>
-          <div role='tabpanel' id={`${baseId}-panel-bpm`} aria-labelledby={`${baseId}-tab-bpm`} hidden={tab !== 'bpm'}>
+          <div role='tabpanel' id={`${baseId}-panel-bpm`} aria-labelledby={`${baseId}-tab-bpm`} hidden={tab !== 'bpm'} aria-hidden={tab !== 'bpm'}>
             <DJBpmEditor track={track} deck={deck} embedded />
-            {!track && <p className='dj-inspector-empty'>Load a track to correct its BPM.</p>}
+            {!track && emptyNotice('Load a track from the Library drawer to inspect or correct its BPM.')}
           </div>
-          <div role='tabpanel' id={`${baseId}-panel-cues`} aria-labelledby={`${baseId}-tab-cues`} hidden={tab !== 'cues'}>
+          <div role='tabpanel' id={`${baseId}-panel-cues`} aria-labelledby={`${baseId}-tab-cues`} hidden={tab !== 'cues'} aria-hidden={tab !== 'cues'}>
             <DJAnalysisCueEditor trackID={track?.id} deck={deck} embedded />
-            {!track && <p className='dj-inspector-empty'>Load a track to edit its cues.</p>}
+            {!track && emptyNotice('Load a track from the Library drawer to edit its hot cues.')}
           </div>
-          <div role='tabpanel' id={`${baseId}-panel-grid`} aria-labelledby={`${baseId}-tab-grid`} hidden={tab !== 'grid'}>
+          <div role='tabpanel' id={`${baseId}-panel-grid`} aria-labelledby={`${baseId}-tab-grid`} hidden={tab !== 'grid'} aria-hidden={tab !== 'grid'}>
             {hasGrid ? (
               <div className='dj-grid-editor-panel'>
                 <p className='dj-label' style={{ padding: '0 8px 6px' }}><DJBeatGridStatus deck={deck} /></p>
                 <DJBeatGridEdit deck={deck} />
               </div>
-            ) : <p className='dj-inspector-empty'>{track ? 'This track has no beat grid yet.' : 'Load a track to edit its beat grid.'}</p>}
+            ) : emptyNotice(track ? 'This track has no beat grid yet.' : 'Load a track from the Library drawer to edit its beat grid.')}
           </div>
         </DJErrorBoundary>
       </div>

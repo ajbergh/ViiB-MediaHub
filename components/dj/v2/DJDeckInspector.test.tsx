@@ -26,5 +26,8 @@ it('loads audio only for the visible selected deck and replaces track context', 
   expect(host.querySelector('[data-audio-song]')?.getAttribute('data-audio-song')).toBe('b');
   await act(async () => render(true,'B','analysis'));
   expect(host.querySelector('[data-audio-song]')).toBeNull();
+  state.djDeckA.track = null as any;
+  await act(async () => render(true, 'A', 'analysis'));
+  expect(host.textContent).toContain('No track loaded on Deck A');
  } finally { await act(async () => root.unmount()); }
 });

@@ -20,9 +20,10 @@
  * @module ContextMenu
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { ContextMenuType } from '../types';
+import { VIIB } from './ui/tokens';
 import { SongMenu } from './context-menus/SongMenu';
 import { AlbumMenu } from './context-menus/AlbumMenu';
 import { ArtistMenu } from './context-menus/ArtistMenu';
@@ -39,22 +40,22 @@ export const ContextMenu: React.FC = () => {
     const typeaheadRef = useRef<{ buffer: string; lastAt: number }>({ buffer: '', lastAt: 0 });
 
     // Calculate position to prevent overflow
-    const [adjustedPos, setAdjustedPos] = useState({ x: 0, y: 0 });
+    const [adjustedPos, setAdjustedPos] = useState({ x, y });
 
-    useEffect(() => {
-        if (isOpen && menuRef.current) {
+    useLayoutEffect(() => {
+        if (!isOpen) return;
+        let newX = x;
+        let newY = y;
+        if (menuRef.current) {
             const rect = menuRef.current.getBoundingClientRect();
-            let newX = x;
-            let newY = y;
-
             if (x + rect.width > window.innerWidth) {
-                newX = window.innerWidth - rect.width - 10;
+                newX = Math.max(8, window.innerWidth - rect.width - 10);
             }
             if (y + rect.height > window.innerHeight) {
-                newY = window.innerHeight - rect.height - 10;
+                newY = Math.max(8, window.innerHeight - rect.height - 10);
             }
-            setAdjustedPos({ x: newX, y: newY });
         }
+        setAdjustedPos({ x: newX, y: newY });
     }, [isOpen, x, y]);
 
     const getRootMenuEl = (): HTMLElement | null => menuRef.current;
@@ -237,7 +238,7 @@ export const ContextMenu: React.FC = () => {
             ref={menuRef}
             role="menu"
             aria-label="Context menu"
-            className="fixed z-[9999] w-56 bg-surface-3 border border-surface-border rounded-md shadow-2xl shadow-black/60 p-1 overflow-visible text-text-main animate-in fade-in duration-100 motion-reduce:transition-none"
+            className={`fixed ${VIIB.zIndex.contextMenu} w-56 bg-surface-3 border border-surface-border rounded-md shadow-2xl shadow-black/60 p-1 overflow-visible text-text-main animate-in fade-in duration-100 motion-reduce:transition-none`}
             style={{ top: adjustedPos.y, left: adjustedPos.x }}
         >
             {type === ContextMenuType.SONG && <SongMenu song={data} onClose={closeContextMenu} />}

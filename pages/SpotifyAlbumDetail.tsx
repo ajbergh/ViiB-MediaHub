@@ -22,7 +22,7 @@ import {fetchSpotifyAlbum} from '../services/spotifyAlbum';
 import { SpotifyArtistLinks } from '../components/SpotifyArtistLinks';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router';
-import { ArrowLeft, Play, MoreHorizontal, Loader2, Clock, ExternalLink, Download, Shuffle, ListPlus, CheckCircle, Music } from 'lucide-react';
+import { ArrowLeft, Play, MoreHorizontal, Loader2, Clock, ExternalLink, Download, Shuffle, ListPlus, CheckCircle, Music, RotateCcw } from 'lucide-react';
 import { useStore } from '../store';
 import { formatTime } from '../utils';
 import { SpotifyAuthError, SpotifyRateLimitError, SpotifyApiError } from '../lib/spotifyErrors';
@@ -73,6 +73,8 @@ export const SpotifyAlbumDetail: React.FC = () => {
   const [album, setAlbum] = useState<SpotifyAlbumFull | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isAuthError, setIsAuthError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadingTracks, setDownloadingTracks] = useState<Set<string>>(new Set());
 
@@ -186,6 +188,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
       
       setIsLoading(true);
       setError(null);
+      setIsAuthError(false);
       
       try {
 
@@ -197,6 +200,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
           setError(`Rate limited. Please try again in ${err.retryAfter} seconds.`);
           addLog('warn', `Rate limited while fetching album`);
         } else if (err instanceof SpotifyAuthError) {
+          setIsAuthError(true);
           setError('Authentication failed. Please reconnect to Spotify.');
           addLog('error', 'Spotify auth error fetching album');
         } else if (err instanceof SpotifyApiError) {
@@ -213,7 +217,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
 
     fetchAlbum();
     return () => {active = false;};
-  }, [id, addLog, sessionGeneration]);
+  }, [id, addLog, sessionGeneration, retryCount]);
 
   if (isLoading) {
     return (
@@ -225,16 +229,31 @@ export const SpotifyAlbumDetail: React.FC = () => {
 
   if (error || !album) {
     return (
-      <div className="h-full flex flex-col items-center justify-center p-8 text-center">
-        <p className="text-error mb-4">{error || 'Album not found'}</p>
-        <Button
-          variant="secondary"
-          onClick={() => navigate('/spotify')}
-          leftIcon={<ArrowLeft size={18} />}
-          className="rounded-full px-4 py-2"
-        >
-          Back to Spotify
-        </Button>
+      <div className="h-full flex flex-col items-center justify-center p-4 md:p-8 text-center">
+        <p className="text-error mb-4" role="alert">{error || 'Album not found'}</p>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Button
+            variant="primary"
+            accent="brand"
+            onClick={() => setRetryCount(c => c + 1)}
+            leftIcon={<RotateCcw size={16} />}
+          >
+            Retry
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => navigate('/settings', { state: { tab: 'integrations' } })}
+          >
+            {isAuthError ? 'Reconnect' : 'Account settings'}
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => navigate('/spotify')}
+            leftIcon={<ArrowLeft size={18} />}
+          >
+            Back to Spotify
+          </Button>
+        </div>
       </div>
     );
   }
@@ -244,21 +263,21 @@ export const SpotifyAlbumDetail: React.FC = () => {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="px-8 pt-4"><SpotifyAccountNotice /></div>
+      <div className="px-4 md:px-8 pt-4"><SpotifyAccountNotice /></div>
       {/* Header */}
       <div className="bg-gradient-to-b from-brand/20 to-transparent">
-        <div className="p-8">
+        <div className="px-4 py-6 md:p-8">
           <Button
             variant="ghost"
             onClick={() => navigate('/spotify')}
             leftIcon={<ArrowLeft size={20} />}
-            className="px-0 py-0 text-text-secondary hover:text-text-main hover:bg-transparent"
+            className="px-0 py-0 mb-4 min-h-[32px] text-text-secondary hover:text-text-main hover:bg-transparent"
           >
             Back
           </Button>
 
           <div className="flex flex-col gap-6 sm:flex-row sm:gap-8 sm:items-end">
-            <div className="w-64 h-64 flex-shrink-0 shadow-2xl rounded-lg overflow-hidden bg-surface-3 flex items-center justify-center">
+            <div className="w-48 h-48 sm:w-64 sm:h-64 flex-shrink-0 shadow-2xl rounded-lg overflow-hidden bg-surface-3 flex items-center justify-center">
               {album.images[0]?.url ? (
                 <img 
                   src={album.images[0].url} 
@@ -293,10 +312,11 @@ export const SpotifyAlbumDetail: React.FC = () => {
       </div>
 
       {/* Actions */}
-      <div className="px-8 py-6 flex flex-wrap items-center gap-4 bg-gradient-to-b from-transparent to-surface-0">
+      <div className="px-4 py-6 md:px-8 flex flex-wrap items-center gap-4 bg-gradient-to-b from-transparent to-surface-0">
         <Button
           variant="primary"
           accent="brand"
+          size="icon"
           onClick={handlePlayAlbum}
           className="w-14 h-14 p-0 rounded-full shadow-xl hover:scale-105 transition-all duration-200 text-surface-0"
           aria-label="Play album"
@@ -306,6 +326,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
         </Button>
         <Button
           variant="secondary"
+          size="icon"
           onClick={handleShuffleAlbum}
           className="w-10 h-10 p-0 rounded-full"
           aria-label="Shuffle album"
@@ -316,6 +337,7 @@ export const SpotifyAlbumDetail: React.FC = () => {
         </Button>
         <Button
           variant="secondary"
+          size="icon"
           onClick={handleAddAlbumToQueue}
           className="w-10 h-10 p-0 rounded-full"
           aria-label="Add to queue"
@@ -338,21 +360,21 @@ export const SpotifyAlbumDetail: React.FC = () => {
           href={album.external_urls.spotify} 
           target="_blank" 
           rel="noopener noreferrer"
-          className="flex items-center gap-2 px-4 py-2 bg-surface-2 hover:bg-surface-3 rounded-full text-sm font-bold transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 min-h-[36px] bg-surface-2 hover:bg-surface-3 rounded-full text-sm font-bold transition-colors"
         >
           Open in Spotify <ExternalLink size={14} />
         </a>
       </div>
 
       {/* Track List */}
-      <div className="px-8 pb-32">
+      <div className="px-4 md:px-8 pb-32">
         <div className="bg-surface-1 rounded-xl overflow-hidden">
           {/* Header */}
-          <div className="grid grid-cols-[40px_1fr_1fr_80px_80px] gap-4 px-4 py-3 border-b border-surface-border text-text-subtle text-sm font-bold">
-            <div className="text-center">#</div>
+          <div className="grid grid-cols-[1fr_auto] md:grid-cols-[40px_1fr_1fr_80px_80px] gap-3 md:gap-4 px-4 py-3 border-b border-surface-border text-text-subtle text-sm font-bold">
+            <div className="hidden md:block text-center">#</div>
             <div>Title</div>
-            <div>Artist</div>
-            <div className="flex items-center justify-center gap-1">
+            <div className="hidden md:block">Artist</div>
+            <div className="hidden md:flex items-center justify-center gap-1">
               <Clock size={16} />
             </div>
             <div></div>
@@ -367,9 +389,9 @@ export const SpotifyAlbumDetail: React.FC = () => {
               aria-disabled={mediaDisabled}
               onClick={mediaDisabled ? undefined : () => handlePlayTrack(idx)}
               onContextMenu={(e) => handleTrackContextMenu(e, track)}
-              className="grid grid-cols-[40px_1fr_1fr_80px_80px] gap-4 px-4 py-3 hover:bg-surface-hover group transition-all duration-200 border-b border-surface-border last:border-0 cursor-pointer"
+              className="grid grid-cols-[1fr_auto] md:grid-cols-[40px_1fr_1fr_80px_80px] gap-3 md:gap-4 px-4 py-3 hover:bg-surface-hover group transition-all duration-200 border-b border-surface-border last:border-0 cursor-pointer items-center"
             >
-              <div className="text-center text-text-subtle flex items-center justify-center">
+              <div className="hidden md:flex text-center text-text-subtle items-center justify-center">
                 <span className="group-hover:hidden">{track.track_number}</span>
                 <Play size={16} className="hidden group-hover:block text-brand fill-current" />
               </div>
@@ -377,29 +399,34 @@ export const SpotifyAlbumDetail: React.FC = () => {
                 <div className="font-medium text-text-main truncate group-hover:text-brand transition-all duration-200">
                   {track.name}
                 </div>
+                <div className="md:hidden text-xs text-text-secondary truncate mt-0.5 flex items-center gap-2">
+                  <span className="truncate"><SpotifyArtistLinks artists={track.artists} /></span>
+                  <span className="text-text-subtle font-mono shrink-0">{formatTime(track.duration_ms / 1000)}</span>
+                </div>
                 {track.explicit && (
                   <span className="text-xs text-text-subtle bg-surface-3 px-1.5 py-0.5 rounded w-fit mt-1">
                     EXPLICIT
                   </span>
                 )}
               </div>
-              <div className="text-text-secondary truncate flex items-center">
+              <div className="hidden md:flex text-text-secondary truncate items-center">
                 <SpotifyArtistLinks artists={track.artists} />
               </div>
-              <div className="text-text-subtle font-mono text-sm flex items-center justify-center">
+              <div className="hidden md:flex text-text-subtle font-mono text-sm items-center justify-center">
                 {formatTime(track.duration_ms / 1000)}
               </div>
-              <div className="flex items-center justify-center gap-1">
+              <div className="flex items-center justify-end md:justify-center gap-1">
                 {isDownloaded ? (
-                  <div className="p-2 text-brand" title="Downloaded">
+                  <div className="w-8 h-8 flex items-center justify-center text-brand" title="Downloaded">
                     <CheckCircle size={16} />
                   </div>
                 ) : (
                   <Button
                     variant="ghost"
+                    size="icon"
                     onClick={(e) => { e.stopPropagation(); handleDownloadTrack(track); }}
                     disabled={mediaDisabled || downloadingTracks.has(track.id)}
-                    className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                    className="w-8 h-8 p-0 text-text-subtle hover:text-text-main opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity disabled:opacity-50"
                     title="Download"
                     aria-label="Download"
                   >
@@ -412,8 +439,9 @@ export const SpotifyAlbumDetail: React.FC = () => {
                 )}
                 <Button
                   variant="ghost"
+                  size="icon"
                   onClick={(e) => { e.stopPropagation(); handleTrackContextMenu(e, track); }}
-                  className="p-2 text-text-subtle hover:text-text-main opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="w-8 h-8 p-0 text-text-subtle hover:text-text-main opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity"
                   aria-label="More"
                 >
                   <MoreHorizontal size={18} />

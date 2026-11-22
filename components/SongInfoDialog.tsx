@@ -50,6 +50,7 @@ import { formatTime, generateGradient } from '../utils';
 import { Chip } from './ui/Chip';
 import { LikeButton } from './LikeButton';
 import { Button } from './ui/Button';
+import { VIIB } from './ui/tokens';
 
 type TabType = 'vibe' | 'overview' | 'stats' | 'technical';
 
@@ -171,7 +172,7 @@ const SongInfoEditor: React.FC = () => {
 
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200"
+      className={`fixed inset-0 ${VIIB.zIndex.overlayPanel} flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200`}
       role="dialog"
       aria-modal="true"
       aria-labelledby="song-info-title"
@@ -181,21 +182,21 @@ const SongInfoEditor: React.FC = () => {
     >
       <div
         ref={containerRef}
-        className="relative w-full max-w-2xl max-h-[90vh] flex flex-col bg-surface-1 border border-surface-border/80 rounded-2xl shadow-2xl overflow-hidden text-text-main animate-in zoom-in-95 duration-200"
+        className="relative w-full min-w-0 max-w-2xl max-h-[90vh] flex flex-col bg-surface-1 border border-surface-border/80 rounded-2xl shadow-2xl overflow-hidden text-text-main animate-in zoom-in-95 duration-200"
       >
         {/* Modal Header Bar */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-surface-border bg-surface-2/60">
-          <div className="flex items-center gap-2">
-            <FileText size={18} className="text-brand" />
-            <span className="font-semibold text-sm tracking-wide text-text-main">Song Information & Properties</span>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-6 py-4 border-b border-surface-border bg-surface-2/60">
+          <div className="flex items-center gap-2 min-w-0">
+            <FileText size={18} className="text-brand shrink-0" />
+            <span className="font-semibold text-sm tracking-wide text-text-main truncate">Song Information & Properties</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {!isEditing ? (
               <Button
                 variant="secondary"
                 className="text-xs py-1 px-2.5"
                 onClick={handleStartEditing}
-                leftIcon={<Edit3 size={13} />}
+                leftIcon={<Edit3 size={13} className="shrink-0" />}
               >
                 Edit Tags
               </Button>
@@ -204,7 +205,7 @@ const SongInfoEditor: React.FC = () => {
                 variant="ghost"
                 className="text-xs py-1 px-2.5 text-text-secondary"
                 onClick={() => setIsEditing(false)}
-                leftIcon={<RotateCcw size={13} />}
+                leftIcon={<RotateCcw size={13} className="shrink-0" />}
               >
                 Cancel Edit
               </Button>
@@ -212,17 +213,17 @@ const SongInfoEditor: React.FC = () => {
             <button
               type="button"
               onClick={closeSongInfoModal}
-              className="p-1.5 rounded-full hover:bg-surface-3 text-text-secondary hover:text-text-main transition-colors"
+              className="min-w-[32px] min-h-[32px] inline-flex items-center justify-center rounded-full hover:bg-surface-3 text-text-secondary hover:text-text-main transition-colors shrink-0"
               aria-label="Close dialog"
             >
-              <X size={18} />
+              <X size={18} className="shrink-0" />
             </button>
           </div>
         </div>
 
         {/* Header Hero Section */}
-        <div className="p-6 bg-gradient-to-b from-surface-2/80 to-surface-1 border-b border-surface-border/60">
-          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
+        <div className="p-4 sm:p-6 bg-gradient-to-b from-surface-2/80 to-surface-1 border-b border-surface-border/60">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 min-w-0">
             {/* Cover Art */}
             <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-xl shadow-lg overflow-hidden flex-shrink-0 bg-surface-3 relative group">
               {coverUrl ? (
@@ -237,44 +238,44 @@ const SongInfoEditor: React.FC = () => {
               )}
               {song.spotifyId && song.isStreaming && (
                 <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-black/70 backdrop-blur-md text-[10px] font-medium text-spotify flex items-center gap-1">
-                  <Radio size={10} />
+                  <Radio size={10} className="shrink-0" />
                   <span>Spotify</span>
                 </div>
               )}
             </div>
 
             {/* Title & Core Metadata */}
-            <div className="flex-1 min-w-0 text-center sm:text-left">
-              <div className="flex items-center justify-center sm:justify-start gap-2 mb-1 flex-wrap">
-                <h2 id="song-info-title" className="text-xl sm:text-2xl font-bold truncate text-text-main">
+            <div className="flex-1 min-w-0 w-full text-center sm:text-left">
+              <div className="flex items-center justify-center sm:justify-start gap-2 mb-1 flex-wrap min-w-0">
+                <h2 id="song-info-title" className="text-xl sm:text-2xl font-bold truncate min-w-0 text-text-main">
                   {song.title}
                 </h2>
                 <LikeButton songId={song.id} size={20} />
               </div>
 
-              <p className="text-sm text-text-secondary font-medium truncate flex items-center justify-center sm:justify-start gap-1.5">
-                <Mic2 size={14} className="text-brand flex-shrink-0" />
+              <p className="text-sm text-text-secondary font-medium min-w-0 flex items-center justify-center sm:justify-start gap-1.5">
+                <Mic2 size={14} className="text-brand shrink-0" />
                 <button
                   type="button"
                   onClick={() => {
                     closeSongInfoModal();
                     navigate(`/artists`);
                   }}
-                  className="hover:underline hover:text-text-main text-left"
+                  className="min-w-0 truncate min-h-[28px] inline-flex items-center hover:underline hover:text-text-main text-left"
                 >
                   {song.artist}
                 </button>
               </p>
 
-              <p className="text-xs text-text-subtle truncate mt-1 flex items-center justify-center sm:justify-start gap-1.5">
-                <Disc size={13} className="flex-shrink-0" />
+              <p className="text-xs text-text-subtle min-w-0 mt-1 flex items-center justify-center sm:justify-start gap-1.5">
+                <Disc size={13} className="shrink-0" />
                 <button
                   type="button"
                   onClick={() => {
                     closeSongInfoModal();
                     navigate(`/album/${encodeURIComponent(song.album)}`);
                   }}
-                  className="hover:underline hover:text-text-secondary text-left"
+                  className="min-w-0 truncate min-h-[28px] inline-flex items-center hover:underline hover:text-text-secondary text-left"
                 >
                   {song.album} {song.albumArtist && song.albumArtist !== song.artist ? `(${song.albumArtist})` : ''}
                 </button>
@@ -288,7 +289,7 @@ const SongInfoEditor: React.FC = () => {
                     onClick={() => handleSearchFilter(String(song.originalYear))}
                     title="Original Release Year"
                   >
-                    <Calendar size={11} />
+                    <Calendar size={11} className="shrink-0" />
                     Original: {song.originalYear}
                   </span>
                 )}
@@ -302,7 +303,7 @@ const SongInfoEditor: React.FC = () => {
                   </span>
                 )}
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-mono bg-surface-3 text-text-secondary">
-                  <Clock size={11} />
+                  <Clock size={11} className="shrink-0" />
                   {formatTime(song.duration)}
                 </span>
               </div>
@@ -318,7 +319,7 @@ const SongInfoEditor: React.FC = () => {
                     playSong(song);
                     closeSongInfoModal();
                   }}
-                  leftIcon={<Play size={14} className="fill-current" />}
+                  leftIcon={<Play size={14} className="fill-current shrink-0" />}
                 >
                   Play
                 </Button>
@@ -329,7 +330,7 @@ const SongInfoEditor: React.FC = () => {
                     addToQueue(song);
                     showToast({ type: 'success', message: `Added ${song.title} to queue` });
                   }}
-                  leftIcon={<ListPlus size={14} />}
+                  leftIcon={<ListPlus size={14} className="shrink-0" />}
                 >
                   Add to Queue
                 </Button>
@@ -339,53 +340,53 @@ const SongInfoEditor: React.FC = () => {
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex border-b border-surface-border bg-surface-2/40 px-6 gap-2">
+        <div className="flex overflow-x-auto whitespace-nowrap border-b border-surface-border bg-surface-2/40 px-3 sm:px-6 gap-2">
           <button
             type="button"
             onClick={() => setActiveTab('overview')}
-            className={`flex items-center gap-2 py-3 px-3 text-xs font-semibold border-b-2 transition-colors ${
+            className={`shrink-0 flex items-center gap-2 py-3 px-3 text-xs font-semibold border-b-2 transition-colors ${
               activeTab === 'overview'
                 ? 'border-brand text-brand'
                 : 'border-transparent text-text-secondary hover:text-text-main'
             }`}
           >
-            <Music size={14} />
+            <Music size={14} className="shrink-0" />
             Overview
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('vibe')}
-            className={`flex items-center gap-2 py-3 px-3 text-xs font-semibold border-b-2 transition-colors ${
+            className={`shrink-0 flex items-center gap-2 py-3 px-3 text-xs font-semibold border-b-2 transition-colors ${
               activeTab === 'vibe'
                 ? 'border-brand text-brand'
                 : 'border-transparent text-text-secondary hover:text-text-main'
             }`}
           >
-            <Sparkles size={14} />
+            <Sparkles size={14} className="shrink-0" />
             AI & Vibe Profile
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('stats')}
-            className={`flex items-center gap-2 py-3 px-3 text-xs font-semibold border-b-2 transition-colors ${
+            className={`shrink-0 flex items-center gap-2 py-3 px-3 text-xs font-semibold border-b-2 transition-colors ${
               activeTab === 'stats'
                 ? 'border-brand text-brand'
                 : 'border-transparent text-text-secondary hover:text-text-main'
             }`}
           >
-            <BarChart3 size={14} />
+            <BarChart3 size={14} className="shrink-0" />
             Listening Stats
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('technical')}
-            className={`flex items-center gap-2 py-3 px-3 text-xs font-semibold border-b-2 transition-colors ${
+            className={`shrink-0 flex items-center gap-2 py-3 px-3 text-xs font-semibold border-b-2 transition-colors ${
               activeTab === 'technical'
                 ? 'border-brand text-brand'
                 : 'border-transparent text-text-secondary hover:text-text-main'
             }`}
           >
-            <Sliders size={14} />
+            <Sliders size={14} className="shrink-0" />
             Technical & File
           </button>
         </div>
@@ -398,7 +399,7 @@ const SongInfoEditor: React.FC = () => {
               <div className="space-y-4 animate-in fade-in duration-150">
                 <div className="flex items-center justify-between border-b border-surface-border/60 pb-2">
                   <span className="text-xs font-bold uppercase tracking-wider text-brand flex items-center gap-1.5">
-                    <Edit3 size={14} />
+                    <Edit3 size={14} className="shrink-0" />
                     Edit Song Metadata Tags
                   </span>
                   <span className="text-[10px] text-text-subtle">Saved to local database</span>
@@ -505,7 +506,7 @@ const SongInfoEditor: React.FC = () => {
                     className="text-xs py-1.5 px-4"
                     onClick={handleSaveTags}
                     disabled={isSaving}
-                    leftIcon={<Save size={14} />}
+                    leftIcon={<Save size={14} className="shrink-0" />}
                   >
                     {isSaving ? 'Saving...' : 'Save Tags'}
                   </Button>
@@ -568,7 +569,7 @@ const SongInfoEditor: React.FC = () => {
               {/* Genres Section */}
               <div className="p-3.5 rounded-xl bg-surface-2/60 border border-surface-border/60 md:col-span-2">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-text-subtle block mb-2 flex items-center gap-1.5">
-                  <Tag size={12} className="text-brand" />
+                  <Tag size={12} className="text-brand shrink-0" />
                   Genres
                 </span>
                 {song.genre && song.genre.length > 0 ? (
@@ -599,7 +600,7 @@ const SongInfoEditor: React.FC = () => {
             <div className="space-y-4">
               <div className="p-4 rounded-xl bg-surface-2/60 border border-surface-border/60">
                 <div className="flex items-center gap-2 mb-3">
-                  <Sparkles size={16} className="text-accent-pink" />
+                  <Sparkles size={16} className="text-accent-pink shrink-0" />
                   <span className="text-xs font-semibold uppercase tracking-wider text-text-main">
                     AI Music Intelligence (Gemini/LLM)
                   </span>
@@ -668,7 +669,7 @@ const SongInfoEditor: React.FC = () => {
               {/* Last.fm Tags */}
               <div className="p-4 rounded-xl bg-surface-2/60 border border-surface-border/60">
                 <div className="flex items-center gap-2 mb-2">
-                  <Tag size={14} className="text-brand" />
+                  <Tag size={14} className="text-brand shrink-0" />
                   <span className="text-xs font-semibold uppercase tracking-wider text-text-main">
                     Last.fm Community Tags
                   </span>
@@ -713,7 +714,7 @@ const SongInfoEditor: React.FC = () => {
 
                 <div className="p-3.5 rounded-xl bg-surface-2/60 border border-surface-border/60 text-center">
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-text-subtle block mb-1 flex items-center justify-center gap-1">
-                    <Percent size={10} /> Completion
+                    <Percent size={10} className="shrink-0" /> Completion
                   </span>
                   <span className="text-xl font-bold font-mono text-brand">{completionRate}%</span>
                 </div>
@@ -731,14 +732,14 @@ const SongInfoEditor: React.FC = () => {
               <div className="p-4 rounded-xl bg-surface-2/60 border border-surface-border/60 space-y-3">
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-text-secondary flex items-center gap-1.5">
-                    <Calendar size={13} /> Added to Library:
+                    <Calendar size={13} className="shrink-0" /> Added to Library:
                   </span>
                   <span className="font-medium text-text-main font-mono">{formatDate(song.addedAt)}</span>
                 </div>
 
                 <div className="flex justify-between items-center text-xs border-t border-surface-border/40 pt-2">
                   <span className="text-text-secondary flex items-center gap-1.5">
-                    <Clock size={13} /> Last Played:
+                    <Clock size={13} className="shrink-0" /> Last Played:
                   </span>
                   <span className="font-medium text-text-main font-mono">{formatDate(song.lastPlayed)}</span>
                 </div>
@@ -746,7 +747,7 @@ const SongInfoEditor: React.FC = () => {
                 {song.likedAt && (
                   <div className="flex justify-between items-center text-xs border-t border-surface-border/40 pt-2">
                     <span className="text-text-secondary flex items-center gap-1.5">
-                      <Calendar size={13} /> Liked Date:
+                      <Calendar size={13} className="shrink-0" /> Liked Date:
                     </span>
                     <span className="font-medium text-text-main font-mono">{formatDate(song.likedAt)}</span>
                   </div>
@@ -758,7 +759,7 @@ const SongInfoEditor: React.FC = () => {
                 <div className="p-4 rounded-xl bg-surface-2/60 border border-surface-border/60 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold uppercase tracking-wider text-text-main flex items-center gap-1.5">
-                      <Radio size={14} className="text-red-400" />
+                      <Radio size={14} className="text-red-400 shrink-0" />
                       Last.fm Global Audience
                     </span>
                     {song.lastfmUrl && (
@@ -768,7 +769,7 @@ const SongInfoEditor: React.FC = () => {
                         rel="noopener noreferrer"
                         className="text-xs text-brand hover:underline flex items-center gap-1"
                       >
-                        Last.fm Page <ExternalLink size={11} />
+                        Last.fm Page <ExternalLink size={11} className="shrink-0" />
                       </a>
                     )}
                   </div>
@@ -806,10 +807,11 @@ const SongInfoEditor: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleCopyPath}
-                    className="p-1 rounded hover:bg-surface-border text-text-subtle hover:text-text-main transition-colors flex-shrink-0"
+                    className="min-w-[32px] min-h-[32px] inline-flex items-center justify-center rounded hover:bg-surface-border text-text-subtle hover:text-text-main transition-colors shrink-0"
                     title="Copy path to clipboard"
+                    aria-label="Copy path to clipboard"
                   >
-                    {copiedPath ? <Check size={14} className="text-accent-green" /> : <Copy size={14} />}
+                    {copiedPath ? <Check size={14} className="text-accent-green shrink-0" /> : <Copy size={14} className="shrink-0" />}
                   </button>
                 </div>
               </div>
@@ -817,7 +819,7 @@ const SongInfoEditor: React.FC = () => {
               {/* ReplayGain & Loudness Specs */}
               <div className="p-4 rounded-xl bg-surface-2/60 border border-surface-border/60 space-y-3">
                 <div className="flex items-center gap-2">
-                  <Volume2 size={16} className="text-brand" />
+                  <Volume2 size={16} className="text-brand shrink-0" />
                   <span className="text-xs font-semibold uppercase tracking-wider text-text-main">
                     ReplayGain & Loudness Normalization
                   </span>

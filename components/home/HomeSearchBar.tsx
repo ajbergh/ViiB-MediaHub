@@ -50,6 +50,8 @@ export const HomeSearchBar: React.FC<HomeSearchBarProps> = ({ className, compact
       aria-label="Search your library"
       value={searchQuery}
       onChange={(e) => setSearchQuery(e.target.value)}
+      onClear={() => setSearchQuery('')}
+      clearLabel="Clear search"
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
           submitSearch();

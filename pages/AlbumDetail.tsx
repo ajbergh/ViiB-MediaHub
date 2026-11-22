@@ -53,10 +53,11 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
                 style={{ background: getHeaderGradient() }}
             />
 
-            <div className="relative z-10 p-8 pt-16 flex flex-col md:flex-row gap-8 items-end">
+            <div className="relative z-10 px-4 py-6 pt-16 sm:p-8 sm:pt-16 flex flex-col md:flex-row gap-6 md:gap-8 items-start md:items-end">
                 <button
+                    type="button"
                     onClick={() => navigate(-1)}
-                    className="absolute top-6 left-6 w-8 h-8 bg-black/40 rounded-full flex items-center justify-center hover:bg-black/60 text-white transition-colors z-20"
+                    className="absolute top-4 left-4 sm:top-6 sm:left-6 min-w-[32px] min-h-[32px] w-8 h-8 bg-surface-0/40 rounded-full flex items-center justify-center hover:bg-surface-0/60 text-text-main transition-colors z-20"
                     aria-label="Go back"
                 >
                     <ArrowLeft size={20} />
@@ -126,11 +127,12 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
                 </div>
             </div>
 
-            <div className="bg-surface-1/60 p-8 pt-6 backdrop-blur-lg relative z-10">
-                <div className="flex items-center gap-6 mb-8 relative">
+            <div className="bg-surface-1/60 px-4 py-6 sm:p-8 sm:pt-6 backdrop-blur-lg relative z-10">
+                <div className="flex flex-wrap items-center gap-3 sm:gap-6 mb-8 relative">
                     <button
+                        type="button"
                         onClick={() => isAlbumPlaying ? togglePlay() : playSong(albumSongs[0], albumSongs)}
-                        className="w-14 h-14 bg-brand hover:bg-brand-hover rounded-full flex items-center justify-center hover:scale-105 transition-all duration-200 shadow-lg shadow-black/40 text-black"
+                        className="w-14 h-14 shrink-0 bg-brand hover:bg-brand-hover rounded-full flex items-center justify-center hover:scale-105 transition-all duration-200 shadow-lg shadow-black/40 text-surface-0"
                         aria-label={isAlbumPlaying ? 'Pause album' : 'Play album'}
                     >
                         {isAlbumPlaying ? (
@@ -139,12 +141,13 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
                             <Play size={28} className="fill-current ml-1" />
                         )}
                     </button>
-                    <AlbumLikeButton albumKey={metadataKey} size={32} className="text-text-secondary hover:text-white" />
-                    <button className="text-text-secondary hover:text-white transition-all duration-200" aria-label="Download album"><Download size={32} /></button>
-                    <div className="relative">
+                    <AlbumLikeButton albumKey={metadataKey} size={32} className="text-text-secondary hover:text-text-main" />
+                    <button type="button" className="min-w-[32px] min-h-[32px] inline-flex items-center justify-center shrink-0 text-text-secondary hover:text-text-main transition-all duration-200" aria-label="Download album"><Download size={32} /></button>
+                    <div className="relative shrink-0">
                         <button
+                            type="button"
                             onClick={(e) => openContextMenu(e, ContextMenuType.ALBUM, albumObject)}
-                            className="text-text-secondary hover:text-white transition-all duration-200"
+                            className="min-w-[32px] min-h-[32px] inline-flex items-center justify-center text-text-secondary hover:text-text-main transition-all duration-200"
                             aria-label="More options"
                         >
                             <MoreHorizontal size={32} />
@@ -155,15 +158,16 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
                             href={metadata.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="ml-auto flex items-center gap-2 text-xs font-bold text-text-secondary hover:text-white bg-white/5 hover:bg-white/10 px-4 py-2 rounded-full transition-all duration-200"
+                            className="sm:ml-auto flex items-center gap-2 text-xs font-bold text-text-secondary hover:text-text-main bg-white/5 hover:bg-white/10 px-4 py-2 rounded-full transition-all duration-200"
                         >
                             <ExternalLink size={14} /> Spotify
                         </a>
                     )}
                     <button
+                        type="button"
                         onClick={handleRefreshMetadata}
                         disabled={isRefreshing}
-                        className={`${metadata?.url ? '' : 'ml-auto'} flex items-center gap-2 text-xs font-bold text-text-secondary hover:text-white bg-white/5 hover:bg-white/10 px-4 py-2 rounded-full transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed`}
+                        className={`${metadata?.url ? '' : 'sm:ml-auto'} flex items-center gap-2 text-xs font-bold text-text-secondary hover:text-text-main bg-white/5 hover:bg-white/10 px-4 py-2 rounded-full transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed`}
                         title="Refresh metadata from Spotify"
                     >
                         <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
@@ -188,11 +192,12 @@ const AlbumHeader: React.FC<{ context?: any }> = ({ context }) => {
                     </div>
                 )}
 
-                <div className="grid grid-cols-[40px_4fr_1fr_60px] gap-4 px-4 py-2 border-b border-surface-3 text-text-secondary text-xs uppercase tracking-wider font-medium mb-2 sticky top-0 bg-surface-1 z-20">
+                <div className="grid grid-cols-[32px_minmax(0,1fr)_48px_68px] md:grid-cols-[40px_minmax(0,4fr)_minmax(60px,1fr)_60px_76px] gap-2 md:gap-4 px-4 py-2 border-b border-surface-3 text-text-secondary text-xs uppercase tracking-wider font-medium mb-2 sticky top-0 bg-surface-1 z-20 items-center">
                     <div className="text-center">#</div>
                     <div>Title</div>
-                    <div className="hidden md:block text-right pr-8">Plays</div>
-                    <div className="text-right pr-4"><Clock size={16} className="inline" /></div>
+                    <div className="hidden md:block text-right pr-4">Plays</div>
+                    <div className="flex items-center justify-end"><Clock size={16} aria-label="Duration" /></div>
+                    <div aria-hidden="true" />
                 </div>
             </div>
         </>
@@ -203,7 +208,7 @@ const AlbumFooter: React.FC<{ context?: any }> = ({ context }) => {
     if (!context) return null;
     const { year, artist, metadata } = context;
     return (
-        <div className="pb-32 px-4 pt-12 text-xs text-text-subtle bg-surface-1/60">
+        <div className="pb-32 px-4 sm:px-8 pt-12 text-xs text-text-subtle bg-surface-1/60">
             <p>{year} {artist}</p>
             {metadata?.copyright ? <p>{metadata.copyright}</p> : <p>© {year} {artist}</p>}
         </div>
@@ -376,7 +381,7 @@ export const AlbumDetail: React.FC = () => {
                 itemContent={(index, item) => {
                     if (item.type === 'HEADER') {
                         return (
-                            <div className="bg-surface-1/60 px-8 py-2">
+                            <div className="bg-surface-1/60 px-4 sm:px-8 py-2">
                                 <div className="flex items-center gap-4 text-text-secondary">
                                     <Disc size={18} />
                                     <span className="font-bold text-sm">Disc {item.data}</span>
@@ -389,9 +394,9 @@ export const AlbumDetail: React.FC = () => {
                     const isCurrent = currentSong?.id === song.id;
 
                     return (
-                        <div className="bg-surface-1/60 px-8">
+                        <div className="bg-surface-1/60 px-4 sm:px-8">
                             <div
-                                className={`grid grid-cols-[40px_4fr_1fr_60px] gap-4 px-4 py-3 rounded-lg hover:bg-surface-hover group transition-all duration-200 cursor-pointer items-center relative ${isCurrent ? 'bg-surface-hover' : ''}`}
+                                className={`grid grid-cols-[32px_minmax(0,1fr)_48px_68px] md:grid-cols-[40px_minmax(0,4fr)_minmax(60px,1fr)_60px_76px] gap-2 md:gap-4 px-4 py-3 rounded-lg hover:bg-surface-hover group transition-all duration-200 cursor-pointer items-center ${isCurrent ? 'bg-surface-hover' : ''}`}
                                 onClick={() => playSong(song, albumSongs)}
                                 onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, song)}
                             >
@@ -401,29 +406,33 @@ export const AlbumDetail: React.FC = () => {
                                     ) : (
                                         <>
                                             <span className={`group-hover:hidden ${isCurrent ? 'text-brand' : ''}`}>{song.trackNumber}</span>
-                                            <Play size={14} className="hidden group-hover:block text-white fill-current" />
+                                            <Play size={14} className="hidden group-hover:block text-text-main fill-current" />
                                         </>
                                     )}
                                 </div>
 
                                 <div className="flex flex-col min-w-0">
-                                    <span className={`text-base font-medium truncate ${isCurrent ? 'text-brand' : 'text-white'}`}>{song.title}</span>
-                                    <span className="text-sm text-text-secondary group-hover:text-white truncate transition-all duration-200">{song.artist}</span>
+                                    <span className={`text-base font-medium truncate ${isCurrent ? 'text-brand' : 'text-text-main'}`}>{song.title}</span>
+                                    <span className="text-sm text-text-secondary group-hover:text-text-main truncate transition-all duration-200">{song.artist}</span>
                                 </div>
 
-                                <div className="hidden md:block text-right pr-8 text-text-secondary text-sm font-mono opacity-0 group-hover:opacity-100 transition-all duration-200">
+                                <div className="hidden md:block text-right pr-4 text-text-secondary text-sm font-mono opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all duration-200">
                                     {song.playCount || 0}
                                 </div>
 
-                                <div className="text-right pr-4 text-text-secondary text-sm font-mono group-hover:hidden">
+                                <div className="text-right text-text-secondary text-sm font-mono tabular-nums">
                                     {formatTime(song.duration)}
                                 </div>
 
-                                <div className="hidden group-hover:flex items-center gap-2 justify-end pr-2 absolute right-2">
-                                    <LikeButton songId={song.id} size={18} />
+                                <div className="flex items-center justify-end gap-1">
+                                    <LikeButton songId={song.id} size={18} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity" />
                                     <button
-                                        onClick={(e) => openContextMenu(e, ContextMenuType.SONG, song)}
-                                        className="text-text-secondary hover:text-white transition-all duration-200"
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            openContextMenu(e, ContextMenuType.SONG, song);
+                                        }}
+                                        className="min-w-[32px] min-h-[32px] inline-flex items-center justify-center text-text-secondary hover:text-text-main opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-all duration-200 rounded-full"
                                         aria-label="More options"
                                     >
                                         <MoreHorizontal size={20} />

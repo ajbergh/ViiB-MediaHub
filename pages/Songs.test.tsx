@@ -151,3 +151,21 @@ it('requests scalar-only viewport-scoped analysis when analysis columns are enab
     expect(mocks.analysis).toHaveBeenCalledWith(['a', 'b'], expect.objectContaining({ summary: true, scalarsOnly: true }));
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
+
+it('renders loading skeletons while initializing and keeps empty state below header controls', async () => {
+  const { root, container } = setup();
+  try {
+    mocks.state.songs = [];
+    mocks.state.isLibraryInitializing = true;
+    await act(async () => root.render(<Songs />));
+    expect(container.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0);
+
+    mocks.state.isLibraryInitializing = false;
+    mocks.state.isScanning = false;
+    await act(async () => root.render(<Songs />));
+    expect(container.querySelector('.animate-pulse')).toBeNull();
+    expect(container.querySelector('.inset-0')).toBeNull();
+    await openChooser(container);
+    expect(document.querySelector('[aria-label="Track columns"]')).not.toBeNull();
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});

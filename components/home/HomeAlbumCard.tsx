@@ -27,18 +27,9 @@ export const HomeAlbumCard: React.FC<HomeAlbumCardProps> = ({
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
       onContextMenu={onContextMenu}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onClick();
-        }
-      }}
       className={cn(
-        'group relative flex-shrink-0 cursor-pointer rounded-lg bg-transparent p-3 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70',
+        'group relative flex-shrink-0 rounded-lg bg-transparent p-3 text-left transition-colors hover:bg-surface-hover',
         compact ? 'w-40' : 'w-44',
         className
       )}
@@ -54,20 +45,23 @@ export const HomeAlbumCard: React.FC<HomeAlbumCardProps> = ({
         )}
         <button
           type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onPlay();
-          }}
-          className="absolute bottom-2 right-2 flex h-11 w-11 translate-y-2 items-center justify-center rounded-full bg-brand text-surface-0 opacity-0 shadow-xl transition-all group-hover:translate-y-0 group-hover:opacity-100 hover:scale-105 hover:bg-brand-hover focus-visible:translate-y-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
+          onClick={onPlay}
+          className="absolute bottom-2 right-2 z-10 flex h-11 w-11 translate-y-0 items-center justify-center rounded-full bg-brand text-surface-0 opacity-100 shadow-xl transition-all md:translate-y-2 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100 md:group-focus-within:translate-y-0 md:group-focus-within:opacity-100 hover:scale-105 hover:bg-brand-hover focus-visible:translate-y-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
           aria-label={`Play ${album.name}`}
         >
           <Play size={20} className="ml-0.5 fill-current" aria-hidden="true" />
         </button>
       </div>
-      <h3 className="truncate text-sm font-semibold text-text-main">
-        {album.name}
-      </h3>
-      <p className="mt-1 truncate text-xs text-text-secondary">{album.artist}</p>
+      <button
+        type="button"
+        onClick={onClick}
+        className="block w-full cursor-pointer rounded text-left focus-visible:outline-none after:absolute after:inset-0 after:rounded-lg focus-visible:after:ring-2 focus-visible:after:ring-brand/70"
+      >
+        <span className="block truncate text-sm font-semibold text-text-main">
+          {album.name}
+        </span>
+        <span className="mt-1 block truncate text-xs text-text-secondary">{album.artist}</span>
+      </button>
     </div>
   );
 };

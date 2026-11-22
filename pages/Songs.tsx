@@ -109,18 +109,19 @@ const SongsHeader: React.FC<{ context?: SongsContext }> = ({ context }) => {
       <ListHeader>
             <PageHeader heading="Songs" actions={
                 <div className="flex flex-wrap items-center gap-3 min-w-0 w-full md:w-auto">
-                    <Button variant="secondary" size="sm" aria-label="Choose track columns" title="Choose columns (or right-click the header)" aria-haspopup="menu" aria-expanded={menuPosition !== null} onClick={openColumns} className="rounded-full" leftIcon={<Columns3 size={15} />}>Columns</Button>
+                    <Button variant="secondary" size="sm" aria-label="Choose track columns" title="Choose columns (or right-click the header)" aria-haspopup="menu" aria-expanded={menuPosition !== null} onClick={openColumns} className="rounded-full min-h-[32px]" leftIcon={<Columns3 size={15} />}>Columns</Button>
                     {/* Sort Dropdown */}
                     <div className="relative">
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={() => setShowSortMenu(!showSortMenu)}
-                className="rounded-full whitespace-nowrap"
+                className="rounded-full whitespace-nowrap min-h-[32px]"
                 leftIcon={<ArrowUpDown size={15} className="text-text-secondary" aria-hidden="true" />}
                 rightIcon={<ChevronDown size={15} className={`text-text-secondary transition-transform ${showSortMenu ? 'rotate-180' : ''}`} aria-hidden="true" />}
                 aria-haspopup="menu"
                 aria-expanded={showSortMenu}
+                aria-label="Sort songs"
               >
                 <span className="hidden sm:inline">{sortLabels[sortBy]}</span>
               </Button>
@@ -192,7 +193,7 @@ const SongsHeader: React.FC<{ context?: SongsContext }> = ({ context }) => {
                     </div>
                   );
                 })}
-                <div className="md:hidden flex justify-end"><Clock size={14} aria-label="Duration" /></div>
+                <div className="md:hidden flex items-center justify-end"><Clock size={14} aria-label="Duration" /></div>
                 <div className="hidden md:block" />
                 <div />
             </div>
@@ -393,7 +394,7 @@ export const Songs: React.FC = () => {
                             <Button
                               variant="ghost"
                               disabled={Boolean(preview)}
-                              className="rounded-full p-1.5 opacity-0 group-hover:opacity-100 text-text-secondary hover:text-text-main"
+                              className="rounded-full p-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 text-text-secondary hover:text-text-main"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 openSongInfoModal(song);
@@ -403,14 +404,14 @@ export const Songs: React.FC = () => {
                             >
                               <Info size={16} />
                             </Button>
-                            {!preview && <LikeButton songId={song.id} size={16} className="opacity-0 group-hover:opacity-100" />}
+                            {!preview && <LikeButton songId={song.id} size={16} className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100" />}
                         </div>
                         
                         <div className="flex justify-center relative">
                           <Button
                             variant="ghost"
                             disabled={Boolean(preview)}
-                            className="rounded-full p-1.5 opacity-0 group-hover:opacity-100"
+                            className="rounded-full p-1 min-w-[28px] min-h-[28px] opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
                             onClick={(e) => {
                               e.stopPropagation();
                               openContextMenu(e, ContextMenuType.SONG, song);
@@ -426,15 +427,21 @@ export const Songs: React.FC = () => {
                );
             }}
         />
+
+        {isLibraryInitializing && songs.length === 0 && (
+          <div className="px-4 sm:px-6 lg:px-7 pt-2">
+            <SkeletonTrackList count={8} />
+          </div>
+        )}
         
         {songs.length === 0 && !isLibraryInitializing && !isScanning && (
-          <div className="absolute inset-0 flex items-center justify-center pt-20">
+          <div className="px-4 sm:px-6 lg:px-7 py-12 flex items-center justify-center">
             <EmptyLibrary onAddMusic={() => navigate('/settings')} />
           </div>
         )}
         
         {songs.length > 0 && sortedAndFilteredSongs.length === 0 && filter && (
-          <div className="p-12 text-center text-text-subtle absolute top-40 w-full pointer-events-none">
+          <div className="p-12 text-center text-text-subtle">
             <p>No songs match "{filter}"</p>
           </div>
         )}

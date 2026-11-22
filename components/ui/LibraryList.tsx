@@ -4,10 +4,10 @@ import React from 'react';
 
 const columns = 'grid grid-cols-[28px_minmax(0,1fr)_80px] md:grid-cols-[36px_minmax(0,2fr)_minmax(0,1fr)_120px] gap-3 items-center';
 
-export const LibraryListHeader: React.FC<{ title: string; detail?: string; stats: string }> = ({ title, detail, stats }) => (
+export const LibraryListHeader: React.FC<{ title: string; detail?: string; stats: string; hasActions?: boolean }> = ({ title, detail, stats, hasActions = true }) => (
   <div className="flex items-center px-3 py-2 mb-1 border-b border-surface-border text-xs font-medium text-text-subtle" aria-hidden="true">
     <div className={`${columns} flex-1 min-w-0`}><span>#</span><span>{title}</span><span className="hidden md:block">{detail}</span><span className="text-right">{stats}</span></div>
-    <div className="w-24 shrink-0" />
+    {hasActions && <div className="w-24 shrink-0" />}
   </div>
 );
 
@@ -31,6 +31,8 @@ export const LibraryListRow: React.FC<{
       <span className="hidden md:block truncate text-sm text-text-secondary">{detail}</span>
       <span className="text-right text-sm text-text-secondary">{stats}</span>
     </button>
-    <div className="w-24 shrink-0 flex items-center justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">{actions}</div>
+    {actions !== undefined && actions !== null && actions !== false && (
+      <div className="w-24 shrink-0 flex items-center justify-end gap-1.5 opacity-100 md:opacity-80 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity">{actions}</div>
+    )}
   </div>
 );

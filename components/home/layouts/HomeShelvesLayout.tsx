@@ -3,6 +3,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router';
 import { SmartMixCard } from '../../SmartMixCard';
+import { Skeleton } from '../../Skeleton';
 import { HomeAlbumCard } from '../HomeAlbumCard';
 import { HomeArtistCard } from '../HomeArtistCard';
 import { HomeQuickTile } from '../HomeQuickTile';
@@ -15,6 +16,7 @@ import { HomeContent } from '../useHomeContent';
 
 interface HomeShelvesLayoutProps {
   content: HomeContent;
+  isComputingSmartMixes?: boolean;
 }
 
 const getGreeting = () => {
@@ -24,7 +26,10 @@ const getGreeting = () => {
   return 'Good evening';
 };
 
-export const HomeShelvesLayout: React.FC<HomeShelvesLayoutProps> = ({ content }) => {
+export const HomeShelvesLayout: React.FC<HomeShelvesLayoutProps> = ({
+  content,
+  isComputingSmartMixes = Boolean(content.showSmartMixes && content.songs.length > 0 && content.smartMixes.length === 0),
+}) => {
   const navigate = useNavigate();
 
   return (
@@ -50,17 +55,26 @@ export const HomeShelvesLayout: React.FC<HomeShelvesLayoutProps> = ({ content })
         <HomeSpotlight item={content.spotlightItem} compact />
       </section>
 
-      {content.showSmartMixes && content.smartMixes.length > 0 ? (
+      {content.showSmartMixes && (content.smartMixes.length > 0 || isComputingSmartMixes) ? (
         <HomeShelf title="Made For You" subtitle="Auto-generated mixes from your library">
-          {content.smartMixes.map((mix) => (
-            <SmartMixCard
-              key={mix.id}
-              mix={mix}
-              onPlay={() => content.playMix(mix)}
-              onClick={() => content.navigateToSmartMix(mix)}
-              onContextMenu={(e) => content.openSmartMixMenu(e, mix)}
-            />
-          ))}
+          {content.smartMixes.length > 0
+            ? content.smartMixes.map((mix) => (
+                <SmartMixCard
+                  key={mix.id}
+                  mix={mix}
+                  onPlay={() => content.playMix(mix)}
+                  onClick={() => content.navigateToSmartMix(mix)}
+                  onContextMenu={(e) => content.openSmartMixMenu(e, mix)}
+                />
+              ))
+            : Array.from({ length: 5 }).map((_, idx) => (
+                <div key={idx} className="w-44 flex-shrink-0 rounded-lg p-3" aria-hidden="true">
+                  <Skeleton className="mb-3 aspect-square w-full rounded-md" />
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="mt-1.5 h-3 w-full" />
+                  <Skeleton className="mt-1 h-3 w-2/3" />
+                </div>
+              ))}
         </HomeShelf>
       ) : null}
 

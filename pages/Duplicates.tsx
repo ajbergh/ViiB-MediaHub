@@ -42,7 +42,7 @@ export const Duplicates: React.FC = () => {
     <Page>
       <PageHeader
         heading="Duplicate Manager"
-        actions={<Button variant="secondary" onClick={() => void load()}><RefreshCw size={16} /> Refresh</Button>}
+        actions={<Button variant="secondary" leftIcon={<RefreshCw size={16} />} onClick={() => void load()}>Refresh</Button>}
       />
       <p className="mb-6 text-sm text-text-secondary">
         Hide redundant library copies without deleting source files or losing their persisted metadata.
@@ -65,17 +65,17 @@ export const Duplicates: React.FC = () => {
               <h2 className="mb-4 font-semibold text-text-main">{group.songs.length} identical copies</h2>
               <div className="space-y-3">
                 {group.songs.map((song, index) => (
-                  <div key={song.id} className="flex items-center gap-4 rounded-lg bg-surface-1 p-3">
-                    <div className="min-w-0 flex-1">
+                  <div key={song.id} className="flex flex-wrap items-center gap-3 sm:gap-4 rounded-lg bg-surface-1 p-3">
+                    <div className="min-w-[180px] flex-1">
                       <div className="truncate font-medium text-text-main">{song.title}</div>
                       <div className="truncate text-sm text-text-secondary">{song.artist} · {song.album}</div>
                       <div className="truncate text-xs text-text-subtle" title={song.filePath}>{song.filePath}</div>
                     </div>
                     {index === 0 ? (
-                      <span className="rounded-full bg-brand/15 px-3 py-1 text-xs font-semibold text-brand">Suggested keep</span>
+                      <span className="shrink-0 rounded-full bg-brand/15 px-3 py-1 text-xs font-semibold text-brand">Suggested keep</span>
                     ) : (
-                      <Button variant="secondary" onClick={() => void setIgnoredState(song.id, true)}>
-                        <EyeOff size={15} /> Hide copy
+                      <Button variant="secondary" size="sm" leftIcon={<EyeOff size={15} />} onClick={() => void setIgnoredState(song.id, true)}>
+                        Hide copy
                       </Button>
                     )}
                   </div>
@@ -91,13 +91,13 @@ export const Duplicates: React.FC = () => {
           <h2 className="mb-4 font-semibold text-text-main">Hidden duplicate copies</h2>
           <div className="space-y-3">
             {ignored.map(song => (
-              <div key={song.id} className="flex items-center gap-4 rounded-lg bg-surface-1 p-3">
-                <div className="min-w-0 flex-1">
+              <div key={song.id} className="flex flex-wrap items-center gap-3 sm:gap-4 rounded-lg bg-surface-1 p-3">
+                <div className="min-w-[180px] flex-1">
                   <div className="truncate font-medium text-text-main">{song.title}</div>
                   <div className="truncate text-sm text-text-secondary">{song.artist} · {song.album}</div>
                 </div>
-                <Button variant="secondary" onClick={() => void setIgnoredState(song.id, false)}>
-                  <Eye size={15} /> Restore
+                <Button variant="secondary" size="sm" leftIcon={<Eye size={15} />} onClick={() => void setIgnoredState(song.id, false)}>
+                  Restore
                 </Button>
               </div>
             ))}

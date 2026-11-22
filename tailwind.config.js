@@ -24,7 +24,7 @@ export default {
         text: {
           main: '#FFFFFF',
           secondary: '#B3B3B3',
-          subtle: '#727272'
+          subtle: '#949494'
         },
         brand: {
           DEFAULT: '#1ED760',

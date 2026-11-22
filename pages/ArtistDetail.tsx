@@ -125,10 +125,11 @@ export const ArtistDetail: React.FC = () => {
                 style={{ background: getHeaderGradient() }}
             />
 
-            <div className="relative z-10 p-8 pt-16 flex flex-col md:flex-row gap-8 items-end">
+            <div className="relative z-10 px-4 py-6 pt-16 sm:p-8 sm:pt-16 flex flex-col md:flex-row gap-6 md:gap-8 items-start md:items-end">
                 <button
+                    type="button"
                     onClick={() => navigate(-1)}
-                    className="absolute top-6 left-6 w-8 h-8 bg-black/40 rounded-full flex items-center justify-center hover:bg-black/60 text-white transition-all duration-200 z-20"
+                    className="absolute top-4 left-4 sm:top-6 sm:left-6 min-w-[32px] min-h-[32px] w-8 h-8 bg-surface-0/40 rounded-full flex items-center justify-center hover:bg-surface-0/60 text-text-main transition-all duration-200 z-20"
                     aria-label="Go back"
                 >
                     <ArrowLeft size={20} />
@@ -171,21 +172,29 @@ export const ArtistDetail: React.FC = () => {
                 </div>
             </div>
 
-            <div className="relative z-10 px-8 py-6 flex items-center gap-6">
+            <div className="relative z-10 px-4 sm:px-8 py-6 flex flex-wrap items-center gap-4 sm:gap-6">
                 <button
+                    type="button"
                     onClick={handlePlayAll}
-                    className="w-14 h-14 bg-brand hover:bg-brand-hover rounded-full flex items-center justify-center hover:scale-105 transition-all duration-200 shadow-lg shadow-black/40 text-black"
+                    className="w-14 h-14 shrink-0 bg-brand hover:bg-brand-hover rounded-full flex items-center justify-center hover:scale-105 transition-all duration-200 shadow-lg shadow-black/40 text-surface-0"
                     aria-label="Play all"
                 >
                     <Play size={28} className="fill-current ml-1" />
                 </button>
-                <button onClick={handleShuffle} className="text-text-secondary hover:text-white transition-all duration-200" title="Shuffle play">
+                <button
+                    type="button"
+                    onClick={handleShuffle}
+                    className="min-w-[32px] min-h-[32px] inline-flex items-center justify-center text-text-secondary hover:text-text-main transition-all duration-200 rounded-full"
+                    title="Shuffle play"
+                    aria-label="Shuffle play"
+                >
                     <Shuffle size={28} />
                 </button>
                 <div className="relative">
                     <button
+                        type="button"
                         onClick={(e) => openContextMenu(e, ContextMenuType.ARTIST, artistObject)}
-                        className="text-text-secondary hover:text-white transition-all duration-200"
+                        className="min-w-[32px] min-h-[32px] inline-flex items-center justify-center text-text-secondary hover:text-text-main transition-all duration-200 rounded-full"
                         aria-label="More options"
                     >
                         <MoreHorizontal size={32} />

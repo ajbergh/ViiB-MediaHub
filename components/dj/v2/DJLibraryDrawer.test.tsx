@@ -22,6 +22,10 @@ it('opens and closes on successive Browse presses without toggling during dial o
     expect(drawer().hidden).toBe(true);
     await act(async () => browseDJMidiLibrary(1));
     expect(drawer().hidden).toBe(false);
+    expect(drawer().getAttribute('data-size')).toBe('compact');
+    const resizeBtn = drawer().querySelector<HTMLButtonElement>('[aria-label="Expand library height"]')!;
+    await act(async () => resizeBtn.click());
+    expect(drawer().getAttribute('data-size')).toBe('expanded');
     await act(async () => browseDJMidiLibrary(1));
     expect(drawer().hidden).toBe(false);
     await act(async () => loadDJMidiLibrary('A'));

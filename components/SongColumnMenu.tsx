@@ -27,13 +27,13 @@ export const SongColumnMenu: React.FC<{
   return createPortal(<>
     <button type="button" tabIndex={-1} aria-label="Close column chooser" className="fixed inset-0 z-[9998] cursor-default" onClick={onClose} onContextMenu={event => { event.preventDefault(); onClose(); }} />
     <div ref={panel} className="fixed z-[9999] w-56 max-w-[calc(100vw-16px)]" style={{ left: location.x, top: location.y }}>
-      <Menu aria-label="Track columns" onRequestClose={onClose} className="max-h-[calc(100vh-16px)] overflow-y-auto">
-        <p className="px-4 py-2 text-xs font-semibold text-text-secondary">Show columns</p>
-        <MenuItem disabled>Title (always shown)</MenuItem>
-        {SONG_COLUMNS.map(column => <MenuItem key={column.id} role="menuitemcheckbox" aria-checked={columns.includes(column.id)} onClick={() => onChange(columns.includes(column.id) ? columns.filter(id => id !== column.id) : [...columns, column.id])}>
+      <Menu aria-label="Track columns" onRequestClose={onClose} className="max-h-[min(24rem,calc(100vh-16px))] overflow-y-auto">
+        <p className="px-4 py-1.5 text-xs font-semibold text-text-secondary">Show columns</p>
+        <MenuItem disabled className="!py-1.5">Title (always shown)</MenuItem>
+        {SONG_COLUMNS.map(column => <MenuItem key={column.id} role="menuitemcheckbox" aria-checked={columns.includes(column.id)} className="!py-1.5" onClick={() => onChange(columns.includes(column.id) ? columns.filter(id => id !== column.id) : [...columns, column.id])}>
           <span className="flex items-center gap-3"><span className="w-4">{columns.includes(column.id) && <Check size={14} />}</span>{column.label}</span>
         </MenuItem>)}
-        <MenuItem onClick={() => onChange([...DEFAULT_SONG_COLUMNS])}>Reset to default</MenuItem>
+        <MenuItem className="!py-1.5" onClick={() => onChange([...DEFAULT_SONG_COLUMNS])}>Reset to default</MenuItem>
       </Menu>
     </div>
   </>, document.body);

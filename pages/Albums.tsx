@@ -44,15 +44,29 @@ const sortLabels: Record<AlbumSortOption, string> = {
   'songs-asc': 'Fewest Songs',
 };
 
-const ListContainer = forwardRef<HTMLDivElement, any>(({ style, children, ...props }, ref) => (
+const GridListContainer = forwardRef<HTMLDivElement, any>(({ style, children, className, ...props }, ref) => (
   <div
     ref={ref}
     {...props}
+    className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-[repeat(var(--card-cols,4),minmax(0,1fr))] ${className || ''}`}
     style={{
       ...style,
-      display: 'grid',
-      gridTemplateColumns: 'repeat(var(--card-cols, 4), minmax(0, 1fr))',
       gap: 'var(--card-gap, 1.5rem)',
+      paddingBottom: '8rem',
+    }}
+  >
+    {children}
+  </div>
+));
+
+const RowListContainer = forwardRef<HTMLDivElement, any>(({ style, children, className, ...props }, ref) => (
+  <div
+    ref={ref}
+    {...props}
+    className={`grid grid-cols-1 ${className || ''}`}
+    style={{
+      ...style,
+      gap: 'var(--card-gap, 0px)',
       paddingBottom: '8rem',
     }}
   >
@@ -128,7 +142,7 @@ export const Albums: React.FC = () => {
           heading="Albums"
           subtitle={`${filteredAlbums.length}${filter ? ` of ${albums.length}` : ''} albums`}
           actions={
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <CardSizeSlider listAtMinimum value={cardCols} onChange={handleCardColsChange} />
               <div className="relative">
                 <Button
@@ -188,14 +202,14 @@ export const Albums: React.FC = () => {
           <EmptyAlbums />
         ) : (
           <div style={{ '--card-cols': listView ? 1 : cardCols, '--card-gap': listView ? '0px' : '0.5rem' } as React.CSSProperties}>
-            {listView && <LibraryListHeader title="Album" detail="Artist" stats="Tracks" />}
+            {listView && <LibraryListHeader title="Album" detail="Artist" stats="Tracks" hasActions={false} />}
             <VirtuosoGrid
               key={listView ? 'list' : 'tiles'}
               useWindowScroll={false}
               customScrollParent={scrollParent ?? undefined}
               data={filteredAlbums}
               rangeChanged={setVisibleRange}
-              components={{ List: ListContainer, Item: ItemContainer }}
+              components={{ List: listView ? RowListContainer : GridListContainer, Item: ItemContainer }}
               itemContent={(index, album) => {
                 const metadataKey = `${album.name}::${album.artist}`;
                 const metadata = albumMetadata[metadataKey];

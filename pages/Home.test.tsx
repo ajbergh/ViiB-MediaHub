@@ -58,3 +58,16 @@ it('renders available songs during scanning without regenerating mixes on visits
     expect(mocks.state.refreshSmartMixes).not.toHaveBeenCalled();
   } finally { await act(async () => root.unmount()); }
 });
+
+it('matches the loading skeleton to the active homeLayoutVariant', async () => {
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  const render = () => act(async () => root.render(<Home />));
+  try {
+    for (const variant of ['shelves', 'dashboard', 'coverWall'] as const) {
+      mocks.state.homeLayoutVariant = variant;
+      await render();
+      expect(container.querySelector(`[data-layout-skeleton="${variant}"]`)).not.toBeNull();
+    }
+  } finally { await act(async () => root.unmount()); }
+});

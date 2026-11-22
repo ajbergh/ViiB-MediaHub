@@ -25,7 +25,7 @@ export const HomeStatsCompact: React.FC<HomeStatsCompactProps> = ({
   return (
     <section className="mb-6">
       <h2 className="mb-3 text-card font-bold tracking-tight text-text-main">Library Overview</h2>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {stats.map((stat) => {
           const Icon = stat.icon;
           return (

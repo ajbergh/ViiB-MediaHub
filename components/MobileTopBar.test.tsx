@@ -25,6 +25,9 @@ it.each([
   ['/smart-playlists', 'AI Smart Mix'],
   ['/smart-mix/genre', 'Smart Mix'],
   ['/dj', 'DJ Mode'],
+  ['/albums', 'Albums'],
+  ['/album/Random%20Access%20Memories', 'Albums'],
+  ['/duplicates', 'Duplicates'],
 ])('shows the correct feature name for %s', async (path, title) => {
   await act(async () => {
     root.render(

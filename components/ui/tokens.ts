@@ -35,6 +35,15 @@ export const VIIB = {
     sectionPadding: 'px-6 py-5',
     maxContent: 'max-w-[1600px]',
   },
+  zIndex: {
+    queue: 'z-40',
+    nowPlaying: 'z-[100]',
+    overlayPanel: 'z-[120]',
+    popover: 'z-[130]',
+    confirmDialog: 'z-[150]',
+    toast: 'z-[180]',
+    contextMenu: 'z-[200]',
+  },
 } as const;
 
 // Use only when a component requires a literal color string (e.g., canvas/WebAudio visualizers).

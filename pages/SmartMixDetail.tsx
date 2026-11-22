@@ -15,19 +15,30 @@
  * @module SmartMixDetail
  */
 
-import React, { useMemo } from 'react';
+import React, { useCallback, useId, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useStore, useAlbumCovers } from '../store';
 import { Play, Clock, ArrowLeft, MoreHorizontal, Sparkles, Shuffle, Save } from 'lucide-react';
-import { formatTime, generateGradient } from '../utils';
+import { formatTime } from '../utils';
 import { ContextMenuType } from '../types';
 import { indexPlaylistSongs, resolvePlaylistSongs } from '../lib/playlistContents';
+import { useFocusTrap } from '../hooks/useFocusTrap';
+import { TextInput } from '../components/ui/TextInput';
+import { Button } from '../components/ui/Button';
 
 export const SmartMixDetail: React.FC = () => {
     const { mixId } = useParams<{ mixId: string }>();
     const navigate = useNavigate();
-    const { smartMixes, songs, playSong, currentSong, isPlaying, openContextMenu, saveSmartMixAsPlaylist, addToQueue, showToast } = useStore();
+    const { smartMixes, songs, playSong, currentSong, isPlaying, openContextMenu, saveSmartMixAsPlaylist, createPlaylist, showToast } = useStore();
     const albumCovers = useAlbumCovers();
+    const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+    const [playlistName, setPlaylistName] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+    const dialogId = useId();
+    const closeSaveDialog = useCallback(() => {
+        if (!isSaving) setSaveDialogOpen(false);
+    }, [isSaving]);
+    const dialogRef = useFocusTrap<HTMLDivElement>(saveDialogOpen, closeSaveDialog);
 
     const mix = smartMixes.find(m => m.id === mixId);
 
@@ -39,7 +50,7 @@ export const SmartMixDetail: React.FC = () => {
             <div className="flex flex-col items-center justify-center h-full text-text-subtle">
                 <Sparkles size={64} className="mb-4 opacity-50" />
                 <h2 className="text-xl font-bold mb-2">Mix not found</h2>
-                <button onClick={() => navigate('/')} className="text-brand hover:underline">
+                <button type="button" onClick={() => navigate('/')} className="text-brand hover:underline">
                     Back to Home
                 </button>
             </div>
@@ -47,18 +58,32 @@ export const SmartMixDetail: React.FC = () => {
     }
     
     const totalDuration = mixSongs.reduce((acc, s) => acc + s.duration, 0);
-    const durationMin = Math.floor(totalDuration / 60);
-    const durationSec = Math.floor(totalDuration % 60);
+    const hours = Math.floor(totalDuration / 3600);
+    const mins = Math.floor((totalDuration % 3600) / 60);
+    const durationLabel = hours > 0 ? `${hours} hr ${mins} min` : `${mins} min`;
 
-    const handleSaveAsPlaylist = async () => {
-        const name = prompt("Save Smart Mix as Playlist:", mix.name);
-        if (name) {
-            // We use a custom action in store or simulating adding playlists
-            // Since useStore doesn't expose a direct 'createFromIds', we use the specific action we added
-            try {
+    const handleOpenSaveDialog = () => {
+        setPlaylistName(mix.name);
+        setSaveDialogOpen(true);
+    };
+
+    const handleConfirmSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const trimmedName = playlistName.trim();
+        if (!trimmedName || isSaving) return;
+        setIsSaving(true);
+        try {
+            if (trimmedName === mix.name) {
                 await saveSmartMixAsPlaylist(mix.id);
-                navigate('/playlists');
-            } catch { showToast({ type: 'error', message: 'Unable to save playlist. Please try again.' }); }
+            } else {
+                await createPlaylist(trimmedName, mixSongs.map(s => s.id));
+            }
+            setSaveDialogOpen(false);
+            navigate('/playlists');
+        } catch {
+            showToast({ type: 'error', message: 'Unable to save playlist. Please try again.' });
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -71,10 +96,11 @@ export const SmartMixDetail: React.FC = () => {
              />
 
              {/* Header Content */}
-             <div className="relative z-10 p-8 pt-16 flex flex-col md:flex-row gap-8 items-end">
+             <div className="relative z-10 p-4 sm:p-8 pt-16 flex flex-col md:flex-row gap-6 sm:gap-8 items-start md:items-end">
                 <button 
+                    type="button"
                     onClick={() => navigate(-1)} 
-                    className="absolute top-6 left-6 w-8 h-8 bg-black/40 rounded-full flex items-center justify-center hover:bg-black/60 text-white transition-all duration-200 z-20"
+                    className="absolute top-6 left-4 sm:left-6 min-w-[36px] min-h-[36px] bg-black/40 rounded-full flex items-center justify-center hover:bg-black/60 text-white transition-all duration-200 z-20"
                     aria-label="Go back"
                 >
                     <ArrowLeft size={20} />
@@ -82,7 +108,7 @@ export const SmartMixDetail: React.FC = () => {
 
                 {/* Cover Collage */}
                 <div 
-                    className="w-52 h-52 shadow-2xl flex-shrink-0 relative group rounded-lg overflow-hidden grid grid-cols-2"
+                    className="w-40 h-40 sm:w-52 sm:h-52 shadow-2xl flex-shrink-0 relative group rounded-lg overflow-hidden grid grid-cols-2"
                     onContextMenu={(e) => openContextMenu(e, ContextMenuType.SMART_MIX, mix)}
                 >
                     {mixSongs.slice(0, 4).map((s, i) => (
@@ -111,20 +137,21 @@ export const SmartMixDetail: React.FC = () => {
                     <h1 className="text-display font-bold text-white tracking-tight leading-tight drop-shadow-lg">
                         {mix.name}
                     </h1>
-                    <p className="text-white/80 text-lg font-medium">{mix.description}</p>
+                    <p className="text-white/80 text-base sm:text-lg font-medium">{mix.description}</p>
                     <div className="flex items-center flex-wrap gap-2 text-sm text-white/70 font-medium mt-2">
                          <span>Updated just now</span>
                          <span className="w-1 h-1 bg-white rounded-full mx-1"></span>
-                         <span>{mixSongs.length} songs, {durationMin} hr {durationSec} min</span>
+                         <span>{mixSongs.length} songs, {durationLabel}</span>
                     </div>
                 </div>
              </div>
 
              {/* Action Bar & Tracklist */}
-             <div className="bg-surface-1/60 flex-1 p-8 pt-6 backdrop-blur-lg relative z-10 min-h-[500px]">
+             <div className="bg-surface-1/60 flex-1 p-4 sm:p-8 pt-6 backdrop-blur-lg relative z-10 min-h-[500px]">
                 {/* Actions */}
-                <div className="flex items-center gap-6 mb-8 relative">
+                <div className="flex flex-wrap items-center gap-3 sm:gap-6 mb-8 relative">
                     <button 
+                        type="button"
                         onClick={() => mixSongs.length > 0 && playSong(mixSongs[0], mixSongs)}
                         className="w-14 h-14 bg-brand hover:bg-brand-hover rounded-full flex items-center justify-center hover:scale-105 transition-all duration-200 shadow-lg shadow-black/40 text-black"
                         aria-label="Play all"
@@ -133,40 +160,43 @@ export const SmartMixDetail: React.FC = () => {
                     </button>
                     
                     <button 
+                        type="button"
                         onClick={() => {
                             // Shuffle play
                             const shuffled = [...mixSongs].sort(() => 0.5 - Math.random());
                             if (shuffled.length > 0) playSong(shuffled[0], shuffled);
                         }}
-                        className="text-text-secondary hover:text-white transition-all duration-200 flex items-center gap-2 font-bold text-sm bg-white/10 px-4 py-2 rounded-full hover:bg-white/20"
+                        className="text-text-secondary hover:text-white transition-all duration-200 flex items-center gap-2 font-bold text-sm bg-white/10 px-4 py-2 min-h-[36px] rounded-full hover:bg-white/20"
                     >
                         <Shuffle size={18} /> Shuffle
                     </button>
 
                      <button 
-                        onClick={handleSaveAsPlaylist}
-                        className="text-text-secondary hover:text-white transition-all duration-200 flex items-center gap-2 font-bold text-sm bg-white/10 px-4 py-2 rounded-full hover:bg-white/20"
+                        type="button"
+                        onClick={handleOpenSaveDialog}
+                        className="text-text-secondary hover:text-white transition-all duration-200 flex items-center gap-2 font-bold text-sm bg-white/10 px-4 py-2 min-h-[36px] rounded-full hover:bg-white/20"
                     >
                         <Save size={18} /> Save as Playlist
                     </button>
 
                     <div className="relative ml-auto">
                         <button 
+                            type="button"
                             onClick={(e) => openContextMenu(e, ContextMenuType.SMART_MIX, mix)}
-                            className="text-text-secondary hover:text-white transition-all duration-200"
+                            className="inline-flex items-center justify-center min-w-[36px] min-h-[36px] rounded-full text-text-secondary hover:text-white hover:bg-surface-hover transition-all duration-200"
                             aria-label="More options"
                         >
-                            <MoreHorizontal size={32} />
+                            <MoreHorizontal size={24} />
                         </button>
                     </div>
                 </div>
 
                 {/* Table Header */}
-                <div className="grid grid-cols-[40px_4fr_3fr_60px] gap-4 px-4 py-2 border-b border-surface-3 text-text-secondary text-xs uppercase tracking-wider font-medium mb-2 sticky top-0 bg-surface-1 z-20">
+                <div className="grid grid-cols-[32px_1fr_auto] md:grid-cols-[40px_4fr_3fr_60px] gap-4 px-3 sm:px-4 py-2 border-b border-surface-3 text-text-secondary text-xs uppercase tracking-wider font-medium mb-2 sticky top-0 bg-surface-1 z-20">
                     <div className="text-center">#</div>
                     <div>Title</div>
                     <div className="hidden md:block">Album</div>
-                    <div className="text-right pr-4"><Clock size={16} className="inline" /></div>
+                    <div className="text-right pr-2 md:pr-4"><Clock size={16} className="inline" /></div>
                 </div>
 
                 {/* Tracks List */}
@@ -177,7 +207,7 @@ export const SmartMixDetail: React.FC = () => {
                         return (
                             <div 
                                 key={song.id}
-                                className={`grid grid-cols-[40px_4fr_3fr_60px] gap-4 px-4 py-3 rounded-lg hover:bg-surface-hover group transition-all duration-200 cursor-pointer items-center relative ${isCurrent ? 'bg-surface-hover' : ''}`}
+                                className={`grid grid-cols-[32px_1fr_auto] md:grid-cols-[40px_4fr_3fr_60px] gap-4 px-3 sm:px-4 py-3 rounded-lg hover:bg-surface-hover group transition-all duration-200 cursor-pointer items-center relative ${isCurrent ? 'bg-surface-hover' : ''}`}
                                 onClick={() => playSong(song, mixSongs)}
                                 onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, song)}
                             >
@@ -202,17 +232,20 @@ export const SmartMixDetail: React.FC = () => {
                                 </div>
 
                                 {/* Duration / Menu */}
-                                <div className="text-right pr-4 text-text-secondary text-sm font-mono group-hover:hidden">
-                                    {formatTime(song.duration)}
-                                </div>
-
-                                <div className="hidden group-hover:flex justify-end pr-2 absolute right-2">
-                                        <button 
-                                        onClick={(e) => openContextMenu(e, ContextMenuType.SONG, song)}
-                                        className="text-text-secondary hover:text-white transition-all duration-200"
-                                        aria-label="More options"
+                                <div className="flex items-center justify-end gap-1">
+                                    <span className="text-right text-text-secondary text-sm font-mono tabular-nums md:pr-2 md:group-hover:hidden md:group-focus-within:hidden">
+                                        {formatTime(song.duration)}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            openContextMenu(e, ContextMenuType.SONG, song);
+                                        }}
+                                        className="flex md:hidden md:group-hover:flex md:group-focus-within:flex items-center justify-center min-w-[36px] min-h-[36px] rounded-full text-text-secondary hover:text-white hover:bg-surface-3 transition-all duration-200"
+                                        aria-label={`More options for ${song.title}`}
                                     >
-                                        <MoreHorizontal size={20} />
+                                        <MoreHorizontal size={18} />
                                     </button>
                                 </div>
                             </div>
@@ -227,6 +260,62 @@ export const SmartMixDetail: React.FC = () => {
                      </div>
                  )}
              </div>
+
+             {saveDialogOpen && (
+                <div
+                    ref={dialogRef}
+                    tabIndex={-1}
+                    className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 motion-reduce:animate-none"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby={`${dialogId}-title`}
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget && !isSaving) {
+                            setSaveDialogOpen(false);
+                        }
+                    }}
+                >
+                    <form
+                        onSubmit={handleConfirmSave}
+                        className="bg-surface-2 border border-surface-border rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl animate-scale-in motion-reduce:animate-none"
+                    >
+                        <h2 id={`${dialogId}-title`} className="text-lg font-bold text-text-main mb-2">
+                            Save Smart Mix as Playlist
+                        </h2>
+                        <p className="text-sm text-text-secondary mb-4">
+                            Choose a name for your new playlist.
+                        </p>
+                        <TextInput
+                            value={playlistName}
+                            onChange={(e) => setPlaylistName(e.target.value)}
+                            onClear={() => setPlaylistName('')}
+                            clearLabel="Clear playlist name"
+                            aria-label="Playlist name"
+                            placeholder="Playlist name"
+                            className="mb-6"
+                            autoFocus
+                        />
+                        <div className="flex items-center justify-end gap-3">
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={closeSaveDialog}
+                                disabled={isSaving}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type="submit"
+                                variant="primary"
+                                accent="brand"
+                                disabled={isSaving || !playlistName.trim()}
+                            >
+                                {isSaving ? 'Saving…' : 'Save Playlist'}
+                            </Button>
+                        </div>
+                    </form>
+                </div>
+             )}
         </div>
     );
 };

@@ -1,7 +1,7 @@
 /** Native-window controls for the frameless desktop shell. */
 
 import React, { useEffect, useState } from 'react';
-import { Maximize2, Minimize2, Minus, X } from 'lucide-react';
+import { Maximize2, Minimize2, Minus, PictureInPicture2, X } from 'lucide-react';
 import {
   closeNativeWindow,
   isNativeWindowRuntimeAvailable,
@@ -59,7 +59,7 @@ export const DesktopTitleBar: React.FC = () => {
           aria-label="Enter skinny player mode"
           title="Enter skinny player mode"
         >
-          <Minimize2 size={15} aria-hidden="true" />
+          <PictureInPicture2 size={15} aria-hidden="true" />
         </button>
         <button
           type="button"

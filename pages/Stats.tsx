@@ -75,8 +75,9 @@ interface TopItemProps {
  * Displays rank, image, title/artist and play count.
  */
 const TopItem: React.FC<TopItemProps> = ({ rank, title, subtitle, plays, imageUrl, fallbackGradient, onClick }) => (
-    <div 
-        className="flex items-center gap-4 p-2.5 hover:bg-surface-hover rounded-md transition-colors cursor-pointer group"
+    <button
+        type="button"
+        className="flex items-center gap-4 p-2.5 hover:bg-surface-hover rounded-md transition-colors cursor-pointer group w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
         onClick={onClick}
     >
         <span className="w-6 text-center text-text-subtle text-sm font-semibold">{rank}</span>
@@ -98,7 +99,7 @@ const TopItem: React.FC<TopItemProps> = ({ rank, title, subtitle, plays, imageUr
             <p className="text-sm font-semibold text-text-main">{plays}</p>
             <p className="text-[11px] text-text-subtle">plays</p>
         </div>
-    </div>
+    </button>
 );
 
 export const Stats: React.FC = () => {
@@ -410,31 +411,34 @@ export const Stats: React.FC = () => {
                     <Star size={20} className="text-accent-orange" />
                     Your Library
                 </h2>
-                <div className="grid grid-cols-3 gap-4">
-                    <div 
-                        className="bg-surface-2 p-6 rounded-xl border border-surface-3 hover:bg-surface-hover transition-colors cursor-pointer text-center"
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <button
+                        type="button"
+                        className="bg-surface-2 p-6 rounded-xl border border-surface-3 hover:bg-surface-hover transition-colors cursor-pointer text-center w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                         onClick={() => navigate('/songs')}
                     >
                         <Music className="mx-auto text-accent-green mb-2" size={32} />
                         <h3 className="text-section font-bold">{stats.totalSongs}</h3>
                         <p className="text-text-secondary text-sm">Songs</p>
-                    </div>
-                    <div 
-                        className="bg-surface-2 p-6 rounded-xl border border-surface-3 hover:bg-surface-hover transition-colors cursor-pointer text-center"
+                    </button>
+                    <button
+                        type="button"
+                        className="bg-surface-2 p-6 rounded-xl border border-surface-3 hover:bg-surface-hover transition-colors cursor-pointer text-center w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                         onClick={() => navigate('/albums')}
                     >
                         <Disc className="mx-auto text-brand mb-2" size={32} />
                         <h3 className="text-section font-bold">{stats.totalAlbums}</h3>
                         <p className="text-text-secondary text-sm">Albums</p>
-                    </div>
-                    <div 
-                        className="bg-surface-2 p-6 rounded-xl border border-surface-3 hover:bg-surface-hover transition-colors cursor-pointer text-center"
+                    </button>
+                    <button
+                        type="button"
+                        className="bg-surface-2 p-6 rounded-xl border border-surface-3 hover:bg-surface-hover transition-colors cursor-pointer text-center w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                         onClick={() => navigate('/artists')}
                     >
                         <Mic2 className="mx-auto text-accent-blue mb-2" size={32} />
                         <h3 className="text-section font-bold">{stats.totalArtists}</h3>
                         <p className="text-text-secondary text-sm">Artists</p>
-                    </div>
+                    </button>
                 </div>
             </section>
         </Page>

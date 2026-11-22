@@ -120,7 +120,7 @@ export const SongMenu: React.FC<{ song: Song; onClose: () => void }> = ({ song, 
 
             <div className="border-t border-surface-border my-1"></div>
 
-            <MenuItem icon={Disc} label="Go to Album" onClick={() => navigateTo(`/album/${encodeURIComponent(song.album)}`)} />
+            <MenuItem icon={Disc} label="Go to Album" onClick={() => navigateTo(`/album/${encodeURIComponent(song.album)}/${encodeURIComponent(song.albumArtist || song.artist)}`)} />
             <MenuItem icon={Mic2} label="Go to Artist" onClick={() => navigateTo(`/artists`)} /> 
             
             <div className="border-t border-surface-border my-1"></div>
@@ -139,7 +139,7 @@ export const SongMenu: React.FC<{ song: Song; onClose: () => void }> = ({ song, 
                 </div>
             )}
             
-            <MenuItem icon={FolderOpen} label="Show in Files" onClick={() => alert(`Path: ${song.path || 'Unknown'}`)} />
+            <MenuItem icon={FolderOpen} label="Show in Files" onClick={() => handleAction(() => showToast({ type: 'info', message: song.path ? `File path: ${song.path}` : 'File path unavailable' }))} />
         </>
     );
 };

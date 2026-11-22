@@ -149,12 +149,12 @@ export const MetadataHealthWidget: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-surface-border/60 pb-4">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-lg bg-brand/15 text-brand">
-            <FileCheck size={22} />
+            <FileCheck size={20} aria-hidden="true" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-text-main flex items-center gap-2">
+            <h3 className="text-base font-semibold text-text-main flex items-center gap-2">
               Library Metadata Health
-            </h2>
+            </h3>
             <p className="text-xs text-text-secondary">
               Completeness and enrichment coverage across {stats.total.toLocaleString()} tracks
             </p>
@@ -288,9 +288,9 @@ export const MetadataHealthWidget: React.FC = () => {
         <div className="flex items-center gap-2">
           <Button
             variant="secondary"
+            size="sm"
             onClick={() => navigate('/settings', { state: { tab: 'ai' } })}
-            className="text-xs py-1.5 px-3"
-            leftIcon={<Sliders size={13} />}
+            leftIcon={<Sliders size={14} aria-hidden="true" />}
           >
             Configure Enrichment
           </Button>

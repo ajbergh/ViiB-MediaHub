@@ -277,20 +277,20 @@ export const SmartPlaylists: React.FC = () => {
   };
 
   return (
-    <div className="h-full flex flex-col bg-surface-1 overflow-hidden">
+    <div className="min-h-full flex flex-col bg-surface-1 pb-28">
       {/* Header & Input */}
-      <div className="px-6 md:px-8 pt-6 pb-4">
+      <div className="px-4 sm:px-6 md:px-8 pt-6 pb-4">
         <div className="flex items-center gap-3 mb-4">
           <h1 className="text-display font-bold tracking-tight text-text-main">Smart Mix</h1>
         </div>
 
         {/* Mode Toggle */}
-        <div className="flex gap-2 mb-4">
+        <div className="flex flex-wrap gap-2 mb-4">
           <Chip
             selected={!aiDjMode}
             accent="brand"
             onClick={() => setAIDJMode(false)}
-            className="rounded-full px-4 py-1.5 text-sm"
+            className="rounded-full px-4 py-1.5 min-h-[36px] text-sm"
           >
             <Music size={15} className="mr-1.5" />
             Playlist
@@ -299,7 +299,7 @@ export const SmartPlaylists: React.FC = () => {
             selected={aiDjMode}
             accent="brand"
             onClick={() => setAIDJMode(true)}
-            className="rounded-full px-4 py-1.5 text-sm"
+            className="rounded-full px-4 py-1.5 min-h-[36px] text-sm"
           >
             <Radio size={15} className="mr-1.5" />
             DJ Mode
@@ -314,7 +314,7 @@ export const SmartPlaylists: React.FC = () => {
         </p>
 
         <div
-          className={`mb-4 flex max-w-3xl items-center justify-between gap-3 rounded-lg border px-4 py-3 ${
+          className={`mb-4 flex max-w-3xl flex-col gap-3 rounded-lg border px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${
             semanticReady
               ? 'border-success/30 bg-success/10'
               : semanticIndexing
@@ -323,34 +323,32 @@ export const SmartPlaylists: React.FC = () => {
           }`}
           aria-live="polite"
         >
-          <div className="flex min-w-0 items-start gap-3">
-            {semanticIndexing ? (
-              <RefreshCw size={18} className="mt-0.5 shrink-0 animate-spin text-brand" />
-            ) : (
-              <Zap size={18} className={`mt-0.5 shrink-0 ${semanticReady ? 'text-success' : 'text-text-subtle'}`} />
-            )}
-            <div>
-              <p className={`text-meta font-semibold ${semanticReady ? 'text-success' : semanticIndexing ? 'text-brand' : 'text-text-main'}`}>
-                {semanticLabel}
-              </p>
-              <p className="text-meta text-text-secondary">{semanticDescription}</p>
-              {!semanticReady && semanticReason && (
-                <p className="mt-1 text-meta text-text-subtle">{semanticReason}</p>
+          <div className="min-w-0 flex-1">
+            <p className={`flex items-center gap-2 text-meta font-semibold ${semanticReady ? 'text-success' : semanticIndexing ? 'text-brand' : 'text-text-main'}`}>
+              {semanticIndexing ? (
+                <RefreshCw size={16} className="shrink-0 animate-spin text-brand" aria-hidden="true" />
+              ) : (
+                <Zap size={16} className={`shrink-0 ${semanticReady ? 'text-success' : 'text-text-subtle'}`} aria-hidden="true" />
               )}
-            </div>
+              <span>{semanticLabel}</span>
+            </p>
+            <p className="mt-1 text-meta text-text-secondary">{semanticDescription}</p>
+            {!semanticReady && semanticReason && (
+              <p className="mt-1 text-meta text-text-subtle">{semanticReason}</p>
+            )}
           </div>
           {!semanticReady && (
             <Button
               onClick={() => navigate('/settings', { state: { tab: 'ai' } })}
               variant="secondary"
-              className="shrink-0 rounded-full px-3.5 py-1.5 text-meta"
+              className="self-start sm:self-center shrink-0 rounded-full px-3.5 py-1.5 min-h-[36px] text-meta"
             >
               Index settings
             </Button>
           )}
         </div>
 
-        <div className="flex gap-3 max-w-3xl">
+        <div className="flex flex-col sm:flex-row gap-3 max-w-3xl">
           <TextInput
             type="text"
             placeholder={aiDjMode 
@@ -361,6 +359,8 @@ export const SmartPlaylists: React.FC = () => {
             value={aiDjPrompt}
             onChange={(e) => setAIDJPrompt(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
+            onClear={() => setAIDJPrompt('')}
+            clearLabel="Clear prompt"
             className="flex-1 rounded-full px-5 py-3"
           />
           <Button
@@ -369,7 +369,7 @@ export const SmartPlaylists: React.FC = () => {
             variant="primary"
             accent="brand"
             leftIcon={aiDjIsLoading ? <RefreshCw className="animate-spin" size={16} /> : <Play size={16} fill="currentColor" />}
-            className="px-6 py-3 rounded-full text-sm font-bold"
+            className="w-full sm:w-auto shrink-0 whitespace-nowrap px-6 py-3 rounded-full text-sm font-bold min-h-[44px]"
           >
             {aiDjMode ? 'Start Set' : 'Generate'}
           </Button>
@@ -385,7 +385,7 @@ export const SmartPlaylists: React.FC = () => {
               selected={aiDjSource === 'all'}
               accent="brand"
               onClick={() => setAIDJSource('all')}
-              className="rounded-lg px-3 py-1.5 text-meta font-medium"
+              className="rounded-lg px-3 py-1.5 min-h-[36px] text-meta font-medium"
             >
               All available
             </Chip>
@@ -393,7 +393,7 @@ export const SmartPlaylists: React.FC = () => {
               selected={aiDjSource === 'local'}
               accent="brand"
               onClick={() => setAIDJSource('local')}
-              className="rounded-lg px-3 py-1.5 text-meta font-medium"
+              className="rounded-lg px-3 py-1.5 min-h-[36px] text-meta font-medium"
             >
               Local music
             </Chip>
@@ -401,7 +401,7 @@ export const SmartPlaylists: React.FC = () => {
               selected={aiDjSource === 'plex'}
               accent="brand"
               onClick={() => setAIDJSource('plex')}
-              className="rounded-lg px-3 py-1.5 text-meta font-medium"
+              className="rounded-lg px-3 py-1.5 min-h-[36px] text-meta font-medium"
             >
               Plex music
             </Chip>
@@ -412,7 +412,7 @@ export const SmartPlaylists: React.FC = () => {
         </div>
 
         <div className="mt-4 max-w-xl">
-          <label htmlFor="smart-playlist-duration" className="text-meta text-text-secondary mb-2 flex items-center gap-2">
+          <label htmlFor="smart-playlist-duration" className="text-meta text-text-secondary mb-1 flex items-center gap-2">
             <Timer size={14} />
             {aiDjMode ? 'Set Duration' : 'Playlist Duration'}: {aiDjTargetDurationMinutes} min (~{estimatedSongCount} songs)
           </label>
@@ -424,7 +424,7 @@ export const SmartPlaylists: React.FC = () => {
             step={5}
             value={aiDjTargetDurationMinutes}
             onChange={(e) => setAIDJTargetDurationMinutes(Number(e.target.value))}
-            className="w-full accent-brand"
+            className="w-full h-7 cursor-pointer accent-brand"
           />
           <div className="flex justify-between text-meta text-text-subtle">
             <span>15 min</span>
@@ -450,8 +450,9 @@ export const SmartPlaylists: React.FC = () => {
                 {personas.map(p => (
                   <button
                     key={p}
+                    type="button"
                     onClick={() => setAIDJPersona(p as any)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all
+                    className={`flex items-center gap-2 px-3 py-2 min-h-[36px] rounded-lg text-sm transition-all
                       ${aiDjPersona === p 
                         ? 'bg-brand text-white' 
                         : 'bg-surface-2 text-text-secondary hover:bg-surface-highlight'
@@ -473,18 +474,19 @@ export const SmartPlaylists: React.FC = () => {
             {/* Flow Controls */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="text-meta text-text-secondary mb-2 flex items-center gap-2">
+                <label htmlFor="smart-playlist-flow" className="text-meta text-text-secondary mb-1 flex items-center gap-2">
                   <BarChart3 size={14} />
                   Flow Strictness: {aiDjFlowStrictness}%
                 </label>
                 <input
+                  id="smart-playlist-flow"
                   type="range"
                   min={0}
                   max={100}
                   step={5}
                   value={aiDjFlowStrictness}
                   onChange={(e) => setAIDJFlowStrictness(Number(e.target.value))}
-                  className="w-full accent-brand"
+                  className="w-full h-7 cursor-pointer accent-brand"
                 />
                 <div className="flex justify-between text-meta text-text-subtle">
                   <span>Loose</span>
@@ -495,7 +497,7 @@ export const SmartPlaylists: React.FC = () => {
 
             {/* Talk Mode Toggle */}
             <div className="mt-4">
-              <label className="flex items-center gap-2 text-meta text-text-secondary cursor-pointer">
+              <label className="inline-flex min-h-[36px] items-center gap-2 text-meta text-text-secondary cursor-pointer">
                 <input
                   type="checkbox"
                   checked={aiDjTalkMode}
@@ -519,12 +521,12 @@ export const SmartPlaylists: React.FC = () => {
                 <Compass size={14} />
                 Discovery Mode
               </h4>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Chip
                   selected={aiDjDiscoverMode === 'balanced'}
                   accent="brand"
                   onClick={() => setAIDJDiscoverMode('balanced')}
-                  className="rounded-lg px-3 py-1.5 text-meta font-medium"
+                  className="rounded-lg px-3 py-1.5 min-h-[36px] text-meta font-medium"
                 >
                   Balanced
                 </Chip>
@@ -532,7 +534,7 @@ export const SmartPlaylists: React.FC = () => {
                   selected={aiDjDiscoverMode === 'discover'}
                   accent="brand"
                   onClick={() => setAIDJDiscoverMode('discover')}
-                  className="rounded-lg px-3 py-1.5 text-meta font-medium"
+                  className="rounded-lg px-3 py-1.5 min-h-[36px] text-meta font-medium"
                 >
                   Discover New
                 </Chip>
@@ -540,7 +542,7 @@ export const SmartPlaylists: React.FC = () => {
                   selected={aiDjDiscoverMode === 'favorites'}
                   accent="brand"
                   onClick={() => setAIDJDiscoverMode('favorites')}
-                  className="rounded-lg px-3 py-1.5 text-meta font-medium"
+                  className="rounded-lg px-3 py-1.5 min-h-[36px] text-meta font-medium"
                 >
                   Favorites
                 </Chip>
@@ -555,7 +557,7 @@ export const SmartPlaylists: React.FC = () => {
                   value={aiDjAvoidRecentlyHours}
                   onChange={(e) => setAIDJAvoidRecentlyHours(Number(e.target.value))}
                   className={
-                    'bg-surface-1 text-text-main rounded-lg px-2 py-1 text-sm ' +
+                    'bg-surface-1 text-text-main rounded-lg px-2.5 py-1.5 min-h-[36px] text-sm ' +
                     'ring-1 ring-surface-3/80 ' +
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-0'
                   }
@@ -568,7 +570,7 @@ export const SmartPlaylists: React.FC = () => {
                   <option value={168}>1 week</option>
                 </select>
               </label>
-              <label className="flex items-center gap-2 text-meta text-text-secondary cursor-pointer">
+              <label className="inline-flex min-h-[36px] items-center gap-2 text-meta text-text-secondary cursor-pointer">
                 <input
                   type="checkbox"
                   checked={aiDjOnePerArtist}
@@ -581,7 +583,7 @@ export const SmartPlaylists: React.FC = () => {
                 />
                 <span>One song per artist</span>
               </label>
-              <label className="flex items-center gap-2 text-meta text-text-secondary cursor-pointer" title="Adjust recommendations based on time of day">
+              <label className="inline-flex min-h-[36px] items-center gap-2 text-meta text-text-secondary cursor-pointer" title="Adjust recommendations based on time of day">
                 <input
                   type="checkbox"
                   checked={aiDjUseTimeContext}
@@ -601,7 +603,7 @@ export const SmartPlaylists: React.FC = () => {
       </div>
 
       {/* Results */}
-      <div className="flex-1 overflow-y-auto p-8 pt-0">
+      <div className="px-4 sm:px-6 md:px-8 pt-2 pb-8">
         {aiDjGeneratedSongs.length > 0 && (
           <div className="animate-fade-in">
             {aiDjValidation && (
@@ -736,7 +738,7 @@ export const SmartPlaylists: React.FC = () => {
               </div>
             )}
 
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
               <div>
                 <h2 className="text-section text-text-main mb-1 flex items-center gap-2">
                   {aiDjMode ? 'DJ Set Queue' : (aiDjFilter?.description || 'Generated Playlist')}
@@ -887,6 +889,7 @@ export const SmartPlaylists: React.FC = () => {
             </div>
 
             <div className="bg-surface-1 rounded-xl border border-surface-highlight overflow-hidden">
+              <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead className="bg-surface-2 text-text-subtle text-xs uppercase tracking-wider font-medium">
                   <tr>
@@ -930,6 +933,7 @@ export const SmartPlaylists: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           </div>
         )}

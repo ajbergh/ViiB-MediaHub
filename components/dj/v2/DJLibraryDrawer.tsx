@@ -1,7 +1,7 @@
 /** Owns DJ library drawer visibility, focus, and viewport sizing. */
 
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { Library, X } from 'lucide-react';
+import { Library, Maximize2, Minimize2, X } from 'lucide-react';
 import { DJLibraryBrowserV2 } from './DJLibraryBrowserV2';
 import { DJErrorBoundary } from './DJErrorBoundary';
 import { registerDJMidiLibraryOpener } from '../../../lib/djMidiLibrary';
@@ -20,6 +20,7 @@ interface DJLibraryDrawerProps {
 /** Local UI state never reaches the deck tree or audio store. */
 export const DJLibraryDrawer = forwardRef<DJLibraryDrawerHandle, DJLibraryDrawerProps>(function DJLibraryDrawer({ onOpenChange }, ref) {
   const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [visited, setVisited] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
@@ -64,14 +65,23 @@ export const DJLibraryDrawer = forwardRef<DJLibraryDrawerHandle, DJLibraryDrawer
           <Library size={16} aria-hidden="true" /> <span>Library</span> <kbd className="dj-kbd">/</kbd>
         </button>
       </div>
-      <section ref={drawerRef} id="dj-library-drawer" role="region" aria-label="DJ library" hidden={!open}
-        className="dj-library-drawer">
+      <section ref={drawerRef} id="dj-library-drawer" role="region" aria-label="DJ library" hidden={!open} aria-hidden={!open}
+        data-size={expanded ? 'expanded' : 'compact'}
+        className={`dj-library-drawer ${expanded ? '' : 'max-h-[38%]'}`}>
         <header className="flex items-center justify-between px-3 border-b border-surface-3 shrink-0">
           <h2 className="text-xs font-bold text-text-main">Library</h2>
-          <button type="button" aria-label="Close library" onClick={close}
-            className="dj-focus-ring min-h-8 min-w-8 flex items-center justify-center text-text-secondary hover:text-text-main">
-            <X size={16} aria-hidden="true" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button type="button" aria-label={expanded ? 'Compact library height' : 'Expand library height'} aria-pressed={expanded}
+              title={expanded ? 'Compact height (keep decks visible)' : 'Expand library height'}
+              onClick={() => setExpanded(prev => !prev)}
+              className="dj-focus-ring min-h-8 min-w-8 flex items-center justify-center text-text-secondary hover:text-text-main">
+              {expanded ? <Minimize2 size={14} aria-hidden="true" /> : <Maximize2 size={14} aria-hidden="true" />}
+            </button>
+            <button type="button" aria-label="Close library" onClick={close}
+              className="dj-focus-ring min-h-8 min-w-8 flex items-center justify-center text-text-secondary hover:text-text-main">
+              <X size={16} aria-hidden="true" />
+            </button>
+          </div>
         </header>
         <div className="flex-1 min-h-0 overflow-hidden">
           {visited && <DJErrorBoundary componentName="DJLibraryBrowserV2">

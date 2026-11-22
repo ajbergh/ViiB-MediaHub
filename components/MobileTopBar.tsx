@@ -10,7 +10,7 @@ const ROUTE_TITLES: Array<[RegExp, string]> = [
 
   [/^\/dj/, 'DJ Mode'],
   [/^\/songs/, 'Songs'],
-  [/^\/albums(?:\/|$)/, 'Albums'],
+  [/^\/albums?(?:\/|$)/, 'Albums'],
   [/^\/artists(?:\/|$)/, 'Artists'],
   [/^\/genres(?:\/|$)/, 'Genres'],
   [/^\/playlists/, 'Playlists'],
@@ -20,6 +20,7 @@ const ROUTE_TITLES: Array<[RegExp, string]> = [
   [/^\/smart-mix/, 'Smart Mix'],
   [/^\/spotify/, 'Spotify'],
   [/^\/downloads/, 'Downloads'],
+  [/^\/duplicates(?:\/|$)/, 'Duplicates'],
   [/^\/search/, 'Search'],
   [/^\/stats/, 'Stats'],
   [/^\/settings/, 'Settings'],

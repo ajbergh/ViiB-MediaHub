@@ -43,7 +43,7 @@ export const MenuItem: React.FC<MenuItemProps> = ({ icon: Icon, label, onClick, 
         }
     >
         <div className="flex items-center gap-3 min-w-0">
-            <Icon size={16} className="text-text-subtle group-hover:text-text-main" />
+            <Icon size={16} className={destructive ? 'text-error shrink-0' : 'text-text-subtle group-hover:text-text-main shrink-0'} />
             <span className="truncate">{label}</span>
         </div>
     </button>
@@ -69,6 +69,17 @@ export const PlaylistsSubmenu: React.FC<{ songId: string; onClose: () => void; o
             const margin = 8;
             const width = Math.min(224, Math.max(0, window.innerWidth - margin * 2));
             const height = Math.min(submenu.getBoundingClientRect().height, window.innerHeight - margin * 2);
+
+            if (window.innerWidth < 520) {
+                const left = Math.max(margin, Math.min(rect.left, window.innerWidth - width - margin));
+                const fitsBelow = rect.bottom + 4 + height <= window.innerHeight - margin;
+                const top = fitsBelow
+                    ? rect.bottom + 4
+                    : Math.max(margin, rect.top - height - 4);
+                setPosition({ left: left - rect.left, top: top - rect.top, width, maxHeight: window.innerHeight - margin * 2 });
+                return;
+            }
+
             const preferredLeft = rect.right + width <= window.innerWidth - margin
                 ? rect.right : rect.left - width;
             const left = Math.max(margin, Math.min(preferredLeft, window.innerWidth - width - margin));
@@ -104,7 +115,7 @@ export const PlaylistsSubmenu: React.FC<{ songId: string; onClose: () => void; o
             data-viib-submenu="playlists"
             ref={submenuRef}
             style={position}
-            className="absolute left-full top-0 w-56 bg-surface-2 ring-1 ring-surface-3 rounded-xl shadow-xl shadow-black/30 py-1 overflow-y-auto z-50"
+            className="absolute left-0 top-full max-sm:mt-1 sm:left-full sm:top-0 w-56 bg-surface-2 ring-1 ring-surface-3 rounded-xl shadow-xl shadow-black/30 py-1 overflow-y-auto z-50"
             onKeyDown={(e) => {
                 if (e.key === 'ArrowLeft' && onBack) {
                     e.preventDefault();

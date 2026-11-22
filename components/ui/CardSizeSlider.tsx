@@ -36,7 +36,7 @@ export const CardSizeSlider: React.FC<CardSizeSliderProps> = ({
   const Icon = listView ? List : LayoutGrid;
 
   return (
-    <div className="flex items-center gap-2 text-text-subtle" title={listAtMinimum ? 'View and card size (leftmost: list view)' : 'Card size'}>
+    <div className="flex items-center gap-2 text-text-subtle min-h-[32px]" title={listAtMinimum ? 'View and card size (leftmost: list view)' : 'Card size'}>
       <Icon size={15} className="shrink-0" />
       <input
         type="range"
@@ -45,7 +45,7 @@ export const CardSizeSlider: React.FC<CardSizeSliderProps> = ({
         step={1}
         value={sliderValue}
         onChange={(e) => onChange(max + min - Number(e.target.value))}
-        className="w-24 h-1 accent-brand cursor-pointer"
+        className="w-24 h-7 bg-transparent accent-brand cursor-pointer"
         aria-label="Card size"
         aria-valuetext={listView ? 'List view' : `${value} columns`}
       />

@@ -21,6 +21,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react';
 import { useStore } from '../store';
+import { VIIB } from './ui/tokens';
 
 export interface Toast {
   id: string;
@@ -112,7 +113,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
       
       <button
         onClick={handleDismiss}
-        className="p-1 text-text-subtle hover:text-text-main transition-colors rounded-full hover:bg-white/10"
+        className="min-w-[32px] min-h-[32px] inline-flex items-center justify-center text-text-subtle hover:text-text-main transition-colors rounded-full hover:bg-white/10"
         aria-label="Dismiss notification"
       >
         <X size={16} />
@@ -133,7 +134,7 @@ export const ToastContainer: React.FC = () => {
 
   return (
     <div 
-      className="fixed bottom-28 right-4 z-[200] flex flex-col gap-2 max-w-sm w-full pointer-events-none"
+      className={`fixed top-14 right-4 ${VIIB.zIndex.toast} flex flex-col gap-2 max-w-[calc(100vw-2rem)] sm:max-w-sm w-full pointer-events-none`}
       aria-label="Notifications"
     >
       {toasts.map((toast) => (
