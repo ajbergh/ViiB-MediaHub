@@ -34,7 +34,7 @@ import { backendService } from '../services/backendService';
 import { libraryOperationsV2 } from '../services/libraryOperationsV2';
 import api, { ApiAlbumMetadata, ApiArtistMetadata } from '../services/api';
 import { Playlist, Song, AlbumMetadata, ArtistMetadata } from '../types';
-import { affectsSmartMixes, catalogDeltas, compareLibraryText, LibraryIndex, patchCatalogSong, rebaseCatalogDelta } from '../lib/libraryIndex';
+import { affectsSmartMixes, catalogDeltas, compareLibraryText, LibraryIndex, patchCatalogSong, patchCatalogSongs, rebaseCatalogDelta } from '../lib/libraryIndex';
 import { libraryV2, LibraryResnapshotRequired } from '../services/libraryV2';
 
 function mapCachedArtistMetadata(entries: ApiArtistMetadata[]): Record<string, ArtistMetadata> {
@@ -572,6 +572,51 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
           songInfoModalSong: state.songInfoModalSong?.id === songId ? { ...state.songInfoModalSong, ...patch } : state.songInfoModalSong,
       }));
       if (affectsSmartMixes({ before: existing, after: updatedSong })) scheduleMixes();
+  },
+
+  updateAlbumMetadata: async (songIds, patch) => {
+      const ids = [...new Set(songIds)];
+      const { backendAvailable, songs } = get();
+      const selected = new Set(ids);
+      const tracks = new Map(songs.filter(song => selected.has(song.id)).map(song => [song.id, song]));
+      if (!ids.length || tracks.size !== ids.length) {
+          throw new Error('A track is no longer in the library. Reopen the album editor and try again.');
+      }
+
+      const patches = new Map<string, Partial<Song>>();
+      if (backendAvailable) {
+          const updated = await libraryOperationsV2.updateAlbumMetadata(ids, patch);
+          for (const song of updated) {
+              patches.set(song.id, {
+                  ...(patch.album !== undefined && { album: song.album }),
+                  ...(patch.albumArtist !== undefined && { albumArtist: song.albumArtist }),
+                  ...(patch.artist !== undefined && { artist: song.artist }),
+                  ...(patch.genre !== undefined && { genre: song.genre ?? [] }),
+                  ...(patch.year !== undefined && { year: song.year }),
+                  ...(patch.year !== undefined || patch.album !== undefined || patch.artist !== undefined
+                      ? { originalYear: song.originalYear } : {}),
+              });
+          }
+      } else {
+          await libraryService.updateAlbumMetadata(ids, patch);
+          const metadata = { ...patch, ...(patch.year !== undefined && { originalYear: patch.year }) };
+          for (const id of ids) patches.set(id, metadata);
+      }
+      if (ids.some(id => !patches.has(id))) throw new Error('The album update returned an incomplete track list.');
+
+      const patchTrack = (song: Song) => {
+          const metadata = patches.get(song.id);
+          return metadata ? { ...song, ...metadata } : song;
+      };
+      set(state => ({
+          songs: patchCatalogSongs(state.songs, patches),
+          queue: state.queue.map(patchTrack),
+          currentSong: state.currentSong && patchTrack(state.currentSong),
+          songInfoModalSong: state.songInfoModalSong && patchTrack(state.songInfoModalSong),
+      }));
+      if (patch.year !== undefined || patch.genre !== undefined) scheduleMixes();
+      const first = patchTrack(tracks.get(ids[0])!);
+      return { album: first.album, artist: first.albumArtist || first.artist };
   },
 
   fetchArtistMetadata: async (artistName) => {
