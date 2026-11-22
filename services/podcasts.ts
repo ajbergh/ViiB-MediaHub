@@ -16,6 +16,14 @@ export interface PodcastEpisode {
   publishedAt: number;
   durationMs: number;
 }
+export interface PodcastRefreshStatus {
+  lastCheckedAt: number;
+  lastSuccessAt: number;
+  nextRefreshAt: number;
+  lastErrorCode?: string;
+  failures: number;
+  refreshing: boolean;
+}
 export interface PodcastFeed {
   id: string;
   url: string;
@@ -80,6 +88,12 @@ export const podcastsAPI = {
   },
   listEpisodes(feedId: string, signal?: AbortSignal): Promise<{ episodes: PodcastEpisode[] }> {
     return request('/feeds/' + encodeURIComponent(feedId) + '/episodes', { signal });
+  },
+  refresh(feedId: string, signal?: AbortSignal): Promise<{status: 'queued'}> {
+    return request('/feeds/' + encodeURIComponent(feedId) + '/refresh', { method: 'POST', signal });
+  },
+  refreshStatus(feedId: string, signal?: AbortSignal): Promise<PodcastRefreshStatus> {
+    return request('/feeds/' + encodeURIComponent(feedId) + '/refresh', { signal });
   },
   unsubscribe(feedId: string, signal?: AbortSignal): Promise<void> {
     return request('/feeds/' + encodeURIComponent(feedId), { method: 'DELETE', signal });

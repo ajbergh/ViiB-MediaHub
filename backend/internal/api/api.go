@@ -94,6 +94,13 @@ type API struct {
 	semanticWorkers        sync.WaitGroup
 	semanticInitializing   bool
 	semanticWake           chan struct{}
+	podcastRefreshMu      sync.Mutex
+	podcastRefreshOn      bool
+	podcastRefreshClosed  bool
+	podcastRefreshCancel  context.CancelFunc
+	podcastRefreshWG      sync.WaitGroup
+	podcastRefreshWake    chan struct{}
+	podcastFetcher        podcastFeedFetcher
 	jobSchedulerMu         sync.Mutex
 	jobSchedulerOn         bool
 	jobWake                chan struct{}

@@ -27,10 +27,13 @@ type podcastFeedRequest struct {
 // boundary. Each handler checks its own request size and safe response fields.
 func (a *API) PodcastRoutes() chi.Router {
     r := chi.NewRouter()
+    a.startPodcastRefresher()
     r.Get("/feeds", a.listPodcastFeeds)
     r.Post("/feeds/preview", a.previewPodcastFeed)
     r.Post("/feeds", a.subscribePodcastFeed)
     r.Get("/feeds/{id}/episodes", a.listPodcastEpisodes)
+    r.Get("/feeds/{id}/refresh", a.getPodcastRefresh)
+    r.Post("/feeds/{id}/refresh", a.schedulePodcastRefresh)
     r.Delete("/feeds/{id}", a.unsubscribePodcastFeed)
     return r
 }
@@ -105,6 +108,7 @@ func (a *API) subscribePodcastFeed(w http.ResponseWriter,r *http.Request) {
         respondV2Error(w,r,http.StatusInternalServerError,"podcast_save_failed","Unable to save the podcast subscription",true,nil)
         return
     }
+    a.wakePodcastRefresher()
     respondV2JSON(w,http.StatusCreated,map[string]any{
         "id":feedID,"title":fetched.Feed.Title,"episodeCount":len(fetched.Feed.Episodes),
     })
@@ -151,4 +155,40 @@ func (a *API) unsubscribePodcastFeed(w http.ResponseWriter,r *http.Request) {
     }
     // Historical episode positions/media metadata remain in SQLite.
     w.WriteHeader(http.StatusNoContent)
+}
+
+
+// GET refresh returns only public status metadata, never publisher credentials
+// or raw network errors.
+func (a *API) getPodcastRefresh(w http.ResponseWriter,r *http.Request){
+    status,err:=a.db.PodcastRefreshStatus(r.Context(),chi.URLParam(r,"id"))
+    if errors.Is(err,sql.ErrNoRows){
+        respondV2Error(w,r,http.StatusNotFound,"podcast_not_found","Podcast subscription not found",false,nil)
+        return
+    }
+    if err!=nil {
+        respondV2Error(w,r,http.StatusInternalServerError,"podcast_refresh_unavailable","Unable to read refresh status",true,nil)
+        return
+    }
+    respondV2JSON(w,http.StatusOK,status)
+}
+
+func (a *API) schedulePodcastRefresh(w http.ResponseWriter,r *http.Request){
+    enabled,err:=a.db.GetSetting("podcasts_preview_enabled")
+    if err!=nil || enabled!="true"{
+        respondV2Error(w,r,http.StatusForbidden,"podcast_preview_disabled","Enable Podcast Preview in Settings to refresh feeds",false,nil)
+        return
+    }
+    if err=a.db.SchedulePodcastRefresh(r.Context(),chi.URLParam(r,"id"));err!=nil{
+        if errors.Is(err,sql.ErrNoRows) {
+            respondV2Error(w,r,http.StatusNotFound,"podcast_not_found","Podcast subscription not found",false,nil)
+            return
+        }
+        respondV2Error(w,r,http.StatusInternalServerError,"podcast_refresh_unavailable","Unable to schedule feed refresh",true,nil)
+        return
+    }
+    // A durable due timestamp is written before signaling. Restart recovers
+    // queued work if this process exits immediately after returning 202.
+    a.wakePodcastRefresher()
+    respondV2JSON(w,http.StatusAccepted,map[string]any{"status":"queued"})
 }

@@ -4,7 +4,7 @@ This documents **only currently implemented endpoints** in
 [`backend/internal/api/podcast_routes.go`](../backend/internal/api/podcast_routes.go).
 The full prospective API is tracked in the
 [Podcast implementation roadmap](PODCAST_CLIENT_IMPLEMENTATION_ROADMAP.md).
-No Podcast Index search, episode media streaming, downloads, refresh scheduler,
+No Podcast Index search, episode media streaming, downloads,
 OPML, paid feeds or private RSS credential support is implemented yet.
 
 The endpoints mount at `/api/v2/podcasts`, protected by ViiB's existing
@@ -20,6 +20,8 @@ RSS 2.0 feeds during initial implementation.
 | POST | `/feeds` | Fetch/feed parse + subscribe + transactional episode snapshot; returns ID/title/count |
 | GET | `/feeds/{id}/episodes` | List up to 100 episodes in an existing followed show, newest-first |
 | DELETE | `/feeds/{id}` | Unfollow but retain cached episode metadata and progress |
+| GET | `/feeds/{id}/refresh` | Read last check/success, next refresh, bounded failures and error code |
+| POST | `/feeds/{id}/refresh` | Queue a durable manual refresh, return 202 immediately; requires Podcast Preview enabled |
 
 Example preview request:
 
@@ -52,8 +54,14 @@ Example successful response:
   timeout with a 15-second API context deadline.
 - RSS: XML without DTDs, RSS 2.0 with core iTunes fields; show descriptions
   are reduced to plain text. Malformed/unsupported feeds return an error.
-- Long-running subscribe/preview requests are currently synchronous; a
-  durable background refresh job is planned, not present.
+- Initial subscribe/preview requests remain synchronous. Followed shows are
+  refreshed by one dedicated worker at a time with 10-second polling, durable
+  SQLite leases, ETag/Last-Modified conditional requests, 304 handling,
+  bounded exponential retry and history-safe reconciliation. Background
+  network access occurs only while Podcast Preview is enabled.
+- Refresh is at-least-once after failure/restart; concurrent/multi-instance
+  workers require additional integration qualification before production.
+  Feed aliases and provider GUID moves are not yet handled.
 - No custom ports or authenticated/tokenized feeds. Public query parameters are
   restricted to `feed=rss`, `feed=rss2`, `feed=podcast`, `format=rss`, or
   `format=xml`; private feeds require a separate encrypted-credential and
