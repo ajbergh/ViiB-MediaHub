@@ -83,6 +83,10 @@ func (a *API) processPodcastRefresh(ctx context.Context){
     if err=a.db.FinishPodcastRefresh(ctx,*claimed,result,time.Now());err!=nil{
         if errors.Is(err,sql.ErrNoRows){return} // unfollowed while fetching
         _=a.db.FailPodcastRefresh(ctx,claimed.ID,"feed_unavailable",time.Now())
+        return
     }
+    // No extra publisher traffic is initiated here; the existing bounded
+    // download queue checks for new opt-in jobs after successful refresh.
+    if !result.NotModified{a.wakePodcastDownloader()}
 }
 

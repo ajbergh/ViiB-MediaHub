@@ -162,6 +162,10 @@ WHERE id=?`,result.Feed.Title,result.Feed.Author,result.Feed.Description,
         // Preserve history rows rather than deleting truncated back catalogs.
         if _,err=tx.ExecContext(ctx,`UPDATE podcast_episodes SET listed_in_feed=0 WHERE feed_id=?`,target.ID);err!=nil{return err}
         if err=upsertPodcastEpisodes(ctx,tx,target.ID,result.Feed.Episodes,millis);err!=nil{return err}
+        // Auto-download is strictly opt-in and only for newly discovered,
+        // public audio from this successful 200 refresh. An HTTP 304 never
+        // creates work, even when the policy is enabled.
+        if err=enqueueNewPodcastAutoDownloads(ctx,tx,target.ID,millis);err!=nil{return err}
     }
     etag:=target.ETag
     modified:=target.LastModified

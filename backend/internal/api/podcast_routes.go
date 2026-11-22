@@ -43,6 +43,8 @@ func (a *API) PodcastRoutes() chi.Router {
     r.Get("/feeds/{id}/artwork", a.getPodcastArtwork)
     r.Get("/feeds/{id}", a.getPodcastFeed)
     r.Get("/feeds/{id}/episodes", a.listPodcastEpisodes)
+    r.Get("/feeds/{id}/auto-download", a.getPodcastAutoDownloadPolicy)
+    r.Put("/feeds/{id}/auto-download", a.putPodcastAutoDownloadPolicy)
     r.Get("/feeds/{id}/refresh", a.getPodcastRefresh)
     r.Post("/feeds/{id}/refresh", a.schedulePodcastRefresh)
     r.Delete("/feeds/{id}", a.unsubscribePodcastFeed)
