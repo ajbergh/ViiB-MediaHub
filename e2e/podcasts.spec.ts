@@ -452,3 +452,64 @@ test('Podcasts central Downloads filters and confirms completed-file deletion', 
   await expect(downloads.getByText('No podcast downloads yet.', { exact: false })).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+
+test('Podcasts scheduled download retry stays visible and can be canceled', async ({ page }) => {
+  let status: 'paused' | 'canceled' = 'paused';
+  const pageErrors: string[] = [];
+  const retryAfter = Date.now() + 60_000;
+  page.on('pageerror', error => pageErrors.push(error.message));
+
+  await page.route('**/*', async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin !== 'http://127.0.0.1:4173') return route.abort();
+    if (url.pathname === '/api/settings/podcasts_preview_enabled') {
+      return route.fulfill({ json: { key: 'podcasts_preview_enabled', value: 'true' } });
+    }
+    if (url.pathname === '/api/v2/podcasts/feeds' && request.method() === 'GET') {
+      return route.fulfill({ json: { feeds: [] } });
+    }
+    if (url.pathname === '/api/v2/podcasts/episodes/continue') {
+      return route.fulfill({ json: { episodes: [] } });
+    }
+    if (url.pathname === '/api/v2/podcasts/downloads') {
+      return route.fulfill({ json: {
+        downloads: [{
+          id: 'retry-episode', episodeId: 'retry-episode', feedId: 'retry-feed',
+          episodeTitle: 'Resumable episode', feedTitle: 'Publisher show',
+          status, retryAfter: status === 'paused' ? retryAfter : 0,
+          bytesReceived: status === 'paused' ? 4 : 0,
+          expectedBytes: status === 'paused' ? 8 : 0,
+          verifiedSize: 0, errorCode: status === 'paused' ? 'download_unavailable' : '',
+          createdAt: 1, updatedAt: 2, completedAt: 0,
+        }],
+        storage: { usedBytes: status === 'paused' ? 8 : 0, maxBytes: 2147483648 },
+      } });
+    }
+    if (url.pathname === '/api/v2/podcasts/episodes/retry-episode/download'
+      && request.method() === 'DELETE') {
+      status = 'canceled';
+      return route.fulfill({ json: { download: {
+        episodeId: 'retry-episode', status: 'canceled',
+      } } });
+    }
+    if (url.pathname.startsWith('/api/')) {
+      return route.fulfill({ status: 503, json: { error: 'test fixture only' } });
+    }
+    return route.continue();
+  });
+
+  await page.goto('/podcasts');
+  const downloads = page.getByRole('region', { name: 'Podcast downloads' });
+  await expect(downloads.getByText('Resumable episode')).toBeVisible();
+  await expect(downloads.getByText('Retry scheduled for', { exact: false })).toBeVisible();
+  await downloads.getByRole('combobox', { name: 'Filter podcast downloads' }).selectOption('active');
+  await expect(downloads.getByText('Resumable episode')).toBeVisible();
+  await downloads.getByRole('button', { name: 'Cancel download of Resumable episode' }).click();
+  await expect(downloads.getByRole('article').getByText('Canceled', { exact: true })).toBeVisible();
+  await expect(downloads.getByText('Retry scheduled for', { exact: false })).toHaveCount(0);
+  await downloads.getByRole('combobox', { name: 'Filter podcast downloads' }).selectOption('attention');
+  await expect(downloads.getByText('Resumable episode')).toBeVisible();
+  expect(pageErrors).toEqual([]);
+});
