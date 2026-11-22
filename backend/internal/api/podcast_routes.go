@@ -102,14 +102,11 @@ func (a *API) subscribePodcastFeed(w http.ResponseWriter,r *http.Request) {
     }
     fetched,err:=a.podcastFetch(r.Context(),request.URL)
     if err!=nil{podcastFetchError(w,r,err);return}
-    feedID,err:=a.db.SavePodcastFeedSnapshot(r.Context(),fetched.Feed,true)
+    feedID,err:=a.db.SavePodcastSubscriptionFromFetch(r.Context(),request.URL,fetched)
     if err!=nil{
         respondV2Error(w,r,http.StatusInternalServerError,"podcast_save_failed","Unable to save the podcast subscription",true,nil)
         return
     }
-    // The subscribe request already fetched the complete feed. Retain
-    // validators and defer the next normal check instead of fetching twice.
-    _ = a.db.RecordInitialPodcastFetch(r.Context(),feedID,fetched.ETag,fetched.LastModified)
     a.wakePodcastRefresher()
     respondV2JSON(w,http.StatusCreated,map[string]any{
         "id":feedID,"title":fetched.Feed.Title,"episodeCount":len(fetched.Feed.Episodes),

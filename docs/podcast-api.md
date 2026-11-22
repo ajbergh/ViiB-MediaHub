@@ -61,7 +61,7 @@ Example successful response:
   network access occurs only while Podcast Preview is enabled.
 - Refresh is at-least-once after failure/restart; concurrent/multi-instance
   workers require additional integration qualification before production.
-  Feed aliases and provider GUID moves are not yet handled.
+  Redirected subscription URL aliases are persisted transactionally and reuse existing show IDs when the requested URL redirects again. Publisher GUID moves and collisions between previously independent show identities remain unresolved.
 - No custom ports or authenticated/tokenized feeds. Public query parameters are
   restricted to `feed=rss`, `feed=rss2`, `feed=podcast`, `format=rss`, or
   `format=xml`; private feeds require a separate encrypted-credential and

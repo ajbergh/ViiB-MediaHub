@@ -46,40 +46,94 @@ func podcastStableID(parts ...string) string {
 // SavePodcastFeedSnapshot atomically reconciles RSS metadata; idempotent
 // upserts deliberately do NOT clear user progress, bookmarks or downloaded
 // files. Subscription is optional so preview/import use cases can differ.
+// SavePodcastFeedSnapshot preserves the existing API for locally supplied
+// snapshots. Network subscriptions should use SavePodcastSubscriptionFromFetch
+// to retain redirect aliases and HTTP validators in the same transaction.
 func (d *DB) SavePodcastFeedSnapshot(ctx context.Context, feed podcast.Feed, subscribe bool) (string, error) {
+    return d.savePodcastFeed(ctx, feed.URL, feed, subscribe, "", "", false)
+}
+
+// SavePodcastSubscriptionFromFetch retains the original requested URL as an
+// alias of the final public redirect destination. If the publisher redirects
+// again later, a subscribed show's stable identity and episode progress are
+// retained instead of producing a duplicate show.
+func (d *DB) SavePodcastSubscriptionFromFetch(ctx context.Context, requestedURL string, fetched podcast.FetchResult) (string, error) {
+    if fetched.NotModified { return "", podcast.ErrInvalidFeed }
+    return d.savePodcastFeed(ctx, requestedURL, fetched.Feed, true, fetched.ETag, fetched.LastModified, true)
+}
+
+func (d *DB) savePodcastFeed(ctx context.Context, requestedURL string, feed podcast.Feed, subscribe bool, etag, lastModified string, schedule bool) (string, error) {
     if err := d.EnsurePodcastSchema(); err != nil { return "", err }
-    // Do not persist private/tokenized feed URLs until encrypted feed
-    // credentials and redacted backup/export contracts have been implemented.
-    if _, err := podcast.ValidatePublicURL(feed.URL, false); err != nil {
-        return "", err
-    }
-    if strings.TrimSpace(feed.Title) == "" {
-        return "", podcast.ErrInvalidFeed
-    }
-    feedID := podcastStableID(feed.URL)
+    source, err := podcast.ValidatePublicURL(requestedURL, false)
+    if err != nil { return "", err }
+    target, err := podcast.ValidatePublicURL(feed.URL, false)
+    if err != nil { return "", err }
+    requestedURL = source.String()
+    feed.URL = target.String()
+    if strings.TrimSpace(feed.Title) == "" { return "", podcast.ErrInvalidFeed }
+
     now := time.Now().UnixMilli()
     tx, err := d.conn.BeginTx(ctx, nil)
     if err != nil { return "", err }
     defer tx.Rollback()
-    _, err = tx.ExecContext(ctx, `
+
+    // Prefer the current canonical destination, then the original user's
+    // alias, then historical canonical/alias entries. This also deduplicates
+    // different subscription URLs that resolve to the same public feed.
+    choices := []struct{ query, value string }{
+        {`SELECT id,canonical_url FROM podcast_feeds WHERE canonical_url=?`, feed.URL},
+        {`SELECT f.id,f.canonical_url FROM podcast_feed_aliases a JOIN podcast_feeds f ON f.id=a.feed_id WHERE a.original_url=?`, requestedURL},
+        {`SELECT id,canonical_url FROM podcast_feeds WHERE canonical_url=?`, requestedURL},
+        {`SELECT f.id,f.canonical_url FROM podcast_feed_aliases a JOIN podcast_feeds f ON f.id=a.feed_id WHERE a.original_url=?`, feed.URL},
+    }
+    var feedID,oldCanonical string
+    for _, choice := range choices {
+        err=tx.QueryRowContext(ctx,choice.query,choice.value).Scan(&feedID,&oldCanonical)
+        if err==nil{break}
+        if !errors.Is(err,sql.ErrNoRows){return "",fmt.Errorf("resolve podcast alias: %w",err)}
+        feedID=""
+    }
+    if feedID==""{ feedID=podcastStableID(feed.URL) }
+
+    _,err=tx.ExecContext(ctx,`
 INSERT INTO podcast_feeds (
  id,canonical_url,title,author,description,image_url,language,
  created_at,updated_at,last_checked_at,last_success_at
 ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
-ON CONFLICT(canonical_url) DO UPDATE SET
- title=excluded.title,author=excluded.author,
- description=excluded.description,image_url=excluded.image_url,
- language=excluded.language,last_checked_at=excluded.last_checked_at,
+ON CONFLICT(id) DO UPDATE SET
+ canonical_url=excluded.canonical_url,title=excluded.title,
+ author=excluded.author,description=excluded.description,
+ image_url=excluded.image_url,language=excluded.language,
+ last_checked_at=excluded.last_checked_at,
  last_success_at=excluded.last_success_at,updated_at=excluded.updated_at
 `,feedID,feed.URL,feed.Title,feed.Author,feed.Description,feed.ImageURL,
         feed.Language,now,now,now,now)
     if err != nil { return "", fmt.Errorf("save podcast feed: %w",err) }
+
+    // Persist both the URL the user entered and the previous redirect target
+    // when a publisher changes addresses. Never store unvalidated private
+    // feed URLs or authentication query parameters in the alias table.
+    aliases:=[]string{requestedURL}
+    if oldCanonical!="" && oldCanonical!=feed.URL {
+        aliases=append(aliases,oldCanonical)
+    }
+    for _, alias:=range aliases {
+        if alias==feed.URL{continue}
+        if _,err=podcast.ValidatePublicURL(alias,false);err!=nil{return "",err}
+        _,err=tx.ExecContext(ctx,`
+INSERT INTO podcast_feed_aliases(original_url,feed_id) VALUES (?,?)
+ON CONFLICT(original_url) DO UPDATE SET feed_id=excluded.feed_id
+`,alias,feedID)
+        if err!=nil{return "",fmt.Errorf("save podcast redirect alias: %w",err)}
+    }
+
     if subscribe {
-        _, err = tx.ExecContext(ctx, `
+        _, err = tx.ExecContext(ctx,`
 INSERT INTO podcast_subscriptions(feed_id,subscribed_at) VALUES (?,?)
 ON CONFLICT(feed_id) DO NOTHING`,feedID,now)
         if err != nil { return "", fmt.Errorf("subscribe podcast feed: %w",err) }
     }
+
     for _, episode := range feed.Episodes {
         if strings.TrimSpace(episode.Title) == "" { continue }
         key := strings.TrimSpace(episode.GUID)
@@ -88,14 +142,13 @@ ON CONFLICT(feed_id) DO NOTHING`,feedID,now)
         } else if strings.TrimSpace(episode.EnclosureURL) != "" {
             key = "enclosure:" + strings.TrimSpace(episode.EnclosureURL)
         } else {
-            // A feed item without a stable publisher identity is not safe
-            // to upsert as a durable episode.
+            // A feed item without a publisher identity is not safely durable.
             continue
         }
         episodeID := podcastStableID(feedID,key)
         var published any
         if !episode.PublishedAt.IsZero() { published=episode.PublishedAt.UnixMilli() }
-        _, err = tx.ExecContext(ctx, `
+        _, err = tx.ExecContext(ctx,`
 INSERT INTO podcast_episodes (
  id,feed_id,identity_key,guid,title,description,enclosure_url,
  enclosure_mime,published_at,duration_ms,created_at,updated_at
@@ -109,6 +162,17 @@ ON CONFLICT(feed_id,identity_key) DO UPDATE SET
             episode.EnclosureURL,episode.EnclosureType,published,
             episode.DurationSeconds*1000,now,now)
         if err != nil { return "", fmt.Errorf("save podcast episode: %w",err) }
+    }
+
+    if schedule {
+        // Never overwrite a queued manual refresh (next_refresh_at=0).
+        // Retain validators on repeats until this successful fetch supersedes
+        // them. The requested and redirected URL updates happen atomically.
+        _,err=tx.ExecContext(ctx,`
+UPDATE podcast_feeds SET etag=?,last_modified=?,
+ next_refresh_at=CASE WHEN next_refresh_at IS NULL THEN ? ELSE next_refresh_at END
+WHERE id=?`,etag,lastModified,nextPodcastRefreshAt(feedID,time.Now()),feedID)
+        if err!=nil{return "",fmt.Errorf("schedule podcast feed: %w",err)}
     }
     if err := tx.Commit(); err != nil { return "", err }
     return feedID,nil
