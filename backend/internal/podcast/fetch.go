@@ -42,6 +42,7 @@ var (
         netip.MustParsePrefix("64:ff9b:1::/48"),
         netip.MustParsePrefix("100::/64"),
         netip.MustParsePrefix("2001::/32"), // Teredo
+        netip.MustParsePrefix("2002::/16"), // 6to4 IPv4 tunneling
         netip.MustParsePrefix("2001:db8::/32"),
         netip.MustParsePrefix("fc00::/7"),
         netip.MustParsePrefix("fe80::/10"),
