@@ -53,6 +53,16 @@ func (d *DB) SetPodcastProgress(ctx context.Context,episodeID string,positionMs,
         return PodcastProgress{},fmt.Errorf("invalid podcast progress")
     }
     if err:=d.EnsurePodcastSchema();err!=nil{return PodcastProgress{},err}
+    // A first write must start at revision zero. This also prevents callers
+    // from skipping arbitrary revision numbers when no state row exists yet.
+    var existingRevision int64
+    checkErr:=d.conn.QueryRowContext(ctx,
+        "SELECT revision FROM podcast_episode_state WHERE episode_id=?",episodeID).Scan(&existingRevision)
+    if checkErr!=nil && !errors.Is(checkErr,sql.ErrNoRows){return PodcastProgress{},checkErr}
+    if errors.Is(checkErr,sql.ErrNoRows) && expectedRevision!=0{
+        if _,err:=d.GetPodcastProgress(ctx,episodeID);err!=nil{return PodcastProgress{},err}
+        return PodcastProgress{},ErrPodcastProgressConflict
+    }
     playedValue:=0
     var completion any
     now:=time.Now().UnixMilli()
