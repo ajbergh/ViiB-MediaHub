@@ -1,0 +1,178 @@
+// podcast_repository.go persists publisher feed snapshots and subscribed
+// episodes without mutating any music/Spotify objects or user listening state.
+package db
+
+import (
+    "context"
+    "crypto/sha256"
+    "database/sql"
+    "encoding/hex"
+    "errors"
+    "fmt"
+    "strings"
+    "time"
+
+    "github.com/ajbergh/viib-mediahub/internal/podcast"
+)
+
+type PodcastFeedRecord struct {
+    ID string `json:"id"`
+    URL string `json:"url"`
+    Title string `json:"title"`
+    Author string `json:"author"`
+    Description string `json:"description"`
+    ImageURL string `json:"imageUrl"`
+    Language string `json:"language"`
+    EpisodeCount int64 `json:"episodeCount"`
+}
+
+type PodcastEpisodeRecord struct {
+    ID string `json:"id"`
+    FeedID string `json:"feedId"`
+    GUID string `json:"guid"`
+    Title string `json:"title"`
+    Description string `json:"description"`
+    EnclosureURL string `json:"enclosureUrl"`
+    EnclosureType string `json:"enclosureType"`
+    PublishedAt int64 `json:"publishedAt"`
+    DurationMs int64 `json:"durationMs"`
+}
+
+func podcastStableID(parts ...string) string {
+    sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+    return hex.EncodeToString(sum[:20])
+}
+
+// SavePodcastFeedSnapshot atomically reconciles RSS metadata; idempotent
+// upserts deliberately do NOT clear user progress, bookmarks or downloaded
+// files. Subscription is optional so preview/import use cases can differ.
+func (d *DB) SavePodcastFeedSnapshot(ctx context.Context, feed podcast.Feed, subscribe bool) (string, error) {
+    if err := d.EnsurePodcastSchema(); err != nil { return "", err }
+    // Do not persist private/tokenized feed URLs until encrypted feed
+    // credentials and redacted backup/export contracts have been implemented.
+    if _, err := podcast.ValidatePublicURL(feed.URL, false); err != nil {
+        return "", err
+    }
+    if strings.TrimSpace(feed.Title) == "" {
+        return "", podcast.ErrInvalidFeed
+    }
+    feedID := podcastStableID(feed.URL)
+    now := time.Now().UnixMilli()
+    tx, err := d.conn.BeginTx(ctx, nil)
+    if err != nil { return "", err }
+    defer tx.Rollback()
+    _, err = tx.ExecContext(ctx, `
+INSERT INTO podcast_feeds (
+ id,canonical_url,title,author,description,image_url,language,
+ created_at,updated_at,last_checked_at,last_success_at
+) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+ON CONFLICT(canonical_url) DO UPDATE SET
+ title=excluded.title,author=excluded.author,
+ description=excluded.description,image_url=excluded.image_url,
+ language=excluded.language,last_checked_at=excluded.last_checked_at,
+ last_success_at=excluded.last_success_at,updated_at=excluded.updated_at
+`,feedID,feed.URL,feed.Title,feed.Author,feed.Description,feed.ImageURL,
+        feed.Language,now,now,now,now)
+    if err != nil { return "", fmt.Errorf("save podcast feed: %w",err) }
+    if subscribe {
+        _, err = tx.ExecContext(ctx, `
+INSERT INTO podcast_subscriptions(feed_id,subscribed_at) VALUES (?,?)
+ON CONFLICT(feed_id) DO NOTHING`,feedID,now)
+        if err != nil { return "", fmt.Errorf("subscribe podcast feed: %w",err) }
+    }
+    for _, episode := range feed.Episodes {
+        if strings.TrimSpace(episode.Title) == "" { continue }
+        key := strings.TrimSpace(episode.GUID)
+        if key != "" {
+            key = "guid:" + key
+        } else if strings.TrimSpace(episode.EnclosureURL) != "" {
+            key = "enclosure:" + strings.TrimSpace(episode.EnclosureURL)
+        } else {
+            // A feed item without a stable publisher identity is not safe
+            // to upsert as a durable episode.
+            continue
+        }
+        episodeID := podcastStableID(feedID,key)
+        var published any
+        if !episode.PublishedAt.IsZero() { published=episode.PublishedAt.UnixMilli() }
+        _, err = tx.ExecContext(ctx, `
+INSERT INTO podcast_episodes (
+ id,feed_id,identity_key,guid,title,description,enclosure_url,
+ enclosure_mime,published_at,duration_ms,created_at,updated_at
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+ON CONFLICT(feed_id,identity_key) DO UPDATE SET
+ title=excluded.title,description=excluded.description,
+ enclosure_url=excluded.enclosure_url,enclosure_mime=excluded.enclosure_mime,
+ published_at=excluded.published_at,duration_ms=excluded.duration_ms,
+ listed_in_feed=1,updated_at=excluded.updated_at
+`,episodeID,feedID,key,episode.GUID,episode.Title,episode.Description,
+            episode.EnclosureURL,episode.EnclosureType,published,
+            episode.DurationSeconds*1000,now,now)
+        if err != nil { return "", fmt.Errorf("save podcast episode: %w",err) }
+    }
+    if err := tx.Commit(); err != nil { return "", err }
+    return feedID,nil
+}
+
+func (d *DB) ListSubscribedPodcasts(ctx context.Context) ([]PodcastFeedRecord,error) {
+    if err:=d.EnsurePodcastSchema();err!=nil{return nil,err}
+    rows,err:=d.conn.QueryContext(ctx,`
+SELECT f.id,f.canonical_url,f.title,f.author,f.description,f.image_url,f.language,
+ (SELECT COUNT(*) FROM podcast_episodes e WHERE e.feed_id=f.id)
+FROM podcast_subscriptions s JOIN podcast_feeds f ON f.id=s.feed_id
+ORDER BY s.subscribed_at DESC,f.id`)
+    if err!=nil{return nil,err}
+    defer rows.Close()
+    result:=make([]PodcastFeedRecord,0)
+    for rows.Next(){
+        var record PodcastFeedRecord
+        if err:=rows.Scan(&record.ID,&record.URL,&record.Title,&record.Author,
+            &record.Description,&record.ImageURL,&record.Language,&record.EpisodeCount);err!=nil{
+            return nil,err
+        }
+        result=append(result,record)
+    }
+    return result,rows.Err()
+}
+
+func (d *DB) ListPodcastEpisodes(ctx context.Context,feedID string,limit int) ([]PodcastEpisodeRecord,error){
+    if err:=d.EnsurePodcastSchema();err!=nil{return nil,err}
+    if limit<=0||limit>200{limit=100}
+    rows,err:=d.conn.QueryContext(ctx,`
+SELECT id,feed_id,guid,title,description,enclosure_url,enclosure_mime,
+ COALESCE(published_at,0),duration_ms
+FROM podcast_episodes WHERE feed_id=?
+ORDER BY published_at DESC,id LIMIT ?`,feedID,limit)
+    if err!=nil{return nil,err}
+    defer rows.Close()
+    result:=make([]PodcastEpisodeRecord,0)
+    for rows.Next(){
+        var e PodcastEpisodeRecord
+        if err:=rows.Scan(&e.ID,&e.FeedID,&e.GUID,&e.Title,&e.Description,
+            &e.EnclosureURL,&e.EnclosureType,&e.PublishedAt,&e.DurationMs);err!=nil{
+            return nil,err
+        }
+        result=append(result,e)
+    }
+    return result,rows.Err()
+}
+
+func (d *DB) UnsubscribePodcast(ctx context.Context,feedID string) error {
+    if err:=d.EnsurePodcastSchema();err!=nil{return err}
+    res,err:=d.conn.ExecContext(ctx,`DELETE FROM podcast_subscriptions WHERE feed_id=?`,feedID)
+    if err!=nil{return err}
+    affected,err:=res.RowsAffected()
+    if err!=nil{return err}
+    if affected==0{return sql.ErrNoRows}
+    return nil
+}
+
+// PodcastSubscribed reports whether the feed is subscribed, rather than merely
+// cached. It does not expose untrusted metadata to the API.
+func (d *DB) PodcastSubscribed(ctx context.Context,feedID string) (bool,error){
+    if err:=d.EnsurePodcastSchema();err!=nil{return false,err}
+    var id string
+    err:=d.conn.QueryRowContext(ctx,`SELECT feed_id FROM podcast_subscriptions WHERE feed_id=?`,feedID).Scan(&id)
+    if errors.Is(err,sql.ErrNoRows){return false,nil}
+    return err==nil,err
+}

@@ -414,14 +414,14 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 
 ## 7. Phased delivery plan and traceable PR sequence
 
-**Status of every phase below: PLANNED.** Sequence is dependency-aware. Keep PRs reviewable (one vertical behavior or small layer), add tests in the same PR, update this roadmap checkboxes and maintain a changelog as implementation begins.
+**Overall status:** Phase 0 partially completed; Phase 1 foundation in progress. No podcast UI, streaming, automated refresh or offline downloads are shipped. Future phases remain planned. Sequence is dependency-aware. Keep PRs reviewable (one vertical behavior or small layer), add tests in the same PR, update this roadmap checkboxes and maintain a changelog as implementation begins.
 
 ### Phase 0 — Architecture, compliance and decision gates
 
-- [ ] **POD-00A (ADR):** Confirm podcast domain boundary; choose source arbitration vs generalized queue; map existing startup/shutdown, backup and API route registration.
+- [x] **POD-00A (ADR):** Domain boundary, single-active-session arbitration direction, API routing, startup and backup constraints documented in [ADR 0001](adr/0001-podcasts-local-first-boundaries.md). Music-player refactor remains later work.
 - [ ] **POD-00B (ADR):** Confirm Podcast Index credentials/deployment strategy, terms/attribution, and behavior without a directory key; review Apple fallback licensing.
 - [ ] **POD-00C (ADR):** Define RSS namespace/format acceptance, allowed HTTP URLs, private feed policy, download folder ownership and retention semantics.
-- [ ] **POD-00D:** Build a deterministic fixture corpus (ordinary RSS, malformed feeds, 304/redirect, GUID changes, chapter/transcript, 206/416 media, OPML).
+- [ ] **POD-00D (in progress):** Added basic RSS/iTunes XML fixture and parser/conditional-GET/redirect/oversize tests in `backend/internal/podcast/`; GUID-change, OPML, transcript, chapters and 206/416 fixture coverage remains.
 - [ ] **POD-00E:** Define player switching lifecycle, media-session semantics, progress completion threshold and API error shapes.
 - [ ] **POD-00F:** Design review of podcast home/show/episode/player and responsive accessibility; identify key design tokens.
 - [ ] **POD-00G:** Choose a feature-flag mechanism (ViiB has no general feature-flag framework today; for example, a backend setting exposed through the settings API), then add the podcast flag, frontend/API contracts and test harness; guard incomplete navigation.
@@ -430,8 +430,8 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 
 ### Phase 1 — Persistent domain, safe RSS and following
 
-- [ ] **POD-01A:** Add SQLite schema, indexes, migrations and repository operations for feeds/subscriptions/episodes/states; backups and restore tested.
-- [ ] **POD-01B:** Secure remote request policy and feed parser with conditional GET, bounded redirects/bytes and safe HTML; unit and SSRF tests.
+- [ ] **POD-01A (in progress):** Added additive `EnsurePodcastSchema()`, isolated tables/indexes, transaction-safe feed/episode snapshot upserts, listing, unsubscribe and reopen/progress-preservation tests. Resume-state update methods, schema upgrades, backup/restore qualification and CI confirmation remain.
+- [ ] **POD-01B (in progress):** Implemented bounded RSS 2.0/iTunes parser, plain-text notes, DTD block, HTTPS-default fetcher, public-IP DNS pinning, redirect/size/304 controls and unit tests. Full reserved-address audit, feed identity churn, download/media policy and CI confirmation remain.
 - [ ] **POD-01C:** Feed identity/aliases, incremental reconciliation and polling refresh job with configurable rate limits, 304 behavior and error state.
 - [ ] **POD-01D:** Typed Go API and TS clients for feed preview/follow/unfollow, list/show/episodes and manual refresh; OpenAPI schemas.
 - [ ] **POD-01E:** First Podcasts navigation, Following list, Show Detail and empty/loading/error states.
@@ -648,3 +648,25 @@ Branch strategy: short-lived `feature/podcasts-*` work branches from updated `ma
 ---
 
 **Next executable task:** Open **POD-00A to POD-00G** as architecture/fixture/security review issues, then implement **PR-A: podcast schema + fixtures**, followed by **PR-B: secure feed fetch/parse**, then small vertical PRs through the MVP gates. This document deliberately contains no claim that the podcast functionality has already landed.
+
+
+## 14. Implementation progress log
+
+> **Current checkpoint: 2026-11-22.** Work is being committed directly to `feature/podcast-client-roadmap-2026-11-22`. Scope completed is explicitly distinguished from unverified tests and future work.
+
+| Item | State | Implementation evidence | Outstanding |
+|---|---|---|---|
+| POD-00A | **ADR documented** | [ADR 0001](adr/0001-podcasts-local-first-boundaries.md) | Player coordinator is a future delivery; ADR does not claim it exists |
+| POD-00B/C/E/F/G | **Open** | ADR lists proposed defaults and unresolved decisions | Directory credentials, legal review, listening lifecycle, UI design, feature flag |
+| POD-00D | **In progress** | `backend/internal/podcast/testdata/basic.xml`, parser/fetch tests | More fixture formats, ID churn, OPML, media range, integration coverage |
+| POD-01A | **In progress** | `backend/internal/db/podcast_schema.go`, `podcast_repository.go`, tests | Durable progress API, migrations across future versions, verified backup/restore |
+| POD-01B | **In progress** | `backend/internal/podcast/feed.go`, `fetch.go`, unit tests | Expanded SSRF and RSS-format qualification, CI |
+| POD-01C–E | **Not started** | None | Refresh job, HTTP API + TS client, Podcasts navigation and following UI |
+| Phase 2–8 | **Not started** | None | Discovery, player, offline downloads and remaining features |
+
+**Commits:** `abde2f2` introduces the foundational ADR, RSS and URL-fetch primitives.
+The follow-up schema/repository commit and status update will be identified by the branch history.
+
+**Validation status:** Go unit tests have been authored but are **not yet CI verified** in this checkpoint. The local execution environment does not have the repo's required Go 1.26 toolchain or dependency cache. Do not mark tests green without a GitHub Actions run.
+
+**Next vertical delivery:** Verify Go CI, resolve any compiler/staticcheck findings, then implement guarded subscription APIs and a minimal browser-accessible Following surface with fixtures. Keep music playback untouched.
