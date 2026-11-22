@@ -242,6 +242,26 @@ AND (SELECT COALESCE(SUM(CASE WHEN status='completed' THEN COALESCE(verified_siz
     return nil
 }
 
+// DiscardPodcastDownloadCheckpoint revokes a stale or unsafe prefix without
+// revoking the current worker lease. Only the current owner can reset it,
+// and the next 206 fetch must start again at byte zero.
+func (d *DB) DiscardPodcastDownloadCheckpoint(ctx context.Context,id,owner string)error{
+    if err:=d.EnsurePodcastSchema();err!=nil{return err}
+    res,err:=d.conn.ExecContext(ctx,`
+UPDATE podcast_downloads SET bytes_received=0,expected_bytes=NULL,
+ temp_relative_path=NULL,staged_sha256=NULL,source_sha256=NULL,
+ etag=NULL,last_modified=NULL,mime='',updated_at=?,lease_expires_at=?
+WHERE episode_id=? AND status='downloading' AND lease_owner=?
+AND EXISTS(SELECT 1 FROM podcast_episodes e JOIN podcast_subscriptions s
+ ON s.feed_id=e.feed_id WHERE e.id=podcast_downloads.episode_id)`,
+ time.Now().UnixMilli(),time.Now().Add(podcastDownloadLease).UnixMilli(),id,owner)
+    if err!=nil{return err}
+    rows,err:=res.RowsAffected()
+    if err!=nil{return err}
+    if rows==0{return sql.ErrNoRows}
+    return nil
+}
+
 // PodcastOfflineStorage reports committed and in-flight reservations across
 // ALL downloads, including unfollowed shows whose files still consume disk.
 func (d *DB) PodcastOfflineStorage(ctx context.Context)(int64,error){

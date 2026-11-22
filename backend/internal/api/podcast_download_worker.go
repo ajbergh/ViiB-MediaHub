@@ -117,8 +117,8 @@ func (a *API) closePodcastDownloader(){
 
 // Bounded one-at-a-time downloader. The existing HTTP fetcher does strict
 // public-IP DNS pinning, redirect checks, MIME sniffing and Content-Range
-// validation on *every* 2 MiB chunk. 200-only publishers remain unsupported
-// for offline downloads until a separate bounded-streaming implementation.
+// validation on every 2 MiB chunk. A separately bounded 200-only full-file
+// fallback is used only when the first byte-range request is unsupported.
 func (a *API) processPodcastDownload(ctx context.Context){
     if a.db==nil || a.dataDir=="" {return}
     a.cleanupUnsubscribedPodcastFiles(ctx)
@@ -274,6 +274,7 @@ func (a *API) restorePodcastDownloadCheckpoint(ctx context.Context,id,owner,dir,
     out *os.File,h hash.Hash)(db.PodcastResumeCheckpoint,bool,error){
     checkpoint,err:=a.db.ReadPodcastDownloadResumeCheckpoint(ctx,id,owner)
     if err!=nil{return db.PodcastResumeCheckpoint{},false,err}
+    if checkpoint.TempFilename==""{return db.PodcastResumeCheckpoint{},false,nil}
     if !safePodcastTempName.MatchString(checkpoint.TempFilename)||
         checkpoint.Bytes<=0||checkpoint.Total<=checkpoint.Bytes||
         checkpoint.Total>db.MaxPodcastDownloadBytes||
@@ -281,21 +282,27 @@ func (a *API) restorePodcastDownloadCheckpoint(ctx context.Context,id,owner,dir,
         podcast.StrongMediaETag(checkpoint.ETag)!=checkpoint.ETag||
         len(checkpoint.SHA256)!=64||
         podcast.SupportedPodcastAudioMIME(checkpoint.MIME)==""{
-        return db.PodcastResumeCheckpoint{},false,nil
+        return db.PodcastResumeCheckpoint{},false,
+            a.db.DiscardPodcastDownloadCheckpoint(ctx,id,owner)
     }
     path:=filepath.Join(dir,checkpoint.TempFilename)
     st,err:=os.Lstat(path)
     if err!=nil||!st.Mode().IsRegular()||
         st.Size()<checkpoint.Bytes||st.Size()>db.MaxPodcastDownloadBytes{
-        return db.PodcastResumeCheckpoint{},false,nil
+        return db.PodcastResumeCheckpoint{},false,
+            a.db.DiscardPodcastDownloadCheckpoint(ctx,id,owner)
     }
     file,err:=os.Open(path)
-    if err!=nil{return db.PodcastResumeCheckpoint{},false,nil}
+    if err!=nil{
+        return db.PodcastResumeCheckpoint{},false,
+            a.db.DiscardPodcastDownloadCheckpoint(ctx,id,owner)
+    }
     defer file.Close()
     opened,err:=file.Stat()
     if err!=nil||!opened.Mode().IsRegular()||!os.SameFile(st,opened)||
         opened.Size()<checkpoint.Bytes{
-        return db.PodcastResumeCheckpoint{},false,nil
+        return db.PodcastResumeCheckpoint{},false,
+            a.db.DiscardPodcastDownloadCheckpoint(ctx,id,owner)
     }
     // The previously staged file is still on disk during the copy, so the
     // destination must have capacity for a second complete episode.
@@ -310,7 +317,8 @@ func (a *API) restorePodcastDownloadCheckpoint(ctx context.Context,id,owner,dir,
         if _,err:=out.Seek(0,io.SeekStart);err!=nil{
             return db.PodcastResumeCheckpoint{},false,err
         }
-        return db.PodcastResumeCheckpoint{},false,nil
+        return db.PodcastResumeCheckpoint{},false,
+            a.db.DiscardPodcastDownloadCheckpoint(ctx,id,owner)
     }
     if err:=out.Sync();err!=nil{return db.PodcastResumeCheckpoint{},false,err}
     checkpoint.TempFilename=filepath.Base(out.Name())
@@ -318,6 +326,18 @@ func (a *API) restorePodcastDownloadCheckpoint(ctx context.Context,id,owner,dir,
         return db.PodcastResumeCheckpoint{},false,err
     }
     return checkpoint,true,nil
+}
+
+// restartPodcastRangedTransfer discards only the current lease's staged
+// checkpoint and erases our new temporary copy. An HTTP 416/changed first
+// resumed response gets exactly one fresh request from byte zero.
+func (a *API) restartPodcastRangedTransfer(ctx context.Context,id,owner string,
+    out *os.File,h hash.Hash)error{
+    if err:=a.db.DiscardPodcastDownloadCheckpoint(ctx,id,owner);err!=nil{return err}
+    if err:=out.Truncate(0);err!=nil{return err}
+    if _,err:=out.Seek(0,io.SeekStart);err!=nil{return err}
+    h.Reset()
+    return nil
 }
 
 func (a *API) transferPodcastDownload(ctx context.Context,id,owner string) error {
@@ -373,6 +393,15 @@ func (a *API) transferPodcastDownload(ctx context.Context,id,owner string) error
         header:=fmt.Sprintf("bytes=%d-%d",received,received+podcastDownloadChunkBytes-1)
         seg,err:=fetch(ctx,raw,header,declared)
         if err!=nil{
+            if resuming&&received>0&&
+                (errors.Is(err,podcast.ErrPublisherNoRange)||
+                 errors.Is(err,podcast.ErrInvalidMediaRange)){
+                if err:=a.restartPodcastRangedTransfer(ctx,id,owner,out,hash);err!=nil{return err}
+                received,total=0,0
+                mime,firstETag,firstLastModified,requestedIfRange="","","",""
+                resuming=false
+                continue
+            }
             if received==0&&errors.Is(err,podcast.ErrPublisherNoRange){
                 fullFetch:=a.podcastDownloadFullFetch
                 if fullFetch==nil&&a.podcastDownloadFetch==nil{
@@ -448,6 +477,13 @@ func (a *API) transferPodcastDownload(ctx context.Context,id,owner string) error
             requestedIfRange=firstETag
         }else if firstETag!=""&&podcast.StrongMediaETag(seg.ETag)!=firstETag ||
             firstLastModified!=""&&seg.LastModified!=firstLastModified {
+            if resuming{
+                if err:=a.restartPodcastRangedTransfer(ctx,id,owner,out,hash);err!=nil{return err}
+                received,total=0,0
+                mime,firstETag,firstLastModified,requestedIfRange="","","",""
+                resuming=false
+                continue
+            }
             return errPodcastPublisherChanged
         }
         if seg.Start!=received||seg.Total<=0||seg.Total>db.MaxPodcastDownloadBytes||
@@ -455,10 +491,21 @@ func (a *API) transferPodcastDownload(ctx context.Context,id,owner string) error
             int64(len(seg.Data))>podcastDownloadChunkBytes{
             return errPodcastDownloadTooLarge
         }
-        if total==0 {total=seg.Total}else if total!=seg.Total {return podcast.ErrInvalidMedia}
+        if total==0 {total=seg.Total}else if total!=seg.Total {
+            if resuming{
+                if err:=a.restartPodcastRangedTransfer(ctx,id,owner,out,hash);err!=nil{return err}
+                received,total=0,0
+                mime,firstETag,firstLastModified,requestedIfRange="","","",""
+                resuming=false
+                continue
+            }
+            return podcast.ErrInvalidMedia
+        }
         typ:=podcast.SupportedPodcastAudioMIME(seg.MIME)
         if typ=="" || mime!="" && mime!=typ{return podcast.ErrInvalidMedia}
         mime=typ
+        // Any second failure is final, so an origin cannot loop forever.
+        resuming=false
         // Probe the actual destination volume, not just the SQLite quota.
         // Reserving all remaining bytes prevents starting a transfer that
         // would consume the OS safety margin; recheck after each publisher
