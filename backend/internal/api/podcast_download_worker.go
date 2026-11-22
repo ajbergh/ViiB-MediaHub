@@ -14,6 +14,8 @@ import (
     "path/filepath"
     "regexp"
     "strings"
+    "sync"
+    "sync/atomic"
     "time"
  
     "github.com/ajbergh/viib-mediahub/internal/db"
@@ -33,6 +35,19 @@ type podcastFileVerification struct {
 
 const podcastDownloadChunkBytes = podcast.MaxMediaSegmentBytes
 const podcastDownloadTick = 3*time.Second
+// A 200-only publisher may take minutes and has no 2 MiB request boundary.
+// This heartbeat keeps its 90s SQLite lease current and notices cancellation.
+const podcastFullDownloadHeartbeat = 2*time.Second
+
+type podcastByteCountingWriter struct {
+    destination io.Writer
+    bytes *atomic.Int64
+}
+func (w podcastByteCountingWriter)Write(p []byte)(int,error){
+    n,err:=w.destination.Write(p)
+    w.bytes.Add(int64(n))
+    return n,err
+}
 
 // Private, fixed-location storage: never construct paths from publisher names
 // or use a URL/client-supplied filesystem path.
@@ -295,11 +310,45 @@ func (a *API) transferPodcastDownload(ctx context.Context,id,owner string) error
                 if err:=a.requirePodcastDiskSpace(dir,db.MaxPodcastDownloadBytes);err!=nil{return err}
                 if err:=a.db.UpdatePodcastDownloadBytes(ctx,id,owner,0,db.MaxPodcastDownloadBytes);err!=nil{return err}
                 sum:=sha256.New()
-                full,fullErr:=fullFetch(ctx,raw,declared,io.MultiWriter(out,sum),db.MaxPodcastDownloadBytes)
+                var streamed atomic.Int64
+                // The streaming 200 response is one long network request.
+                // Keep the durable lease alive while reading, and revoke the
+                // HTTP request promptly when Cancel/Unfollow clears the lease.
+                streamCtx,stopStream:=context.WithCancel(ctx)
+                leaseFailures:=make(chan error,1)
+                var heartbeat sync.WaitGroup
+                heartbeat.Add(1)
+                go func(){
+                    defer heartbeat.Done()
+                    ticker:=time.NewTicker(podcastFullDownloadHeartbeat)
+                    defer ticker.Stop()
+                    for {
+                        select {
+                        case <-streamCtx.Done():return
+                        case <-ticker.C:
+                            if leaseErr:=a.db.UpdatePodcastDownloadBytes(streamCtx,id,owner,
+                                streamed.Load(),db.MaxPodcastDownloadBytes);leaseErr!=nil{
+                                leaseFailures<-leaseErr
+                                stopStream()
+                                return
+                            }
+                        }
+                    }
+                }()
+                full,fullErr:=fullFetch(streamCtx,raw,declared,
+                    podcastByteCountingWriter{destination:io.MultiWriter(out,sum),bytes:&streamed},
+                    db.MaxPodcastDownloadBytes)
+                stopStream()
+                heartbeat.Wait()
+                select{
+                case leaseErr:=<-leaseFailures:return leaseErr
+                default:
+                }
                 if fullErr!=nil{return fullErr}
                 stat,statErr:=out.Stat()
                 if statErr!=nil||!stat.Mode().IsRegular()||full.Size<=0||
                     full.Size>db.MaxPodcastDownloadBytes||stat.Size()!=full.Size||
+                    streamed.Load()!=full.Size||
                     podcast.SupportedPodcastAudioMIME(full.MIME)==""{
                     return podcast.ErrInvalidMedia
                 }

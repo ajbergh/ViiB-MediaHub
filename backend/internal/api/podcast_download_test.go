@@ -490,3 +490,45 @@ func TestPodcastFull200CancellationDoesNotPublish(t *testing.T){
     t.Fatalf("canceled 200 downloaded audio was published: %v",err)
  }
 }
+
+func TestPodcastFull200UserCancellationStopsBlockedStream(t *testing.T){
+ d,id:=seedPodcastDownload(t);defer d.Close()
+ ctx:=context.Background()
+ entered:=make(chan struct{})
+ exited:=make(chan struct{})
+ a:=&API{db:d,dataDir:t.TempDir(),
+   podcastDownloadFetch:func(context.Context,string,string,string)(podcast.MediaSegment,error){
+     return podcast.MediaSegment{},podcast.ErrPublisherNoRange
+   },
+   podcastDownloadFullFetch:func(fetchCtx context.Context,_ string,_ string,_ io.Writer,_ int64)(podcast.FullMedia,error){
+     close(entered)
+     <-fetchCtx.Done()
+     close(exited)
+     return podcast.FullMedia{},fetchCtx.Err()
+   },
+ }
+ queued:=httptest.NewRecorder()
+ a.PodcastRoutes().ServeHTTP(queued,httptest.NewRequest(http.MethodPost,
+     "/episodes/"+id+"/download",nil))
+ if queued.Code!=http.StatusAccepted{t.Fatalf("queue: %d",queued.Code)}
+ finished:=make(chan struct{})
+ go func(){a.processPodcastDownload(ctx);close(finished)}()
+ select{
+ case <-entered:
+ case <-time.After(4*time.Second):t.Fatal("full transfer not entered")
+ }
+ if _,err:=d.CancelPodcastDownload(ctx,id);err!=nil{t.Fatal(err)}
+ select{
+ case <-finished:
+ case <-time.After(6*time.Second):t.Fatal("canceled full 200 transfer held network open")
+ }
+ select{
+ case <-exited:
+ default:t.Fatal("publisher stream did not receive cancellation context")
+ }
+ row,err:=d.GetPodcastDownload(ctx,id)
+ if err!=nil||row.Status!="canceled"{t.Fatalf("canceled stream published: %+v %v",row,err)}
+ if _,err:=os.Stat(filepath.Join(a.dataDir,"podcasts","episodes",id+".audio"));!errors.Is(err,os.ErrNotExist){
+    t.Fatalf("canceled stream published local file: %v",err)
+ }
+}
