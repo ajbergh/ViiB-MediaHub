@@ -214,12 +214,12 @@ func (d *DB) ListPodcastEpisodesPage(ctx context.Context,feedID string,limit,off
     if err:=d.EnsurePodcastSchema();err!=nil{return nil,false,err}
     if limit<=0 || limit>100 {limit=50}
     if offset<0 {offset=0}
-    rows,err:=d.conn.QueryContext(ctx,\`
+    rows,err:=d.conn.QueryContext(ctx,`
 SELECT id,feed_id,guid,title,description,enclosure_url,enclosure_mime,
  COALESCE(published_at,0),duration_ms
 FROM podcast_episodes WHERE feed_id=?
 ORDER BY COALESCE(published_at,0) DESC,id ASC LIMIT ? OFFSET ?
-\`,feedID,limit+1,offset)
+`,feedID,limit+1,offset)
     if err!=nil{return nil,false,err}
     defer rows.Close()
     result:=make([]PodcastEpisodeRecord,0,limit+1)
