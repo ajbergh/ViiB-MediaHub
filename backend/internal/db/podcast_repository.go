@@ -278,8 +278,10 @@ func (d *DB) UnsubscribePodcast(ctx context.Context,feedID string) error {
     _,err=tx.ExecContext(ctx,`
 UPDATE podcast_downloads SET status='canceled',lease_owner=NULL,
  lease_expires_at=NULL,bytes_received=0,expected_bytes=NULL,
+ temp_relative_path=NULL,staged_sha256=NULL,source_sha256=NULL,
+ etag=NULL,last_modified=NULL,mime='',retry_after=NULL,
  error_code=NULL,updated_at=?
-WHERE status IN ('queued','downloading') AND episode_id IN (
+WHERE status IN ('queued','downloading','paused') AND episode_id IN (
  SELECT id FROM podcast_episodes WHERE feed_id=?)`,
  time.Now().UnixMilli(),feedID)
     if err!=nil{return err}

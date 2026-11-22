@@ -11,6 +11,8 @@ import (
 )
 
 const podcastDownloadLease = 90 * time.Second
+// Three automatic retries after transient publisher failures; manual Retry resets this.
+const podcastMaxAutomaticRetries = 3
 const MaxPodcastDownloadBytes int64 = 512 << 20 // bounded early-access offline MVP
 // Includes completed and currently reserved work, even for unfollowed shows.
 const MaxPodcastOfflineLibraryBytes int64 = 2 << 30
@@ -31,6 +33,7 @@ type PodcastDownloadRecord struct {
     ExpectedBytes int64 `json:"expectedBytes"`
     VerifiedSize int64 `json:"verifiedSize"`
     ErrorCode string `json:"errorCode,omitempty"`
+    RetryAfter int64 `json:"retryAfter,omitempty"`
     CreatedAt int64 `json:"createdAt"`
     UpdatedAt int64 `json:"updatedAt"`
     CompletedAt int64 `json:"completedAt"`
@@ -61,13 +64,14 @@ type PodcastDownloadedFile struct {
 const podcastDownloadColumns = `
 d.id,d.episode_id,d.status,d.bytes_received,
 COALESCE(d.expected_bytes,0),COALESCE(d.verified_size,0),
-COALESCE(d.error_code,''),d.created_at,d.updated_at,COALESCE(d.completed_at,0)`
+COALESCE(d.error_code,''),d.created_at,d.updated_at,COALESCE(d.completed_at,0),
+COALESCE(d.retry_after,0)`
 
 func scanPodcastDownload(scanner interface{ Scan(...any) error }) (PodcastDownloadRecord,error) {
     var row PodcastDownloadRecord
     err := scanner.Scan(&row.ID,&row.EpisodeID,&row.Status,&row.BytesReceived,
         &row.ExpectedBytes,&row.VerifiedSize,&row.ErrorCode,&row.CreatedAt,
-        &row.UpdatedAt,&row.CompletedAt)
+        &row.UpdatedAt,&row.CompletedAt,&row.RetryAfter)
     return row,err
 }
 
@@ -97,7 +101,8 @@ ORDER BY d.updated_at DESC,d.episode_id LIMIT 100`)
         var row PodcastDownloadRecord
         err:=rows.Scan(&row.ID,&row.EpisodeID,&row.Status,&row.BytesReceived,
             &row.ExpectedBytes,&row.VerifiedSize,&row.ErrorCode,&row.CreatedAt,
-            &row.UpdatedAt,&row.CompletedAt,&row.FeedID,&row.EpisodeTitle,&row.FeedTitle)
+            &row.UpdatedAt,&row.CompletedAt,&row.RetryAfter,
+            &row.FeedID,&row.EpisodeTitle,&row.FeedTitle)
         if err!=nil{return nil,err}
         result=append(result,row)
     }
@@ -122,6 +127,8 @@ ON CONFLICT(episode_id) DO UPDATE SET
  temp_relative_path=CASE WHEN podcast_downloads.status IN ('failed','canceled','paused') THEN NULL ELSE podcast_downloads.temp_relative_path END,
  staged_sha256=CASE WHEN podcast_downloads.status IN ('failed','canceled','paused') THEN NULL ELSE podcast_downloads.staged_sha256 END,
  source_sha256=CASE WHEN podcast_downloads.status IN ('failed','canceled','paused') THEN NULL ELSE podcast_downloads.source_sha256 END,
+ retry_after=CASE WHEN podcast_downloads.status IN ('failed','canceled','paused') THEN NULL ELSE podcast_downloads.retry_after END,
+ auto_retry_count=CASE WHEN podcast_downloads.status IN ('failed','canceled','paused') THEN 0 ELSE podcast_downloads.auto_retry_count END,
  etag=CASE WHEN podcast_downloads.status IN ('failed','canceled','paused') THEN NULL ELSE podcast_downloads.etag END,
  last_modified=CASE WHEN podcast_downloads.status IN ('failed','canceled','paused') THEN NULL ELSE podcast_downloads.last_modified END,
  mime=CASE WHEN podcast_downloads.status IN ('failed','canceled','paused') THEN '' ELSE podcast_downloads.mime END,
@@ -141,8 +148,9 @@ func (d *DB) CancelPodcastDownload(ctx context.Context,episodeID string)(Podcast
     result,err:=d.conn.ExecContext(ctx,`
 UPDATE podcast_downloads SET status='canceled',lease_owner=NULL,lease_expires_at=NULL,
  bytes_received=0,expected_bytes=NULL,error_code=NULL,
- temp_relative_path=NULL,staged_sha256=NULL,source_sha256=NULL,etag=NULL,last_modified=NULL,mime='',updated_at=?
-WHERE episode_id=? AND status IN ('queued','downloading') AND EXISTS(
+ temp_relative_path=NULL,staged_sha256=NULL,source_sha256=NULL,etag=NULL,last_modified=NULL,
+ retry_after=NULL,auto_retry_count=0,updated_at=?
+WHERE episode_id=? AND status IN ('queued','downloading','paused') AND EXISTS(
  SELECT 1 FROM podcast_episodes e JOIN podcast_subscriptions s ON s.feed_id=e.feed_id
  WHERE e.id=podcast_downloads.episode_id)`,time.Now().UnixMilli(),episodeID)
     if err!=nil{return PodcastDownloadRecord{},err}
@@ -166,23 +174,25 @@ func (d *DB) ClaimPodcastDownload(ctx context.Context,owner string,now time.Time
     err:=d.conn.QueryRowContext(ctx,`
 UPDATE podcast_downloads SET status='downloading',lease_owner=?,
  lease_expires_at=?,
- bytes_received=CASE WHEN status='downloading' THEN bytes_received ELSE 0 END,
- expected_bytes=CASE WHEN status='downloading' THEN expected_bytes ELSE NULL END,
- temp_relative_path=CASE WHEN status='downloading' THEN temp_relative_path ELSE NULL END,
- staged_sha256=CASE WHEN status='downloading' THEN staged_sha256 ELSE NULL END,
- source_sha256=CASE WHEN status='downloading' THEN source_sha256 ELSE NULL END,
- etag=CASE WHEN status='downloading' THEN etag ELSE NULL END,
- last_modified=CASE WHEN status='downloading' THEN last_modified ELSE NULL END,
- mime=CASE WHEN status='downloading' THEN mime ELSE '' END,
- error_code=NULL,updated_at=?
+ bytes_received=CASE WHEN status IN ('downloading','paused') THEN bytes_received ELSE 0 END,
+ expected_bytes=CASE WHEN status IN ('downloading','paused') THEN expected_bytes ELSE NULL END,
+ temp_relative_path=CASE WHEN status IN ('downloading','paused') THEN temp_relative_path ELSE NULL END,
+ staged_sha256=CASE WHEN status IN ('downloading','paused') THEN staged_sha256 ELSE NULL END,
+ source_sha256=CASE WHEN status IN ('downloading','paused') THEN source_sha256 ELSE NULL END,
+ etag=CASE WHEN status IN ('downloading','paused') THEN etag ELSE NULL END,
+ last_modified=CASE WHEN status IN ('downloading','paused') THEN last_modified ELSE NULL END,
+ mime=CASE WHEN status IN ('downloading','paused') THEN mime ELSE '' END,
+ retry_after=NULL,error_code=NULL,updated_at=?
 WHERE episode_id=(
  SELECT d.episode_id FROM podcast_downloads d
  JOIN podcast_episodes e ON e.id=d.episode_id
  JOIN podcast_subscriptions s ON s.feed_id=e.feed_id
- WHERE d.status='queued' OR (d.status='downloading' AND COALESCE(d.lease_expires_at,0)<?)
+ WHERE d.status='queued'
+ OR (d.status='downloading' AND COALESCE(d.lease_expires_at,0)<?)
+ OR (d.status='paused' AND COALESCE(d.retry_after,0)<=?)
  ORDER BY d.created_at,d.episode_id LIMIT 1
 )
-RETURNING episode_id`,owner,millis+podcastDownloadLease.Milliseconds(),millis,millis).Scan(&episodeID)
+RETURNING episode_id`,owner,millis+podcastDownloadLease.Milliseconds(),millis,millis,millis).Scan(&episodeID)
     if errors.Is(err,sql.ErrNoRows){return "",nil}
     return episodeID,err
 }
@@ -225,7 +235,7 @@ AND EXISTS(SELECT 1 FROM podcast_episodes e JOIN podcast_subscriptions s
  ON s.feed_id=e.feed_id WHERE e.id=podcast_downloads.episode_id)
 AND (SELECT COALESCE(SUM(CASE WHEN status='completed' THEN COALESCE(verified_size,0)
  ELSE COALESCE(expected_bytes,0) END),0)
- FROM podcast_downloads WHERE episode_id<>? AND status IN ('completed','downloading')) <= ?`,
+ FROM podcast_downloads WHERE episode_id<>? AND status IN ('completed','downloading','paused')) <= ?`,
  c.Bytes,c.Total,c.TempFilename,c.SHA256,c.SourceSHA256,c.ETag,c.LastModified,c.MIME,
  time.Now().UnixMilli(),time.Now().Add(podcastDownloadLease).UnixMilli(),
  id,owner,id,MaxPodcastOfflineLibraryBytes-c.Total)
@@ -270,7 +280,7 @@ func (d *DB) PodcastOfflineStorage(ctx context.Context)(int64,error){
     err:=d.conn.QueryRowContext(ctx,`
 SELECT COALESCE(SUM(CASE WHEN status='completed' THEN COALESCE(verified_size,0)
  ELSE COALESCE(expected_bytes,0) END),0)
-FROM podcast_downloads WHERE status IN ('completed','downloading')`).Scan(&used)
+FROM podcast_downloads WHERE status IN ('completed','downloading','paused')`).Scan(&used)
     return used,err
 }
 
@@ -284,7 +294,7 @@ AND EXISTS (SELECT 1 FROM podcast_episodes e JOIN podcast_subscriptions s
   ON s.feed_id=e.feed_id WHERE e.id=podcast_downloads.episode_id)
 AND (SELECT COALESCE(SUM(CASE WHEN status='completed' THEN COALESCE(verified_size,0)
  ELSE COALESCE(expected_bytes,0) END),0)
- FROM podcast_downloads WHERE episode_id<>? AND status IN ('completed','downloading')) <= ?`,
+ FROM podcast_downloads WHERE episode_id<>? AND status IN ('completed','downloading','paused')) <= ?`,
 received,total,time.Now().UnixMilli(),time.Now().Add(podcastDownloadLease).UnixMilli(),
 id,owner,id,MaxPodcastOfflineLibraryBytes-total)
     if err!=nil{return err}
@@ -306,6 +316,7 @@ func (d *DB) CompletePodcastDownload(ctx context.Context,id,owner,filename,mime,
     if size<=0||size>MaxPodcastDownloadBytes||filename==""||mime==""||len(digest)!=64{return errors.New("invalid verified podcast file")}
     result,err:=d.conn.ExecContext(ctx,`
 UPDATE podcast_downloads SET status='completed',destination_relative_path=?,
+ retry_after=NULL,auto_retry_count=0,
  temp_relative_path=NULL,staged_sha256=NULL,source_sha256=NULL,etag=NULL,last_modified=NULL,
  bytes_received=?,expected_bytes=?,verified_size=?,sha256=?,mime=?,
  completed_at=?,updated_at=?,lease_owner=NULL,lease_expires_at=NULL,error_code=NULL
@@ -314,7 +325,7 @@ AND EXISTS (SELECT 1 FROM podcast_episodes e JOIN podcast_subscriptions s
   ON s.feed_id=e.feed_id WHERE e.id=podcast_downloads.episode_id)
 AND (SELECT COALESCE(SUM(CASE WHEN status='completed' THEN COALESCE(verified_size,0)
  ELSE COALESCE(expected_bytes,0) END),0)
- FROM podcast_downloads WHERE episode_id<>? AND status IN ('completed','downloading')) <= ?`,
+ FROM podcast_downloads WHERE episode_id<>? AND status IN ('completed','downloading','paused')) <= ?`,
 filename,size,size,size,digest,mime,time.Now().UnixMilli(),time.Now().UnixMilli(),
 id,owner,id,MaxPodcastOfflineLibraryBytes-size)
     if err!=nil{return err}
@@ -328,11 +339,45 @@ func (d *DB) FailPodcastDownload(ctx context.Context,id,owner,code string) error
     if code==""||len(code)>60{return errors.New("invalid safe error code")}
     _,err:=d.conn.ExecContext(ctx,`
 UPDATE podcast_downloads SET status='failed',bytes_received=0,expected_bytes=NULL,
+ retry_after=NULL,
  temp_relative_path=NULL,staged_sha256=NULL,source_sha256=NULL,etag=NULL,last_modified=NULL,mime='',
  lease_owner=NULL,lease_expires_at=NULL,error_code=?,updated_at=?
 WHERE episode_id=? AND status='downloading' AND lease_owner=?`,
 code,time.Now().UnixMilli(),id,owner)
     return err
+}
+
+// Transient failures pause the leased job with bounded exponential backoff.
+// Retry deadlines and strong-ETag checkpoints survive Go restarts. Three
+// attempts are allowed; a revoked owner can never schedule another retry.
+func (d *DB) PausePodcastDownloadForRetry(ctx context.Context,id,owner,code string,now time.Time)(bool,error){
+    if code!="download_unavailable"&&code!="download_interrupted"{
+        return false,errors.New("not a transient podcast failure")
+    }
+    if err:=d.EnsurePodcastSchema();err!=nil{return false,err}
+    millis:=now.UnixMilli()
+    res,err:=d.conn.ExecContext(ctx,`
+UPDATE podcast_downloads SET status='paused',lease_owner=NULL,lease_expires_at=NULL,
+ retry_after=? + CASE auto_retry_count WHEN 0 THEN 15000 WHEN 1 THEN 60000 ELSE 240000 END,
+ auto_retry_count=auto_retry_count+1,error_code=?,updated_at=?
+WHERE episode_id=? AND status='downloading' AND lease_owner=?
+AND auto_retry_count < ?
+AND EXISTS(SELECT 1 FROM podcast_episodes e JOIN podcast_subscriptions s
+ ON s.feed_id=e.feed_id WHERE e.id=podcast_downloads.episode_id)`,
+ millis,code,millis,id,owner,podcastMaxAutomaticRetries)
+    if err!=nil{return false,err}
+    count,err:=res.RowsAffected()
+    if err!=nil{return false,err}
+    if count>0{return true,nil}
+    var status,currentOwner string
+    var retries int
+    err=d.conn.QueryRowContext(ctx,`SELECT status,COALESCE(lease_owner,''),auto_retry_count
+FROM podcast_downloads WHERE episode_id=?`,id).Scan(&status,&currentOwner,&retries)
+    if err!=nil{return false,err}
+    if status=="downloading"&&currentOwner==owner&&retries>=podcastMaxAutomaticRetries{
+        return false,nil
+    }
+    return false,sql.ErrNoRows
 }
 
 // Completed files are selected only through active subscriptions. The
