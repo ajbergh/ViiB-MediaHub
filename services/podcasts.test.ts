@@ -104,6 +104,13 @@ describe('podcastsAPI', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('/api/v2/podcasts/episodes/continue?limit=12');
   });
 
+  it('builds only same-origin episode media URLs by stable episode ID', () => {
+    expect(podcastsAPI.mediaURL('episode/a')).toBe('/api/v2/podcasts/episodes/episode%2Fa/media');
+    expect(podcastsAPI.mediaURL('https://evil.example/?token=abc')).toBe(
+      '/api/v2/podcasts/episodes/https%3A%2F%2Fevil.example%2F%3Ftoken%3Dabc/media',
+    );
+  });
+
   it('loads and saves episode progress with an optimistic revision', async () => {
     const response = { episodeId: 'e/1', positionMs: 4000, listenedMs: 4000, isPlayed: true, revision: 2 };
     const fetchMock = vi.fn(async (_url: string, _options?: RequestInit) => ({

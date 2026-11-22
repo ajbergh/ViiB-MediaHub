@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { ArrowLeft, Download, Headphones, Loader2, Plus, RefreshCw, Rss, Trash2 } from 'lucide-react';
 import { api } from '../services/api';
+import { PodcastEpisodePlayer } from '../components/PodcastEpisodePlayer';
 import { podcastsAPI, PodcastAPIError, type PodcastFeed, type PodcastEpisode, type PodcastPreview, type PodcastRefreshStatus, type PodcastOPMLImportPreview, type PodcastContinueEpisode } from '../services/podcasts';
 
 const inputClass = 'w-full rounded-lg border border-surface-3 bg-surface-1 px-4 py-3 text-text-main outline-none focus-visible:ring-2 focus-visible:ring-brand';
@@ -308,6 +309,7 @@ export const PodcastShow: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [feed, setFeed] = useState<PodcastFeed | null>(null);
   const [episodes, setEpisodes] = useState<PodcastEpisode[]>([]);
+  const [listeningEpisode, setListeningEpisode] = useState<PodcastEpisode | null>(null);
   const [episodeFilter, setEpisodeFilter] = useState('');
   const [playedFilter, setPlayedFilter] = useState<'all' | 'played' | 'unplayed'>('all');
   const [updatingEpisode, setUpdatingEpisode] = useState<string | null>(null);
@@ -492,6 +494,8 @@ export const PodcastShow: React.FC = () => {
             </div>}
         </div>
       </header>
+      {listeningEpisode && <PodcastEpisodePlayer key={listeningEpisode.id}
+        episode={listeningEpisode} showTitle={feed.title} onClose={() => setListeningEpisode(null)} />}
       <section>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-bold text-text-main">Episodes ({episodes.length} loaded)</h2>
@@ -522,7 +526,13 @@ export const PodcastShow: React.FC = () => {
                 className="rounded-md border border-surface-3 px-3 py-1.5 text-xs font-semibold text-text-secondary hover:text-text-main disabled:opacity-50">
                 {updatingEpisode === episode.id ? 'Saving…' : episode.isPlayed ? 'Mark unplayed' : 'Mark played'}
               </button>
-              <span className="text-xs text-text-subtle">Streaming and downloads are coming in a later phase.</span>
+              {episode.enclosureUrl && <button type="button"
+                onClick={() => setListeningEpisode(episode)}
+                aria-label={'Listen to ' + episode.title}
+                className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-surface-0">
+                Listen
+              </button>}
+              <span className="text-xs text-text-subtle">Streaming is early access; downloads are coming in a later phase.</span>
             </div>
           </article>)}
         </div>

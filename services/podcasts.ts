@@ -127,6 +127,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 export const podcastsAPI = {
+  mediaURL(episodeId: string): string {
+    return BASE + '/episodes/' + encodeURIComponent(episodeId) + '/media';
+  },
   listContinueListening(limit = 12, signal?: AbortSignal): Promise<{ episodes: PodcastContinueEpisode[] }> {
     return request('/episodes/continue?limit=' + encodeURIComponent(String(limit)), { signal });
   },
