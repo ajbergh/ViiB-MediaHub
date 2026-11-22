@@ -135,3 +135,55 @@ func TestPodcastOfflineQuotaCountsCommittedAndInFlight(t *testing.T){
     t.Fatalf("freed quota not usable: %v",err)
  }
 }
+
+
+func TestPodcastDownloadDurableStagedCheckpointAndLeaseRecovery(t *testing.T){
+ ctx:=context.Background()
+ dbPath:=filepath.Join(t.TempDir(),"resume.db")
+ d,err:=New(dbPath);if err!=nil{t.Fatal(err)}
+ feedID,err:=d.SavePodcastFeedSnapshot(ctx,podcast.Feed{URL:"https://publisher.example/resume",
+   Title:"Resume",Episodes:[]podcast.Episode{{GUID:"one",Title:"Part",EnclosureURL:"https://cdn.example.org/a.mp3",EnclosureType:"audio/mpeg"}}},true)
+ if err!=nil{t.Fatal(err)}
+ episodes,err:=d.ListPodcastEpisodes(ctx,feedID,10)
+ if err!=nil||len(episodes)!=1{t.Fatal(err)}
+ id:=episodes[0].ID
+ if _,err:=d.EnqueuePodcastDownload(ctx,id);err!=nil{t.Fatal(err)}
+ old,err:=d.ClaimPodcastDownload(ctx,"owner-old",time.Now())
+ if err!=nil||old!=id{t.Fatalf("old claim: %s %v",old,err)}
+ cp:=PodcastResumeCheckpoint{
+    TempFilename:".part-123456789",Bytes:4,Total:8,ETag:"\"version-1\"",
+    LastModified:"Wed, 21 Oct 2015 07:28:00 GMT",MIME:"audio/mpeg",
+    SHA256:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    SourceSHA256:"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+ }
+ if err:=d.SavePodcastDownloadCheckpoint(ctx,id,"owner-old",cp);err!=nil{t.Fatal(err)}
+ protected,err:=d.ActivePodcastStagedFilenames(ctx)
+ if err!=nil||!protected[cp.TempFilename]{t.Fatalf("staged file unprotected: %v %v",protected,err)}
+ // Reopen the SQLite DB to prove the checkpoint is genuinely durable.
+ if err:=d.Close();err!=nil{t.Fatal(err)}
+ d,err=New(dbPath);if err!=nil{t.Fatal(err)}
+ defer d.Close()
+ claim,err:=d.ClaimPodcastDownload(ctx,"owner-new",time.Now().Add(5*time.Minute))
+ if err!=nil||claim!=id{t.Fatalf("expired claim: %s %v",claim,err)}
+ resumed,err:=d.ReadPodcastDownloadResumeCheckpoint(ctx,id,"owner-new")
+ if err!=nil||resumed!=cp{t.Fatalf("checkpoint missing after restart: %+v != %+v, err %v",resumed,cp,err)}
+ if err:=d.SavePodcastDownloadCheckpoint(ctx,id,"owner-old",cp);!errors.Is(err,sql.ErrNoRows){
+    t.Fatalf("stale worker mutated checkpoint: %v",err)
+ }
+ if err:=d.UpdatePodcastDownloadBytes(ctx,id,"owner-old",8,8);!errors.Is(err,sql.ErrNoRows){
+    t.Fatalf("stale worker updated range: %v",err)
+ }
+ // Invalid staging metadata cannot be inserted, and cancel clears the
+ // checkpoint plus quota before the old worker can publish.
+ bad:=cp
+ bad.ETag="W/\"weak\""
+ if err:=d.SavePodcastDownloadCheckpoint(ctx,id,"owner-new",bad);err==nil{
+    t.Fatal("accepted weak ETag checkpoint")
+ }
+ if _,err:=d.CancelPodcastDownload(ctx,id);err!=nil{t.Fatal(err)}
+ if _,err:=d.ReadPodcastDownloadResumeCheckpoint(ctx,id,"owner-new");!errors.Is(err,sql.ErrNoRows){
+    t.Fatalf("revoked checkpoint still readable: %v",err)
+ }
+ protected,err=d.ActivePodcastStagedFilenames(ctx)
+ if err!=nil||protected[cp.TempFilename]{t.Fatalf("canceled staged file still protected: %v %v",protected,err)}
+}

@@ -3,6 +3,8 @@ package api
 import (
  "bytes"
  "context"
+ "crypto/sha256"
+ "encoding/hex"
  "database/sql"
  "encoding/json"
  "errors"
@@ -531,4 +533,129 @@ func TestPodcastFull200UserCancellationStopsBlockedStream(t *testing.T){
  if _,err:=os.Stat(filepath.Join(a.dataDir,"podcasts","episodes",id+".audio"));!errors.Is(err,os.ErrNotExist){
     t.Fatalf("canceled stream published local file: %v",err)
  }
+}
+
+
+// A crashed worker left a byte-verified prefix in a real private file.
+// The recovering worker MUST issue its first request at the saved offset,
+// hash the copied prefix, and preserve offline seeking without publisher IO.
+func TestPodcastResumeFromVerifiedStagedFileAfterLeaseReclaim(t *testing.T){
+ d,id:=seedPodcastDownload(t);defer d.Close()
+ ctx:=context.Background()
+ a:=&API{db:d,dataDir:t.TempDir()}
+ dir,err:=a.podcastStorageDir();if err!=nil{t.Fatal(err)}
+ staged,err:=os.CreateTemp(dir,".part-*");if err!=nil{t.Fatal(err)}
+ prefix:=[]byte("ID3a")
+ if _,err:=staged.Write(prefix);err!=nil{t.Fatal(err)}
+ if err:=staged.Sync();err!=nil{t.Fatal(err)}
+ if err:=staged.Close();err!=nil{t.Fatal(err)}
+ raw,_,err:=d.PodcastMediaSource(ctx,id);if err!=nil{t.Fatal(err)}
+ sourceDigest:=sha256.Sum256([]byte(raw))
+ chunkDigest:=sha256.Sum256(prefix)
+ cp:=db.PodcastResumeCheckpoint{
+    TempFilename:filepath.Base(staged.Name()),Bytes:4,Total:8,ETag:"\"episode-v1\"",
+    MIME:"audio/mpeg",SHA256:hex.EncodeToString(chunkDigest[:]),
+    SourceSHA256:hex.EncodeToString(sourceDigest[:]),
+ }
+ if _,err:=d.EnqueuePodcastDownload(ctx,id);err!=nil{t.Fatal(err)}
+ claimed,err:=d.ClaimPodcastDownload(ctx,"old-worker",time.Now())
+ if err!=nil||claimed!=id{t.Fatalf("claim: %s %v",claimed,err)}
+ if err:=d.SavePodcastDownloadCheckpoint(ctx,id,"old-worker",cp);err!=nil{t.Fatal(err)}
+ expired,err:=d.ClaimPodcastDownload(ctx,"new-worker",time.Now().Add(5*time.Minute))
+ if err!=nil||expired!=id{t.Fatalf("reclaim: %s %v",expired,err)}
+ calls:=0
+ a.podcastDownloadFetch=func(_ context.Context,_ string,rangeHeader string,_ string)(podcast.MediaSegment,error){
+    calls++
+    if rangeHeader!="bytes=4-2097155"{t.Fatalf("did not resume saved offset: %q",rangeHeader)}
+    return podcast.MediaSegment{
+      Start:4,End:7,Total:8,MIME:"audio/mpeg",ETag:"\"episode-v1\"",Data:[]byte("bcde"),
+    },nil
+ }
+ if err:=a.transferPodcastDownload(ctx,id,"new-worker");err!=nil{t.Fatal(err)}
+ if calls!=1{t.Fatalf("expected only one suffix fetch, got %d",calls)}
+ file,err:=d.PodcastCompletedDownload(ctx,id);if err!=nil{t.Fatal(err)}
+ data,err:=os.ReadFile(filepath.Join(dir,file.Filename))
+ if err!=nil||string(data)!="ID3abcde"{t.Fatalf("resumed bytes invalid: %q %v",data,err)}
+ // Stale source may remain but is no longer referenced; the new file owns
+ // all completed bytes. A fresh local playback needs no remote publisher.
+ a.podcastMediaFetch=func(context.Context,string,string)(podcast.MediaSegment,error){
+    t.Fatal("offline resume unexpectedly used the network")
+    return podcast.MediaSegment{},errors.New("unexpected network")
+ }
+ media:=httptest.NewRecorder()
+ request:=httptest.NewRequest("GET","/episodes/"+id+"/media",nil)
+ request.Header.Set("Range","bytes=3-6")
+ a.PodcastRoutes().ServeHTTP(media,request)
+ if media.Code!=206||media.Body.String()!="abcd"{
+    t.Fatalf("resumed local seek %d %q",media.Code,media.Body.String())
+ }
+}
+
+func TestPodcastResumeCorruptOrRotatedPrefixRestartsCleanly(t *testing.T){
+ for _,tc:=range []struct{name string; corrupt bool; rotate bool}{
+   {"tampered prefix",true,false},{"enclosure rotated",false,true},
+ }{
+  t.Run(tc.name,func(t *testing.T){
+    d,id:=seedPodcastDownload(t);defer d.Close()
+    ctx:=context.Background()
+    a:=&API{db:d,dataDir:t.TempDir()}
+    dir,err:=a.podcastStorageDir();if err!=nil{t.Fatal(err)}
+    stage,err:=os.CreateTemp(dir,".part-*");if err!=nil{t.Fatal(err)}
+    original:=[]byte("ID3a")
+    actual:=original
+    if tc.corrupt{actual=[]byte("BAD!")}
+    if _,err:=stage.Write(actual);err!=nil{t.Fatal(err)}
+    if err:=stage.Sync();err!=nil{t.Fatal(err)}
+    if err:=stage.Close();err!=nil{t.Fatal(err)}
+    raw,_,err:=d.PodcastMediaSource(ctx,id);if err!=nil{t.Fatal(err)}
+    sourceHash:=sha256.Sum256([]byte(raw))
+    digest:=sha256.Sum256(original)
+    srcHash:=hex.EncodeToString(sourceHash[:])
+    if tc.rotate{srcHash=strings.Repeat("0",64)}
+    cp:=db.PodcastResumeCheckpoint{
+      TempFilename:filepath.Base(stage.Name()),Bytes:4,Total:8,ETag:"\"episode-v1\"",
+      MIME:"audio/mpeg",SHA256:hex.EncodeToString(digest[:]),SourceSHA256:srcHash,
+    }
+    if _,err:=d.EnqueuePodcastDownload(ctx,id);err!=nil{t.Fatal(err)}
+    if _,err:=d.ClaimPodcastDownload(ctx,"old",time.Now());err!=nil{t.Fatal(err)}
+    if err:=d.SavePodcastDownloadCheckpoint(ctx,id,"old",cp);err!=nil{t.Fatal(err)}
+    if _,err:=d.ClaimPodcastDownload(ctx,"new",time.Now().Add(5*time.Minute));err!=nil{t.Fatal(err)}
+    calls:=0
+    a.podcastDownloadFetch=func(_ context.Context,_ string,rangeHeader string,_ string)(podcast.MediaSegment,error){
+       calls++
+       if rangeHeader!="bytes=0-2097151"{t.Fatalf("unsafe resume used range %q",rangeHeader)}
+       return podcast.MediaSegment{Start:0,End:7,Total:8,
+         MIME:"audio/mpeg",ETag:"\"episode-v1\"",Data:[]byte("ID3abcde")},nil
+    }
+    if err:=a.transferPodcastDownload(ctx,id,"new");err!=nil{t.Fatal(err)}
+    if calls!=1{t.Fatalf("unexpected requests %d",calls)}
+    file,err:=d.PodcastCompletedDownload(ctx,id);if err!=nil{t.Fatal(err)}
+    bytes,err:=os.ReadFile(filepath.Join(dir,file.Filename))
+    if err!=nil||string(bytes)!="ID3abcde"{t.Fatalf("unsafe bytes: %q %v",bytes,err)}
+  })
+ }
+}
+
+func TestPodcastStagedResumeFileSurvivesAgedTempSweep(t *testing.T){
+ d,id:=seedPodcastDownload(t);defer d.Close()
+ ctx:=context.Background()
+ a:=&API{db:d,dataDir:t.TempDir()}
+ dir,err:=a.podcastStorageDir();if err!=nil{t.Fatal(err)}
+ f,err:=os.CreateTemp(dir,".part-*");if err!=nil{t.Fatal(err)}
+ if _,err:=f.Write([]byte("ID3a"));err!=nil{t.Fatal(err)}
+ if err:=f.Close();err!=nil{t.Fatal(err)}
+ raw,_,err:=d.PodcastMediaSource(ctx,id);if err!=nil{t.Fatal(err)}
+ src:=sha256.Sum256([]byte(raw))
+ sha:=sha256.Sum256([]byte("ID3a"))
+ if _,err:=d.EnqueuePodcastDownload(ctx,id);err!=nil{t.Fatal(err)}
+ if _,err:=d.ClaimPodcastDownload(ctx,"owner",time.Now());err!=nil{t.Fatal(err)}
+ if err:=d.SavePodcastDownloadCheckpoint(ctx,id,"owner",db.PodcastResumeCheckpoint{
+    TempFilename:filepath.Base(f.Name()),Bytes:4,Total:8,ETag:"\"v1\"",
+    MIME:"audio/mpeg",SHA256:hex.EncodeToString(sha[:]),SourceSHA256:hex.EncodeToString(src[:]),
+ });err!=nil{t.Fatal(err)}
+ now:=time.Now()
+ old:=now.Add(-podcastAbandonedPartGrace-time.Minute)
+ if err:=os.Chtimes(f.Name(),old,old);err!=nil{t.Fatal(err)}
+ a.cleanupPodcastAbandonedParts(dir,now)
+ if _,err:=os.Stat(f.Name());err!=nil{t.Fatalf("checkpoint swept: %v",err)}
 }
