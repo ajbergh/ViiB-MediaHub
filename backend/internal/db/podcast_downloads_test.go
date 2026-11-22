@@ -4,6 +4,7 @@ import (
  "context"
  "database/sql"
  "errors"
+ "fmt"
  "path/filepath"
  "testing"
  "time"
@@ -65,4 +66,56 @@ func TestPodcastDownloadClaimExpiredLeaseAndInvalidEpisode(t *testing.T) {
  got,err=d.ClaimPodcastDownload(ctx,"recovered-worker",time.Now())
  if err!=nil||got!=id{t.Fatalf("expired lease not recovered: %q %v",got,err)}
  if err=d.UpdatePodcastDownloadBytes(ctx,id,"crashed-worker",1,2);!errors.Is(err,sql.ErrNoRows){t.Fatalf("old owner changed recovered work: %v",err)}
+}
+
+// Synthetic metadata can exercise a multi-gigabyte quota without allocating
+// that much disk. SQLite serializes reservation checks across worker owners.
+func TestPodcastOfflineQuotaCountsCommittedAndInFlight(t *testing.T){
+ ctx:=context.Background()
+ d,err:=New(filepath.Join(t.TempDir(),"quota.db"));if err!=nil{t.Fatal(err)}
+ defer d.Close()
+ episodes:=make([]podcast.Episode,5)
+ for i:=range episodes {
+    episodes[i]=podcast.Episode{GUID:fmt.Sprintf("ep-%d",i),Title:fmt.Sprintf("E%d",i),
+      EnclosureURL:fmt.Sprintf("https://cdn.example.org/%d.mp3",i),EnclosureType:"audio/mpeg"}
+ }
+ feedID,err:=d.SavePodcastFeedSnapshot(ctx,podcast.Feed{
+   URL:"https://publisher.example.org/rss",Title:"Storage budget",
+   Episodes:episodes,
+ },true);if err!=nil{t.Fatal(err)}
+ records,err:=d.ListPodcastEpisodes(ctx,feedID,10)
+ if err!=nil||len(records)!=5{t.Fatalf("episodes: %v %+v",err,records)}
+ for i:=0;i<4;i++{
+    if _,err=d.EnqueuePodcastDownload(ctx,records[i].ID);err!=nil{t.Fatal(err)}
+    claimed,err:=d.ClaimPodcastDownload(ctx,"quota-worker",time.Now())
+    if err!=nil||claimed!=records[i].ID{t.Fatalf("claim %d: %q %v",i,claimed,err)}
+    if err=d.UpdatePodcastDownloadBytes(ctx,claimed,"quota-worker",1,MaxPodcastDownloadBytes);err!=nil{t.Fatal(err)}
+    if i<3 {
+      digest:="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      if err=d.CompletePodcastDownload(ctx,claimed,"quota-worker",claimed+".audio",
+        "audio/mpeg",digest,MaxPodcastDownloadBytes);err!=nil{t.Fatal(err)}
+    }
+ }
+ used,err:=d.PodcastOfflineStorage(ctx)
+ if err!=nil||used!=MaxPodcastOfflineLibraryBytes{t.Fatalf("quota mismatch %d %v",used,err)}
+ if _,err=d.EnqueuePodcastDownload(ctx,records[4].ID);err!=nil{t.Fatal(err)}
+ claimed,err:=d.ClaimPodcastDownload(ctx,"worker-two",time.Now())
+ if err!=nil||claimed!=records[4].ID{t.Fatalf("claim over budget: %q %v",claimed,err)}
+ if err=d.UpdatePodcastDownloadBytes(ctx,claimed,"worker-two",1,MaxPodcastDownloadBytes);
+    !errors.Is(err,ErrPodcastOfflineQuotaExceeded){t.Fatalf("overbudget reservation accepted: %v",err)}
+ if err=d.FailPodcastDownload(ctx,claimed,"worker-two","download_quota_exceeded");err!=nil{t.Fatal(err)}
+ if err=d.DeletePodcastCompletedDownload(ctx,records[0].ID);err!=nil{t.Fatal(err)}
+ used,err=d.PodcastOfflineStorage(ctx)
+ if err!=nil||used!=MaxPodcastOfflineLibraryBytes-MaxPodcastDownloadBytes{
+    t.Fatalf("space not released %d %v",used,err)
+ }
+ if _,err=d.GetPodcastDownload(ctx,records[0].ID);!errors.Is(err,sql.ErrNoRows){
+    t.Fatalf("delete should clear download status only: %v",err)
+ }
+ if _,err=d.EnqueuePodcastDownload(ctx,claimed);err!=nil{t.Fatal(err)}
+ claimedAgain,err:=d.ClaimPodcastDownload(ctx,"worker-three",time.Now())
+ if err!=nil||claimedAgain!=claimed{t.Fatalf("retry claim %q %v",claimedAgain,err)}
+ if err=d.UpdatePodcastDownloadBytes(ctx,claimed,"worker-three",1,MaxPodcastDownloadBytes);err!=nil{
+    t.Fatalf("freed quota not usable: %v",err)
+ }
 }

@@ -3,6 +3,7 @@ package api
 import (
  "bytes"
  "context"
+ "database/sql"
  "encoding/json"
  "errors"
  "net/http"
@@ -85,7 +86,7 @@ func TestPodcastDownloadQueueTransferAndOfflineRange(t *testing.T) {
  stat,err:=os.Stat(onDisk)
  if err!=nil||stat.Size()!=8{t.Fatalf("downloaded file %v %+v",err,stat)}
  canceled:=request(http.MethodDelete,"/episodes/"+id+"/download")
- if canceled.Code!=409{t.Fatalf("completed file canceled: %d",canceled.Code)}
+ if canceled.Code!=204{t.Fatalf("completed file not deleted: %d",canceled.Code)}
 }
 
 func TestPodcastDownloadCancelAndRangeUnsupported(t *testing.T) {
@@ -127,4 +128,69 @@ func TestPodcastDownloadStatusJSONIsBoundedAndRedacted(t *testing.T){
  if err:=json.Unmarshal(response.Body.Bytes(),&payload);err!=nil{t.Fatal(err)}
  if payload.Download.ID!=id||payload.Download.Status!="queued"{t.Fatalf("download JSON %+v",payload)}
  if strings.Contains(response.Body.String(),"cdn.example")||strings.Contains(response.Body.String(),"destinationRelativePath"){t.Fatal("download endpoint leaked private source or path")}
+}
+
+func TestPodcastCompletedFileDeletePreservesHistoryAndRestoresOnlinePlayback(t *testing.T){
+ d,id:=seedPodcastDownload(t);defer d.Close()
+ ctx:=context.Background()
+ if _,err:=d.SetPodcastProgress(ctx,id,45000,30000,0,false);err!=nil{t.Fatal(err)}
+ a:=&API{db:d,dataDir:t.TempDir(),podcastDownloadFetch:func(context.Context,string,string,string)(podcast.MediaSegment,error){
+    return podcast.MediaSegment{Start:0,End:3,Total:4,MIME:"audio/mpeg",Data:[]byte("ID3!")},nil
+ }}
+ handler:=a.PodcastRoutes()
+ request:=func(method,path string)*httptest.ResponseRecorder{
+    t.Helper();rec:=httptest.NewRecorder()
+    handler.ServeHTTP(rec,httptest.NewRequest(method,path,nil))
+    return rec
+ }
+ if res:=request("POST","/episodes/"+id+"/download");res.Code!=202{t.Fatalf("queue: %d",res.Code)}
+ a.processPodcastDownload(ctx)
+ file,err:=d.PodcastCompletedDownload(ctx,id);if err!=nil{t.Fatal(err)}
+ diskPath:=filepath.Join(a.dataDir,"podcasts","episodes",file.Filename)
+ if _,err=os.Stat(diskPath);err!=nil{t.Fatal(err)}
+ offline:=request("GET","/episodes/"+id+"/media")
+ if offline.Code!=206||offline.Body.String()!="ID3!"{t.Fatalf("offline playback: %d %q",offline.Code,offline.Body.String())}
+ removed:=request("DELETE","/episodes/"+id+"/download")
+ if removed.Code!=204{t.Fatalf("delete: %d %s",removed.Code,removed.Body.String())}
+ if _,err=os.Lstat(diskPath);!errors.Is(err,os.ErrNotExist){t.Fatalf("file remains: %v",err)}
+ if _,err=d.GetPodcastDownload(ctx,id);!errors.Is(err,sql.ErrNoRows){
+    t.Fatalf("completed metadata remained: %v",err)
+ }
+ progress,err:=d.GetPodcastProgress(ctx,id)
+ if err!=nil||progress.PositionMs!=45000||progress.ListenedMs!=30000{
+    t.Fatalf("deletion modified playback history: %+v %v",progress,err)
+ }
+ upstream:=0
+ a.podcastMediaFetch=func(_ context.Context,_,_ string)(podcast.MediaSegment,error){
+    upstream++
+    return podcast.MediaSegment{Start:0,End:3,Total:4,MIME:"audio/mpeg",Data:[]byte("NET!")},nil
+ }
+ online:=request("GET","/episodes/"+id+"/media")
+ if online.Code!=206||online.Body.String()!="NET!"||upstream!=1{
+    t.Fatalf("online fallback: %d %q count %d",online.Code,online.Body.String(),upstream)
+ }
+ if deleted:=request("DELETE","/episodes/"+id+"/download");deleted.Code!=404{
+    t.Fatalf("second removal should report absent record: %d",deleted.Code)
+ }
+}
+
+func TestPodcastCompletedRemovalRefusesUnsafeLocalObject(t *testing.T){
+ d,id:=seedPodcastDownload(t);defer d.Close()
+ a:=&API{db:d,dataDir:t.TempDir(),podcastDownloadFetch:func(context.Context,string,string,string)(podcast.MediaSegment,error){
+    return podcast.MediaSegment{Start:0,End:3,Total:4,MIME:"audio/mpeg",Data:[]byte("ID3!")},nil
+ }}
+ router:=a.PodcastRoutes()
+ req:=func(method string)*httptest.ResponseRecorder{
+    rec:=httptest.NewRecorder()
+    router.ServeHTTP(rec,httptest.NewRequest(method,"/episodes/"+id+"/download",nil))
+    return rec
+ }
+ if res:=req("POST");res.Code!=202{t.Fatalf("queue: %d",res.Code)}
+ a.processPodcastDownload(context.Background())
+ path:=filepath.Join(a.dataDir,"podcasts","episodes",id+".audio")
+ if err:=os.Remove(path);err!=nil{t.Fatal(err)}
+ if err:=os.Mkdir(path,0700);err!=nil{t.Fatal(err)}
+ removed:=req("DELETE")
+ if removed.Code!=409{t.Fatalf("special file deleted: %d",removed.Code)}
+ if info,err:=os.Stat(path);err!=nil||!info.IsDir(){t.Fatalf("unexpected directory removal: %v",err)}
 }
