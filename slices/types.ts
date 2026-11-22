@@ -22,6 +22,7 @@
  */
 
 import React from 'react';
+import type { AlbumMetadataPatch } from '../types';
 import { Song, Playlist, SmartMix, ArtistMetadata, AlbumMetadata, SpotifyProfile, LogEntry, AudioSettings, VisualizerMode, ContextMenuType, MilkdropSettings, HomeLayoutVariant, PlaybackContext } from '../types';
 import { SmartPlaylistFilter, SmartPlaylistSource, SmartPlaylistValidation, DJPersona, DJSetPlan, DJPhaseResult, DJNarration } from '../services/api';
 
@@ -202,6 +203,7 @@ export interface LibrarySlice {
   recordListenEvent: (songId: string, playDuration: number, songDuration: number, context: PlaybackContext) => void;
   updateSongDuration: (songId: string, duration: number) => void;
   updateSongMetadata: (songId: string, patch: Partial<Song>) => Promise<void>;
+  updateAlbumMetadata: (songIds: string[], patch: AlbumMetadataPatch) => Promise<{ album: string; artist: string }>;
   
   fetchArtistMetadata: (artistName: string) => Promise<void>;
   fetchAlbumMetadata: (albumName: string, artistName: string) => Promise<void>;
