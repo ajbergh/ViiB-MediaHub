@@ -111,6 +111,11 @@ func TestPodcastRefreshRedirectCollisionDoesNotMergeShows(t *testing.T) {
     if err!=nil{t.Fatal(err)}
     secondID,err:=database.SavePodcastFeedSnapshot(ctx,podcast.Feed{URL:secondURL,Title:"Second"},true)
     if err!=nil{t.Fatal(err)}
+    // Only the first feed is due. SavePodcastFeedSnapshot deliberately leaves
+    // unscheduled synthetic fixtures immediately eligible, unlike production
+    // subscribe which records initial successful fetch validators and a
+    // future normal refresh. Reflect that production behavior for feed two.
+    if err=database.RecordInitialPodcastFetch(ctx,secondID,"","");err!=nil{t.Fatal(err)}
     if err=database.SchedulePodcastRefresh(ctx,firstID);err!=nil{t.Fatal(err)}
     target,err:=database.ClaimDuePodcastRefresh(ctx,time.Now())
     if err!=nil||target==nil||target.ID!=firstID{t.Fatalf("first target: %#v %v",target,err)}
