@@ -65,13 +65,35 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     headers: { 'Accept': 'application/json', ...(options?.body ? { 'Content-Type': 'application/json' } : {}), ...options?.headers },
   });
   if (!response.ok) {
-    const payload: { error?: { code?: string; message?: string } } =
-      await response.json().catch(() => ({}));
-    throw new PodcastAPIError(
-      response.status,
-      payload.error?.code ?? 'podcast_request_failed',
-      payload.error?.message ?? 'The podcast request could not be completed',
-    );
+    // Supported Go handlers return structured v2 JSON errors. HTML/text
+    // failures generally indicate a stale backend or a reverse-proxy issue.
+    const payload: unknown = await response.json().catch(() => null);
+    const error = payload && typeof payload === 'object' && 'error' in payload
+      ? (payload as { error?: unknown }).error : null;
+    const detail = error && typeof error === 'object'
+      ? error as { code?: unknown; message?: unknown } : null;
+    const code = typeof detail?.code === 'string' ? detail.code : 'podcast_api_unavailable';
+    let message = typeof detail?.message === 'string' && detail.message.trim()
+      ? detail.message : '';
+    if (!message) {
+      switch (response.status) {
+        case 404:
+        case 405:
+          message = `Podcasts API endpoint unavailable (HTTP ${response.status}). Rebuild and restart the Go backend from the same branch as the UI.`;
+          break;
+        case 502:
+        case 503:
+        case 504:
+          message = `Local podcast backend unavailable (HTTP ${response.status}). Verify that Go is running and the development proxy uses its port.`;
+          break;
+        case 403:
+          message = 'The local API blocked this request (HTTP 403). Check the client origin and backend security settings.';
+          break;
+        default:
+          message = `Podcast API returned HTTP ${response.status} without a structured error. Inspect the Network response and backend logs.`;
+      }
+    }
+    throw new PodcastAPIError(response.status, code, message);
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;

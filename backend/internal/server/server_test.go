@@ -347,3 +347,35 @@ func TestMaintenanceDiagnosticReferenceCORSAndLegacyRequestID(t *testing.T) {
 		t.Fatal("diagnostic response header is not exposed")
 	}
 }
+
+
+func TestPodcastRoutesMountedInProductionServer(t *testing.T) {
+    handler:=newTestServerHandler(t)
+    for _,origin:=range []string{"","wails://wails","http://localhost:3000"}{
+        req:=httptest.NewRequest(http.MethodGet,"http://127.0.0.1:34115/api/v2/podcasts/feeds",nil)
+        req.Host="127.0.0.1:34115"
+        if origin!=""{
+            req.Header.Set("Origin",origin)
+            req.Header.Set("Sec-Fetch-Site","cross-site")
+        }
+        response:=httptest.NewRecorder()
+        handler.ServeHTTP(response,req)
+        if response.Code!=http.StatusOK{
+            t.Fatalf("origin %q: podcast collection route HTTP %d: %s",origin,response.Code,response.Body.String())
+        }
+        var body map[string]json.RawMessage
+        if err:=json.Unmarshal(response.Body.Bytes(),&body);err!=nil||body["feeds"]==nil{
+            t.Fatalf("origin %q: no v2 podcast collection: %s err=%v",origin,response.Body.String(),err)
+        }
+    }
+    req:=httptest.NewRequest(http.MethodPost,"http://127.0.0.1:34115/api/v2/podcasts/feeds/preview",strings.NewReader("{\"url\":\"http://127.0.0.1/private\"}"))
+    req.Host="127.0.0.1:34115"
+    req.Header.Set("Content-Type","application/json")
+    req.Header.Set("Origin","wails://wails")
+    req.Header.Set("Sec-Fetch-Site","cross-site")
+    response:=httptest.NewRecorder()
+    handler.ServeHTTP(response,req)
+    if response.Code!=http.StatusBadRequest||!strings.Contains(response.Body.String(),"invalid_feed_url"){
+        t.Fatalf("podcast preview not mounted: HTTP %d: %s",response.Code,response.Body.String())
+    }
+}

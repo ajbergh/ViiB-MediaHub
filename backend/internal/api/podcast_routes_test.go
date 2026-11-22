@@ -69,3 +69,42 @@ func TestPodcastRoutesRejectUntrustedInput(t *testing.T){
         if strings.Contains(res.Body.String(),"supersecret"){t.Fatal("secret reflected in error")}
     }
 }
+
+
+func TestPodcastPublicRSSPreviewAndFollowSuccess(t *testing.T) {
+    database,err:=db.New(filepath.Join(t.TempDir(),"podcast-http.db"))
+    if err!=nil{t.Fatal(err)}
+    defer database.Close()
+    url:="https://publisher.example.org/podcast.xml"
+    fake:=&testPodcastFetcher{result:podcast.FetchResult{Feed:podcast.Feed{
+        URL:"https://cdn.publisher.example.org/podcast.xml",
+        Title:"Working Podcast",Author:"Publisher",
+        Episodes:[]podcast.Episode{{GUID:"e1",Title:"Episode One"}},
+    }}}
+    handler:=(&API{db:database,podcastFetcher:fake}).PodcastRoutes()
+    post:=func(path string)*httptest.ResponseRecorder{
+        req:=httptest.NewRequest(http.MethodPost,path,
+            strings.NewReader("{\"url\":\""+url+"\"}"))
+        req.Header.Set("Content-Type","application/json")
+        response:=httptest.NewRecorder()
+        handler.ServeHTTP(response,req)
+        return response
+    }
+    preview:=post("/feeds/preview")
+    if preview.Code!=http.StatusOK||!bytes.Contains(preview.Body.Bytes(),[]byte("Working Podcast")){
+        t.Fatalf("RSS preview returned %d: %s",preview.Code,preview.Body.String())
+    }
+    followed:=post("/feeds")
+    if followed.Code!=http.StatusCreated||!bytes.Contains(followed.Body.Bytes(),[]byte("Working Podcast")){
+        t.Fatalf("RSS follow returned %d: %s",followed.Code,followed.Body.String())
+    }
+    list:=httptest.NewRecorder()
+    handler.ServeHTTP(list,httptest.NewRequest(http.MethodGet,"/feeds",nil))
+    if list.Code!=http.StatusOK||!bytes.Contains(list.Body.Bytes(),[]byte("Working Podcast")){
+        t.Fatalf("RSS following missing: %d %s",list.Code,list.Body.String())
+    }
+    fake.mu.Lock()
+    calls:=fake.calls
+    fake.mu.Unlock()
+    if calls!=2{t.Fatalf("preview+follow calls %d, expected two",calls)}
+}

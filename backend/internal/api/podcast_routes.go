@@ -66,7 +66,9 @@ func (a *API) podcastFetch(ctx context.Context, url string) (podcast.FetchResult
     defer cancel()
     // Public HTTPS only; private feeds and legacy HTTP are gated until
     // credential encryption and policy decisions in POD-00C are complete.
-    return podcast.NewFetcher(false).Fetch(ctx, url, "", "")
+    fetcher:=a.podcastFetcher
+    if fetcher==nil {fetcher=podcast.NewFetcher(false)}
+    return fetcher.Fetch(ctx,url,"","")
 }
 
 func (a *API) previewPodcastFeed(w http.ResponseWriter, r *http.Request) {

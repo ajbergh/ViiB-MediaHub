@@ -26,6 +26,26 @@ describe('podcastsAPI', () => {
     );
   });
 
+  it('reports a stale backend when it receives a non-JSON HTTP 404', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false, status: 404, json: async () => { throw new SyntaxError('HTML 404'); },
+    })));
+    await expect(podcastsAPI.previewFeed('https://example.org/rss')).rejects.toMatchObject({
+      status: 404, code: 'podcast_api_unavailable',
+      message: expect.stringContaining('Rebuild and restart the Go backend'),
+    });
+  });
+
+  it('diagnoses proxy failures without reflecting arbitrary upstream content', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false, status: 502, json: async () => ({ error: 'secret=http://example.org' }),
+    })));
+    await expect(podcastsAPI.subscribe('https://example.org/rss')).rejects.toMatchObject({
+      status: 502, code: 'podcast_api_unavailable',
+      message: expect.stringContaining('development proxy'),
+    });
+  });
+
   it('queues manual refresh without assuming completion', async () => {
     const mock = vi.fn()
       .mockResolvedValueOnce({ ok: true, status: 202, json: async () => ({ status: 'queued' }) })
