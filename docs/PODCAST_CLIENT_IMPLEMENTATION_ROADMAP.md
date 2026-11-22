@@ -443,9 +443,9 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 - [ ] **POD-02A:** Podcast Index adapter, server-side credential management, status and pagination; no-key fallback/direct RSS works.
 - [ ] **POD-02B:** Discover search UI, results with artwork, preview/follow, feed detail and episode filter.
 - [ ] **POD-02C:** Safe local/remote episode media handler supporting HTTP Range, content-type, source availability and cancellation.
-- [ ] **POD-02D:** Podcast audio transport, single-session music↔podcast coordination, media keys and progress persistence.
+- [ ] **POD-02D (in progress, persistence only):** Revision-safe progress REST and SQLite persistence are implemented; audio transport, media-key coordinator, seek/pause-throttle policy and playback-triggered writes remain unstarted.
 - [ ] **POD-02E:** Podcast Now Playing shell: playback, seek, speed, +30/-15, show art and metadata, buffering/error/retry.
-- [ ] **POD-02F:** Podcast queue/Continue Listening and basic played/starred controls.
+- [ ] **POD-02F (in progress):** Durable Continue Listening query/API and linked library cards, plus manual played/unplayed episode controls; playback-driven resume, queue/starred operations and full CI remain.
 
 **Exit:** Discovery or RSS → subscribe → stream → pause → quit/reopen → resume at expected position; music, Spotify and DJ behavior unchanged.
 
@@ -466,7 +466,7 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 - [ ] **POD-04B:** Resume partial transfers with strong validator checks; 416/retry/range tests, disable resume when unsafe.
 - [ ] **POD-04C:** Quota, retention, cleanup grace period, pinned/current protection and crash-safe file garbage collection.
 - [ ] **POD-04D:** Inbox / Queue triage, auto-queue optional policies, bulk mark played/archive and rich episode filters.
-- [ ] **POD-04E:** OPML import with preview, duplicate reconciliation, per-feed failure report and cancelable job.
+- [ ] **POD-04E (in progress):** Safe 512 KiB / 100-feed OPML 2.0 import parser, nested outlines, public URL filtering, preview and already-followed detection; UI follows each feed via existing API with cancellation and partial-failure report. Durable restartable import job, wider real-provider qualification and CI remain.
 - [ ] **POD-04F:** Per-show speed/seek/start/end skip defaults; global and show controls in Settings.
 - [ ] **POD-04G:** Smart podcast playlists; keep isolated from music playlist DB and Smart Mix heuristics.
 
@@ -663,8 +663,8 @@ Branch strategy: short-lived `feature/podcasts-*` work branches from updated `ma
 | POD-01A | **In progress** | Podcast schema, snapshot/upsert, revision-checked `podcast_progress.go`, persistence/conflict tests | Public/player integration, migrations, backup/restore and CI |
 | POD-01B | **In progress** | RSS/iTunes parser, public-only DNS-pinned feed fetch, `podcast/artwork.go` raster MIME/size/URL restrictions with tests | Wider RSS/image publisher compatibility and full CI |
 | POD-01C | **In progress** | Refresh worker, alias collision guards on subscribe/refresh, conservative GUID reconciliation and history-preservation tests | Real publisher/scale qualification and full CI |
-| POD-01D | **In progress** | Podcast preview/follow/list/episodes/unfollow/refresh REST; bounded episode offset pagination, TS client + tests | Show details, cursor pagination, OpenAPI, full CI |
-| POD-01E | **In progress** | Permanent Sidebar, followed/show + Load more, local library filters, SSRF-guarded artwork proxy/UI with tests | Full CI, wider publisher compatibility, UX refinement |
+| POD-01D | **In progress** | RSS/OPML preview, subscribe/list/detail/episodes/unfollow/refresh REST, bounded offset pagination, revisioned progress REST and Continue Listening read endpoint | Cursor pagination, OpenAPI, real-provider/CI qualification |
+| POD-01E | **In progress** | Permanent Sidebar, followed/show + Load more, local search/played filters, OPML export/import UI, played controls and Continue Listening cards | Full CI, provider/desktop qualification, UX refinement |
 | POD-03F | **Implemented, CI pending** | OPML subscription export API, UI action, safe XML encoder and tests | End-to-end CI and desktop/browser acceptance; import remains POD-04E |
 | Phase 2–8 | **Not started** | None | Discovery, player, offline downloads and remaining features |
 
@@ -745,3 +745,40 @@ show. The detail view now loads the one show and its first episode page
 instead of retrieving the entire Following collection. Unfollowed/unknown
 IDs return the standard structured 404. Backend handler and frontend
 browser/client tests updated, pending the latest commit's CI.
+
+
+### 2026-11-22 — continued functional slices: progress, OPML import, Continue Listening
+
+**New code on the draft feature branch (do not infer release completion):**
+
+- Revisioned episode progress is now exposed with
+  `GET/PUT /api/v2/podcasts/episodes/{id}/progress`, field validation,
+  HTTP 409 on stale writes and HTTP 404 for unknown episode IDs. Episode
+  pagination includes played, position, cumulative listened and revision
+  directly via one joined query.
+- Show rows expose manual Mark played/unplayed actions, preserve position,
+  and offer local Played/Unplayed/All filters. Persisted state is not
+  automatically updated by playback because audio transport is still absent.
+- OPML import parses up to 100 feed outlines / 512 KiB with strict XML,
+  DTD/entity block, bounded depth, nested folders, secure public HTTPS
+  validation, duplicate/invalid counts and exact already-followed flags.
+  Import preview itself has **no publisher network side effects**.
+- The React workflow chooses a local OPML file, requests server-side
+  preview, then follows eligible feeds sequentially through the existing
+  safe subscription API. Canceling aborts an in-flight feed request;
+  failures are listed by show name and safe error code, without echoing
+  private feed URLs. A durable import job across restarts is still pending.
+- Continue Listening adds a subscribed-only, local query over persisted
+  uncompleted episode state, bounded API and linked library cards. This is
+  **not a functional media Resume control** until the streaming player lands.
+- Focused Go parser/API/DB tests, TypeScript API tests and synthetic browser
+  E2E tests were added/extended. Early CI surfaced an unused import in the
+  OPML parser and it has been corrected. The **latest full CI remains
+  unverified** until pending GitHub Actions complete.
+
+**Roadmap sequence after this checkpoint:** qualify these changes in CI
+and real Wails/Vite builds; design secure enclosure-media streaming with
+Range and SSRF protections (POD-02C); implement a single-owner audio session
+and playback-driven progress (POD-02D/E); only then implement download worker
+(POD-03A–E) and queue/automation/publisher/discovery enhancements. No
+unimplemented remote-media feature should be implied by the new API state.
