@@ -32,7 +32,8 @@ type PodcastEpisodeRecord struct {
     GUID string `json:"guid"`
     Title string `json:"title"`
     Description string `json:"description"`
-    EnclosureURL string `json:"enclosureUrl"`
+    EnclosureURL string `json:"-"`
+    HasAudio bool `json:"hasAudio"`
     EnclosureType string `json:"enclosureType"`
     PublishedAt int64 `json:"publishedAt"`
     DurationMs int64 `json:"durationMs"`
@@ -244,6 +245,7 @@ ORDER BY COALESCE(e.published_at,0) DESC,e.id ASC LIMIT ? OFFSET ?
             return nil,false,err
         }
         e.IsPlayed=played==1
+        e.HasAudio=e.EnclosureURL!=""
         result=append(result,e)
     }
     if err=rows.Err();err!=nil{return nil,false,err}

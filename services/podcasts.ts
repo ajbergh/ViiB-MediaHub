@@ -11,7 +11,8 @@ export interface PodcastEpisode {
   guid: string;
   title: string;
   description: string;
-  enclosureUrl: string;
+  /** Publisher URLs may carry ephemeral signatures; never expose those in UI JSON. */
+  hasAudio: boolean;
   enclosureType: string;
   publishedAt: number;
   durationMs: number;

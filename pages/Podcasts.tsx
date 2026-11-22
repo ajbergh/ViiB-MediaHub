@@ -527,12 +527,12 @@ export const PodcastShow: React.FC = () => {
                 className="rounded-md border border-surface-3 px-3 py-1.5 text-xs font-semibold text-text-secondary hover:text-text-main disabled:opacity-50">
                 {updatingEpisode === episode.id ? 'Saving…' : episode.isPlayed ? 'Mark unplayed' : 'Mark played'}
               </button>
-              {episode.enclosureUrl && <button type="button"
+              {episode.hasAudio && <button type="button"
                 onClick={() => {
                   // The same persistent Player owns music, Plex and podcasts.
                   // The loaded show page supplies an episode queue without
                   // ever adding podcast items to the music catalog.
-                  const queue = episodes.filter(item => Boolean(item.enclosureUrl))
+                  const queue = episodes.filter(item => Boolean(item.hasAudio))
                     .map(item => podcastEpisodeToTrack(item, feed));
                   const selected = queue.findIndex(item => item.podcastEpisodeId === episode.id);
                   if (selected < 0) return;

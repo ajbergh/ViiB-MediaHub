@@ -35,6 +35,7 @@ ORDER BY COALESCE(s.last_played_at,0) DESC,e.id ASC LIMIT ?
             &e.PositionMs,&e.ListenedMs,&e.ProgressRevision,&item.FeedTitle);err!=nil{
             return nil,err
         }
+        e.HasAudio=e.EnclosureURL!=""
         result=append(result,item)
     }
     return result,rows.Err()

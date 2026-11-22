@@ -35,7 +35,8 @@ type Episode struct {
     GUID string `json:"guid,omitempty"`
     Title string `json:"title"`
     Description string `json:"description,omitempty"`
-    EnclosureURL string `json:"enclosureUrl,omitempty"`
+    EnclosureURL string `json:"-"`
+    HasAudio bool `json:"hasAudio"`
     EnclosureType string `json:"enclosureType,omitempty"`
     PublishedAt time.Time `json:"publishedAt,omitempty"`
     DurationSeconds int64 `json:"durationSeconds,omitempty"`
@@ -157,6 +158,7 @@ func ParseRSS(reader io.Reader, feedURL string) (Feed, error) {
             PublishedAt: parseDate(item.Published),
             DurationSeconds: parseDuration(item.Duration),
             EnclosureURL: strings.TrimSpace(item.Enclosure.URL),
+            HasAudio: strings.TrimSpace(item.Enclosure.URL)!="",
             EnclosureType: plainText(item.Enclosure.Type, 150),
         })
     }
