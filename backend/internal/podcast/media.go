@@ -61,7 +61,7 @@ func ValidateMediaURL(raw string, allowHTTP bool) (*url.URL,error) {
     if hostname=="localhost"||strings.HasSuffix(hostname,".localhost")||
         strings.HasSuffix(hostname,".local")||strings.HasSuffix(hostname,".internal")||
         strings.HasSuffix(hostname,".home.arpa")||strings.HasSuffix(hostname,".lan")||
-        strings.ContainsAny(hostname,"% \\t\\r\\n") {return nil,ErrBlockedURL}
+        strings.ContainsAny(hostname,"% \t\r\n") {return nil,ErrBlockedURL}
     // Reject all non-public literal IPv4/IPv6 addresses before connecting;
     // resolver addresses are checked independently in the dial callback.
     if literal,err:=netip.ParseAddr(hostname);err==nil&&!IsPublicIP(literal){

@@ -65,7 +65,7 @@ func TestPodcastMediaURLAndRangeGuards(t *testing.T) {
 }
 
 func TestPodcastMediaSegment206AndBoundedOpenRange(t *testing.T) {
-    source:=bytes.Repeat([]byte("a"),int(MaxMediaSegmentBytes)+50)
+    source:=bytes.Repeat([]byte{0xff,0xfb,0x90,0x64},int(MaxMediaSegmentBytes/4)+13)
     server:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
         if r.URL.Path=="/redirect"{
             http.Redirect(w,r,"http://public.example/media",http.StatusFound)
