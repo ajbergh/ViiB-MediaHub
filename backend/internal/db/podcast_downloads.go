@@ -47,6 +47,7 @@ type PodcastResumeCheckpoint struct {
     LastModified string
     MIME string
     SHA256 string
+    SourceSHA256 string
 }
 
 type PodcastDownloadedFile struct {
@@ -120,6 +121,7 @@ ON CONFLICT(episode_id) DO UPDATE SET
  expected_bytes=CASE WHEN podcast_downloads.status IN ('failed','canceled','paused') THEN NULL ELSE podcast_downloads.expected_bytes END,
  temp_relative_path=CASE WHEN podcast_downloads.status IN ('failed','canceled','paused') THEN NULL ELSE podcast_downloads.temp_relative_path END,
  staged_sha256=CASE WHEN podcast_downloads.status IN ('failed','canceled','paused') THEN NULL ELSE podcast_downloads.staged_sha256 END,
+ source_sha256=CASE WHEN podcast_downloads.status IN ('failed','canceled','paused') THEN NULL ELSE podcast_downloads.source_sha256 END,
  etag=CASE WHEN podcast_downloads.status IN ('failed','canceled','paused') THEN NULL ELSE podcast_downloads.etag END,
  last_modified=CASE WHEN podcast_downloads.status IN ('failed','canceled','paused') THEN NULL ELSE podcast_downloads.last_modified END,
  mime=CASE WHEN podcast_downloads.status IN ('failed','canceled','paused') THEN '' ELSE podcast_downloads.mime END,
@@ -139,7 +141,7 @@ func (d *DB) CancelPodcastDownload(ctx context.Context,episodeID string)(Podcast
     result,err:=d.conn.ExecContext(ctx,`
 UPDATE podcast_downloads SET status='canceled',lease_owner=NULL,lease_expires_at=NULL,
  bytes_received=0,expected_bytes=NULL,error_code=NULL,
- temp_relative_path=NULL,staged_sha256=NULL,etag=NULL,last_modified=NULL,mime='',updated_at=?
+ temp_relative_path=NULL,staged_sha256=NULL,source_sha256=NULL,etag=NULL,last_modified=NULL,mime='',updated_at=?
 WHERE episode_id=? AND status IN ('queued','downloading') AND EXISTS(
  SELECT 1 FROM podcast_episodes e JOIN podcast_subscriptions s ON s.feed_id=e.feed_id
  WHERE e.id=podcast_downloads.episode_id)`,time.Now().UnixMilli(),episodeID)
@@ -168,6 +170,7 @@ UPDATE podcast_downloads SET status='downloading',lease_owner=?,
  expected_bytes=CASE WHEN status='downloading' THEN expected_bytes ELSE NULL END,
  temp_relative_path=CASE WHEN status='downloading' THEN temp_relative_path ELSE NULL END,
  staged_sha256=CASE WHEN status='downloading' THEN staged_sha256 ELSE NULL END,
+ source_sha256=CASE WHEN status='downloading' THEN source_sha256 ELSE NULL END,
  etag=CASE WHEN status='downloading' THEN etag ELSE NULL END,
  last_modified=CASE WHEN status='downloading' THEN last_modified ELSE NULL END,
  mime=CASE WHEN status='downloading' THEN mime ELSE '' END,
@@ -192,11 +195,12 @@ func (d *DB) ReadPodcastDownloadResumeCheckpoint(ctx context.Context,id,owner st
     var c PodcastResumeCheckpoint
     err:=d.conn.QueryRowContext(ctx,`
 SELECT COALESCE(temp_relative_path,''),bytes_received,COALESCE(expected_bytes,0),
- COALESCE(etag,''),COALESCE(last_modified,''),COALESCE(mime,''),COALESCE(staged_sha256,'')
+ COALESCE(etag,''),COALESCE(last_modified,''),COALESCE(mime,''),
+ COALESCE(staged_sha256,''),COALESCE(source_sha256,'')
 FROM podcast_downloads WHERE episode_id=? AND status='downloading' AND lease_owner=?
 AND EXISTS(SELECT 1 FROM podcast_episodes e JOIN podcast_subscriptions s
  ON s.feed_id=e.feed_id WHERE e.id=podcast_downloads.episode_id)`,id,owner).Scan(
-        &c.TempFilename,&c.Bytes,&c.Total,&c.ETag,&c.LastModified,&c.MIME,&c.SHA256)
+        &c.TempFilename,&c.Bytes,&c.Total,&c.ETag,&c.LastModified,&c.MIME,&c.SHA256,&c.SourceSHA256)
     return c,err
 }
 
@@ -208,21 +212,21 @@ func (d *DB) SavePodcastDownloadCheckpoint(ctx context.Context,id,owner string,c
     if c.Bytes<=0||c.Total<=c.Bytes||c.Total>MaxPodcastDownloadBytes||
         len(c.TempFilename)<13||len(c.TempFilename)>32||
         !strings.HasPrefix(c.TempFilename,".part-")||strings.ContainsAny(c.TempFilename,"/\\")||
-        len(c.SHA256)!=64||len(c.ETag)<2||len(c.ETag)>256||
+        len(c.SHA256)!=64||len(c.SourceSHA256)!=64||len(c.ETag)<2||len(c.ETag)>256||
         !strings.HasPrefix(c.ETag,"\"")||!strings.HasSuffix(c.ETag,"\"")||c.MIME==""{
         return errors.New("invalid podcast resume checkpoint")
     }
     if err:=d.EnsurePodcastSchema();err!=nil{return err}
     result,err:=d.conn.ExecContext(ctx,`
 UPDATE podcast_downloads SET bytes_received=?,expected_bytes=?,temp_relative_path=?,
- staged_sha256=?,etag=?,last_modified=?,mime=?,updated_at=?,lease_expires_at=?
+ staged_sha256=?,source_sha256=?,etag=?,last_modified=?,mime=?,updated_at=?,lease_expires_at=?
 WHERE episode_id=? AND status='downloading' AND lease_owner=?
 AND EXISTS(SELECT 1 FROM podcast_episodes e JOIN podcast_subscriptions s
  ON s.feed_id=e.feed_id WHERE e.id=podcast_downloads.episode_id)
 AND (SELECT COALESCE(SUM(CASE WHEN status='completed' THEN COALESCE(verified_size,0)
  ELSE COALESCE(expected_bytes,0) END),0)
  FROM podcast_downloads WHERE episode_id<>? AND status IN ('completed','downloading')) <= ?`,
- c.Bytes,c.Total,c.TempFilename,c.SHA256,c.ETag,c.LastModified,c.MIME,
+ c.Bytes,c.Total,c.TempFilename,c.SHA256,c.SourceSHA256,c.ETag,c.LastModified,c.MIME,
  time.Now().UnixMilli(),time.Now().Add(podcastDownloadLease).UnixMilli(),
  id,owner,id,MaxPodcastOfflineLibraryBytes-c.Total)
     if err!=nil{return err}
@@ -282,7 +286,7 @@ func (d *DB) CompletePodcastDownload(ctx context.Context,id,owner,filename,mime,
     if size<=0||size>MaxPodcastDownloadBytes||filename==""||mime==""||len(digest)!=64{return errors.New("invalid verified podcast file")}
     result,err:=d.conn.ExecContext(ctx,`
 UPDATE podcast_downloads SET status='completed',destination_relative_path=?,
- temp_relative_path=NULL,staged_sha256=NULL,etag=NULL,last_modified=NULL,
+ temp_relative_path=NULL,staged_sha256=NULL,source_sha256=NULL,etag=NULL,last_modified=NULL,
  bytes_received=?,expected_bytes=?,verified_size=?,sha256=?,mime=?,
  completed_at=?,updated_at=?,lease_owner=NULL,lease_expires_at=NULL,error_code=NULL
 WHERE episode_id=? AND status='downloading' AND lease_owner=?
@@ -304,7 +308,7 @@ func (d *DB) FailPodcastDownload(ctx context.Context,id,owner,code string) error
     if code==""||len(code)>60{return errors.New("invalid safe error code")}
     _,err:=d.conn.ExecContext(ctx,`
 UPDATE podcast_downloads SET status='failed',bytes_received=0,expected_bytes=NULL,
- temp_relative_path=NULL,staged_sha256=NULL,etag=NULL,last_modified=NULL,mime='',
+ temp_relative_path=NULL,staged_sha256=NULL,source_sha256=NULL,etag=NULL,last_modified=NULL,mime='',
  lease_owner=NULL,lease_expires_at=NULL,error_code=?,updated_at=?
 WHERE episode_id=? AND status='downloading' AND lease_owner=?`,
 code,time.Now().UnixMilli(),id,owner)
@@ -330,7 +334,7 @@ func (d *DB) InvalidatePodcastDownload(ctx context.Context,id string) error {
     _,err:=d.conn.ExecContext(ctx,`
 UPDATE podcast_downloads SET status='failed',error_code='cached_media_missing',
  destination_relative_path=NULL,mime='',sha256=NULL,verified_size=NULL,
- temp_relative_path=NULL,staged_sha256=NULL,etag=NULL,last_modified=NULL,updated_at=?
+ temp_relative_path=NULL,staged_sha256=NULL,source_sha256=NULL,etag=NULL,last_modified=NULL,updated_at=?
 WHERE episode_id=? AND status='completed'`,time.Now().UnixMilli(),id)
     return err
 }
@@ -391,4 +395,24 @@ AND EXISTS (
     if err!=nil{return err}
     if n==0{return sql.ErrNoRows}
     return nil
+}
+
+
+// ActivePodcastStagedFilenames lets garbage collection keep recoverable staged
+// bytes across long backend downtime, even beyond the regular 4-hour grace.
+// The filenames stay private to Go; no arbitrary filesystem paths are accepted.
+func (d *DB) ActivePodcastStagedFilenames(ctx context.Context)(map[string]bool,error){
+    if err:=d.EnsurePodcastSchema();err!=nil{return nil,err}
+    rows,err:=d.conn.QueryContext(ctx,`SELECT temp_relative_path
+FROM podcast_downloads WHERE status='downloading' AND temp_relative_path IS NOT NULL
+AND etag IS NOT NULL AND staged_sha256 IS NOT NULL`)
+    if err!=nil{return nil,err}
+    defer rows.Close()
+    names:=make(map[string]bool)
+    for rows.Next(){
+        var s string
+        if err:=rows.Scan(&s);err!=nil{return nil,err}
+        names[s]=true
+    }
+    return names,rows.Err()
 }
