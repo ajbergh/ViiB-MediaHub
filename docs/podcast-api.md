@@ -54,7 +54,7 @@ Example successful response:
   timeout with a 15-second API context deadline.
 - RSS: XML without DTDs, RSS 2.0 with core iTunes fields; show descriptions
   are reduced to plain text. Malformed/unsupported feeds return an error.
-- Initial subscribe/preview requests remain synchronous. Followed shows are
+- Initial subscribe/preview requests remain synchronous. Subscribe stores the publisher's conditional validators and schedules a later routine check instead of immediately downloading the same feed again. Followed shows are
   refreshed by one dedicated worker at a time with 10-second polling, durable
   SQLite leases, ETag/Last-Modified conditional requests, 304 handling,
   bounded exponential retry and history-safe reconciliation. Background

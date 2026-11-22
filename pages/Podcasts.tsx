@@ -134,7 +134,7 @@ export const PodcastShow: React.FC = () => {
   const [refreshMessage, setRefreshMessage] = useState('');
   const [refreshStatus, setRefreshStatus] = useState<PodcastRefreshStatus | null>(null);
   const [revision, setRevision] = useState(0);
-  const lastCheckedRef = useRef(0);
+  const lastCheckedRef = useRef<number | null>(null);
   const navigate = useNavigate();
   useEffect(() => {
     const controller = new AbortController();
@@ -153,13 +153,15 @@ export const PodcastShow: React.FC = () => {
 
   useEffect(() => {
     if (!id) return;
+    lastCheckedRef.current = null;
     const controller = new AbortController();
     const updateStatus = () => {
       void podcastsAPI.refreshStatus(id, controller.signal).then(status => {
         if (controller.signal.aborted) return;
         setRefreshStatus(status);
-        if (status.lastCheckedAt > lastCheckedRef.current) {
-          const first = lastCheckedRef.current === 0;
+        const previousCheck = lastCheckedRef.current;
+        if (previousCheck === null || status.lastCheckedAt > previousCheck) {
+          const first = previousCheck === null;
           lastCheckedRef.current = status.lastCheckedAt;
           if (!first) setRevision(v => v + 1);
           if (status.lastErrorCode) {

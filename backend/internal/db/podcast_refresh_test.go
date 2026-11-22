@@ -73,3 +73,23 @@ func TestPodcastRefreshRetryAndLeaseRecovery(t *testing.T){
     err=database.SchedulePodcastRefresh(ctx,id)
     if !errors.Is(err,sql.ErrNoRows){t.Fatalf("unsubscribed refresh queued: %v",err)}
 }
+
+
+func TestPodcastInitialFetchDoesNotRedownload(t *testing.T) {
+    database,err:=New(filepath.Join(t.TempDir(),"initial.db"))
+    if err!=nil{t.Fatal(err)}
+    defer database.Close()
+    ctx:=context.Background()
+    id,err:=database.SavePodcastFeedSnapshot(ctx,podcast.Feed{
+        URL:"https://example.org/feed",Title:"Example",
+    },true)
+    if err!=nil{t.Fatal(err)}
+    if err=database.RecordInitialPodcastFetch(ctx,id,"\"v1\"","Sun, 22 Nov 2026 12:00:00 GMT");err!=nil{t.Fatal(err)}
+    due,err:=database.ClaimDuePodcastRefresh(ctx,time.Now())
+    if err!=nil||due!=nil{t.Fatalf("initial fetch should not immediately repeat: %+v %v",due,err)}
+    if err=database.SchedulePodcastRefresh(ctx,id);err!=nil{t.Fatal(err)}
+    due,err=database.ClaimDuePodcastRefresh(ctx,time.Now())
+    if err!=nil||due==nil||due.ETag!="\"v1\""||due.LastModified==""{
+        t.Fatalf("manual refresh lost validators: %+v %v",due,err)
+    }
+}

@@ -189,3 +189,18 @@ WHERE id=?`,now.UnixMilli(),code,failures,nextPodcastRetryAt(now,failures),now.U
     if err!=nil{return err}
     return tx.Commit()
 }
+
+
+// RecordInitialPodcastFetch saves validators from the already-successful
+// subscribe fetch and avoids an unnecessary immediate second network request.
+// An explicitly queued manual refresh (next_refresh_at=0) is not overridden.
+func (d *DB) RecordInitialPodcastFetch(ctx context.Context,id,etag,modified string) error {
+    if err:=d.EnsurePodcastSchema();err!=nil{return err}
+    now:=time.Now()
+    _,err:=d.conn.ExecContext(ctx,`
+UPDATE podcast_feeds
+SET etag=?,last_modified=?,
+ next_refresh_at=CASE WHEN next_refresh_at IS NULL THEN ? ELSE next_refresh_at END
+WHERE id=?`,etag,modified,nextPodcastRefreshAt(id,now),id)
+    return err
+}
