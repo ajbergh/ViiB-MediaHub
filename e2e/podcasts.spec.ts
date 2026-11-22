@@ -507,9 +507,10 @@ test('Podcasts scheduled download retry stays visible and can be canceled', asyn
   await downloads.getByRole('combobox', { name: 'Filter podcast downloads' }).selectOption('active');
   await expect(downloads.getByText('Resumable episode')).toBeVisible();
   await downloads.getByRole('button', { name: 'Cancel download of Resumable episode' }).click();
+  await expect(downloads.getByText('No downloads match this filter.')).toBeVisible();
+  await downloads.getByRole('combobox', { name: 'Filter podcast downloads' }).selectOption('attention');
   await expect(downloads.getByRole('article').getByText('Canceled', { exact: true })).toBeVisible();
   await expect(downloads.getByText('Retry scheduled for', { exact: false })).toHaveCount(0);
-  await downloads.getByRole('combobox', { name: 'Filter podcast downloads' }).selectOption('attention');
   await expect(downloads.getByText('Resumable episode')).toBeVisible();
   expect(pageErrors).toEqual([]);
 });
