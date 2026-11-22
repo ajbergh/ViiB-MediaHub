@@ -6,7 +6,6 @@ import (
     "context"
     "database/sql"
     "errors"
-    "sync"
     "time"
 
     "github.com/ajbergh/viib-mediahub/internal/podcast"
