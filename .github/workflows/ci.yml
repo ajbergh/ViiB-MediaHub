@@ -120,7 +120,7 @@ jobs:
           go-version: '1.26.11'
           cache-dependency-path: backend/go.sum
       - name: Validate podcast parser, persistence and API
-        run: go test ./internal/podcast ./internal/db ./internal/api -run '^TestPodcast' -count=1 -timeout 8m
+        run: go test ./internal/podcast ./internal/db ./internal/api -run '^(TestPodcast|TestParseRSS|TestParseDuration|TestFetch|TestPublic)' -count=1 -timeout 8m
       - name: Vet podcast parser and URL policy
         run: go vet ./internal/podcast
 
