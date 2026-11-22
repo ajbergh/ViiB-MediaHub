@@ -183,6 +183,7 @@ export const PodcastShow: React.FC = () => {
   const [feed, setFeed] = useState<PodcastFeed | null>(null);
   const [episodes, setEpisodes] = useState<PodcastEpisode[]>([]);
   const [episodeFilter, setEpisodeFilter] = useState('');
+  const [updatingEpisode, setUpdatingEpisode] = useState<string | null>(null);
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -282,6 +283,29 @@ export const PodcastShow: React.FC = () => {
     }
   };
 
+  const setEpisodePlayed = async (episode: PodcastEpisode) => {
+    if (updatingEpisode) return;
+    setUpdatingEpisode(episode.id);
+    setError('');
+    try {
+      const progress = await podcastsAPI.getProgress(episode.id);
+      const saved = await podcastsAPI.setProgress(episode.id, {
+        positionMs: progress.positionMs,
+        listenedMs: progress.listenedMs,
+        isPlayed: !progress.isPlayed,
+        expectedRevision: progress.revision,
+      });
+      setEpisodes(current => current.map(row => row.id === episode.id
+        ? { ...row, isPlayed: saved.isPlayed, positionMs: saved.positionMs,
+            listenedMs: saved.listenedMs, progressRevision: saved.revision }
+        : row));
+    } catch (err) {
+      setError(readableError(err));
+    } finally {
+      setUpdatingEpisode(null);
+    }
+  };
+
   const requestRefresh = async () => {
     if (!id) return;
     setRefreshPending(true);
@@ -355,7 +379,15 @@ export const PodcastShow: React.FC = () => {
             <h3 className="font-semibold text-text-main">{episode.title}</h3>
             <p className="mt-1 text-xs text-text-subtle">{episode.publishedAt ? new Date(episode.publishedAt).toLocaleDateString() : 'Date unavailable'}{episode.durationMs ? ` · ${Math.round(episode.durationMs / 60000)} min` : ''}</p>
             {episode.description && <p className="mt-2 line-clamp-3 text-sm text-text-secondary">{episode.description}</p>}
-            <p className="mt-2 text-xs text-text-subtle">Streaming and downloads are coming in a later phase.</p>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              {episode.positionMs ? <span className="text-xs text-text-subtle">Position saved at {Math.floor(episode.positionMs / 60000)} min</span> : null}
+              <button type="button" onClick={() => void setEpisodePlayed(episode)} disabled={updatingEpisode !== null}
+                aria-label={episode.isPlayed ? `Mark ${episode.title} unplayed` : `Mark ${episode.title} played`}
+                className="rounded-md border border-surface-3 px-3 py-1.5 text-xs font-semibold text-text-secondary hover:text-text-main disabled:opacity-50">
+                {updatingEpisode === episode.id ? 'Saving…' : episode.isPlayed ? 'Mark unplayed' : 'Mark played'}
+              </button>
+              <span className="text-xs text-text-subtle">Streaming and downloads are coming in a later phase.</span>
+            </div>
           </article>)}
         </div>
         {nextOffset !== null && <button type="button" disabled={loadingMore}

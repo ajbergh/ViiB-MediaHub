@@ -79,6 +79,22 @@ describe('podcastsAPI', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('/api/v2/podcasts/feeds/id%2Fone');
   });
 
+  it('loads and saves episode progress with an optimistic revision', async () => {
+    const response = { episodeId: 'e/1', positionMs: 4000, listenedMs: 4000, isPlayed: true, revision: 2 };
+    const fetchMock = vi.fn(async (_url: string, _options?: RequestInit) => ({
+      ok: true, status: 200, json: async () => response,
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await podcastsAPI.getProgress('e/1')).toEqual(response);
+    const result = await podcastsAPI.setProgress('e/1', {
+      positionMs: 4000, listenedMs: 4000, isPlayed: true, expectedRevision: 1,
+    });
+    expect(result.revision).toBe(2);
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v2/podcasts/episodes/e%2F1/progress');
+    expect(fetchMock.mock.calls[1][1]?.method).toBe('PUT');
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toMatchObject({ expectedRevision: 1, isPlayed: true });
+  });
+
   it('handles an empty list and 204 unsubscribe', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ feeds: [] }) })

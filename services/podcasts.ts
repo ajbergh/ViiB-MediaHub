@@ -15,6 +15,19 @@ export interface PodcastEpisode {
   enclosureType: string;
   publishedAt: number;
   durationMs: number;
+  isPlayed?: boolean;
+  positionMs?: number;
+  listenedMs?: number;
+  progressRevision?: number;
+}
+export interface PodcastProgress {
+  episodeId: string;
+  positionMs: number;
+  listenedMs: number;
+  isPlayed: boolean;
+  revision: number;
+  completedAt: number;
+  lastPlayedAt: number;
 }
 export interface PodcastRefreshStatus {
   lastCheckedAt: number;
@@ -103,6 +116,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 export const podcastsAPI = {
+  getProgress(episodeId: string, signal?: AbortSignal): Promise<PodcastProgress> {
+    return request('/episodes/' + encodeURIComponent(episodeId) + '/progress', { signal });
+  },
+  setProgress(episodeId: string, progress: Pick<PodcastProgress, 'positionMs' | 'listenedMs' | 'isPlayed'> & { expectedRevision: number }, signal?: AbortSignal): Promise<PodcastProgress> {
+    return request('/episodes/' + encodeURIComponent(episodeId) + '/progress', {
+      method: 'PUT', body: JSON.stringify(progress), signal,
+    });
+  },
   async exportOPML(signal?: AbortSignal): Promise<Blob> {
     const response = await requestResponse('/export/opml', { signal, headers: { Accept: 'application/xml' } });
     return response.blob();
