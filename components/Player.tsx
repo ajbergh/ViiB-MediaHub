@@ -522,7 +522,7 @@ export const Player: React.FC = () => {
                 disabled={!duration} variant="ghost" aria-label="Back 15 seconds"
                 title="Back 15 seconds" className="rounded-full px-1.5 py-1 text-xs font-semibold text-text-secondary hover:text-text-main">
                 −15s
-            </Button>
+            </Button>}
             
             <div className="relative">
                 {/* Buffering indicator */}
@@ -567,7 +567,7 @@ export const Player: React.FC = () => {
                     <option value="1.75">1.75×</option>
                     <option value="2">2×</option>
                 </select>
-            </label>
+            </label>}
             <Button
                 variant="ghost"
                 disabled
