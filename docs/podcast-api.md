@@ -4,8 +4,10 @@ This documents **only currently implemented endpoints** in
 [`backend/internal/api/podcast_routes.go`](../backend/internal/api/podcast_routes.go).
 The full prospective API is tracked in the
 [Podcast implementation roadmap](PODCAST_CLIENT_IMPLEMENTATION_ROADMAP.md).
-No Podcast Index search, episode media streaming, downloads,
-OPML, paid feeds or private RSS credential support is implemented yet.
+No Podcast Index search, episode media streaming, offline downloads,
+paid feeds or private RSS credential support is implemented yet. OPML 2.0
+subscription export and safe import preview are available; neither exports
+nor imports listening history.
 
 The endpoints mount at `/api/v2/podcasts`, protected by ViiB's existing
 local Host/Origin/CSRF middleware. JSON errors use the standard V2
@@ -17,6 +19,11 @@ RSS 2.0 feeds during initial implementation.
 |---|---|---|
 | GET | `/feeds` | List followed show records with episode counts |
 | GET | `/feeds/{id}` | Read one followed show by stable ID; 404 when unknown or unfollowed |
+| GET | `/episodes/continue?limit=12` | Recently listened, uncompleted episodes on followed shows; bound 1–50, no publisher network requests |
+| GET | `/episodes/{id}/progress` | Revisioned durable progress; 404 for unknown episodes |
+| PUT | `/episodes/{id}/progress` | Save position/listened/played with `expectedRevision` CAS; 409 on stale writes |
+| POST | `/import/opml/preview` | Validate raw OPML 2.0 XML (512 KiB, 100 feed outlines, max nesting 24); list public candidates, duplicate/unsupported counts, and already-followed flags without network calls |
+
 | GET | `/export/opml` | Download OPML 2.0 of currently followed public feeds (up to 5,000 subscriptions / 2 MiB); no listening history or private data |
 | POST | `/feeds/preview` | Validate and retrieve one public HTTPS RSS feed; return first ten episodes and total |
 | POST | `/feeds` | Fetch/feed parse + subscribe + transactional episode snapshot; returns ID/title/count |
@@ -51,7 +58,7 @@ Example successful response:
 
 **Limitations and security**
 
-- Requests: JSON only, maximum 4 KiB, unknown properties rejected.
+- Feed preview, follow and progress writes: bounded JSON, unknown properties rejected. OPML import preview accepts XML up to 512 KiB and never contacts publishers.
 - Fetch: public HTTPS URLs, up to four redirects, no downgrade to plaintext
   HTTP, pinned public DNS addresses, 8 MiB response cap, 20-second HTTP
   timeout with a 15-second API context deadline.
@@ -153,3 +160,43 @@ OPML is **not** a listening-state or download backup; positions, playback
 history, offline media and credentials are deliberately omitted. The
 planned OPML **import** workflow will offer a preview, duplicate handling
 and a partial-failure report in a later roadmap phase.
+
+
+## Safe OPML import preview and follow
+
+The Podcasts page accepts an OPML 2.0 file and sends it to
+`POST /api/v2/podcasts/import/opml/preview`. The Go parser rejects DTDs,
+entity declarations, invalid XML, unsupported root/version, oversized
+documents and excessive nesting. It returns **only validated public HTTPS
+RSS URLs**, never invalid/private input. Nested outlines work, canonical URL
+duplicates are counted, and exact already-followed URLs are marked. No
+subscriptions are changed during preview.
+
+After confirmation, the web/desktop UI follows remaining eligible feeds
+**one at a time through the existing `POST /feeds` endpoint**, with
+cancellation and a per-show failure report using safe error codes. The
+underlying subscribe operation retains transactional alias resolution.
+Already-followed detection during preview matches canonical URLs; another
+valid alias may be re-fetched but should not create a duplicate canonical
+subscription. This is not a durable background import job and is not
+resumable across app restarts.
+
+The OPML import limit is **100 RSS feed outlines per file / 512 KiB**.
+Legacy plain-HTTP feeds and token-bearing/private feeds are intentionally
+skipped until policy/credential support is designed. The import workflow
+does not import podcast listening state or downloaded media.
+
+## Durable episode progress and Continue Listening
+
+`GET /episodes/{id}/progress` returns the episode's revisioned progress;
+`PUT` accepts exactly `positionMs`, `listenedMs`, `isPlayed`,
+and `expectedRevision` (all mandatory) and rejects an outdated
+`expectedRevision` with HTTP 409. Unknown episodes return 404. A manual
+played/unplayed action is exposed in show episode cards and never rewinds
+a saved position.
+
+`GET /episodes/continue?limit=12` lists saved positions for uncompleted
+episodes on currently followed podcasts. The endpoint is local-only and
+read-only; the UI links back to the show. Until the media transport/player
+milestones are implemented, **Continue Listening is a saved-position
+library view, not a functioning Resume button**.
