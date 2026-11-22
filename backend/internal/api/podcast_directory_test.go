@@ -85,6 +85,10 @@ func (c *httptestDirectoryClient) do(ctx context.Context, creds podcast.Director
 }
 
 func TestPodcastDirectoryHandlersLifecycleSearchTrendingAndErrors(t *testing.T) {
+	t.Setenv("VIIB_PODCAST_INDEX_API_KEY", "")
+	t.Setenv("VIIB_PODCAST_INDEX_API_SECRET", "")
+	t.Setenv("PODCAST_INDEX_API_KEY", "")
+	t.Setenv("PODCAST_INDEX_API_SECRET", "")
 	database, err := db.New(filepath.Join(t.TempDir(), "podcast-dir.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -281,5 +285,55 @@ func TestPodcastDirectoryHandlersLifecycleSearchTrendingAndErrors(t *testing.T) 
 	afterDelSearch := req(http.MethodGet, "/discover/search?q=go", "")
 	if afterDelSearch.Code != http.StatusPreconditionFailed {
 		t.Fatalf("expected 412 after credential delete, got %d", afterDelSearch.Code)
+	}
+}
+
+func TestPodcastDirectoryEmbeddedCredentialsWorkOutOfTheBox(t *testing.T) {
+	t.Setenv("VIIB_PODCAST_INDEX_API_KEY", "embedded-key-1234")
+	t.Setenv("VIIB_PODCAST_INDEX_API_SECRET", "embedded-secret-xyz")
+	t.Setenv("PODCAST_INDEX_API_KEY", "")
+	t.Setenv("PODCAST_INDEX_API_SECRET", "")
+
+	database, err := db.New(filepath.Join(t.TempDir(), "podcast-dir-embedded.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Auth-Key") != "embedded-key-1234" || r.Header.Get("X-Test-Secret") != "embedded-secret-xyz" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"shows": []podcast.DirectoryShow{{ID: 7, Title: "Embedded Search Hit", FeedURL: "https://example.org/rss.xml"}},
+		})
+	}))
+	defer upstream.Close()
+
+	api := &API{db: database}
+	api.setPodcastDirectoryClientForTest(&httptestDirectoryClient{serverURL: upstream.URL})
+	defer api.setPodcastDirectoryClientForTest(nil)
+
+	r := mountPodcastDirectoryTestRouter(api)
+
+	statusReq := httptest.NewRequest(http.MethodGet, "/discover/status", nil)
+	statusRec := httptest.NewRecorder()
+	r.ServeHTTP(statusRec, statusReq)
+	if statusRec.Code != http.StatusOK ||
+		!strings.Contains(statusRec.Body.String(), `"configured":true`) ||
+		!strings.Contains(statusRec.Body.String(), `"source":"embedded"`) ||
+		!strings.Contains(statusRec.Body.String(), `"keyHint":"Built-in"`) {
+		t.Fatalf("unexpected embedded status response: %d %s", statusRec.Code, statusRec.Body.String())
+	}
+	if strings.Contains(statusRec.Body.String(), "embedded-key") || strings.Contains(statusRec.Body.String(), "embedded-secret") {
+		t.Fatal("status leaked embedded credentials")
+	}
+
+	searchReq := httptest.NewRequest(http.MethodGet, "/discover/search?q=go", nil)
+	searchRec := httptest.NewRecorder()
+	r.ServeHTTP(searchRec, searchReq)
+	if searchRec.Code != http.StatusOK || !strings.Contains(searchRec.Body.String(), `"Embedded Search Hit"`) {
+		t.Fatalf("expected embedded search to succeed, got %d %s", searchRec.Code, searchRec.Body.String())
 	}
 }

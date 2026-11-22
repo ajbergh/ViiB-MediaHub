@@ -195,12 +195,19 @@ Push-Location $wailsDir
 try {
     # Set CGO environment
     $env:CGO_ENABLED = "1"
-    
+    . (Join-Path $PSScriptRoot "podcast-index-ldflags.ps1")
+    $podcastLdflags = Get-PodcastIndexLdflags -ProjectRoot $projectRoot
+    if ($podcastLdflags) {
+        Write-Host "  Embedding Podcast Index API credentials from build environment" -ForegroundColor Gray
+    }
+
     # Build arguments
     $buildArgs = @("-platform", "windows/amd64")
-    
-    if (-not $Debug) {
-        $buildArgs += @("-ldflags", "-s -w")
+    $ldflagsParts = @()
+    if (-not $Debug) { $ldflagsParts += "-s -w" }
+    if ($podcastLdflags) { $ldflagsParts += $podcastLdflags }
+    if ($ldflagsParts.Count -gt 0) {
+        $buildArgs += @("-ldflags", ($ldflagsParts -join " "))
     }
     
     # Clean previous build

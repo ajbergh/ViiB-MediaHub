@@ -171,6 +171,10 @@ func TestSupportBundleIncludesRedactedPodcastDiagnostics(t *testing.T) {
 }
 
 func TestSupportBundlePodcastDiagnosticsWithoutCredentials(t *testing.T) {
+	t.Setenv("VIIB_PODCAST_INDEX_API_KEY", "")
+	t.Setenv("VIIB_PODCAST_INDEX_API_SECRET", "")
+	t.Setenv("PODCAST_INDEX_API_KEY", "")
+	t.Setenv("PODCAST_INDEX_API_SECRET", "")
 	dataDir := t.TempDir()
 	database, err := db.New(filepath.Join(dataDir, "library.db"))
 	if err != nil {

@@ -27,15 +27,19 @@ if ($UseWailsBackend) {
         throw "Port $backendPort is already occupied by PID(s) $pids. Close the stale backend first, or use -UseWailsBackend to reuse the working Wails API on port 34115."
     }
 
+    . (Join-Path $PSScriptRoot "podcast-index-ldflags.ps1")
+    $null = Get-PodcastIndexLdflags -ProjectRoot $projectRoot
     $devDataDir = Join-Path $env:APPDATA "ViiB-MediaHub-dev"
     Write-Host "Starting Go backend on $backendURL (data: $devDataDir)..." -ForegroundColor Yellow
     $backendScript = {
-        param($root, $dataDir, $port)
+        param($root, $dataDir, $port, $piKey, $piSecret)
         Set-Location (Join-Path $root "backend")
         $env:CGO_ENABLED = "1"
+        if ($piKey) { $env:VIIB_PODCAST_INDEX_API_KEY = $piKey }
+        if ($piSecret) { $env:VIIB_PODCAST_INDEX_API_SECRET = $piSecret }
         go run ./cmd/viib -port $port -no-browser -data $dataDir
     }
-    $backendJob = Start-Job -ScriptBlock $backendScript -ArgumentList @($projectRoot, $devDataDir, $backendPort)
+    $backendJob = Start-Job -ScriptBlock $backendScript -ArgumentList @($projectRoot, $devDataDir, $backendPort, $env:VIIB_PODCAST_INDEX_API_KEY, $env:VIIB_PODCAST_INDEX_API_SECRET)
 }
 
 try {

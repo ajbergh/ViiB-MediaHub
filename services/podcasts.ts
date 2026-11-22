@@ -82,6 +82,7 @@ export interface PodcastDirectoryStatus {
   configured: boolean;
   provider: 'podcast_index' | 'none' | string;
   keyHint: string;
+  source?: 'user' | 'embedded' | 'none' | string;
 }
 export interface PodcastDirectoryShow {
   id: number;

@@ -17,6 +17,7 @@ import (
 
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
+	"github.com/ajbergh/viib-mediahub/internal/podcast"
 	"github.com/ajbergh/viib-mediahub/internal/version"
 )
 
@@ -89,7 +90,7 @@ func (a *API) CreateSupportBundle() ([]byte, string, error) {
 			"lastfm":        configuredSetting(a, "lastfm_settings"),
 			"llm":           configuredSetting(a, "llm_settings"),
 			"semantic":      configuredSetting(a, "semantic_settings"),
-			"podcast_index": configuredSetting(a, "podcast_index_credentials"),
+			"podcast_index": configuredSetting(a, "podcast_index_credentials") || podcast.HasEmbeddedDirectoryCredentials(),
 		},
 		Podcast:           podcastDiag,
 		IncludedLogBytes:  len(logData),

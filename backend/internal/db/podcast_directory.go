@@ -19,6 +19,7 @@ type PodcastDirectoryStatus struct {
 	Configured bool   `json:"configured"`
 	Provider   string `json:"provider"`
 	KeyHint    string `json:"keyHint"`
+	Source     string `json:"source"`
 }
 
 func maskDirectoryAPIKey(apiKey string) string {
@@ -43,9 +44,7 @@ func validateDirectoryCredentialPart(value string) (string, error) {
 	return trimmed, nil
 }
 
-// GetPodcastDirectoryCredentials returns decrypted Podcast Index credentials
-// for internal backend callers only. Never expose its return value in API JSON or logs.
-func (d *DB) GetPodcastDirectoryCredentials(_ context.Context) (podcast.DirectoryCredentials, error) {
+func (d *DB) getUserPodcastDirectoryCredentials() (podcast.DirectoryCredentials, error) {
 	var creds podcast.DirectoryCredentials
 	raw, err := d.GetSetting(podcastIndexCredentialsKey)
 	if err != nil {
@@ -65,27 +64,54 @@ func (d *DB) GetPodcastDirectoryCredentials(_ context.Context) (podcast.Director
 	return creds, nil
 }
 
-func (d *DB) GetPodcastDirectoryStatus(ctx context.Context) (PodcastDirectoryStatus, error) {
-	creds, err := d.GetPodcastDirectoryCredentials(ctx)
+// GetPodcastDirectoryCredentials returns decrypted user Podcast Index
+// credentials when configured, falling back to build-time/environment
+// credentials when present. Never expose its return value in API JSON or logs.
+func (d *DB) GetPodcastDirectoryCredentials(_ context.Context) (podcast.DirectoryCredentials, error) {
+	creds, err := d.getUserPodcastDirectoryCredentials()
+	if err == nil {
+		return creds, nil
+	}
 	if errors.Is(err, podcast.ErrDirectoryNotConfigured) {
+		if embedded, ok := podcast.EmbeddedDirectoryCredentials(); ok {
+			return embedded, nil
+		}
+	}
+	return podcast.DirectoryCredentials{}, err
+}
+
+func (d *DB) GetPodcastDirectoryStatus(_ context.Context) (PodcastDirectoryStatus, error) {
+	creds, err := d.getUserPodcastDirectoryCredentials()
+	if err == nil {
 		return PodcastDirectoryStatus{
-			Configured: false,
-			Provider:   "none",
-			KeyHint:    "",
+			Configured: true,
+			Provider:   "podcast_index",
+			KeyHint:    maskDirectoryAPIKey(creds.APIKey),
+			Source:     "user",
 		}, nil
 	}
-	if err != nil {
+	if errors.Is(err, podcast.ErrDirectoryNotConfigured) {
+		if podcast.HasEmbeddedDirectoryCredentials() {
+			return PodcastDirectoryStatus{
+				Configured: true,
+				Provider:   "podcast_index",
+				KeyHint:    "Built-in",
+				Source:     "embedded",
+			}, nil
+		}
 		return PodcastDirectoryStatus{
 			Configured: false,
 			Provider:   "none",
 			KeyHint:    "",
-		}, err
+			Source:     "none",
+		}, nil
 	}
 	return PodcastDirectoryStatus{
-		Configured: true,
-		Provider:   "podcast_index",
-		KeyHint:    maskDirectoryAPIKey(creds.APIKey),
-	}, nil
+		Configured: false,
+		Provider:   "none",
+		KeyHint:    "",
+		Source:     "none",
+	}, err
 }
 
 func (d *DB) SetPodcastDirectoryCredentials(_ context.Context, apiKey, apiSecret string) error {

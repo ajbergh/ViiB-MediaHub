@@ -1908,12 +1908,16 @@ export const Settings: React.FC = () => {
                 {discoverLoading
                   ? 'Checking status…'
                   : discoverStatus?.configured
-                    ? `Configured (${discoverStatus.keyHint})`
+                    ? discoverStatus.source === 'embedded'
+                      ? 'Enabled (Built-in)'
+                      : `Configured (${discoverStatus.keyHint})`
                     : 'Not configured'}
               </span>
             </div>
             <p className="text-sm text-text-secondary mb-4">
-              Optional free credentials from Podcast Index (https://api.podcastindex.org) enable public podcast search and trending discovery. Stored encrypted at rest; saved secrets are never pre-filled or displayed.
+              {discoverStatus?.source === 'embedded'
+                ? 'Podcast Index search and trending discovery are enabled by default in this build. You can optionally enter personal credentials from podcastindex.org below to override the built-in key (stored encrypted at rest).'
+                : 'Optional free credentials from Podcast Index (https://api.podcastindex.org) enable public podcast search and trending discovery. Stored encrypted at rest; saved secrets are never pre-filled or displayed.'}
             </p>
 
             <form onSubmit={handleSaveDiscoverCredentials} className="space-y-4">
@@ -1969,7 +1973,7 @@ export const Settings: React.FC = () => {
                 >
                   {discoverSaving ? 'Saving…' : 'Save Credentials'}
                 </Button>
-                {discoverStatus?.configured && (
+                {discoverStatus?.configured && discoverStatus.source !== 'embedded' && (
                   <Button
                     type="button"
                     variant="secondary"

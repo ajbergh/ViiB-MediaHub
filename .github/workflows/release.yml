@@ -184,7 +184,15 @@ jobs:
         working-directory: backend/cmd/wails
         env:
           CGO_ENABLED: 1
-        run: wails build -skipbindings -platform linux/amd64 -tags webkit2_41 -ldflags "-s -w"
+          PODCAST_INDEX_API_KEY: ${{ secrets.PODCAST_INDEX_API_KEY }}
+          PODCAST_INDEX_API_SECRET: ${{ secrets.PODCAST_INDEX_API_SECRET }}
+        run: |
+          ldflags="-s -w"
+          if [[ -n "${PODCAST_INDEX_API_KEY:-}" && -n "${PODCAST_INDEX_API_SECRET:-}" ]]; then
+            pkg="github.com/ajbergh/viib-mediahub/internal/podcast"
+            ldflags="${ldflags} -X '${pkg}.embeddedDirectoryAPIKey=${PODCAST_INDEX_API_KEY//\'/}' -X '${pkg}.embeddedDirectoryAPISecret=${PODCAST_INDEX_API_SECRET//\'/}'"
+          fi
+          wails build -skipbindings -platform linux/amd64 -tags webkit2_41 -ldflags "$ldflags"
 
       - name: Package DEB and portable archive
         shell: bash
@@ -302,7 +310,15 @@ jobs:
         working-directory: backend/cmd/wails
         env:
           CGO_ENABLED: 1
-        run: wails build -skipbindings -platform "${{ matrix.platform }}" -ldflags "-s -w"
+          PODCAST_INDEX_API_KEY: ${{ secrets.PODCAST_INDEX_API_KEY }}
+          PODCAST_INDEX_API_SECRET: ${{ secrets.PODCAST_INDEX_API_SECRET }}
+        run: |
+          ldflags="-s -w"
+          if [[ -n "${PODCAST_INDEX_API_KEY:-}" && -n "${PODCAST_INDEX_API_SECRET:-}" ]]; then
+            pkg="github.com/ajbergh/viib-mediahub/internal/podcast"
+            ldflags="${ldflags} -X '${pkg}.embeddedDirectoryAPIKey=${PODCAST_INDEX_API_KEY//\'/}' -X '${pkg}.embeddedDirectoryAPISecret=${PODCAST_INDEX_API_SECRET//\'/}'"
+          fi
+          wails build -skipbindings -platform "${{ matrix.platform }}" -ldflags "$ldflags"
 
       - name: Package DMG
         shell: bash
@@ -413,7 +429,17 @@ jobs:
         shell: pwsh
         env:
           CGO_ENABLED: 1
-        run: wails build -skipbindings -platform windows/amd64 -ldflags '-s -w'
+          PODCAST_INDEX_API_KEY: ${{ secrets.PODCAST_INDEX_API_KEY }}
+          PODCAST_INDEX_API_SECRET: ${{ secrets.PODCAST_INDEX_API_SECRET }}
+        run: |
+          $ldflags = "-s -w"
+          if (-not [string]::IsNullOrWhiteSpace($env:PODCAST_INDEX_API_KEY) -and -not [string]::IsNullOrWhiteSpace($env:PODCAST_INDEX_API_SECRET)) {
+            $pkg = "github.com/ajbergh/viib-mediahub/internal/podcast"
+            $k = $env:PODCAST_INDEX_API_KEY.Trim().Replace("'", "")
+            $s = $env:PODCAST_INDEX_API_SECRET.Trim().Replace("'", "")
+            $ldflags = "$ldflags -X '${pkg}.embeddedDirectoryAPIKey=${k}' -X '${pkg}.embeddedDirectoryAPISecret=${s}'"
+          }
+          wails build -skipbindings -platform windows/amd64 -ldflags $ldflags
 
       - name: Install govulncheck
         shell: pwsh

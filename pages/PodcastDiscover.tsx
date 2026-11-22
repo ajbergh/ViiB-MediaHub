@@ -801,14 +801,25 @@ export const PodcastDiscover: React.FC = () => {
             {/* Search Form */}
             <Card variant="default" className="border border-surface-border space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-base font-semibold text-text-main">Search Podcast Index</h2>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-base font-semibold text-text-main">Search Podcast Index</h2>
+                  <a
+                    href="https://podcastindex.org"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-text-subtle hover:text-text-secondary"
+                  >
+                    Powered by Podcast Index
+                    <ExternalLink size={11} aria-hidden="true" />
+                  </a>
+                </div>
                 <Link
                   to="/settings"
                   state={{ tab: 'integrations' }}
                   className="inline-flex items-center gap-1.5 text-xs font-medium text-text-secondary hover:text-text-main"
                 >
                   <SettingsIcon size={13} aria-hidden="true" />
-                  Key {status.keyHint}
+                  {status.source === 'embedded' ? 'Built-in key' : `Key ${status.keyHint}`}
                 </Link>
               </div>
 

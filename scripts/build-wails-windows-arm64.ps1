@@ -195,10 +195,18 @@ try {
         $env:CC = $foundCC
     }
 
-    $buildArgs = @("-platform", "windows/arm64")
+    . (Join-Path $PSScriptRoot "podcast-index-ldflags.ps1")
+    $podcastLdflags = Get-PodcastIndexLdflags -ProjectRoot $projectRoot
+    if ($podcastLdflags) {
+        Write-Host "  Embedding Podcast Index API credentials from build environment" -ForegroundColor Gray
+    }
 
-    if (-not $Debug) {
-        $buildArgs += @("-ldflags", "-s -w")
+    $buildArgs = @("-platform", "windows/arm64")
+    $ldflagsParts = @()
+    if (-not $Debug) { $ldflagsParts += "-s -w" }
+    if ($podcastLdflags) { $ldflagsParts += $podcastLdflags }
+    if ($ldflagsParts.Count -gt 0) {
+        $buildArgs += @("-ldflags", ($ldflagsParts -join " "))
     }
 
     # Clean previous bin

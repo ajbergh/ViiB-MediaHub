@@ -111,6 +111,8 @@ Push-Location $wailsDir
 try {
     # Set CGO environment
     $env:CGO_ENABLED = "1"
+    . (Join-Path $PSScriptRoot "podcast-index-ldflags.ps1")
+    $null = Get-PodcastIndexLdflags -ProjectRoot $projectRoot
     
     # Run Wails dev mode
     wails dev

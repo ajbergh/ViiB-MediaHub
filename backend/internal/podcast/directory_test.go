@@ -235,3 +235,46 @@ func TestDirectoryErrorMappingAndSSRF(t *testing.T) {
 		t.Fatalf("expected ErrDirectoryUnavailable on private DNS, got %v", err)
 	}
 }
+
+func TestEmbeddedDirectoryCredentialsResolution(t *testing.T) {
+	t.Setenv("VIIB_PODCAST_INDEX_API_KEY", "")
+	t.Setenv("VIIB_PODCAST_INDEX_API_SECRET", "")
+	t.Setenv("PODCAST_INDEX_API_KEY", "")
+	t.Setenv("PODCAST_INDEX_API_SECRET", "")
+
+	prevKey, prevSecret := embeddedDirectoryAPIKey, embeddedDirectoryAPISecret
+	t.Cleanup(func() {
+		embeddedDirectoryAPIKey = prevKey
+		embeddedDirectoryAPISecret = prevSecret
+	})
+	embeddedDirectoryAPIKey, embeddedDirectoryAPISecret = "", ""
+
+	if HasEmbeddedDirectoryCredentials() {
+		t.Fatal("expected no embedded credentials when vars and env are empty")
+	}
+
+	// Env var fallback works for local development.
+	t.Setenv("PODCAST_INDEX_API_KEY", " env-key ")
+	t.Setenv("PODCAST_INDEX_API_SECRET", " env-secret ")
+	creds, ok := EmbeddedDirectoryCredentials()
+	if !ok || creds.APIKey != "env-key" || creds.APISecret != "env-secret" {
+		t.Fatalf("unexpected env fallback creds: %+v ok=%v", creds, ok)
+	}
+
+	// Build-time ldflags vars take precedence over env vars.
+	embeddedDirectoryAPIKey = "ld-key"
+	embeddedDirectoryAPISecret = "ld-secret"
+	creds, ok = EmbeddedDirectoryCredentials()
+	if !ok || creds.APIKey != "ld-key" || creds.APISecret != "ld-secret" {
+		t.Fatalf("expected build-time embedded creds precedence, got %+v ok=%v", creds, ok)
+	}
+
+	// Control characters are rejected cleanly.
+	embeddedDirectoryAPIKey = "bad\nkey"
+	embeddedDirectoryAPISecret = "secret"
+	t.Setenv("PODCAST_INDEX_API_KEY", "")
+	t.Setenv("PODCAST_INDEX_API_SECRET", "")
+	if _, ok := EmbeddedDirectoryCredentials(); ok {
+		t.Fatal("expected control-character credential to be rejected")
+	}
+}

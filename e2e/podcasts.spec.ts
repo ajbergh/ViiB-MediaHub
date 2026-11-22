@@ -832,6 +832,59 @@ test('Podcast Discover configures Podcast Index credentials in Settings, searche
   expect(errors).toEqual([]);
 });
 
+test('Podcast Discover works out-of-the-box with built-in embedded credentials', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+
+  await page.addInitScript(() => {
+    localStorage.setItem('mediahub-storage', JSON.stringify({ state: { hasCompletedSetup: true }, version: 5 }));
+  });
+
+  await page.route('**/*', async route => {
+    const req = route.request();
+    const u = new URL(req.url());
+    if (u.origin !== 'http://127.0.0.1:4173') return route.abort();
+    if (u.pathname === '/api/health') return route.fulfill({ json: { status: 'ok' } });
+    if (u.pathname === '/api/library/songs') return route.fulfill({ json: { songs: [] } });
+    if (u.pathname === '/api/playlists') return route.fulfill({ json: { playlists: [] } });
+    if (u.pathname === '/api/library/scan/status') return route.fulfill({ json: { scanning: false } });
+    if (u.pathname.startsWith('/api/settings/')) {
+      return route.fulfill({ json: { key: u.pathname.split('/').pop(), value: '' } });
+    }
+    if (u.pathname === '/api/v2/podcasts/discover/status') {
+      return route.fulfill({ json: { status: { configured: true, provider: 'podcast_index', keyHint: 'Built-in', source: 'embedded' } } });
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds' && req.method() === 'GET') {
+      return route.fulfill({ json: { feeds: [] } });
+    }
+    if (u.pathname === '/api/v2/podcasts/trending') {
+      return route.fulfill({ json: {
+        shows: [{
+          id: 99, title: 'Built-in Trending Podcast', author: 'Creator',
+          feedUrl: 'https://publisher.example/trending.xml', language: 'en', episodeCount: 8,
+        }],
+        provider: 'podcast_index', count: 1,
+      } });
+    }
+    if (u.pathname.startsWith('/api/')) {
+      return route.fulfill({ status: 503, json: { error: 'fixture backend unavailable' } });
+    }
+    return route.continue();
+  });
+
+  await page.goto('/podcasts/discover');
+  await expect(page.getByText('Built-in key')).toBeVisible();
+  await expect(page.getByText('Powered by Podcast Index')).toBeVisible();
+  await expect(page.getByText('Built-in Trending Podcast')).toBeVisible();
+  await expect(page.getByText('Connect your free Podcast Index API credentials')).toHaveCount(0);
+
+  await page.goto('/settings');
+  await page.getByRole('button', { name: 'Integrations & Spotify' }).click();
+  await expect(page.getByText('Enabled (Built-in)')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Remove Credentials' })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test('Podcasts Hub triage, search, durable queue, retention, and Episode Detail chapters/transcript/bookmarks work end-to-end', async ({ page }) => {
   let starred = false;
   let retentionCount = 0;

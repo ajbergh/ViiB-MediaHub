@@ -104,7 +104,15 @@ try {
         New-Item -ItemType Directory -Path $outputDir | Out-Null
     }
     
-    go build -ldflags="-s -w -H windowsgui" -o $outputPath ./cmd/viib
+    . (Join-Path $PSScriptRoot "podcast-index-ldflags.ps1")
+    $podcastLdflags = Get-PodcastIndexLdflags -ProjectRoot $projectRoot
+    $ldflags = "-s -w -H windowsgui"
+    if ($podcastLdflags) {
+        Write-Host "Embedding Podcast Index API credentials from build environment..." -ForegroundColor Gray
+        $ldflags = "$ldflags $podcastLdflags"
+    }
+
+    go build -ldflags="$ldflags" -o $outputPath ./cmd/viib
     
     if ($LASTEXITCODE -ne 0) {
         throw "Go build failed"

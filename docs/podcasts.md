@@ -7,7 +7,7 @@
 ## What you can do on this branch
 
 - Open **Podcasts** from the Sidebar without connecting Spotify or enabling podcast refresh.
-- **Discover podcasts (`/podcasts/discover`)**: Search and browse trending shows via Podcast Index using your own encrypted API key and secret (configured inline or in **Settings → Integrations & Spotify**), preview RSS episodes before following, or fall back to pasting any public HTTPS RSS URL directly without a directory key.
+- **Discover podcasts (`/podcasts/discover`)**: Search and browse trending shows via Podcast Index out of the box on builds bundled with Podcast Index credentials (or optionally configure your own encrypted API key and secret in **Settings → Integrations & Spotify**), preview RSS episodes before following, or paste any public HTTPS RSS URL directly.
 - Follow a supported **public HTTPS RSS 2.0** feed by pasting its URL; preview its title and first episodes before following.
 - Triage across shows in **Podcasts → Episodes** (`Inbox`, `Starred`, `In Progress`, `Played`, `Archived`, `All`) with cross-show local search, Star/Archive/Played controls, and a durable **Podcasts → Queue** tab that can be reordered and played into the shared ViiB player.
 - Open any **Episode Detail (`/podcasts/episode/:id`)** page or the **Now Playing → Chapters & Notes** drawer to read sanitized HTML show notes, jump to **Chapters** (Podcasting 2.0 JSON / Podlove), search and click-to-seek **Transcripts** (JSON, VTT, SRT, text), and save timestamped **Bookmarks** (also via the quick-bookmark button in the Player).

@@ -174,8 +174,15 @@ try {
         $env:CC = $foundCC
     }
 
+    . (Join-Path $PSScriptRoot "podcast-index-ldflags.ps1")
+    $podcastLdflags = Get-PodcastIndexLdflags -ProjectRoot $projectRoot
+    if ($podcastLdflags) {
+        Write-Host "  Embedding Podcast Index API credentials from build environment" -ForegroundColor Gray
+    }
+
     $ldflags = "-s -w -H windowsgui"
     if ($Debug) { $ldflags = "-H windowsgui" }
+    if ($podcastLdflags) { $ldflags = "$ldflags $podcastLdflags" }
 
     go build -ldflags="$ldflags" -o $outputPath ./cmd/viib
 

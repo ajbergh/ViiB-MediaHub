@@ -21,15 +21,37 @@ and violate credential hygiene.
 
 ## Decision
 
-### 1. User-supplied credentials only (no embedded shared secret)
+### 1. Build-time embedded credentials (no secrets in git) + optional user override
 
-ViiB will **never** ship a hardcoded, embedded, or shared Podcast Index API key
-or secret in source code, build scripts, or release binaries.
+ViiB will **never** commit a hardcoded Podcast Index API key or secret into
+source control. Instead, official release builds and developer local builds
+inject the maintainer's Podcast Index API key and secret **at compile time**
+via Go `-ldflags` (`internal/podcast.embeddedDirectoryAPIKey` and
+`internal/podcast.embeddedDirectoryAPISecret`) from:
 
-Users who wish to enable in-app podcast directory search and trending discovery
-provide their own Podcast Index API key and secret (obtainable from
-[podcastindex.org](https://podcastindex.org)) via ViiB's settings/discover
-configuration endpoint.
+- **GitHub Actions Releases / CI:** repository secrets
+  `PODCAST_INDEX_API_KEY` and `PODCAST_INDEX_API_SECRET` in
+  `.github/workflows/release.yml` and `.github/workflows/build-windows.yml`.
+- **Local builds & dev runs:** environment variables or a gitignored `.env` /
+  `.env.local` file loaded by `scripts/podcast-index-ldflags.ps1` /
+  `scripts/podcast-index-ldflags.sh` (`PODCAST_INDEX_API_KEY` /
+  `PODCAST_INDEX_API_SECRET` or `VIIB_PODCAST_INDEX_*`).
+
+Credential resolution order at runtime:
+
+1. **User-supplied DB override** (`podcast_index_credentials` in SQLite,
+   encrypted via `enc:v2:`) — allows advanced users or third-party source
+   builders to supply or rotate their own key.
+2. **Build-time embedded / dev env credentials** — enables out-of-the-box
+   directory search and trending discovery for end users without manual setup.
+3. **Unconfigured fallback** — if a third-party source build has neither,
+   directory endpoints fail cleanly (`412 provider_not_configured`) while
+   direct RSS and OPML remain fully functional.
+
+API responses (`GET /discover/status`) return `{ configured, provider, keyHint, source }`
+where `source` is `"user"`, `"embedded"`, or `"none"`, and `keyHint` is
+`"Built-in"` for embedded keys (never exposing any characters of the embedded
+key or secret).
 
 ### 2. Machine-bound encrypted credential storage (`enc:v2:`)
 

@@ -11,6 +11,10 @@ import (
 )
 
 func TestPodcastDirectoryCredentialsLifecycleAndEncryption(t *testing.T) {
+	t.Setenv("VIIB_PODCAST_INDEX_API_KEY", "")
+	t.Setenv("VIIB_PODCAST_INDEX_API_SECRET", "")
+	t.Setenv("PODCAST_INDEX_API_KEY", "")
+	t.Setenv("PODCAST_INDEX_API_SECRET", "")
 	dbPath := filepath.Join(t.TempDir(), "directory.db")
 	d, err := New(dbPath)
 	if err != nil {
@@ -123,5 +127,52 @@ func TestPodcastDirectoryCredentialsLifecycleAndEncryption(t *testing.T) {
 	}
 	if _, err := reopened.GetPodcastDirectoryCredentials(ctx); !errors.Is(err, podcast.ErrDirectoryNotConfigured) {
 		t.Fatalf("expected ErrDirectoryNotConfigured after delete, got %v", err)
+	}
+}
+
+func TestPodcastDirectoryEmbeddedFallbackAndUserOverride(t *testing.T) {
+	t.Setenv("VIIB_PODCAST_INDEX_API_KEY", "built-in-key-9999")
+	t.Setenv("VIIB_PODCAST_INDEX_API_SECRET", "built-in-secret")
+	t.Setenv("PODCAST_INDEX_API_KEY", "")
+	t.Setenv("PODCAST_INDEX_API_SECRET", "")
+
+	d, err := New(filepath.Join(t.TempDir(), "embedded.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	ctx := context.Background()
+
+	status, err := d.GetPodcastDirectoryStatus(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.Configured || status.Source != "embedded" || status.KeyHint != "Built-in" {
+		t.Fatalf("expected embedded status, got %+v", status)
+	}
+	creds, err := d.GetPodcastDirectoryCredentials(ctx)
+	if err != nil || creds.APIKey != "built-in-key-9999" || creds.APISecret != "built-in-secret" {
+		t.Fatalf("expected embedded creds, got %+v %v", creds, err)
+	}
+
+	// Explicit user override takes precedence and reverts cleanly on delete.
+	if err := d.SetPodcastDirectoryCredentials(ctx, "user-key-1234", "user-secret"); err != nil {
+		t.Fatal(err)
+	}
+	userStatus, err := d.GetPodcastDirectoryStatus(ctx)
+	if err != nil || !userStatus.Configured || userStatus.Source != "user" || userStatus.KeyHint != "••••1234" {
+		t.Fatalf("expected user override status, got %+v %v", userStatus, err)
+	}
+	userCreds, err := d.GetPodcastDirectoryCredentials(ctx)
+	if err != nil || userCreds.APIKey != "user-key-1234" {
+		t.Fatalf("expected user creds override, got %+v %v", userCreds, err)
+	}
+
+	if err := d.DeletePodcastDirectoryCredentials(ctx); err != nil {
+		t.Fatal(err)
+	}
+	reverted, err := d.GetPodcastDirectoryStatus(ctx)
+	if err != nil || !reverted.Configured || reverted.Source != "embedded" || reverted.KeyHint != "Built-in" {
+		t.Fatalf("expected revert to embedded status, got %+v %v", reverted, err)
 	}
 }

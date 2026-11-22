@@ -185,9 +185,17 @@ export CGO_ENABLED=1
 export GOOS=darwin
 export GOARCH="$ARCH"
 
+# shellcheck source=podcast-index-ldflags.sh
+source "$SCRIPT_DIR/podcast-index-ldflags.sh"
+PODCAST_LDFLAGS="$(podcast_index_ldflags "$PROJECT_ROOT")"
+
 OUTPUT_BIN="$BUILD_DIR/ViiB-MediaHub"
 LDFLAGS="-s -w"
 [[ "$DEBUG" == "true" ]] && LDFLAGS=""
+if [[ -n "$PODCAST_LDFLAGS" ]]; then
+    echo "  Embedding Podcast Index API credentials from build environment"
+    LDFLAGS="${LDFLAGS:+$LDFLAGS }${PODCAST_LDFLAGS}"
+fi
 
 go build -ldflags="$LDFLAGS" -o "$OUTPUT_BIN" ./cmd/viib
 if [[ $? -ne 0 ]]; then

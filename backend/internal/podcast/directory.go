@@ -10,10 +10,20 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+)
+
+// Build-time Podcast Index credentials injected via Go -ldflags:
+//
+//	-X github.com/ajbergh/viib-mediahub/internal/podcast.embeddedDirectoryAPIKey=...
+//	-X github.com/ajbergh/viib-mediahub/internal/podcast.embeddedDirectoryAPISecret=...
+var (
+	embeddedDirectoryAPIKey    string
+	embeddedDirectoryAPISecret string
 )
 
 const (
@@ -47,6 +57,38 @@ type DirectoryShow struct {
 	Language     string   `json:"language,omitempty"`
 	Categories   []string `json:"categories,omitempty"`
 	EpisodeCount int      `json:"episodeCount,omitempty"`
+}
+
+// EmbeddedDirectoryCredentials returns Podcast Index credentials embedded at
+// build time via -ldflags or provided via local development environment
+// variables (VIIB_PODCAST_INDEX_API_KEY / PODCAST_INDEX_API_KEY).
+func EmbeddedDirectoryCredentials() (DirectoryCredentials, bool) {
+	candidates := [][2]string{
+		{embeddedDirectoryAPIKey, embeddedDirectoryAPISecret},
+		{os.Getenv("VIIB_PODCAST_INDEX_API_KEY"), os.Getenv("VIIB_PODCAST_INDEX_API_SECRET")},
+		{os.Getenv("PODCAST_INDEX_API_KEY"), os.Getenv("PODCAST_INDEX_API_SECRET")},
+	}
+	for _, pair := range candidates {
+		key := strings.TrimSpace(pair[0])
+		secret := strings.TrimSpace(pair[1])
+		if key == "" || secret == "" {
+			continue
+		}
+		if len(key) > 256 || len(secret) > 256 ||
+			strings.ContainsAny(key, "\r\n\x00") ||
+			strings.ContainsAny(secret, "\r\n\x00") {
+			continue
+		}
+		return DirectoryCredentials{APIKey: key, APISecret: secret}, true
+	}
+	return DirectoryCredentials{}, false
+}
+
+// HasEmbeddedDirectoryCredentials reports whether build-time or environment
+// Podcast Index credentials are active.
+func HasEmbeddedDirectoryCredentials() bool {
+	_, ok := EmbeddedDirectoryCredentials()
+	return ok
 }
 
 // DirectoryClient queries the Podcast Index API v1.0 using public-IP

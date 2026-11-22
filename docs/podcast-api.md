@@ -17,7 +17,7 @@ RSS 2.0 feeds during initial implementation.
 | Method | Path | Behavior |
 |---|---|---|
 | GET | `/events` | Server-Sent Events (`event: podcasts`) streaming `{ downloads, storage, refreshCount }` snapshots with 15 s heartbeat and 5 s fallback |
-| GET | `/discover/status` | Read redacted Podcast Index configuration status (`configured`, `provider`, masked `keyHint`) |
+| GET | `/discover/status` | Read redacted Podcast Index configuration status (`configured`, `provider`, masked `keyHint`, `source`: `user` \| `embedded` \| `none`) |
 | PUT | `/discover/credentials` | Strict JSON (`apiKey`, `apiSecret`, 1 KiB cap) stored encrypted at rest (`enc:v2:`); returns redacted status |
 | DELETE | `/discover/credentials` | Remove stored Podcast Index credentials; returns redacted status |
 | GET | `/search?q=&max=` | Search Podcast Index directory when configured (412 `provider_not_configured` otherwise) |
