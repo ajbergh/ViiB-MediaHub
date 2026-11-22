@@ -22,8 +22,36 @@ $backendScript = {
 }
 $backendJob = Start-Job -ScriptBlock $backendScript -ArgumentList @($projectRoot, $devDataDir)
 
-# Give backend time to start
-Start-Sleep -Seconds 2
+# Fail fast if the Go backend is not running on the Vite proxy port
+# or this branch's podcast router is absent from an older executable.
+# Go's first compilation can take longer than an arbitrary two-second sleep.
+Write-Host "Checking Go API and Podcasts route on port 8080..." -ForegroundColor Yellow
+$backendReady = $false
+$podcastProbe = "http://127.0.0.1:8080/api/v2/podcasts/feeds"
+for ($attempt = 0; $attempt -lt 120; $attempt++) {
+    if ($backendJob.State -in @("Failed", "Stopped", "Completed")) { break }
+    try {
+        $response = Invoke-WebRequest -Uri $podcastProbe -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+        if ($response.StatusCode -eq 200) {
+            $payload = $response.Content | ConvertFrom-Json
+            if ($payload.PSObject.Properties.Name -contains "feeds") {
+                $backendReady = $true
+                break
+            }
+        }
+    } catch {
+        # Startup or package compilation can still be in progress.
+    }
+    Start-Sleep -Milliseconds 500
+}
+if (-not $backendReady) {
+    Write-Host "The Go backend does not expose the Podcasts API at $podcastProbe" -ForegroundColor Red
+    Write-Host "Check for an old process on port 8080 or a Go build/startup failure." -ForegroundColor Yellow
+    Receive-Job $backendJob -Keep | Out-Host
+    Stop-Job $backendJob -ErrorAction SilentlyContinue
+    Remove-Job $backendJob -ErrorAction SilentlyContinue
+    throw "Cannot start Vite with a mismatched or unavailable Go Podcasts backend."
+}
 
 # Start frontend dev server
 Write-Host "`n⚡ Starting Vite dev server on port 3000..." -ForegroundColor Yellow

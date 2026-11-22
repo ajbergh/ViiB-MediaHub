@@ -101,9 +101,12 @@ suggests the UI and Go API aren't running matching builds.
 For Vite development, `vite.config.ts` proxies `/api` to
 `http://127.0.0.1:8080`. The Go backend must be built from the **same branch**
 and listening on that port (or the Vite proxy must be reconfigured). Running
-only `npm run dev` does not start the Go backend. For a Wails desktop build,
+only `npm run dev` does not start the Go backend. On Windows use
+`./scripts/dev.ps1` from the repository root: it now checks that the
+running Go process actually serves the podcast route before starting Vite. For a Wails desktop build,
 recompile/restart the desktop Go executable; rebuilding the React UI alone
-doesn't update the embedded Go routes.
+doesn't update the embedded Go routes. `./scripts/dev-wails.ps1` now refreshes
+frontend assets on each launch to avoid a stale UI after branch switching.
 
 If the server responds with a structured error code `invalid_feed_url`,
 `blocked_remote_target`, `feed_invalid`, or `feed_unavailable`, investigate

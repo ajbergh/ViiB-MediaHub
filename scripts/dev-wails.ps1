@@ -69,31 +69,30 @@ if (-not (Test-Path (Join-Path $wailsDir "wails.json"))) {
 }
 
 # ============================================================================
-# Ensure frontend dist exists (for embed)
+# Refresh frontend dist on every Wails development launch
 # ============================================================================
-
-$frontendDist = Join-Path $wailsDir "frontend\dist"
-if (-not (Test-Path $frontendDist)) {
-    Write-Host "`n📦 Frontend dist not found. Building..." -ForegroundColor Yellow
-    
-    Push-Location $projectRoot
-    try {
-        npm run build
-        if ($LASTEXITCODE -ne 0) { throw "Frontend build failed" }
-    } finally {
-        Pop-Location
-    }
-    
-    # Copy to Wails location
-    $distSource = Join-Path $projectRoot "dist"
-    $frontendDir = Split-Path $frontendDist
-    if (-not (Test-Path $frontendDir)) {
-        New-Item -ItemType Directory -Path $frontendDir -Force | Out-Null
-    }
-    Copy-Item -Recurse $distSource $frontendDist
-    
-    Write-Host "  ✓ Frontend built and copied" -ForegroundColor Green
+# Prior script only rebuilt when dist was missing. After switching branches,
+# the WebView could silently show stale frontend assets against a new Go API.
+$frontendDist = Join-Path $wailsDir "frontend\\dist"
+Write-Host "`nBuilding the current branch's frontend for Wails..." -ForegroundColor Yellow
+Push-Location $projectRoot
+try {
+    npm run build
+    if ($LASTEXITCODE -ne 0) { throw "Frontend build failed" }
+} finally {
+    Pop-Location
 }
+$distSource = Join-Path $projectRoot "dist"
+if (-not (Test-Path $distSource)) { throw "Frontend dist was not created" }
+$frontendDir = Split-Path $frontendDist
+if (-not (Test-Path $frontendDir)) {
+    New-Item -ItemType Directory -Path $frontendDir -Force | Out-Null
+}
+if (Test-Path $frontendDist) {
+    Remove-Item $frontendDist -Recurse -Force
+}
+Copy-Item -Recurse $distSource $frontendDist
+Write-Host "Frontend assets refreshed from current branch" -ForegroundColor Green
 
 # ============================================================================
 # Start Wails Dev Mode

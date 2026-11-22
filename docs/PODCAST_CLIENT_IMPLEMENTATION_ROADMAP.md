@@ -693,7 +693,7 @@ running browser/network response is not available through the repository tools.
 structured feed-specific errors without displaying untrusted response bodies.
 Add frontend regression tests, successful mock RSS preview+subscribe handler
 tests, and integration tests proving GET/POST routes are reachable under the
-actual server's approved origins. A test-only feed fetcher seam is reused in
+actual server's approved origins. The dev PowerShell script now checks the real `/api/v2/podcasts/feeds` endpoint before starting Vite, and the Wails development script always refreshes frontend assets on launch. A test-only feed fetcher seam is reused in
 the valid-feed test; production still uses the public-IP-validated connector.
 
 **Status: investigation, not resolved.** Verify the checked-out frontend and
