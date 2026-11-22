@@ -53,6 +53,17 @@ test('Podcasts follows public RSS and browses episodes without playback', async 
       return route.fulfill({ status: 200, contentType: 'image/png',
         body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/6u0AAAAASUVORK5CYII=', 'base64') });
     }
+    if (u.pathname === '/api/v2/podcasts/episodes/ep-1/progress') {
+      if (req.method() === 'GET') {
+        return route.fulfill({ json: { episodeId: 'ep-1', positionMs: 30000,
+          listenedMs: 30000, isPlayed: false, revision: 0, completedAt: 0, lastPlayedAt: 0 } });
+      }
+      expect(req.method()).toBe('PUT');
+      expect(req.postDataJSON()).toMatchObject({ positionMs: 30000,
+        listenedMs: 30000, isPlayed: true, expectedRevision: 0 });
+      return route.fulfill({ json: { episodeId: 'ep-1', positionMs: 30000,
+        listenedMs: 30000, isPlayed: true, revision: 1, completedAt: 100, lastPlayedAt: 100 } });
+    }
     if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/refresh') {
       if (req.method() === 'POST') {
         refreshed++;
@@ -94,6 +105,8 @@ test('Podcasts follows public RSS and browses episodes without playback', async 
   await expect(page.getByRole('img', { name: 'Independent Podcast cover art' })).toHaveAttribute(
     'src', '/api/v2/podcasts/feeds/' + feedId + '/artwork'
   );
+  await page.getByRole('button', { name: 'Mark First episode played' }).click();
+  await expect(page.getByRole('button', { name: 'Mark First episode unplayed' })).toBeVisible();
   await page.getByRole('button', { name: 'Refresh feed' }).click();
   await expect(page.getByText('Refresh queued. Episodes will update when the publisher responds.')).toBeVisible();
   expect(refreshed).toBe(1);
@@ -220,4 +233,58 @@ test('following subscriptions export as a standard OPML download', async ({ page
   const chunks: Buffer[] = [];
   for await (const chunk of stream) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   expect(Buffer.concat(chunks).toString('utf8')).toBe(xml);
+});
+
+
+test('OPML import previews safely and reports per-feed failures with cancellation control', async ({ page }) => {
+  const first = 'https://podcast.example.org/show-one.xml';
+  const second = 'https://podcast.example.org/show-two.xml';
+  let imports = 0;
+  await page.route('**/*', async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin !== 'http://127.0.0.1:4173') return route.abort();
+    if (url.pathname === '/api/v2/podcasts/feeds' && request.method() === 'GET') {
+      return route.fulfill({ json: { feeds: [] } });
+    }
+    if (url.pathname === '/api/v2/podcasts/import/opml/preview') {
+      expect(request.method()).toBe('POST');
+      expect(request.headers()['content-type']).toBe('application/xml');
+      expect(request.postData()).toContain('<opml');
+      return route.fulfill({ json: {
+        feeds: [
+          { title: 'Podcast One', url: first, alreadyFollowed: false },
+          { title: 'Podcast Two', url: second, alreadyFollowed: false },
+        ],
+        invalidCount: 1, duplicateCount: 1,
+      } });
+    }
+    if (url.pathname === '/api/v2/podcasts/feeds' && request.method() === 'POST') {
+      imports++;
+      const payload = request.postDataJSON() as { url: string };
+      if (payload.url === first) return route.fulfill({
+        status: 201, json: { id: 'one', title: 'Podcast One', episodeCount: 1 },
+      });
+      expect(payload.url).toBe(second);
+      return route.fulfill({ status: 502, json: {
+        error: { code: 'feed_unavailable', message: 'Publisher feed unavailable' },
+      } });
+    }
+    if (url.pathname.startsWith('/api/')) return route.fulfill({
+      status: 503, json: { error: { code: 'fixture_only', message: 'Synthetic API' } },
+    });
+    return route.continue();
+  });
+  await page.goto('/podcasts');
+  await page.getByLabel('Choose OPML file').setInputFiles({
+    name: 'subscriptions.opml', mimeType: 'application/xml',
+    buffer: Buffer.from('<opml version="2.0"><body></body></opml>'),
+  });
+  await expect(page.getByText('2 supported feeds, 0 already followed')).toBeVisible();
+  await expect(page.getByText('1 unsupported or private feeds skipped; 1 duplicates skipped.')).toBeVisible();
+  await page.getByRole('button', { name: 'Import 2 feeds' }).click();
+  await expect(page.getByText('Followed 1 podcast; 1 failed.')).toBeVisible();
+  await expect(page.getByText('Podcast Two: feed_unavailable')).toBeVisible();
+  expect(imports).toBe(2);
+  await expect(page.getByRole('button', { name: 'Import 1 feeds' })).toBeEnabled();
 });
