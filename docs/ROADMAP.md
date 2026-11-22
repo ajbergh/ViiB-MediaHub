@@ -28,6 +28,10 @@ ViiB MediaHub is a local-first music hub: React 19 / TypeScript frontend, Go / S
 
 **Important continuity decision:** The owner previously deferred further local DSP estimator research from the Spotify metadata branch. PR #117 is merged; deferred work belongs in a **separate future scope** (Phase 5), not retroactively in that PR or as an undisclosed 1.0 dependency. Subsequent scan lifecycle/storage fixes (#123) and local semantic matching (#124) are delivered maintenance/product work; they do not close deferred estimator accuracy gates. See [Spotify behavior and limitations](spotify.md) and [deferred local analysis](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
 
+### Active domain roadmap: Podcasts (feature branch, not yet merged)
+
+**2026-11-22 — development in progress:** The [Podcast Client Implementation Roadmap](PODCAST_CLIENT_IMPLEMENTATION_ROADMAP.md) tracks a new local-first podcast domain independently from this roadmap's stable-music 1.0 qualification gates. [Draft PR #167](https://github.com/ajbergh/ViiB-MediaHub/pull/167) contains work in progress: a permanent **Podcasts** Sidebar item, public RSS preview/following, show and paginated episode browsing, separate SQLite persistence, guarded RSS fetching, and an opt-in feed-refresh worker. The features remain **unmerged and unqualified**; do not list them as shipping on `main`. Podcast discovery, audio transport, downloads and offline playback remain open. All POD-level implementation checklists, acceptance criteria and status live in the linked podcast roadmap; this document preserves cross-project priorities.
+
 ### Outcome priorities
 
 1. **P0: prevent security, credential, data-loss, and release-trust failures.**

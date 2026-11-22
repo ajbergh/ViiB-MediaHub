@@ -4,7 +4,7 @@
 > **Created:** 2026-11-22
 > **Last reviewed:** 2026-11-22 — codebase anchors re-verified against source (see [§13 Review log](#13-review-log))
 > **Target:** ViiB MediaHub (React 19.2 / React Router 8 / TypeScript 5.8 / Zustand 5 / Go 1.26 / SQLite via `modernc.org/sqlite` / Wails v2.17, plus local-Go browser builds)
-> **Ownership:** Podcast domain specification. Cross-project sequencing and release gates remain in [docs/ROADMAP.md](ROADMAP.md); that roadmap does not yet reference podcasts, so add an entry linking here once POD-00A is accepted.
+> **Ownership:** Podcast domain specification. Cross-project sequencing and release gates remain in [docs/ROADMAP.md](ROADMAP.md); the parent roadmap now links to this podcast feature-branch work with its own non-shipping status.
 > **Source:** Research of commercial and FOSS podcast clients, official podcast standards, and inspection of ViiB `main` on 2026-11-22.
 > **Implementation principle:** An independent podcast domain, integrated into ViiB navigation/player shell without treating episodes as songs or Spotify downloads.
 
@@ -672,4 +672,4 @@ Commit `b44e89a` adds SQLite persistence and the first status log. API contract 
 
 **Validation status:** Podcast-specific Go/Vitest/Playwright tests have been added. A targeted `podcast-slice` CI job now runs `TestPodcast*` plus the RSS parser and URL-security tests in the parser, DB and API packages alongside the original full-suite jobs. The current HEAD is **not yet confirmed green**. GitHub Actions is authoritative for the required Go 1.26 toolchain. A prior backend run failed due to an unused import in the refresh worker; that import has been removed on the current branch. Full CI remains unverified. Do not mark tests green without a GitHub Actions run.
 
-**Next vertical delivery:** Validate full CI and E2E, address GUID migration/collisions and secure artwork proxy, then develop directory discovery and playback prerequisites. Keep playback and offline work explicitly later. Music playback remains untouched.
+**Next vertical delivery:** Validate full CI and E2E, address GUID migration/collisions and secure artwork proxy, then develop directory discovery and playback prerequisites. The cross-project `docs/ROADMAP.md` now links to this domain plan without implying features are merged or released. Keep playback and offline work explicitly later. Music playback remains untouched.
