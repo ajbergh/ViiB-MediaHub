@@ -32,6 +32,7 @@ func (a *API) PodcastRoutes() chi.Router {
     r.Put("/episodes/{id}/progress", a.updatePodcastEpisodeProgress)
     r.Get("/feeds", a.listPodcastFeeds)
     r.Get("/export/opml", a.exportPodcastOPML)
+    r.Post("/import/opml/preview", a.previewPodcastOPMLImport)
     r.Post("/feeds/preview", a.previewPodcastFeed)
     r.Post("/feeds", a.subscribePodcastFeed)
     r.Get("/feeds/{id}/artwork", a.getPodcastArtwork)
