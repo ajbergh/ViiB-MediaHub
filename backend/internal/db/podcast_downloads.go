@@ -166,6 +166,8 @@ func (d *DB) UpdatePodcastDownloadBytes(ctx context.Context,id,owner string,rece
 UPDATE podcast_downloads SET bytes_received=?,expected_bytes=?,updated_at=?,
  lease_expires_at=?
 WHERE episode_id=? AND status='downloading' AND lease_owner=?
+AND EXISTS (SELECT 1 FROM podcast_episodes e JOIN podcast_subscriptions s
+  ON s.feed_id=e.feed_id WHERE e.id=podcast_downloads.episode_id)
 AND (SELECT COALESCE(SUM(CASE WHEN status='completed' THEN COALESCE(verified_size,0)
  ELSE COALESCE(expected_bytes,0) END),0)
  FROM podcast_downloads WHERE episode_id<>? AND status IN ('completed','downloading')) <= ?`,
@@ -193,6 +195,8 @@ UPDATE podcast_downloads SET status='completed',destination_relative_path=?,
  temp_relative_path=NULL,bytes_received=?,expected_bytes=?,verified_size=?,sha256=?,mime=?,
  completed_at=?,updated_at=?,lease_owner=NULL,lease_expires_at=NULL,error_code=NULL
 WHERE episode_id=? AND status='downloading' AND lease_owner=?
+AND EXISTS (SELECT 1 FROM podcast_episodes e JOIN podcast_subscriptions s
+  ON s.feed_id=e.feed_id WHERE e.id=podcast_downloads.episode_id)
 AND (SELECT COALESCE(SUM(CASE WHEN status='completed' THEN COALESCE(verified_size,0)
  ELSE COALESCE(expected_bytes,0) END),0)
  FROM podcast_downloads WHERE episode_id<>? AND status IN ('completed','downloading')) <= ?`,
@@ -251,6 +255,46 @@ AND EXISTS (
   WHERE e.id=podcast_downloads.episode_id)`,id)
     if err!=nil{return err}
     n,err:=result.RowsAffected()
+    if err!=nil{return err}
+    if n==0{return sql.ErrNoRows}
+    return nil
+}
+
+// A bounded inventory of completed offline files no longer covered by any
+// subscription. Returned names are backend-only and MUST be revalidated by
+// the filesystem cleanup routine before unlinking.
+func (d *DB) ListUnsubscribedPodcastCompletedFiles(ctx context.Context,limit int)([]PodcastDownloadedFile,error){
+    if err:=d.EnsurePodcastSchema();err!=nil{return nil,err}
+    if limit<1||limit>32{limit=32}
+    rows,err:=d.conn.QueryContext(ctx,`
+SELECT d.episode_id,COALESCE(d.destination_relative_path,''),
+ COALESCE(d.mime,''),COALESCE(d.verified_size,0),COALESCE(d.sha256,'')
+FROM podcast_downloads d JOIN podcast_episodes e ON e.id=d.episode_id
+WHERE d.status='completed' AND NOT EXISTS(
+ SELECT 1 FROM podcast_subscriptions s WHERE s.feed_id=e.feed_id)
+ORDER BY d.updated_at,d.episode_id LIMIT ?`,limit)
+    if err!=nil{return nil,err}
+    defer rows.Close()
+    out:=make([]PodcastDownloadedFile,0)
+    for rows.Next(){
+        var f PodcastDownloadedFile
+        if err:=rows.Scan(&f.EpisodeID,&f.Filename,&f.MIME,&f.Size,&f.SHA256);err!=nil{return nil,err}
+        out=append(out,f)
+    }
+    return out,rows.Err()
+}
+
+// Clear a reclaimed record only if the episode has not been re-followed.
+// This preserves playback and episode records, and releases quota space.
+func (d *DB) DeleteUnsubscribedPodcastCompletedFile(ctx context.Context,id string)error{
+    if err:=d.EnsurePodcastSchema();err!=nil{return err}
+    res,err:=d.conn.ExecContext(ctx,`
+DELETE FROM podcast_downloads WHERE episode_id=? AND status='completed'
+AND EXISTS (
+ SELECT 1 FROM podcast_episodes e WHERE e.id=podcast_downloads.episode_id
+ AND NOT EXISTS(SELECT 1 FROM podcast_subscriptions s WHERE s.feed_id=e.feed_id))`,id)
+    if err!=nil{return err}
+    n,err:=res.RowsAffected()
     if err!=nil{return err}
     if n==0{return sql.ErrNoRows}
     return nil

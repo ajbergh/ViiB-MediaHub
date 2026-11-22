@@ -265,12 +265,25 @@ func (d *DB) PodcastArtworkURL(ctx context.Context,feedID string)(string,error){
 
 func (d *DB) UnsubscribePodcast(ctx context.Context,feedID string) error {
     if err:=d.EnsurePodcastSchema();err!=nil{return err}
-    res,err:=d.conn.ExecContext(ctx,`DELETE FROM podcast_subscriptions WHERE feed_id=?`,feedID)
+    tx,err:=d.conn.BeginTx(ctx,nil)
+    if err!=nil{return err}
+    defer tx.Rollback()
+    res,err:=tx.ExecContext(ctx,`DELETE FROM podcast_subscriptions WHERE feed_id=?`,feedID)
     if err!=nil{return err}
     affected,err:=res.RowsAffected()
     if err!=nil{return err}
     if affected==0{return sql.ErrNoRows}
-    return nil
+    // Revoke in-flight download leases in the same transaction as unfollow.
+    // Publisher requests may finish, but no stale worker may publish bytes.
+    _,err=tx.ExecContext(ctx,`
+UPDATE podcast_downloads SET status='canceled',lease_owner=NULL,
+ lease_expires_at=NULL,bytes_received=0,expected_bytes=NULL,
+ error_code=NULL,updated_at=?
+WHERE status IN ('queued','downloading') AND episode_id IN (
+ SELECT id FROM podcast_episodes WHERE feed_id=?)`,
+ time.Now().UnixMilli(),feedID)
+    if err!=nil{return err}
+    return tx.Commit()
 }
 
 // PodcastSubscribed reports whether the feed is subscribed, rather than merely
