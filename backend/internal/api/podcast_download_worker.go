@@ -124,6 +124,8 @@ func (a *API) processPodcastDownload(ctx context.Context){
             code="download_too_large"
         case errors.Is(err,db.ErrPodcastOfflineQuotaExceeded):
             code="download_quota_exceeded"
+        case errors.Is(err,errPodcastDiskSpaceLow):
+            code="download_disk_space_low"
         case errors.Is(err,os.ErrPermission),errors.Is(err,io.ErrShortWrite):
             code="download_disk_unavailable"
         }
@@ -133,6 +135,23 @@ func (a *API) processPodcastDownload(ctx context.Context){
 }
 
 var errPodcastDownloadTooLarge=errors.New("podcast audio exceeds offline size limit")
+var errPodcastDiskSpaceLow=errors.New("insufficient podcast destination disk space")
+
+// Keep room for the OS and other applications; this is independent of
+// the 2 GiB podcast-owned reservation quota.
+const podcastDiskFreeReserve uint64 = 128 << 20
+
+func (a *API) requirePodcastDiskSpace(dir string,remaining int64)error{
+    if remaining<0||remaining>db.MaxPodcastDownloadBytes {
+        return errPodcastDiskSpaceLow
+    }
+    probe:=a.podcastDiskFreeBytes
+    if probe==nil {probe=podcastAvailableDiskBytes}
+    available,err:=probe(dir)
+    if err!=nil{return errPodcastDiskSpaceLow}
+    if available<uint64(remaining)+podcastDiskFreeReserve{return errPodcastDiskSpaceLow}
+    return nil
+}
 
 // Abandoned transfers never become playable. Sweep only old numeric os.CreateTemp
 // .part-* regular files inside the fixed private podcast directory.
@@ -238,6 +257,11 @@ func (a *API) transferPodcastDownload(ctx context.Context,id,owner string) error
         typ:=podcast.SupportedPodcastAudioMIME(seg.MIME)
         if typ=="" || mime!="" && mime!=typ{return podcast.ErrInvalidMedia}
         mime=typ
+        // Probe the actual destination volume, not just the SQLite quota.
+        // Reserving all remaining bytes prevents starting a transfer that
+        // would consume the OS safety margin; recheck after each publisher
+        // segment because other applications may use the same disk.
+        if err:=a.requirePodcastDiskSpace(dir,total-received);err!=nil{return err}
         if n,err:=out.Write(seg.Data);err!=nil{return err}else if n!=len(seg.Data){return io.ErrShortWrite}
         if _,err:=hash.Write(seg.Data);err!=nil{return err}
         received+=int64(len(seg.Data))

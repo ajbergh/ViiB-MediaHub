@@ -264,3 +264,53 @@ func TestPodcastStaleTempCleanupKeepsRecentAndForeignFiles(t *testing.T){
         if !tc.removed && err!=nil{t.Fatalf("non-owned/recent file removed: %s %v",tc.name,err)}
     }
 }
+
+// The disk preflight needs no genuine 512 MiB fixture. Simulate a volume with
+// less than the remaining file size plus the reserved OS safety margin.
+func TestPodcastDownloadDiskFreePreflightRejectsLowSpaceAndProbeErrors(t *testing.T){
+ for _,tc:=range []struct{name string;available uint64;err error}{
+    {"low space",podcastDiskFreeReserve+3,nil},
+    {"unknown volume",0,errors.New("volume probe denied")},
+ }{
+    t.Run(tc.name,func(t *testing.T){
+        d,id:=seedPodcastDownload(t);defer d.Close()
+        calls:=0
+        a:=&API{db:d,dataDir:t.TempDir(),
+          podcastDiskFreeBytes:func(string)(uint64,error){calls++;return tc.available,tc.err},
+          podcastDownloadFetch:func(context.Context,string,string,string)(podcast.MediaSegment,error){
+            return podcast.MediaSegment{Start:0,End:3,Total:4,MIME:"audio/mpeg",Data:[]byte("ID3!")},nil
+          }}
+        req:=httptest.NewRecorder()
+        a.PodcastRoutes().ServeHTTP(req,httptest.NewRequest(http.MethodPost,"/episodes/"+id+"/download",nil))
+        if req.Code!=http.StatusAccepted{t.Fatalf("queue: %d",req.Code)}
+        a.processPodcastDownload(context.Background())
+        row,err:=d.GetPodcastDownload(context.Background(),id)
+        if err!=nil||row.Status!="failed"||row.ErrorCode!="download_disk_space_low"{
+            t.Fatalf("low disk not safely reported: %+v %v",row,err)
+        }
+        if calls!=1{t.Fatalf("expected one disk probe: %d",calls)}
+        path:=filepath.Join(a.dataDir,"podcasts","episodes",id+".audio")
+        if _,err:=os.Lstat(path);!errors.Is(err,os.ErrNotExist){
+            t.Fatalf("insufficient-space download published: %v",err)
+        }
+    })
+ }
+}
+
+func TestPodcastDownloadDiskFreePreflightAcceptsBudgetedSpace(t *testing.T){
+ d,id:=seedPodcastDownload(t);defer d.Close()
+ calls:=0
+ a:=&API{db:d,dataDir:t.TempDir(),
+    podcastDiskFreeBytes:func(string)(uint64,error){calls++;return podcastDiskFreeReserve+8,nil},
+    podcastDownloadFetch:func(context.Context,string,string,string)(podcast.MediaSegment,error){
+        return podcast.MediaSegment{Start:0,End:3,Total:4,MIME:"audio/mpeg",Data:[]byte("ID3!")},nil
+    }}
+ r:=httptest.NewRecorder()
+ a.PodcastRoutes().ServeHTTP(r,httptest.NewRequest(http.MethodPost,"/episodes/"+id+"/download",nil))
+ if r.Code!=http.StatusAccepted{t.Fatalf("queue: %d",r.Code)}
+ a.processPodcastDownload(context.Background())
+ row,err:=d.GetPodcastDownload(context.Background(),id)
+ if err!=nil||row.Status!="completed"||calls!=1{
+    t.Fatalf("ample disk unexpectedly refused: %+v, probes %d, err %v",row,calls,err)
+ }
+}
