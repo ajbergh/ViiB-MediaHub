@@ -13,11 +13,9 @@ import (
 
 func TestPodcastMediaURLAndRangeGuards(t *testing.T) {
     for _,raw:=range []string{
-        "http://publisher.example/audio.mp3",
         "https://127.0.0.1/audio.mp3",
         "https://localhost/audio.mp3",
         "https://user:pass@publisher.example/audio.mp3",
-        "https://publisher.example/audio.mp3?token=secret",
         "https://publisher.example:8080/audio.mp3",
         "file:///tmp/audio.mp3",
     }{
@@ -26,6 +24,24 @@ func TestPodcastMediaURLAndRangeGuards(t *testing.T) {
         }
     }
     if _,err:=ValidateMediaURL("https://publisher.example/media.mp3",false);err!=nil{t.Fatal(err)}
+    // RSS enclosure URLs commonly contain CDN signatures and non-secret
+    // tracking parameters. A validated public host may include any query;
+    // those values must never reach renderer JSON or error messages.
+    for _,source:=range []string{
+        "https://publisher.example/audio.mp3?token=temporary&expires=1800000000",
+        "https://cdn.example.org/ep.mp3?signature=a%2Bb%3D&key=my-key",
+        "http://publisher.example/audio.mp3?download=1",
+    }{
+        if _,err:=ValidateMediaURL(source,true);err!=nil{t.Errorf("valid CDN URL rejected: %v",err)}
+    }
+    for _,source:=range []string{
+        "http://localhost/audio.mp3","https://192.168.1.4/audio.mp3",
+        "https://internal.local/ep.mp3","https://audio.example.org:bad/episode",
+    }{
+        if _,err:=ValidateMediaURL(source,true);!errors.Is(err,ErrBlockedURL){
+            t.Errorf("private or malformed CDN URL accepted: %q",source)
+        }
+    }
     for _,header:=range []string{
         "bytes=-500","bytes=2-1","bytes=0-1,2-4","items=0-2","bytes=abc-",
         "bytes=18446744073709551615-","bytes=17179869184-",
@@ -86,7 +102,7 @@ func TestPodcastMediaSegment206AndBoundedOpenRange(t *testing.T) {
 func TestPodcastMediaSegmentRejectsNonRangeWrongTypeAndBlockedRedirect(t *testing.T){
     source:=bytes.Repeat([]byte("z"),64)
     scenarios:=[]struct{path string;handler func(http.ResponseWriter,*http.Request);want error}{
-        {"/full",func(w http.ResponseWriter,r *http.Request){w.Header().Set("Content-Type","audio/mpeg");w.WriteHeader(200);_,_=w.Write(source)},ErrMediaUnavailable},
+        {"/full",func(w http.ResponseWriter,r *http.Request){w.Header().Set("Content-Type","audio/mpeg");w.WriteHeader(200);_,_=w.Write(source)},ErrPublisherNoRange},
         {"/html",func(w http.ResponseWriter,r *http.Request){
             w.Header().Set("Content-Type","text/html")
             w.Header().Set("Content-Range","bytes 0-7/64")

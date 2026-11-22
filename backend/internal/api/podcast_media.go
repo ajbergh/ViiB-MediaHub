@@ -48,7 +48,12 @@ func (a *API) getPodcastEpisodeMedia(w http.ResponseWriter,r *http.Request) {
     ctx,cancel:=context.WithTimeout(r.Context(),28*time.Second)
     defer cancel()
     fetch:=a.podcastMediaFetch
-    if fetch==nil{fetch=podcast.NewFetcher(false).FetchMediaSegment}
+    if fetch==nil {
+        fetcher:=podcast.NewFetcher(false)
+        fetch=func(ctx context.Context,raw,rangeValue string)(podcast.MediaSegment,error){
+            return fetcher.FetchMediaSegmentWithHint(ctx,raw,rangeValue,declaredType)
+        }
+    }
     segment,err:=fetch(ctx,source,r.Header.Get("Range"))
     switch{
     case errors.Is(err,podcast.ErrPublisherNoRange):

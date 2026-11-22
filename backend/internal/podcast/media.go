@@ -117,6 +117,13 @@ func parseUpstreamContentRange(header string,start,end int64)(int64,int64,error)
 // even when the browser sends no Range. Never silently proxy a whole 200,
 // redirect response, compressed payload or unbounded stream.
 func (f *Fetcher) FetchMediaSegment(ctx context.Context,raw,rangeHeader string)(MediaSegment,error){
+    return f.FetchMediaSegmentWithHint(ctx,raw,rangeHeader,"")
+}
+
+// FetchMediaSegmentWithHint permits a publisher's generic octet-stream MIME
+// only when its RSS enclosure explicitly declared a supported audio type.
+// The body is still sniffed, so obvious HTML/XML cannot masquerade as audio.
+func (f *Fetcher) FetchMediaSegmentWithHint(ctx context.Context,raw,rangeHeader,declaredType string)(MediaSegment,error){
     var segment MediaSegment
     u,err:=ValidateMediaURL(raw,true)
     if err!=nil{return segment,err}
@@ -165,6 +172,10 @@ func (f *Fetcher) FetchMediaSegment(ctx context.Context,raw,rangeHeader string)(
         return segment,ErrInvalidMedia
     }
     audioType:=SupportedPodcastAudioMIME(response.Header.Get("Content-Type"))
+    if audioType=="" && (response.Header.Get("Content-Type")=="" ||
+        strings.EqualFold(response.Header.Get("Content-Type"),"application/octet-stream")){
+        audioType=SupportedPodcastAudioMIME(declaredType)
+    }
     if audioType==""{return segment,ErrInvalidMedia}
     last,total,err:=parseUpstreamContentRange(response.Header.Get("Content-Range"),start,end)
     if err!=nil{return segment,err}
@@ -175,5 +186,8 @@ func (f *Fetcher) FetchMediaSegment(ctx context.Context,raw,rangeHeader string)(
     }
     data,err:=io.ReadAll(io.LimitReader(response.Body,length+1))
     if err!=nil||int64(len(data))!=length{return segment,ErrInvalidMedia}
+    if sniffed:=http.DetectContentType(data);strings.HasPrefix(sniffed,"text/")||
+        strings.Contains(sniffed,"html")||strings.Contains(sniffed,"xml")||
+        strings.Contains(sniffed,"svg"){return segment,ErrInvalidMedia}
     return MediaSegment{Data:data,MIME:audioType,Start:start,End:last,Total:total},nil
 }
