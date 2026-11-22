@@ -59,7 +59,7 @@ export class PodcastAPIError extends Error {
     this.name = 'PodcastAPIError';
   }
 }
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+async function requestResponse(path: string, options?: RequestInit): Promise<Response> {
   const response = await fetch(BASE + path, {
     ...options,
     headers: { 'Accept': 'application/json', ...(options?.body ? { 'Content-Type': 'application/json' } : {}), ...options?.headers },
@@ -95,10 +95,18 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     }
     throw new PodcastAPIError(response.status, code, message);
   }
+  return response;
+}
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const response = await requestResponse(path, options);
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 export const podcastsAPI = {
+  async exportOPML(signal?: AbortSignal): Promise<Blob> {
+    const response = await requestResponse('/export/opml', { signal, headers: { Accept: 'application/xml' } });
+    return response.blob();
+  },
   listSubscriptions(signal?: AbortSignal): Promise<{ feeds: PodcastFeed[] }> {
     return request('/feeds', { signal });
   },

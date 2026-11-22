@@ -29,6 +29,7 @@ type podcastFeedRequest struct {
 func (a *API) PodcastRoutes() chi.Router {
     r := chi.NewRouter()
     r.Get("/feeds", a.listPodcastFeeds)
+    r.Get("/export/opml", a.exportPodcastOPML)
     r.Post("/feeds/preview", a.previewPodcastFeed)
     r.Post("/feeds", a.subscribePodcastFeed)
     r.Get("/feeds/{id}/artwork", a.getPodcastArtwork)
@@ -266,4 +267,33 @@ func podcastRasterType(t string) bool {
     case "image/png","image/jpeg","image/gif","image/webp":return true
     default:return false
     }
+}
+
+
+// exportPodcastOPML exports only currently followed public feed URLs.
+// OPML is a subscription interchange format, NOT a backup of playback state.
+func (a *API) exportPodcastOPML(w http.ResponseWriter,r *http.Request) {
+    followed,err:=a.db.ListSubscribedPodcasts(r.Context())
+    if err!=nil{
+        respondV2Error(w,r,http.StatusInternalServerError,"podcast_export_unavailable",
+            "Unable to read podcast subscriptions",true,nil)
+        return
+    }
+    subscriptions:=make([]podcast.OPMLSubscription,0,len(followed))
+    for _,feed:=range followed{
+        subscriptions=append(subscriptions,podcast.OPMLSubscription{Title:feed.Title,URL:feed.URL})
+    }
+    data,err:=podcast.ExportOPML(subscriptions)
+    if err!=nil{
+        respondV2Error(w,r,http.StatusUnprocessableEntity,"podcast_export_invalid",
+            "Subscription export includes an unsupported feed URL or exceeds limits",false,nil)
+        return
+    }
+    w.Header().Set("Content-Type","application/xml; charset=utf-8")
+    w.Header().Set("Content-Disposition",`attachment; filename="viib-podcasts.opml"`)
+    w.Header().Set("Cache-Control","no-store")
+    w.Header().Set("X-Content-Type-Options","nosniff")
+    w.Header().Set("Content-Length",strconv.Itoa(len(data)))
+    w.WriteHeader(http.StatusOK)
+    _,_=w.Write(data)
 }

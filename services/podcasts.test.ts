@@ -59,6 +59,16 @@ describe('podcastsAPI', () => {
     expect(mock.mock.calls[0][1].method).toBe('POST');
   });
 
+  it('exports OPML from the same-origin backend without JSON parsing', async () => {
+    const blob = new Blob(['<opml version="2.0"></opml>'], { type: 'application/xml' });
+    const fetchMock = vi.fn(async () => ({ ok: true, status: 200, blob: async () => blob }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await podcastsAPI.exportOPML()).toBe(blob);
+    expect(fetchMock).toHaveBeenCalledWith('/api/v2/podcasts/export/opml', expect.objectContaining({
+      headers: expect.objectContaining({ Accept: 'application/xml' }),
+    }));
+  });
+
   it('handles an empty list and 204 unsubscribe', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ feeds: [] }) })

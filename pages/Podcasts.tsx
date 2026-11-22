@@ -1,7 +1,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { ArrowLeft, Headphones, Loader2, Plus, RefreshCw, Rss, Trash2 } from 'lucide-react';
+import { ArrowLeft, Download, Headphones, Loader2, Plus, RefreshCw, Rss, Trash2 } from 'lucide-react';
 import { api } from '../services/api';
 import { podcastsAPI, type PodcastFeed, type PodcastEpisode, type PodcastPreview, type PodcastRefreshStatus } from '../services/podcasts';
 
@@ -30,6 +30,7 @@ const PodcastArtwork: React.FC<{ feedId: string; title: string; imageURL?: strin
 export const Podcasts: React.FC = () => {
   const [feeds, setFeeds] = useState<PodcastFeed[]>([]);
   const [followingQuery, setFollowingQuery] = useState('');
+  const [exporting, setExporting] = useState(false);
   const [url, setURL] = useState('');
   const [preview, setPreview] = useState<PodcastPreview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -82,6 +83,29 @@ export const Podcasts: React.FC = () => {
     }
   }, [preview, navigate, url]);
 
+
+  const exportFollowing = async () => {
+    if (exporting) return;
+    setExporting(true);
+    setError('');
+    try {
+      const content = await podcastsAPI.exportOPML();
+      const objectURL = URL.createObjectURL(content);
+      const anchor = document.createElement('a');
+      anchor.href = objectURL;
+      anchor.download = 'viib-podcasts.opml';
+      document.body.appendChild(anchor);
+      try { anchor.click(); } finally {
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(objectURL), 30000);
+      }
+    } catch (err) {
+      setError(readableError(err));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <main className="mx-auto w-full max-w-6xl space-y-8 p-5 pb-28 sm:p-8">
       <header>
@@ -122,6 +146,11 @@ export const Podcasts: React.FC = () => {
               placeholder="Search your podcasts" value={followingQuery}
               onChange={event => setFollowingQuery(event.target.value)}
               className="w-full max-w-xs rounded-md border border-surface-3 bg-surface-1 px-3 py-2 text-sm text-text-main focus-visible:outline-2 focus-visible:outline-brand" />
+            <button type="button" onClick={() => void exportFollowing()} disabled={loading || feeds.length === 0 || exporting}
+              className="inline-flex items-center gap-2 rounded-md border border-surface-3 px-3 py-2 text-sm font-semibold text-text-main hover:bg-surface-highlight disabled:opacity-50"
+              aria-label="Export followed podcasts as OPML">
+              <Download size={16} aria-hidden="true"/> {exporting ? 'Exporting…' : 'Export OPML'}
+            </button>
             <button type="button" aria-label="Refresh subscribed podcasts" onClick={() => setRevision(value => value + 1)} className="rounded-md p-2 text-text-secondary hover:bg-surface-2"><RefreshCw size={18}/></button>
           </div>
         </div>
