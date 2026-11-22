@@ -20,52 +20,8 @@ import (
     "github.com/ajbergh/viib-mediahub/internal/podcast"
 )
 
-var safePodcastEpisodeID = regexp.MustCompile(`^[0-9a-f]{40}package api
-
-import (
-    "context"
-    "crypto/rand"
-    "crypto/sha256"
-    "encoding/hex"
-    "errors"
-    "database/sql"
-    "fmt"
-    "io"
-    "net/http"
-    "os"
-    "path/filepath"
-    "regexp"
-    "strings"
-    "time"
- 
-    "github.com/ajbergh/viib-mediahub/internal/db"
-    "github.com/ajbergh/viib-mediahub/internal/podcast"
-)
-
-)
-var safePodcastTempName = regexp.MustCompile(`^\.part-[0-9]{7,20}package api
-
-import (
-    "context"
-    "crypto/rand"
-    "crypto/sha256"
-    "encoding/hex"
-    "errors"
-    "database/sql"
-    "fmt"
-    "io"
-    "net/http"
-    "os"
-    "path/filepath"
-    "regexp"
-    "strings"
-    "time"
- 
-    "github.com/ajbergh/viib-mediahub/internal/db"
-    "github.com/ajbergh/viib-mediahub/internal/podcast"
-)
-
-)
+var safePodcastEpisodeID = regexp.MustCompile(`^[0-9a-f]{40}$`)
+var safePodcastTempName = regexp.MustCompile(`^\.part-[0-9]{7,20}$`)
 
 const podcastAbandonedPartGrace = 4*time.Hour
 
@@ -178,9 +134,8 @@ func (a *API) processPodcastDownload(ctx context.Context){
 
 var errPodcastDownloadTooLarge=errors.New("podcast audio exceeds offline size limit")
 
-// Abandoned temporary transfers never become playable. Remove only old,
- // numeric os.CreateTemp-generated .part-* regular files inside ViiB's own
- // fixed podcast directory. Recent files and foreign/symlink names are kept.
+// Abandoned transfers never become playable. Sweep only old numeric os.CreateTemp
+// .part-* regular files inside the fixed private podcast directory.
 func (a *API) cleanupPodcastAbandonedParts(dir string,now time.Time){
     handle,err:=os.Open(dir)
     if err!=nil{return}
@@ -202,10 +157,7 @@ func (a *API) cleanupPodcastAbandonedParts(dir string,now time.Time){
     }
 }
 
-// First local read in each process verifies the full SHA-256 persisted at
-// download publication. Subsequent bounded HTTP Range requests reuse the
-// result only while size/modtime/digest remain stable. Never trust a file
-// merely because its name and length match SQLite.
+// Full SHA-256 on first read in this process, with size/mtime/digest-bound cache.
 func (a *API) verifyPodcastOfflineFile(id string,f *os.File,size int64,modified time.Time,want string) error{
     if size<=0||size>db.MaxPodcastDownloadBytes||len(want)!=64 {
         return errors.New("invalid podcast offline integrity metadata")
@@ -228,9 +180,7 @@ func (a *API) verifyPodcastOfflineFile(id string,f *os.File,size int64,modified 
     if a.podcastIntegrityCache==nil||len(a.podcastIntegrityCache)>=128{
         a.podcastIntegrityCache=make(map[string]podcastFileVerification)
     }
-    a.podcastIntegrityCache[id]=podcastFileVerification{
-        size:size,modified:modified,digest:want,
-    }
+    a.podcastIntegrityCache[id]=podcastFileVerification{size:size,modified:modified,digest:want}
     return nil
 }
 
@@ -246,9 +196,7 @@ func (a *API) transferPodcastDownload(ctx context.Context,id,owner string) error
     if err!=nil{return err}
     dir,err:=a.podcastStorageDir()
     if err!=nil{return err}
-    // If an earlier worker crashed after rename but before publication, its
-    // known-ID final file is orphaned. This job owns the new lease: remove
-    // only that regular file, under the same lock as offline ServeContent.
+    // Reclaim a safe known-ID final file left by a crashed old lease.
     finalName:=id+".audio"
     dest:=filepath.Join(dir,finalName)
     a.podcastDownloadFileMu.Lock()
