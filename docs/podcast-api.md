@@ -34,7 +34,7 @@ RSS 2.0 feeds during initial implementation.
 | POST | `/feeds` | Fetch/feed parse + subscribe + transactional episode snapshot; returns ID/title/count |
 | GET | `/feeds/{id}/artwork` | Proxy the followed show's HTTPS public raster artwork; max 2 MiB; PNG/JPEG/WebP/GIF only; no arbitrary URL parameter |
 | GET | `/feeds/{id}/episodes?offset=0&limit=50` | Paginate episodes, default 50, maximum 100; response includes `nextOffset` (null on last page) |
-| DELETE | `/feeds/{id}` | Unfollow but retain cached episode metadata and progress |
+| DELETE | `/feeds/{id}` | Atomically unfollow and revoke queued/in-progress podcast download leases; preserve episode metadata/progress. Attempt bounded cleanup of previously completed podcast offline copies, retrying busy files in background |
 | GET | `/feeds/{id}/refresh` | Read last check/success, next refresh, bounded failures and error code |
 | POST | `/feeds/{id}/refresh` | Queue a durable manual refresh, return 202 immediately; requires Podcast Preview enabled |
 
@@ -255,6 +255,13 @@ Player component, although desktop/Wails acceptance remains pending.
 
 **Still pending:** cross-device sync, reliable seeking on hosts that do
 not provide ranges, private/paywalled authentication, expiry handling
-for signed CDN URLs, physical disk-free preflight/retention and advanced integrity repair,
+for signed CDN URLs, configurable retention, cross-process disk-pressure resilience and advanced integrity repair,
 advanced podcast speed/silence processing and representative real-provider
 and cross-platform offline acceptance tests.
+
+
+### Early-access offline disk safety and cleanup (2026-11-22)
+
+The download worker checks the destination volume's available bytes **before each publisher-chunk write** and requires the remaining episode total plus 128 MiB of spare capacity. The probe is fail-closed; status becomes `failed` with `errorCode: "download_disk_space_low"` if disk space is insufficient or the volume is not readable. This limit is separate from the 2 GiB aggregate reservation cap, which continues to use `download_quota_exceeded`. Neither system can prevent another process from consuming disk space after the check.
+
+Unfollowing a show revokes its queued and active transfer leases in the same SQLite transaction as subscription deletion, while preserving episode progress. Completed local files are reclaimed only by the backend using fixed episode-ID names and regular-file checks; an open file on Windows can defer reclamation until a later worker pass. There is no raw file-path delete endpoint or browser storage access.
