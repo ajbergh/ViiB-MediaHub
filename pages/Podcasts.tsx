@@ -663,7 +663,7 @@ export const PodcastShow: React.FC = () => {
         {downloadStorage && <p className="mb-3 text-xs text-text-subtle">
           Offline podcast storage: {(downloadStorage.usedBytes / (1024 * 1024)).toFixed(0)} MiB
           {' / '}{(downloadStorage.maxBytes / (1024 * 1024 * 1024)).toFixed(1)} GiB reserved
-        </p>
+        </p>}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-bold text-text-main">Episodes ({episodes.length} loaded)</h2>
           <div aria-label="Loaded episode bulk actions" className="flex flex-wrap items-center gap-2">
@@ -784,7 +784,7 @@ export const PodcastShow: React.FC = () => {
                     className="inline-flex items-center gap-1.5 rounded-md border border-surface-3 px-3 py-1.5 text-xs font-semibold text-text-secondary hover:text-text-main disabled:opacity-50">
                     <Download size={14} aria-hidden="true" />
                     {workingDownload === episode.id ? 'Working…' : label}
-                  </button>
+                  </button>}
                   {status && <span role="status" className="text-xs text-text-subtle">
                     {completed ? 'Available offline' : status.status === 'downloading'
                       ? `Downloading${percent === null ? '' : ' ' + percent + '%'}`
