@@ -34,11 +34,16 @@ export const PodcastEpisodePlayer: React.FC<Props> = ({ episode, showTitle, onCl
         queuedRef.current = false;
         const current = progressRef.current;
         if (!current) break;
+        const positionMs = positionRef.current;
+        const listenedMs = baseListenedRef.current + sessionListenedRef.current;
+        const isPlayed = playedRef.current;
+        // Do not increment a revision just because an unplayed player was
+        // opened/closed, or because pause/cleanup triggered a duplicate save.
+        if (positionMs === current.positionMs && listenedMs <= current.listenedMs &&
+            isPlayed === current.isPlayed) break;
         try {
           const next = await podcastsAPI.setProgress(episode.id, {
-            positionMs: positionRef.current,
-            listenedMs: baseListenedRef.current + sessionListenedRef.current,
-            isPlayed: playedRef.current, expectedRevision: current.revision,
+            positionMs, listenedMs, isPlayed, expectedRevision: current.revision,
           });
           progressRef.current = next;
           lastSaveRef.current = Date.now();
