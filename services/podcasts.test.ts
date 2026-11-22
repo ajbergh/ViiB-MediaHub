@@ -93,6 +93,17 @@ describe('podcastsAPI', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('/api/v2/podcasts/feeds/id%2Fone');
   });
 
+  it('requests a bounded Continue Listening list', async () => {
+    const records = [{ id: 'ep1', feedId: 'feed1', feedTitle: 'A show', positionMs: 32000 }];
+    const fetchMock = vi.fn(async (_url: string, _options?: RequestInit) => ({
+      ok: true, status: 200, json: async () => ({ episodes: records }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await podcastsAPI.listContinueListening(12);
+    expect(result.episodes).toEqual(records);
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v2/podcasts/episodes/continue?limit=12');
+  });
+
   it('loads and saves episode progress with an optimistic revision', async () => {
     const response = { episodeId: 'e/1', positionMs: 4000, listenedMs: 4000, isPlayed: true, revision: 2 };
     const fetchMock = vi.fn(async (_url: string, _options?: RequestInit) => ({

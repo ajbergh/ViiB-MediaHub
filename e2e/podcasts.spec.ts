@@ -107,6 +107,11 @@ test('Podcasts follows public RSS and browses episodes without playback', async 
   );
   await page.getByRole('button', { name: 'Mark First episode played' }).click();
   await expect(page.getByRole('button', { name: 'Mark First episode unplayed' })).toBeVisible();
+  await page.getByRole('combobox', { name: 'Filter episodes by played status' }).selectOption('unplayed');
+  await expect(page.getByRole('heading', { name: 'First episode' })).toHaveCount(0);
+  await page.getByRole('combobox', { name: 'Filter episodes by played status' }).selectOption('played');
+  await expect(page.getByRole('heading', { name: 'First episode' })).toBeVisible();
+
   await page.getByRole('button', { name: 'Refresh feed' }).click();
   await expect(page.getByText('Refresh queued. Episodes will update when the publisher responds.')).toBeVisible();
   expect(refreshed).toBe(1);
@@ -287,4 +292,33 @@ test('OPML import previews safely and reports per-feed failures with cancellatio
   await expect(page.getByText('Podcast Two: feed_unavailable')).toBeVisible();
   expect(imports).toBe(2);
   await expect(page.getByRole('button', { name: 'Import 1 feed' })).toBeEnabled();
+});
+
+
+test('Continue Listening only displays saved-progress entries and opens followed show', async ({ page }) => {
+  await page.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.origin !== 'http://127.0.0.1:4173') return route.abort();
+    if (url.pathname === '/api/v2/podcasts/episodes/continue') {
+      expect(url.searchParams.get('limit')).toBe('12');
+      return route.fulfill({ json: { episodes: [{
+        id: 'episode-42', feedId: feedId, feedTitle: 'Following a podcast',
+        title: 'An unfinished episode', positionMs: 185000, listenedMs: 120000,
+        durationMs: 1800000, isPlayed: false, progressRevision: 1,
+      }] } });
+    }
+    if (url.pathname === '/api/v2/podcasts/feeds') return route.fulfill({ json: { feeds: [{
+      id: feedId, url: feedURL, title: 'Following a podcast', author: 'Publisher',
+      description: '', imageUrl: '', language: 'en', episodeCount: 1,
+    }] } });
+    if (url.pathname.startsWith('/api/')) return route.fulfill({ status: 503,
+      json: { error: { code: 'synthetic', message: 'No backend in test' } } });
+    return route.continue();
+  });
+  await page.goto('/podcasts');
+  await expect(page.getByRole('heading', { name: 'Continue Listening' })).toBeVisible();
+  const section = page.getByRole('region', { name: 'Continue listening' });
+  await expect(section.getByText('An unfinished episode')).toBeVisible();
+  await expect(section.getByText('Saved at 3 min · View episode')).toBeVisible();
+  await expect(section.getByRole('link')).toHaveAttribute('href', '/podcasts/show/' + feedId);
 });

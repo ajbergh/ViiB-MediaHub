@@ -6,7 +6,7 @@ import (
     "testing"
 )
 
-func TestOPMLImportNestedValidatedDeduplicated(t *testing.T){
+func TestPodcastOPMLImportNestedValidatedDeduplicated(t *testing.T){
     input:=`<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Subscribed</title></head><body>
 <outline text="News"><outline type="rss" text="News &amp; Science" xmlUrl="https://public.example/rss.xml"/>
@@ -26,7 +26,7 @@ func TestOPMLImportNestedValidatedDeduplicated(t *testing.T){
     }
 }
 
-func TestOPMLImportRejectsEntitiesDepthAndOversize(t *testing.T){
+func TestPodcastOPMLImportRejectsEntitiesDepthAndOversize(t *testing.T){
     cases:=[]string{
         `<!DOCTYPE opml [ <!ENTITY password SYSTEM "file:///private"> ]><opml version="2.0"><body/></opml>`,
         `<opml version="1.0"><body/></opml>`,
@@ -42,7 +42,7 @@ func TestOPMLImportRejectsEntitiesDepthAndOversize(t *testing.T){
     }
 }
 
-func TestOPMLImportEmptyBody(t *testing.T){
+func TestPodcastOPMLImportEmptyBody(t *testing.T){
     preview,err:=ParseOPMLImport([]byte(`<opml version="2.0"><body></body></opml>`))
     if err!=nil||len(preview.Feeds)!=0{t.Fatalf("empty import: %+v %v",preview,err)}
 }
