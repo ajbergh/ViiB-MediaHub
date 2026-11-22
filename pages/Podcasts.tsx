@@ -139,7 +139,7 @@ export const Podcasts: React.FC = () => {
 
   const filteredDownloads = downloads.filter(row =>
     downloadsFilter === 'all'
-    || (downloadsFilter === 'active' && (row.status === 'queued' || row.status === 'downloading'))
+    || (downloadsFilter === 'active' && (row.status === 'queued' || row.status === 'downloading' || row.status === 'paused'))
     || (downloadsFilter === 'completed' && row.status === 'completed')
     || (downloadsFilter === 'attention' && ['failed', 'canceled', 'paused'].includes(row.status)));
 
@@ -416,7 +416,7 @@ export const Podcasts: React.FC = () => {
         </p>}
         {filteredDownloads.length > 0 && <div className="mt-4 space-y-2">
           {filteredDownloads.map(row => {
-            const isActive = row.status === 'queued' || row.status === 'downloading';
+            const isActive = row.status === 'queued' || row.status === 'downloading' || row.status === 'paused';
             const completed = row.status === 'completed';
             const playableElsewhere = selectedPodcastId === row.episodeId;
             const progress = row.expectedBytes ? Math.min(100, Math.floor(row.bytesReceived * 100 / row.expectedBytes)) : null;
