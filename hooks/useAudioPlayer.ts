@@ -72,7 +72,14 @@ const getErrorMessage = (errorType: StreamingErrorType): string => {
     }
 };
 
-export const useAudioPlayer = () => {
+export interface AudioPlayerOptions {
+    onBeforeAdvance?: () => boolean;
+}
+
+export const useAudioPlayer = (options?: AudioPlayerOptions) => {
+    const onBeforeAdvanceRef = useRef(options?.onBeforeAdvance);
+    onBeforeAdvanceRef.current = options?.onBeforeAdvance;
+
     // Dual Refs for Crossfading
     const primaryRef = useRef<HTMLAudioElement>(null);
     const secondaryRef = useRef<HTMLAudioElement>(null);
@@ -629,6 +636,12 @@ export const useAudioPlayer = () => {
                 if (skipOutro > 0 && dur > skipOutro + 5 && time >= dur - skipOutro && outroSkippedForRef.current !== currentSong.id) {
                     outroSkippedForRef.current = currentSong.id;
                     podcastProgressRef.current?.finished(dur);
+                    if (onBeforeAdvanceRef.current?.()) {
+                        player.pause();
+                        const { isPlaying: stillPlaying, togglePlay } = useStore.getState();
+                        if (stillPlaying) togglePlay();
+                        return;
+                    }
                     nextSong();
                     return;
                 }
@@ -682,11 +695,15 @@ export const useAudioPlayer = () => {
     const handleEnded = (playerIndex: number) => {
         if (playerIndex !== activePlayerIndex.current) return;
         
-        const { currentSong, recordPlay, nextSong, recordListenEvent, recordStreamEvent } = useStore.getState();
+        const { currentSong, recordPlay, nextSong, recordListenEvent, recordStreamEvent, isPlaying: stillPlaying, togglePlay } = useStore.getState();
         
         if (currentSong?.source === 'podcast') {
             const player = playerIndex === 0 ? primaryRef.current : secondaryRef.current;
             podcastProgressRef.current?.finished(player?.duration || currentSong.duration || 0);
+            if (onBeforeAdvanceRef.current?.()) {
+                if (stillPlaying) togglePlay();
+                return;
+            }
             nextSong();
             return;
         }
@@ -722,6 +739,10 @@ export const useAudioPlayer = () => {
                     timestamp: Date.now()
                 });
             }
+        }
+        if (onBeforeAdvanceRef.current?.()) {
+            if (stillPlaying) togglePlay();
+            return;
         }
         nextSong();
     };

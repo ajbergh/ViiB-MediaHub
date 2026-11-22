@@ -72,12 +72,22 @@ func upsertPodcastEpisodes(ctx context.Context,tx *sql.Tx,feedID string,episodes
                 }
             }
         }
+        richDesc:=podcast.SanitizeRichHTML(e.RichDescription)
         _,err=tx.ExecContext(ctx,
-            "INSERT INTO podcast_episodes (id,feed_id,identity_key,guid,title,description,enclosure_url,enclosure_mime,published_at,duration_ms,created_at,updated_at) "+
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(feed_id,identity_key) DO UPDATE SET "+
+            "INSERT INTO podcast_episodes (id,feed_id,identity_key,guid,title,description,enclosure_url,enclosure_mime,published_at,duration_ms,"+
+            "chapters_url,chapters_type,transcript_url,transcript_type,website_url,enclosure_bytes,episode_number,season_number,rich_description,created_at,updated_at) "+
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(feed_id,identity_key) DO UPDATE SET "+
             "title=excluded.title,description=excluded.description,enclosure_url=excluded.enclosure_url,enclosure_mime=excluded.enclosure_mime,"+
-            "published_at=excluded.published_at,duration_ms=excluded.duration_ms,listed_in_feed=1,updated_at=excluded.updated_at",
-            episodeID,feedID,key,e.GUID,e.Title,e.Description,e.EnclosureURL,e.EnclosureType,published,e.DurationSeconds*1000,now,now)
+            "published_at=excluded.published_at,duration_ms=excluded.duration_ms,"+
+            "chapters_url=excluded.chapters_url,chapters_type=excluded.chapters_type,"+
+            "transcript_url=excluded.transcript_url,transcript_type=excluded.transcript_type,"+
+            "website_url=excluded.website_url,enclosure_bytes=excluded.enclosure_bytes,"+
+            "episode_number=excluded.episode_number,season_number=excluded.season_number,"+
+            "rich_description=excluded.rich_description,listed_in_feed=1,updated_at=excluded.updated_at",
+            episodeID,feedID,key,e.GUID,e.Title,e.Description,e.EnclosureURL,e.EnclosureType,published,e.DurationSeconds*1000,
+            strings.TrimSpace(e.ChaptersURL),strings.TrimSpace(e.ChaptersType),
+            strings.TrimSpace(e.TranscriptURL),strings.TrimSpace(e.TranscriptType),
+            strings.TrimSpace(e.WebsiteURL),e.EnclosureBytes,e.EpisodeNumber,e.SeasonNumber,richDesc,now,now)
         if err!=nil{return fmt.Errorf("save podcast episode: %w",err)}
     }
     return nil

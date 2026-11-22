@@ -21,6 +21,84 @@ export interface PodcastEpisode {
   positionMs?: number;
   listenedMs?: number;
   progressRevision?: number;
+  hasChapters?: boolean;
+  hasTranscript?: boolean;
+  websiteUrl?: string;
+  enclosureBytes?: number;
+  episodeNumber?: number;
+  seasonNumber?: number;
+  starred?: boolean;
+  archived?: boolean;
+}
+export interface PodcastEpisodeDetail extends PodcastEpisode {
+  feedTitle: string;
+  feedAuthor: string;
+  richDescription: string;
+  chaptersType?: string;
+  transcriptType?: string;
+  bookmarkCount: number;
+  downloadStatus?: string;
+  defaultSpeed?: number;
+  skipIntroSeconds?: number;
+  skipOutroSeconds?: number;
+}
+export interface PodcastChapter {
+  startTime: number;
+  endTime?: number;
+  title: string;
+  img?: string;
+  url?: string;
+  toc?: boolean;
+}
+export interface PodcastTranscriptCue {
+  startMs: number;
+  endMs: number;
+  speaker?: string;
+  text: string;
+}
+export interface PodcastBookmark {
+  id: string;
+  episodeId: string;
+  positionMs: number;
+  note: string;
+  createdAt: number;
+}
+export type PodcastEpisodeView = 'inbox' | 'starred' | 'in_progress' | 'played' | 'archived' | 'all';
+export interface PodcastViewEpisode extends PodcastEpisode {
+  feedTitle: string;
+  feedAuthor: string;
+  starred: boolean;
+  archived: boolean;
+  downloadStatus?: string;
+}
+export interface PodcastQueueItem extends PodcastViewEpisode {
+  sortKey: number;
+  addedAt: number;
+}
+export interface PodcastRetentionPolicy {
+  keepLatestCount: number;
+}
+export interface PodcastDirectoryStatus {
+  configured: boolean;
+  provider: 'podcast_index' | 'none' | string;
+  keyHint: string;
+}
+export interface PodcastDirectoryShow {
+  id: number;
+  title: string;
+  author?: string;
+  description?: string;
+  feedUrl: string;
+  websiteUrl?: string;
+  artworkUrl?: string;
+  language?: string;
+  categories?: string[];
+  episodeCount?: number;
+}
+export interface PodcastEventsSnapshot {
+  downloads: PodcastDownload[];
+  storage: PodcastStorage;
+  refreshCount: number;
 }
 export interface PodcastContinueEpisode extends PodcastEpisode {
   feedTitle: string;
@@ -258,5 +336,107 @@ export const podcastsAPI = {
   },
   unsubscribe(feedId: string, signal?: AbortSignal): Promise<void> {
     return request('/feeds/' + encodeURIComponent(feedId), { method: 'DELETE', signal });
+  },
+  getDiscoverStatus(signal?: AbortSignal): Promise<{ status: PodcastDirectoryStatus }> {
+    return request('/discover/status', { signal });
+  },
+  setDiscoverCredentials(apiKey: string, apiSecret: string, signal?: AbortSignal): Promise<{ status: PodcastDirectoryStatus }> {
+    return request('/discover/credentials', {
+      method: 'PUT', body: JSON.stringify({ apiKey, apiSecret }), signal,
+    });
+  },
+  deleteDiscoverCredentials(signal?: AbortSignal): Promise<{ status: PodcastDirectoryStatus }> {
+    return request('/discover/credentials', { method: 'DELETE', signal });
+  },
+  searchDirectory(q: string, max = 20, signal?: AbortSignal): Promise<{ shows: PodcastDirectoryShow[]; provider: string; query: string; count: number }> {
+    const query = new URLSearchParams({ q, max: String(max) });
+    return request('/search?' + query.toString(), { signal });
+  },
+  trendingDirectory(options: { category?: string; lang?: string; max?: number } = {}, signal?: AbortSignal): Promise<{ shows: PodcastDirectoryShow[]; provider: string; count: number }> {
+    const query = new URLSearchParams();
+    if (options.category) query.set('category', options.category);
+    if (options.lang) query.set('lang', options.lang);
+    if (options.max) query.set('max', String(options.max));
+    const qs = query.toString();
+    return request('/trending' + (qs ? '?' + qs : ''), { signal });
+  },
+  listEpisodesByView(
+    view: PodcastEpisodeView,
+    options: { q?: string; offset?: number; limit?: number } = {},
+    signal?: AbortSignal,
+  ): Promise<{ episodes: PodcastViewEpisode[]; nextOffset: number | null }> {
+    const query = new URLSearchParams({
+      view,
+      offset: String(options.offset ?? 0),
+      limit: String(options.limit ?? 50),
+    });
+    if (options.q?.trim()) query.set('q', options.q.trim());
+    return request('/episodes?' + query.toString(), { signal });
+  },
+  searchEpisodes(q: string, offset = 0, limit = 50, signal?: AbortSignal): Promise<{ episodes: PodcastViewEpisode[]; nextOffset: number | null }> {
+    const query = new URLSearchParams({ q, offset: String(offset), limit: String(limit) });
+    return request('/episodes/search?' + query.toString(), { signal });
+  },
+  getEpisodeDetail(episodeId: string, signal?: AbortSignal): Promise<{ episode: PodcastEpisodeDetail }> {
+    return request('/episodes/' + encodeURIComponent(episodeId), { signal });
+  },
+  patchEpisodeState(
+    episodeId: string,
+    patch: {
+      expectedRevision?: number;
+      starred?: boolean;
+      archived?: boolean;
+      isPlayed?: boolean;
+      positionMs?: number;
+      listenedMs?: number;
+    },
+    signal?: AbortSignal,
+  ): Promise<{ state: PodcastProgress & { starred: boolean; archived: boolean } }> {
+    return request('/episodes/' + encodeURIComponent(episodeId) + '/state', {
+      method: 'PATCH', body: JSON.stringify(patch), signal,
+    });
+  },
+  getEpisodeChapters(episodeId: string, signal?: AbortSignal): Promise<{ chapters: PodcastChapter[]; source: string }> {
+    return request('/episodes/' + encodeURIComponent(episodeId) + '/chapters', { signal });
+  },
+  getEpisodeTranscript(episodeId: string, signal?: AbortSignal): Promise<{ cues: PodcastTranscriptCue[]; format: string }> {
+    return request('/episodes/' + encodeURIComponent(episodeId) + '/transcript', { signal });
+  },
+  listBookmarks(episodeId: string, signal?: AbortSignal): Promise<{ bookmarks: PodcastBookmark[] }> {
+    return request('/episodes/' + encodeURIComponent(episodeId) + '/bookmarks', { signal });
+  },
+  createBookmark(episodeId: string, positionMs: number, note: string, signal?: AbortSignal): Promise<{ bookmark: PodcastBookmark }> {
+    return request('/episodes/' + encodeURIComponent(episodeId) + '/bookmarks', {
+      method: 'POST', body: JSON.stringify({ positionMs, note }), signal,
+    });
+  },
+  deleteBookmark(episodeId: string, bookmarkId: string, signal?: AbortSignal): Promise<void> {
+    return request('/episodes/' + encodeURIComponent(episodeId) + '/bookmarks/' + encodeURIComponent(bookmarkId), {
+      method: 'DELETE', signal,
+    });
+  },
+  getQueue(signal?: AbortSignal): Promise<{ queue: PodcastQueueItem[] }> {
+    return request('/queue', { signal });
+  },
+  addToQueue(episodeId: string, position: 'next' | 'end' = 'end', signal?: AbortSignal): Promise<{ queue: PodcastQueueItem[] }> {
+    return request('/queue', {
+      method: 'POST', body: JSON.stringify({ episodeId, position }), signal,
+    });
+  },
+  replaceQueue(episodeIds: string[], signal?: AbortSignal): Promise<{ queue: PodcastQueueItem[] }> {
+    return request('/queue', {
+      method: 'PUT', body: JSON.stringify({ episodeIds }), signal,
+    });
+  },
+  removeFromQueue(episodeId: string, signal?: AbortSignal): Promise<void> {
+    return request('/queue/' + encodeURIComponent(episodeId), { method: 'DELETE', signal });
+  },
+  getRetentionPolicy(feedId: string, signal?: AbortSignal): Promise<{ policy: PodcastRetentionPolicy }> {
+    return request('/feeds/' + encodeURIComponent(feedId) + '/retention', { signal });
+  },
+  setRetentionPolicy(feedId: string, policy: PodcastRetentionPolicy, signal?: AbortSignal): Promise<{ policy: PodcastRetentionPolicy }> {
+    return request('/feeds/' + encodeURIComponent(feedId) + '/retention', {
+      method: 'PUT', body: JSON.stringify(policy), signal,
+    });
   },
 };

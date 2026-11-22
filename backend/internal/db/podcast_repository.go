@@ -38,12 +38,20 @@ type PodcastEpisodeRecord struct {
     EnclosureURL string `json:"-"`
     HasAudio bool `json:"hasAudio"`
     EnclosureType string `json:"enclosureType"`
+    EnclosureBytes int64 `json:"enclosureBytes,omitempty"`
+    WebsiteURL string `json:"websiteUrl,omitempty"`
+    EpisodeNumber int `json:"episodeNumber,omitempty"`
+    SeasonNumber int `json:"seasonNumber,omitempty"`
+    HasChapters bool `json:"hasChapters"`
+    HasTranscript bool `json:"hasTranscript"`
     PublishedAt int64 `json:"publishedAt"`
     DurationMs int64 `json:"durationMs"`
     IsPlayed bool `json:"isPlayed"`
     PositionMs int64 `json:"positionMs"`
     ListenedMs int64 `json:"listenedMs"`
     ProgressRevision int64 `json:"progressRevision"`
+    Starred bool `json:"starred"`
+    Archived bool `json:"archived"`
 }
 
 func podcastStableID(parts ...string) string {
@@ -245,8 +253,11 @@ func (d *DB) ListPodcastEpisodesPage(ctx context.Context,feedID string,limit,off
     if offset<0 {offset=0}
     rows,err:=d.conn.QueryContext(ctx,`
 SELECT e.id,e.feed_id,e.guid,e.title,e.description,e.enclosure_url,e.enclosure_mime,
+ e.enclosure_bytes,e.website_url,e.episode_number,e.season_number,
+ e.chapters_url,e.transcript_url,
  COALESCE(e.published_at,0),e.duration_ms,
- COALESCE(s.is_played,0),COALESCE(s.position_ms,0),COALESCE(s.listened_ms,0),COALESCE(s.revision,0)
+ COALESCE(s.is_played,0),COALESCE(s.position_ms,0),COALESCE(s.listened_ms,0),
+ COALESCE(s.revision,0),COALESCE(s.starred,0),COALESCE(s.archived,0)
 FROM podcast_episodes e
 LEFT JOIN podcast_episode_state s ON s.episode_id=e.id
 WHERE e.feed_id=?
@@ -257,14 +268,22 @@ ORDER BY COALESCE(e.published_at,0) DESC,e.id ASC LIMIT ? OFFSET ?
     result:=make([]PodcastEpisodeRecord,0,limit+1)
     for rows.Next(){
         var e PodcastEpisodeRecord
-        var played int64
+        var chaptersURL,transcriptURL string
+        var played,starred,archived int64
         if err:=rows.Scan(&e.ID,&e.FeedID,&e.GUID,&e.Title,&e.Description,
-            &e.EnclosureURL,&e.EnclosureType,&e.PublishedAt,&e.DurationMs,
-            &played,&e.PositionMs,&e.ListenedMs,&e.ProgressRevision);err!=nil{
+            &e.EnclosureURL,&e.EnclosureType,
+            &e.EnclosureBytes,&e.WebsiteURL,&e.EpisodeNumber,&e.SeasonNumber,
+            &chaptersURL,&transcriptURL,
+            &e.PublishedAt,&e.DurationMs,
+            &played,&e.PositionMs,&e.ListenedMs,&e.ProgressRevision,&starred,&archived);err!=nil{
             return nil,false,err
         }
         e.IsPlayed=played==1
+        e.Starred=starred==1
+        e.Archived=archived==1
         e.HasAudio=e.EnclosureURL!=""
+        e.HasChapters=chaptersURL!=""
+        e.HasTranscript=transcriptURL!=""
         result=append(result,e)
     }
     if err=rows.Err();err!=nil{return nil,false,err}

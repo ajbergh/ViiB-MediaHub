@@ -7,7 +7,12 @@
 ## What you can do on this branch
 
 - Open **Podcasts** from the Sidebar without connecting Spotify or enabling podcast refresh.
+- **Discover podcasts (`/podcasts/discover`)**: Search and browse trending shows via Podcast Index using your own encrypted API key and secret (configured inline or in **Settings → Integrations & Spotify**), preview RSS episodes before following, or fall back to pasting any public HTTPS RSS URL directly without a directory key.
 - Follow a supported **public HTTPS RSS 2.0** feed by pasting its URL; preview its title and first episodes before following.
+- Triage across shows in **Podcasts → Episodes** (`Inbox`, `Starred`, `In Progress`, `Played`, `Archived`, `All`) with cross-show local search, Star/Archive/Played controls, and a durable **Podcasts → Queue** tab that can be reordered and played into the shared ViiB player.
+- Open any **Episode Detail (`/podcasts/episode/:id`)** page or the **Now Playing → Chapters & Notes** drawer to read sanitized HTML show notes, jump to **Chapters** (Podcasting 2.0 JSON / Podlove), search and click-to-seek **Transcripts** (JSON, VTT, SRT, text), and save timestamped **Bookmarks** (also via the quick-bookmark button in the Player).
+- Configure per-show **Download retention** (`Keep all` or `Latest 1 / 3 / 5 / 10` completed episodes) on each show page; starred and currently active episodes are protected from automatic retention pruning.
+- Receive live **Downloads** updates over Server-Sent Events (`/api/v2/podcasts/events`) with automatic reconnect and fallback polling, and use the podcast-aware **Sleep Timer** (`End of This Episode` / `By Episodes` / timed fade).
 - Browse followed shows, load additional episode pages, search followed show titles/authors and filter the **currently loaded** episode list by title/description, Played, Unplayed, In progress (unplayed with a saved position), or Not started (unplayed with no saved position). The visible count and empty state reflect loaded episodes, not the full archive.
 - Stream public audio with **Listen** using the same persistent ViiB music/Plex player, queue, volume, EQ, Now Playing and OS Media Session hooks. Supported publishers provide byte-range seeking; not all CDN origins honor random byte ranges.
 - Return to **Podcasts → Continue Listening** to resume an unfinished followed episode. State is stored in podcast-specific SQLite tables, not music listening statistics.
@@ -53,7 +58,7 @@ Following and playback do not require the optional refresh setting. The **Enable
 
 Public RSS and artwork retrieval remain strict public-Internet operations. The Go backend validates DNS/IP and redirects, blocks local/private addresses, and restricts media size and MIME. Public audio enclosures may be HTTP(S) and contain CDN-signed query parameters, but those remote URLs stay backend-only; the browser receives only local episode-ID media routes. Do not bypass these restrictions for a problematic publisher.
 
-**Not implemented / not qualified yet:** Podcast Index directory search, authenticated/private RSS, durable curated Up Next/Inbox or starred workflow, chapter/transcript features, unplayed-N auto policies, advanced configurable retention, richer retry controls and full automatic corruption repair, comprehensive native media-key testing, all-publisher HTTP behavior, and release qualification across Windows/macOS/Linux. Initial offline download and local-range playback exist on the feature branch, **but real network-disconnected restart acceptance remains open**. A 200-only publisher can now be downloaded in a bounded full-file pass, after which local seeking works through the shared player. Live online seeking on an unbuffered 200-only source may still be unavailable.
+**Not implemented / not qualified yet:** Authenticated/private RSS feeds, AI smart podcast playlists, unplayed-N auto-download rules, live multi-OS Wails/browser release qualification across Windows/macOS/Linux, and real-world disconnected restart acceptance. Initial offline download, local-range playback, Podcast Index discovery, chapters/transcripts/bookmarks, durable queue, triage views, and per-show retention are implemented on the feature branch, **pending full CI and multi-platform runtime qualification**. A 200-only publisher can now be downloaded in a bounded full-file pass, after which local seeking works through the shared player. Live online seeking on an unbuffered 200-only source may still be unavailable.
 
 ## Development and troubleshooting
 
@@ -69,3 +74,5 @@ Public RSS and artwork retrieval remain strict public-Internet operations. The G
 - [Living implementation roadmap](PODCAST_CLIENT_IMPLEMENTATION_ROADMAP.md)
 - [ADR 0001: local-first boundaries](adr/0001-podcasts-local-first-boundaries.md)
 - [ADR 0002: shared player / byte-range streaming](adr/0002-podcast-byte-range-streaming.md)
+- [ADR 0003: podcast directory credentials](adr/0003-podcast-directory-credentials.md)
+- [ADR 0004: podcast content & retention policy](adr/0004-podcast-content-retention-policy.md)

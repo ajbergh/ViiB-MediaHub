@@ -100,6 +100,8 @@ export interface Song {
   podcastDefaultSpeed?: number;
   podcastSkipIntroSeconds?: number;
   podcastSkipOutroSeconds?: number;
+  podcastHasChapters?: boolean;
+  podcastHasTranscript?: boolean;
   sourceName?: string;
   stemStatus?: 'none' | 'discovered' | 'validating' | 'ready' | 'stale' | 'invalid' | 'unavailable';
 }

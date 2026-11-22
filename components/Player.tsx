@@ -29,7 +29,7 @@ import React, { lazy, Suspense, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
 import { podcastsAPI, type PodcastGlobalPlaybackSettings, type PodcastShowPlaybackSettings } from '../services/podcasts';
-import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, ListMusic, Maximize2, Minimize2, Pin, PinOff, SlidersHorizontal, Loader2, AlertCircle, RefreshCw, Wifi, Moon, Info } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, ListMusic, Maximize2, Minimize2, Pin, PinOff, SlidersHorizontal, Loader2, AlertCircle, RefreshCw, Wifi, Moon, Info, Bookmark } from 'lucide-react';
 import { formatTime, generateGradient, getAudioFormatInfo } from '../utils';
 import { ContextMenuType, Song } from '../types';
 import { Visualizer } from './Visualizer';
@@ -278,14 +278,23 @@ export const Player: React.FC = () => {
   const setSkinnyMode = useStore(state => state.setSkinnyMode);
   const setSkinnyAlwaysOnTop = useStore(state => state.setSkinnyAlwaysOnTop);
   
+  // Sleep timer state
+  const [isSleepTimerOpen, setIsSleepTimerOpen] = useState(false);
+  const sleepTimer = useSleepTimer();
+  const sleepOnEndRef = useRef(sleepTimer.onSongEnd);
+  sleepOnEndRef.current = sleepTimer.onSongEnd;
+
   const { 
       primaryRef, secondaryRef,
       currentTime, duration, handleTimeUpdate, handleLoadedMetadata, handlePause, handleEnded, seek 
-  } = useAudioPlayer();
+  } = useAudioPlayer({
+      onBeforeAdvance: () => sleepOnEndRef.current(),
+  });
 
   // Podcast long-form controls share the existing dual HTMLAudio transport.
   // Music/Plex return to 1x while each show can override the global podcast speed.
   const isPodcast = currentSong?.source === 'podcast';
+  const [isBookmarking, setIsBookmarking] = useState(false);
   const [globalPodcastSettings, setGlobalPodcastSettings] = useState<PodcastGlobalPlaybackSettings>({
     defaultSpeed: 1,
     skipBackSeconds: 15,
@@ -293,6 +302,44 @@ export const Player: React.FC = () => {
   });
   const [podcastPlaybackRate, setPodcastPlaybackRate] = useState(1);
   const manualRateOverrideRef = useRef(false);
+
+  React.useEffect(() => {
+    const onPodcastSeek = (event: Event) => {
+      const detail = (event as CustomEvent<{ episodeId?: string; seconds?: number }>).detail;
+      if (!detail || typeof detail.seconds !== 'number' || !Number.isFinite(detail.seconds)) return;
+      const active = useStore.getState().currentSong;
+      if (active?.source !== 'podcast' || !active.podcastEpisodeId) return;
+      if (detail.episodeId && detail.episodeId !== active.podcastEpisodeId) return;
+      seek(Math.max(0, detail.seconds));
+    };
+    window.addEventListener('viib:podcast-seek', onPodcastSeek);
+    return () => window.removeEventListener('viib:podcast-seek', onPodcastSeek);
+  }, [seek]);
+
+  const handleQuickBookmark = async () => {
+    const active = useStore.getState().currentSong;
+    if (active?.source !== 'podcast' || !active.podcastEpisodeId || isBookmarking) return;
+    setIsBookmarking(true);
+    const positionMs = Math.max(0, Math.round(currentTime * 1000));
+    try {
+      const { bookmark } = await podcastsAPI.createBookmark(active.podcastEpisodeId, positionMs, '');
+      window.dispatchEvent(new CustomEvent('viib:podcast-bookmark-created', {
+        detail: { episodeId: active.podcastEpisodeId, bookmark },
+      }));
+      useStore.getState().showToast({
+        type: 'success',
+        message: `Bookmarked at ${formatTime(positionMs / 1000)}`,
+        duration: 2500,
+      });
+    } catch {
+      useStore.getState().showToast({
+        type: 'error',
+        message: 'Failed to save bookmark',
+      });
+    } finally {
+      setIsBookmarking(false);
+    }
+  };
 
   React.useEffect(() => {
     const controller = new AbortController();
@@ -352,10 +399,6 @@ export const Player: React.FC = () => {
     isPodcast ? globalPodcastSettings.skipBackSeconds : 10,
     isPodcast ? globalPodcastSettings.skipForwardSeconds : 10,
   );
-
-  // Sleep timer state
-  const [isSleepTimerOpen, setIsSleepTimerOpen] = useState(false);
-  const sleepTimer = useSleepTimer();
 
   // Keep the media elements mounted while switching layouts so playback and
   // crossfade state are not interrupted by entering or leaving skinny mode.
@@ -728,6 +771,19 @@ export const Player: React.FC = () => {
 
         {/* Volume & Extras - Hidden on mobile, shown on tablet+ */}
         <div className="hidden md:flex items-center justify-end gap-3">
+            {isPodcast && currentSong.podcastEpisodeId && (
+                <Button
+                    onClick={() => void handleQuickBookmark()}
+                    disabled={isBookmarking}
+                    title="Bookmark current moment"
+                    aria-label="Bookmark current moment"
+                    variant="ghost"
+                    className="rounded-full p-2 text-text-secondary hover:text-brand"
+                >
+                    {isBookmarking ? <Loader2 size={18} className="animate-spin" /> : <Bookmark size={18} />}
+                </Button>
+            )}
+
             {/* Song Info Properties */}
             <Button
                 onClick={() => currentSong && openSongInfoModal(currentSong)}

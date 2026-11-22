@@ -123,6 +123,8 @@ CREATE INDEX IF NOT EXISTS idx_podcast_download_state
     ON podcast_downloads(status, updated_at);
 CREATE INDEX IF NOT EXISTS idx_podcast_queue_order
     ON podcast_queue(sort_key, added_at);
+CREATE INDEX IF NOT EXISTS idx_podcast_bookmarks_episode
+    ON podcast_bookmarks(episode_id, position_ms, created_at);
 `)
     // Older preview databases lack the refresh columns. Add them after the
     // base schema exists; repeated Ensure calls remain idempotent.
@@ -139,6 +141,15 @@ CREATE INDEX IF NOT EXISTS idx_podcast_queue_order
             "ALTER TABLE podcast_subscriptions ADD COLUMN playback_speed_custom INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE podcast_subscriptions ADD COLUMN skip_intro_seconds INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE podcast_subscriptions ADD COLUMN skip_outro_seconds INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE podcast_episodes ADD COLUMN chapters_url TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE podcast_episodes ADD COLUMN chapters_type TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE podcast_episodes ADD COLUMN transcript_url TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE podcast_episodes ADD COLUMN transcript_type TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE podcast_episodes ADD COLUMN website_url TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE podcast_episodes ADD COLUMN enclosure_bytes INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE podcast_episodes ADD COLUMN episode_number INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE podcast_episodes ADD COLUMN season_number INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE podcast_episodes ADD COLUMN rich_description TEXT NOT NULL DEFAULT ''",
         )
     }
     if err != nil { err = fmt.Errorf("create podcast schema: %w", err) }

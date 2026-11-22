@@ -83,6 +83,7 @@ export function useSleepTimer() {
 
     // Set timer by song count
     const setTimerBySongs = useCallback((count: number) => {
+        const unit = currentSong?.source === 'podcast' ? 'episode' : 'song';
         setTimerState({
             mode: 'songs',
             endTime: null,
@@ -92,13 +93,14 @@ export function useSleepTimer() {
         });
         showToast({ 
             type: 'info', 
-            message: `Sleep timer set for ${count} more song${count > 1 ? 's' : ''}`,
+            message: `Sleep timer set for ${count} more ${unit}${count > 1 ? 's' : ''}`,
             duration: 3000
         });
-    }, [volume, showToast]);
+    }, [volume, currentSong?.source, showToast]);
 
     // Set timer to end of current song
     const setTimerEndOfSong = useCallback(() => {
+        const unit = currentSong?.source === 'podcast' ? 'episode' : 'song';
         setTimerState({
             mode: 'endOfSong',
             endTime: null,
@@ -108,10 +110,10 @@ export function useSleepTimer() {
         });
         showToast({ 
             type: 'info', 
-            message: 'Playback will stop at the end of this song',
+            message: `Playback will stop at the end of this ${unit}`,
             duration: 3000
         });
-    }, [volume, showToast]);
+    }, [volume, currentSong?.source, showToast]);
 
     // Cancel timer
     const cancelTimer = useCallback(() => {
@@ -139,13 +141,24 @@ export function useSleepTimer() {
             const remaining = (timerState.songsRemaining || 1) - 1;
             if (remaining <= 0) {
                 // Timer complete
-                setTimerState(prev => ({ ...prev, mode: 'off', songsRemaining: null }));
+                setTimerState({
+                    mode: 'off',
+                    endTime: null,
+                    songsRemaining: null,
+                    fadeStarted: false,
+                    originalVolume: null
+                });
+                showToast({
+                    type: 'success',
+                    message: 'Sleep timer: Playback stopped',
+                    duration: 4000
+                });
                 return true; // Signal to stop playback
             }
             setTimerState(prev => ({ ...prev, songsRemaining: remaining }));
         }
         return false;
-    }, [timerState.mode, timerState.songsRemaining]);
+    }, [timerState.mode, timerState.songsRemaining, showToast]);
 
     // Timer tick effect for time-based timer
     useEffect(() => {
@@ -231,6 +244,8 @@ export const SleepTimer: React.FC<SleepTimerProps & {
     cancelTimer,
     getRemainingTime 
 }) => {
+    const currentSong = useStore(state => state.currentSong);
+    const isPodcast = currentSong?.source === 'podcast';
     const [customMinutes, setCustomMinutes] = useState(30);
     const [songCount, setSongCount] = useState(3);
     const [activeTab, setActiveTab] = useState<'time' | 'songs'>('time');
@@ -287,12 +302,14 @@ export const SleepTimer: React.FC<SleepTimerProps & {
                                             <p className="text-xl font-bold text-white">{formatTime(remainingSeconds)}</p>
                                         )}
                                         {timerState.mode === 'songs' && (
-                                            <p className="text-xl font-bold text-white">
-                                                {timerState.songsRemaining} song{timerState.songsRemaining !== 1 ? 's' : ''} left
+                                            <p className="text-xl font-bold text-text-main">
+                                                {timerState.songsRemaining} {isPodcast ? 'episode' : 'song'}{timerState.songsRemaining !== 1 ? 's' : ''} left
                                             </p>
                                         )}
                                         {timerState.mode === 'endOfSong' && (
-                                            <p className="text-xl font-bold text-white">End of this song</p>
+                                            <p className="text-xl font-bold text-text-main">
+                                                {isPodcast ? 'End of this episode' : 'End of this song'}
+                                            </p>
                                         )}
                                     </div>
                                 </div>
@@ -331,7 +348,7 @@ export const SleepTimer: React.FC<SleepTimerProps & {
                             }`}
                         >
                             <Music size={16} />
-                            By Songs
+                            {isPodcast ? 'By Episodes' : 'By Songs'}
                         </button>
                     </div>
 
@@ -394,7 +411,7 @@ export const SleepTimer: React.FC<SleepTimerProps & {
                                 className="w-full py-3 px-4 bg-surface-3 hover:bg-surface-hover text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
                             >
                                 <Music size={16} />
-                                End of This Song
+                                {isPodcast ? 'End of This Episode' : 'End of This Song'}
                             </button>
 
                             {/* Song Count */}
@@ -413,7 +430,9 @@ export const SleepTimer: React.FC<SleepTimerProps & {
                                         onChange={(e) => setSongCount(Math.max(1, parseInt(e.target.value) || 1))}
                                         className="w-16 text-center bg-surface-2 rounded-lg py-2 text-white font-medium outline-none focus:ring-2 focus:ring-brand"
                                     />
-                                    <span className="text-sm text-text-secondary">songs</span>
+                                    <span className="text-sm text-text-secondary">
+                                        {isPodcast ? 'episodes' : 'songs'}
+                                    </span>
                                     <button
                                         onClick={() => setSongCount(songCount + 1)}
                                         className="p-2 bg-surface-2 hover:bg-surface-hover rounded-lg transition-colors"

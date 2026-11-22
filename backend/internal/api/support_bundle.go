@@ -4,6 +4,7 @@ package api
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/version"
 )
@@ -34,12 +36,13 @@ type supportBundleManifest struct {
 
 type supportBundleDiagnostics struct {
 	supportProjection
-	DebugLogging      bool             `json:"debugLogging"`
-	Database          supportFileState `json:"database"`
-	Log               supportFileState `json:"log"`
-	Integrations      map[string]bool  `json:"integrationsConfigured"`
-	IncludedLogBytes  int              `json:"includedLogBytes"`
-	LogWasSizeLimited bool             `json:"logWasSizeLimited"`
+	DebugLogging      bool                          `json:"debugLogging"`
+	Database          supportFileState              `json:"database"`
+	Log               supportFileState              `json:"log"`
+	Integrations      map[string]bool               `json:"integrationsConfigured"`
+	Podcast           *db.PodcastSupportDiagnostics `json:"podcast,omitempty"`
+	IncludedLogBytes  int                           `json:"includedLogBytes"`
+	LogWasSizeLimited bool                          `json:"logWasSizeLimited"`
 }
 
 type supportFileState struct {
@@ -69,17 +72,26 @@ func (a *API) CreateSupportBundle() ([]byte, string, error) {
 	}
 	logData, projection := projectSupportLog(logData)
 
+	var podcastDiag *db.PodcastSupportDiagnostics
+	if a.db != nil {
+		if diag, diagErr := a.db.PodcastDiagnostics(context.Background()); diagErr == nil {
+			podcastDiag = &diag
+		}
+	}
+
 	diagnostics := supportBundleDiagnostics{
 		supportProjection: projection,
 		DebugLogging:      logger.IsDebug(),
 		Database:          supportFileInfo(databasePath),
 		Log:               supportFileInfo(logPath),
 		Integrations: map[string]bool{
-			"spotify":  configuredSetting(a, "spotify_credentials"),
-			"lastfm":   configuredSetting(a, "lastfm_settings"),
-			"llm":      configuredSetting(a, "llm_settings"),
-			"semantic": configuredSetting(a, "semantic_settings"),
+			"spotify":       configuredSetting(a, "spotify_credentials"),
+			"lastfm":        configuredSetting(a, "lastfm_settings"),
+			"llm":           configuredSetting(a, "llm_settings"),
+			"semantic":      configuredSetting(a, "semantic_settings"),
+			"podcast_index": configuredSetting(a, "podcast_index_credentials"),
 		},
+		Podcast:           podcastDiag,
 		IncludedLogBytes:  len(logData),
 		LogWasSizeLimited: logLimited,
 	}

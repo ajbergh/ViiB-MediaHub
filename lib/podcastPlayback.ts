@@ -19,6 +19,8 @@ export function podcastEpisodeToTrack(episode: PodcastEpisode, feed: PodcastFeed
     podcastDefaultSpeed: feed.defaultSpeed ?? continueEpisode.defaultSpeed ?? 0,
     podcastSkipIntroSeconds: feed.skipIntroSeconds ?? continueEpisode.skipIntroSeconds ?? 0,
     podcastSkipOutroSeconds: feed.skipOutroSeconds ?? continueEpisode.skipOutroSeconds ?? 0,
+    podcastHasChapters: episode.hasChapters ?? false,
+    podcastHasTranscript: episode.hasTranscript ?? false,
     playbackContext: 'podcast',
     title: episode.title,
     artist: feed.author || feed.title,

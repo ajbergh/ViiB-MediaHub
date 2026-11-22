@@ -16,9 +16,28 @@ RSS 2.0 feeds during initial implementation.
 
 | Method | Path | Behavior |
 |---|---|---|
+| GET | `/events` | Server-Sent Events (`event: podcasts`) streaming `{ downloads, storage, refreshCount }` snapshots with 15 s heartbeat and 5 s fallback |
+| GET | `/discover/status` | Read redacted Podcast Index configuration status (`configured`, `provider`, masked `keyHint`) |
+| PUT | `/discover/credentials` | Strict JSON (`apiKey`, `apiSecret`, 1 KiB cap) stored encrypted at rest (`enc:v2:`); returns redacted status |
+| DELETE | `/discover/credentials` | Remove stored Podcast Index credentials; returns redacted status |
+| GET | `/search?q=&max=` | Search Podcast Index directory when configured (412 `provider_not_configured` otherwise) |
+| GET | `/trending?category=&lang=&max=` | Fetch Podcast Index trending shows with optional category/language filter |
 | GET | `/feeds` | List followed show records with episode counts |
 | GET | `/feeds/{id}` | Read one followed show by stable ID; 404 when unknown or unfollowed |
+| GET | `/episodes?view=&q=&offset=&limit=` | Cross-show episode triage views (`inbox`, `starred`, `in_progress`, `played`, `archived`, `all`) with optional query filter |
 | GET | `/episodes/continue?limit=12` | Recently listened, uncompleted episodes on followed shows; bound 1–50, no publisher network requests |
+| GET | `/episodes/search?q=&offset=&limit=` | Local cross-show search across subscribed episode titles, descriptions, and show metadata |
+| GET | `/episodes/{id}` | Rich episode detail including sanitized HTML show notes, chapter/transcript presence, bookmark count, and download status |
+| PATCH | `/episodes/{id}/state` | Update `starred`, `archived`, `isPlayed`, `positionMs`, or `listenedMs` with optional `expectedRevision` CAS |
+| GET | `/episodes/{id}/chapters` | Fetch and sanitize Podcasting 2.0 JSON chapters for a subscribed episode |
+| GET | `/episodes/{id}/transcript` | Fetch and parse Podcasting 2.0 JSON, WebVTT, SRT, or plain-text transcripts into cues |
+| GET | `/episodes/{id}/bookmarks` | List saved timestamped bookmarks for a subscribed episode |
+| POST | `/episodes/{id}/bookmarks` | Create a timestamped bookmark (`positionMs`, `note` ≤ 500 chars) |
+| DELETE | `/episodes/{id}/bookmarks/{bookmarkId}` | Delete an episode bookmark |
+| GET | `/queue` | List the durable SQLite `podcast_queue` in play order |
+| POST | `/queue` | Add an episode to the durable queue (`position`: `next` or `end`) |
+| PUT | `/queue` | Atomically replace/reorder the durable queue (`episodeIds`) |
+| DELETE | `/queue/{episodeId}` | Remove an episode from the durable queue |
 | GET | `/episodes/{id}/progress` | Revisioned durable progress; 404 for unknown episodes |
 | GET | `/downloads` | Up to 100 recent statuses for followed episodes with safe `feedId`, `feedTitle`, `episodeTitle` metadata for the centralized Downloads view, but no raw publisher URLs or internal paths. Also returns `storage.usedBytes` and `storage.maxBytes` for the 2 GiB aggregate reservation budget |
 | GET | `/episodes/{id}/download` | Fetch one subscribed episode's persisted download status; 404 when absent |
@@ -37,6 +56,8 @@ RSS 2.0 feeds during initial implementation.
 | DELETE | `/feeds/{id}` | Atomically unfollow and revoke queued/in-progress podcast download leases; preserve episode metadata/progress. Attempt bounded cleanup of previously completed podcast offline copies, retrying busy files in background |
 | GET | `/feeds/{id}/auto-download` | Read the subscribed show's opt-in `enabled` and bounded `newestCount` (1–3); default is disabled; no media URLs or paths returned |
 | PUT | `/feeds/{id}/auto-download` | Strict JSON `{ "enabled": boolean, "newestCount": 1..3 }` with no unknown fields, 1 KiB body cap; re-arms future-only new episode selection and rejects unfollowed shows |
+| GET | `/feeds/{id}/retention` | Read per-show download retention (`keepLatestCount`: `0` = keep all, `1..50`) |
+| PUT | `/feeds/{id}/retention` | Strict JSON `{ "keepLatestCount": 0..50 }` updating retention and pruning older unstarred, inactive completed downloads |
 | GET | `/feeds/{id}/playback-settings` | Read the subscribed show's `defaultSpeed` (`0` = global default, or `0.75`–`2`), `skipIntroSeconds` (`0..600`), and `skipOutroSeconds` (`0..600`) |
 | PUT | `/feeds/{id}/playback-settings` | Strict JSON `{ "defaultSpeed", "skipIntroSeconds", "skipOutroSeconds" }` with no unknown fields, 1 KiB body cap; rejects unfollowed shows |
 | GET | `/settings` | Read global podcast playback defaults `{ "playback": { "defaultSpeed", "skipBackSeconds", "skipForwardSeconds" } }` |

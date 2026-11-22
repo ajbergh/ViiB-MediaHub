@@ -135,6 +135,7 @@ func (a *API) processPodcastDownload(ctx context.Context){
     if owner==""{owner="manual-podcast-test-worker"} // only used for injected tests
     id,err:=a.db.ClaimPodcastDownload(ctx,owner,time.Now())
     if err!=nil||id==""{return}
+    a.notifyPodcastEvent()
     workCtx,cancel:=context.WithTimeout(ctx,45*time.Minute)
     defer cancel()
     if err:=a.transferPodcastDownload(workCtx,id,owner);err!=nil{
@@ -163,12 +164,18 @@ func (a *API) processPodcastDownload(ctx context.Context){
             retryCtx,stop:=context.WithTimeout(context.Background(),4*time.Second)
             paused,pauseErr:=a.db.PausePodcastDownloadForRetry(retryCtx,id,owner,code,time.Now())
             stop()
-            if pauseErr==nil&&paused{return}
+            if pauseErr==nil&&paused{
+                a.notifyPodcastEvent()
+                return
+            }
         }
         // A canceled/unfollowed worker lost its lease; this is a no-op.
         // Exhausted transient retries surface as a stable terminal error.
         _=a.db.FailPodcastDownload(context.Background(),id,owner,code)
+        a.notifyPodcastEvent()
+        return
     }
+    a.notifyPodcastEvent()
 }
 
 // Reclaim a bounded batch of completed files from unfollowed feeds without
@@ -580,6 +587,8 @@ func (a *API) publishPodcastDownloadedAudio(ctx context.Context,id,owner string,
         return err
     }
     a.clearPodcastOfflineVerification(id)
+    a.enforcePodcastRetentionForEpisode(ctx,id)
+    a.notifyPodcastEvent()
     return nil
 }
 

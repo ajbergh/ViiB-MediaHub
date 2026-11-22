@@ -627,6 +627,9 @@ test('Per-show and global podcast playback defaults control speed, intro/outro s
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
 
+  await page.addInitScript(() => {
+    localStorage.setItem('mediahub-storage', JSON.stringify({ state: { hasCompletedSetup: true }, version: 5 }));
+  });
   await page.route('**/*', async route => {
     const req = route.request();
     const u = new URL(req.url());
@@ -728,5 +731,248 @@ test('Per-show and global podcast playback defaults control speed, intro/outro s
   await showSpeed.selectOption('2');
   await expect(page.getByText('Cannot save show playback defaults')).toBeVisible();
   await expect(showSpeed).toHaveValue('1.5');
+  expect(errors).toEqual([]);
+});
+
+test('Podcast Discover configures Podcast Index credentials in Settings, searches, and follows a show', async ({ page }) => {
+  let configured = false;
+  let keyHint = '';
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+
+  await page.addInitScript(() => {
+    localStorage.setItem('mediahub-storage', JSON.stringify({ state: { hasCompletedSetup: true }, version: 5 }));
+  });
+
+  await page.route('**/*', async route => {
+    const req = route.request();
+    const u = new URL(req.url());
+    if (u.origin !== 'http://127.0.0.1:4173') return route.abort();
+    if (u.pathname === '/api/health') return route.fulfill({ json: { status: 'ok' } });
+    if (u.pathname === '/api/library/songs') return route.fulfill({ json: { songs: [] } });
+    if (u.pathname === '/api/playlists') return route.fulfill({ json: { playlists: [] } });
+    if (u.pathname === '/api/library/scan/status') return route.fulfill({ json: { scanning: false } });
+    if (u.pathname.startsWith('/api/settings/')) {
+      return route.fulfill({ json: { key: u.pathname.split('/').pop(), value: '' } });
+    }
+    if (u.pathname === '/api/v2/podcasts/discover/status') {
+      return route.fulfill({ json: { status: { configured, provider: configured ? 'podcast_index' : 'none', keyHint } } });
+    }
+    if (u.pathname === '/api/v2/podcasts/discover/credentials' && req.method() === 'PUT') {
+      const body = req.postDataJSON() as { apiKey: string; apiSecret: string };
+      expect(body.apiKey).toBe('pi-key-9999');
+      expect(body.apiSecret).toBe('pi-secret-value');
+      configured = true;
+      keyHint = '••••9999';
+      return route.fulfill({ json: { status: { configured, provider: 'podcast_index', keyHint } } });
+    }
+    if (u.pathname === '/api/v2/podcasts/trending') {
+      return route.fulfill({ json: { shows: [], provider: 'podcast_index', count: 0 } });
+    }
+    if (u.pathname === '/api/v2/podcasts/search') {
+      return route.fulfill({ json: {
+        shows: [{
+          id: 42, title: 'Systems Weekly', author: 'Host', description: 'Systems engineering show',
+          feedUrl: 'https://publisher.example/systems.xml', artworkUrl: '', language: 'en',
+          categories: ['Technology'], episodeCount: 12,
+        }],
+        provider: 'podcast_index', query: u.searchParams.get('q') ?? '', count: 1,
+      } });
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds' && req.method() === 'GET') {
+      return route.fulfill({ json: { feeds: [] } });
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds' && req.method() === 'POST') {
+      return route.fulfill({ status: 201, json: { id: feedId, title: 'Systems Weekly', episodeCount: 12 } });
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId && req.method() === 'GET') {
+      return route.fulfill({ json: { feed: {
+        id: feedId, url: 'https://publisher.example/systems.xml', title: 'Systems Weekly',
+        author: 'Host', description: 'Systems engineering show', imageUrl: '', language: 'en', episodeCount: 12,
+      } } });
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/episodes') {
+      return route.fulfill({ json: { episodes: [], nextOffset: null } });
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/refresh') {
+      return route.fulfill({ json: { lastCheckedAt: 0, lastSuccessAt: 0, nextRefreshAt: 0, failures: 0, refreshing: false } });
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/auto-download') {
+      return route.fulfill({ json: { policy: { enabled: false, newestCount: 1 } } });
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/retention') {
+      return route.fulfill({ json: { policy: { keepLatestCount: 0 } } });
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/playback-settings') {
+      return route.fulfill({ json: { settings: { defaultSpeed: 0, skipIntroSeconds: 0, skipOutroSeconds: 0 } } });
+    }
+    if (u.pathname === '/api/v2/podcasts/downloads') {
+      return route.fulfill({ json: { downloads: [], storage: { usedBytes: 0, maxBytes: 2147483648 } } });
+    }
+    if (u.pathname.startsWith('/api/')) {
+      return route.fulfill({ status: 503, json: { error: 'fixture backend unavailable' } });
+    }
+    return route.continue();
+  });
+
+  await page.goto('/settings');
+  await page.getByRole('button', { name: 'Integrations & Spotify' }).click();
+  await expect(page.getByRole('heading', { name: 'Podcast Index Discovery' })).toBeVisible();
+  await page.locator('#podcast-index-api-key').fill('pi-key-9999');
+  await page.locator('#podcast-index-api-secret').fill('pi-secret-value');
+  await page.getByRole('button', { name: 'Save Credentials' }).click();
+  await expect(page.getByText('Configured (••••9999)')).toBeVisible();
+
+  await page.goto('/podcasts/discover');
+  await page.getByLabel('Search podcasts').fill('Systems');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page.getByText('Systems Weekly')).toBeVisible();
+  await page.getByLabel('Podcast search results').getByRole('button', { name: 'Follow', exact: true }).click();
+  await expect(page).toHaveURL('/podcasts/show/' + feedId);
+  expect(errors).toEqual([]);
+});
+
+test('Podcasts Hub triage, search, durable queue, retention, and Episode Detail chapters/transcript/bookmarks work end-to-end', async ({ page }) => {
+  let starred = false;
+  let retentionCount = 0;
+  let queueItems = [{
+    id: 'ep-rich-1', feedId, guid: 'ep-rich-1', title: 'Deep Dive Episode',
+    description: 'Plain summary', hasAudio: true, enclosureType: 'audio/mpeg',
+    publishedAt: 1795377600000, durationMs: 3600000, isPlayed: false,
+    positionMs: 0, listenedMs: 0, progressRevision: 1,
+    hasChapters: true, hasTranscript: true,
+    feedTitle: 'Tech Show', feedAuthor: 'Host', starred: false, archived: false,
+    sortKey: 1, addedAt: 1795377600000,
+  }];
+  const bookmarks: Array<{ id: string; episodeId: string; positionMs: number; note: string; createdAt: number }> = [];
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+
+  await page.addInitScript(() => {
+    localStorage.setItem('mediahub-storage', JSON.stringify({ state: { hasCompletedSetup: true }, version: 5 }));
+  });
+
+  await page.route('**/*', async route => {
+    const req = route.request();
+    const u = new URL(req.url());
+    if (u.origin !== 'http://127.0.0.1:4173') return route.abort();
+    if (u.pathname === '/api/v2/podcasts/feeds' && req.method() === 'GET') {
+      return route.fulfill({ json: { feeds: [{
+        id: feedId, url: feedURL, title: 'Tech Show', author: 'Host',
+        description: '', imageUrl: '', language: 'en', episodeCount: 1,
+      }] } });
+    }
+    if (u.pathname === '/api/v2/podcasts/episodes/continue') {
+      return route.fulfill({ json: { episodes: [] } });
+    }
+    if (u.pathname === '/api/v2/podcasts/downloads') {
+      return route.fulfill({ json: { downloads: [], storage: { usedBytes: 0, maxBytes: 2147483648 } } });
+    }
+    if (u.pathname === '/api/v2/podcasts/episodes' || u.pathname === '/api/v2/podcasts/episodes/search') {
+      return route.fulfill({ json: {
+        episodes: [{ ...queueItems[0], starred }],
+        nextOffset: null,
+      } });
+    }
+    if (u.pathname === '/api/v2/podcasts/queue') {
+      return route.fulfill({ json: { queue: queueItems } });
+    }
+    if (u.pathname === '/api/v2/podcasts/queue/ep-rich-1' && req.method() === 'DELETE') {
+      queueItems = [];
+      return route.fulfill({ status: 204, body: '' });
+    }
+    if (u.pathname === '/api/v2/podcasts/episodes/ep-rich-1/state' && req.method() === 'PATCH') {
+      const body = req.postDataJSON() as { starred?: boolean };
+      if (typeof body.starred === 'boolean') starred = body.starred;
+      return route.fulfill({ json: { state: {
+        episodeId: 'ep-rich-1', positionMs: 0, listenedMs: 0, isPlayed: false,
+        revision: 2, completedAt: 0, lastPlayedAt: 0, starred, archived: false,
+      } } });
+    }
+    if (u.pathname === '/api/v2/podcasts/episodes/ep-rich-1' && req.method() === 'GET') {
+      return route.fulfill({ json: { episode: {
+        ...queueItems[0], starred,
+        feedTitle: 'Tech Show', feedAuthor: 'Host',
+        richDescription: '<p>Full <strong>show notes</strong> for deep dive.</p>',
+        bookmarkCount: bookmarks.length,
+      } } });
+    }
+    if (u.pathname === '/api/v2/podcasts/episodes/ep-rich-1/chapters') {
+      return route.fulfill({ json: {
+        chapters: [{ startTime: 0, title: 'Intro' }, { startTime: 300, title: 'Architecture' }],
+        source: 'podcast2',
+      } });
+    }
+    if (u.pathname === '/api/v2/podcasts/episodes/ep-rich-1/transcript') {
+      return route.fulfill({ json: {
+        cues: [{ startMs: 10000, endMs: 15000, speaker: 'Host', text: 'Welcome to the architecture review.' }],
+        format: 'vtt',
+      } });
+    }
+    if (u.pathname === '/api/v2/podcasts/episodes/ep-rich-1/bookmarks') {
+      if (req.method() === 'GET') return route.fulfill({ json: { bookmarks } });
+      if (req.method() === 'POST') {
+        const body = req.postDataJSON() as { positionMs: number; note: string };
+        const created = { id: 'bm-1', episodeId: 'ep-rich-1', positionMs: body.positionMs, note: body.note, createdAt: 1795377600000 };
+        bookmarks.push(created);
+        return route.fulfill({ status: 201, json: { bookmark: created } });
+      }
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId && req.method() === 'GET') {
+      return route.fulfill({ json: { feed: {
+        id: feedId, url: feedURL, title: 'Tech Show', author: 'Host',
+        description: '', imageUrl: '', language: 'en', episodeCount: 1,
+      } } });
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/episodes') {
+      return route.fulfill({ json: { episodes: [{ ...queueItems[0], starred }], nextOffset: null } });
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/retention') {
+      if (req.method() === 'GET') return route.fulfill({ json: { policy: { keepLatestCount: retentionCount } } });
+      if (req.method() === 'PUT') {
+        retentionCount = (req.postDataJSON() as { keepLatestCount: number }).keepLatestCount;
+        return route.fulfill({ json: { policy: { keepLatestCount: retentionCount } } });
+      }
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/auto-download') {
+      return route.fulfill({ json: { policy: { enabled: false, newestCount: 1 } } });
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/playback-settings') {
+      return route.fulfill({ json: { settings: { defaultSpeed: 0, skipIntroSeconds: 0, skipOutroSeconds: 0 } } });
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/refresh') {
+      return route.fulfill({ json: { lastCheckedAt: 0, lastSuccessAt: 0, nextRefreshAt: 0, failures: 0, refreshing: false } });
+    }
+    if (u.pathname.startsWith('/api/')) {
+      return route.fulfill({ status: 503, json: { error: 'fixture backend unavailable' } });
+    }
+    return route.continue();
+  });
+
+  await page.goto('/podcasts');
+  await page.getByRole('button', { name: 'Episodes' }).click();
+  await expect(page.getByText('Deep Dive Episode')).toBeVisible();
+  await page.getByRole('button', { name: 'Star Deep Dive Episode' }).click();
+  expect(starred).toBe(true);
+
+  await page.getByRole('button', { name: 'Queue', exact: true }).click();
+  await expect(page.getByText('Deep Dive Episode')).toBeVisible();
+
+  await page.goto('/podcasts/show/' + feedId);
+  const retentionSelect = page.getByRole('combobox', { name: 'Keep latest downloaded episodes' });
+  await retentionSelect.selectOption('3');
+  await expect(retentionSelect).toHaveValue('3');
+  expect(retentionCount).toBe(3);
+
+  await page.goto('/podcasts/episode/ep-rich-1');
+  await expect(page.getByText('Full show notes for deep dive.')).toBeVisible();
+  await page.getByRole('tab', { name: /Chapters/ }).click();
+  await expect(page.getByText('Architecture')).toBeVisible();
+  await page.getByRole('tab', { name: /Transcript/ }).click();
+  await expect(page.getByText('Welcome to the architecture review.')).toBeVisible();
+  await page.getByRole('tab', { name: /Bookmarks/ }).click();
+  await page.getByLabel('Bookmark note').fill('Important diagram');
+  await page.getByRole('button', { name: 'Save bookmark' }).click();
+  await expect(page.getByText('Important diagram')).toBeVisible();
   expect(errors).toEqual([]);
 });

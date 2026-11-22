@@ -8,7 +8,8 @@ describe('podcast playback adaptation', () => {
     const feed = { id: 'feed:1', title: 'A show', author: 'Host', imageUrl: 'https://publisher.example/art.png',
       defaultSpeed: 1.5, skipIntroSeconds: 25, skipOutroSeconds: 40 } as PodcastFeed;
     const episode = { id: 'ep:1', title: 'Chapter 1', durationMs: 1800000,
-      positionMs: 12000, listenedMs: 9000, progressRevision: 3, isPlayed: false } as PodcastEpisode;
+      positionMs: 12000, listenedMs: 9000, progressRevision: 3, isPlayed: false,
+      hasChapters: true, hasTranscript: true } as PodcastEpisode;
     const song = podcastEpisodeToTrack(episode, feed);
     expect(song.source).toBe('podcast');
     expect(song.playbackContext).toBe('podcast');
@@ -17,6 +18,8 @@ describe('podcast playback adaptation', () => {
     expect(song.podcastDefaultSpeed).toBe(1.5);
     expect(song.podcastSkipIntroSeconds).toBe(25);
     expect(song.podcastSkipOutroSeconds).toBe(40);
+    expect(song.podcastHasChapters).toBe(true);
+    expect(song.podcastHasTranscript).toBe(true);
     expect(song.url).toBe('/api/v2/podcasts/episodes/ep%3A1/media');
     expect(song.coverUrl).toBe('/api/v2/podcasts/feeds/feed%3A1/artwork');
     expect(song.duration).toBe(1800);

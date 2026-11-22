@@ -68,6 +68,7 @@ func (a *API) queuePodcastDownload(w http.ResponseWriter,r *http.Request){
             "Unable to queue podcast audio",true,nil);return
     }
     a.wakePodcastDownloader()
+    a.notifyPodcastEvent()
     w.Header().Set("Cache-Control","no-store")
     respondV2JSON(w,http.StatusAccepted,map[string]any{"download":row})
 }
@@ -104,6 +105,7 @@ func (a *API) cancelPodcastDownload(w http.ResponseWriter,r *http.Request){
         respondV2Error(w,r,http.StatusInternalServerError,"podcast_download_unavailable",
             "Unable to cancel podcast download",true,nil);return
     }
+    a.notifyPodcastEvent()
     w.Header().Set("Cache-Control","no-store")
     respondV2JSON(w,http.StatusOK,map[string]any{"download":row})
 }
@@ -155,6 +157,7 @@ func (a *API) removeCompletedPodcastDownload(w http.ResponseWriter,r *http.Reque
         respondV2Error(w,r,http.StatusInternalServerError,"podcast_download_unavailable",
             "Offline file was removed but its status needs repair",true,nil);return
     }
+    a.notifyPodcastEvent()
     w.Header().Set("Cache-Control","no-store")
     w.WriteHeader(http.StatusNoContent)
 }

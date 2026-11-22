@@ -11,12 +11,14 @@
 
 import React, { useState, useEffect, useCallback, useId, useRef } from 'react';
 import { useStore, useAlbumCovers } from '../store';
-import { X, Play, Pause, SkipBack, SkipForward, Shuffle, PanelRightClose, PanelRightOpen, Activity, SlidersHorizontal, Volume2, Download, Loader2, CheckCircle, Layers, Maximize2, Minimize2, Info, Sparkles, FileText, Tag, Calendar, BarChart3, Clock, Radio, Disc, Mic2 } from 'lucide-react';
+import { X, Play, Pause, SkipBack, SkipForward, Shuffle, PanelRightClose, PanelRightOpen, Activity, SlidersHorizontal, Volume2, Download, Loader2, CheckCircle, Layers, Maximize2, Minimize2, Info, Sparkles, FileText, Tag, Calendar, BarChart3, Clock, Radio, Disc, Mic2, Bookmark, ExternalLink } from 'lucide-react';
 import { formatTime, getAudioFormatInfo } from '../utils';
 import { ContextMenuType, VisualizerMode } from '../types';
 import { api } from '../services/api';
+import { podcastsAPI } from '../services/podcasts';
 import { Visualizer } from './Visualizer';
 import { LyricsView } from './now-playing/LyricsView';
+import { PodcastDrawerPanel, EpisodeNavButton } from './now-playing/PodcastDrawerPanel';
 import { QueueList } from './now-playing/QueueList';
 import { WebGLVisualizer } from './now-playing/webgl';
 import { MilkdropVisualizer } from './now-playing/MilkdropVisualizer';
@@ -67,21 +69,40 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
     } = useStore();
     
     const albumCovers = useAlbumCovers();
-    const [activeTab, setActiveTab] = useState<'QUEUE' | 'LYRICS' | 'INFO'>('LYRICS');
+    const isPodcast = currentSong?.source === 'podcast';
+    const [activeTab, setActiveTab] = useState<'QUEUE' | 'LYRICS' | 'INFO' | 'PODCAST'>(
+        isPodcast ? 'PODCAST' : 'LYRICS'
+    );
     const [isDrawerOpen, setIsDrawerOpen] = useState(true);
     const drawerId = useId();
     const drawerLabel = isDrawerOpen ? 'Collapse now playing drawer' : 'Expand now playing drawer';
     const [isDownloading, setIsDownloading] = useState(false);
+    const [isBookmarking, setIsBookmarking] = useState(false);
     const [showVisualizerSelector, setShowVisualizerSelector] = useState(false);
     const [lyricsFocus, setLyricsFocus] = useState(false);
     const [showPartyControls, setShowPartyControls] = useState(false);
     const artworkRef = useRef<HTMLDivElement>(null);
+    const prevIsPodcastRef = useRef<boolean>(isPodcast);
     const [partyArtworkSize, setPartyArtworkSize] = useState<{ width: number; height: number }>();
     const selectorTrigger = useRef<HTMLElement | null>(null);
     const coverUrl = currentSong?.coverUrl || (currentSong && albumCovers[currentSong.album]) || undefined;
     const artwork = useTrackArtwork(currentSong?.id ?? '', coverUrl, currentSong?.album ?? '', currentSong?.title.charAt(0) ?? '');
-    const lyricsStage = isPartyMode ? partyStageLayout === 'lyrics' : lyricsFocus;
+    const lyricsStage = !isPodcast && (isPartyMode ? partyStageLayout === 'lyrics' : lyricsFocus);
     const visualizerStage = isPartyMode && partyStageLayout === 'visualizer';
+
+    useEffect(() => {
+        if (prevIsPodcastRef.current !== isPodcast) {
+            prevIsPodcastRef.current = isPodcast;
+            if (isPodcast) {
+                setActiveTab('PODCAST');
+                setLyricsFocus(false);
+            } else {
+                setActiveTab((tab) => (tab === 'PODCAST' ? 'LYRICS' : tab));
+            }
+        } else if (isPodcast && activeTab === 'LYRICS') {
+            setActiveTab('PODCAST');
+        }
+    }, [isPodcast, activeTab]);
 
     const closeVisualizerSelector = useCallback(() => {
         setShowVisualizerSelector(false);
@@ -212,6 +233,30 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
             showToast({ type: 'error', message: 'Failed to queue download' });
         } finally {
             setIsDownloading(false);
+        }
+    };
+
+    const handlePodcastBookmark = async () => {
+        const episodeId = currentSong.podcastEpisodeId;
+        if (!episodeId || isBookmarking) return;
+
+        setIsBookmarking(true);
+        const positionMs = Math.max(0, Math.round(currentTime * 1000));
+        try {
+            const { bookmark } = await podcastsAPI.createBookmark(episodeId, positionMs, '');
+            window.dispatchEvent(new CustomEvent('viib:podcast-bookmark-created', {
+                detail: { episodeId, bookmark },
+            }));
+            showToast({
+                type: 'success',
+                message: `Bookmarked at ${formatTime(positionMs / 1000)}`,
+                duration: 2500,
+            });
+        } catch (error) {
+            console.error('Failed to create podcast bookmark:', error);
+            showToast({ type: 'error', message: 'Failed to save bookmark' });
+        } finally {
+            setIsBookmarking(false);
         }
     };
     
@@ -360,7 +405,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                     >
                         <Activity size={24} />
                     </Button>
-                    {!isPartyMode && (
+                    {!isPartyMode && !isPodcast && (
                         <Button
                             onClick={() => setLyricsFocus(!lyricsFocus)}
                             variant="ghost"
@@ -492,6 +537,30 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                                         <Info size={10} />
                                         Info
                                     </button>
+                                    {isPodcast && currentSong.podcastEpisodeId && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => void handlePodcastBookmark()}
+                                                disabled={isBookmarking}
+                                                className="inline-flex items-center gap-1 min-h-[28px] px-2.5 py-1 rounded-full text-[11px] font-medium bg-surface-2 hover:bg-surface-3 text-text-secondary hover:text-text-main ring-1 ring-surface-border transition-colors disabled:opacity-50"
+                                                title="Bookmark current moment"
+                                                aria-label="Bookmark current moment"
+                                            >
+                                                {isBookmarking ? <Loader2 size={10} className="animate-spin" /> : <Bookmark size={10} />}
+                                                Bookmark
+                                            </button>
+                                            <EpisodeNavButton
+                                                episodeId={currentSong.podcastEpisodeId}
+                                                onNavigate={() => setNowPlayingOpen(false)}
+                                                className="inline-flex items-center gap-1 min-h-[28px] px-2.5 py-1 rounded-full text-[11px] font-medium bg-surface-2 hover:bg-surface-3 text-text-secondary hover:text-text-main ring-1 ring-surface-border transition-colors"
+                                                title="Open episode page"
+                                            >
+                                                <ExternalLink size={10} />
+                                                Open Episode
+                                            </EpisodeNavButton>
+                                        </>
+                                    )}
                                 </div>
                         </div>
                             <div className="flex items-center gap-3">
@@ -536,7 +605,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                 {!isPartyMode && !lyricsFocus && (
                     <aside
                         id={drawerId}
-                        aria-label="Queue, lyrics, and track info"
+                        aria-label={isPodcast ? 'Queue, chapters and notes, and track info' : 'Queue, lyrics, and track info'}
                         inert={!isDrawerOpen}
                         className={`min-h-0 flex flex-col max-w-xl w-full md:w-[calc(50cqw_-_1.5rem)] justify-self-center self-stretch bg-surface-1/30 rounded-t-2xl md:rounded-2xl ring-1 ring-surface-3/60 backdrop-blur-md overflow-hidden transition-[transform,opacity] duration-300 ease-out motion-reduce:transition-none ${isDrawerOpen
                             ? 'translate-x-0 opacity-100'
@@ -551,13 +620,24 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                             >
                                 Queue
                             </Button>
-                            <Button
-                                onClick={() => setActiveTab('LYRICS')}
-                                variant={activeTab === 'LYRICS' ? 'secondary' : 'ghost'}
-                                className="flex-1 justify-center rounded-lg whitespace-nowrap"
-                            >
-                                Lyrics
-                            </Button>
+                            {isPodcast ? (
+                                <Button
+                                    onClick={() => setActiveTab('PODCAST')}
+                                    variant={activeTab === 'PODCAST' ? 'secondary' : 'ghost'}
+                                    className="flex-1 justify-center rounded-lg flex items-center gap-1.5 whitespace-nowrap"
+                                >
+                                    <FileText size={14} className="shrink-0" />
+                                    Chapters &amp; Notes
+                                </Button>
+                            ) : (
+                                <Button
+                                    onClick={() => setActiveTab('LYRICS')}
+                                    variant={activeTab === 'LYRICS' ? 'secondary' : 'ghost'}
+                                    className="flex-1 justify-center rounded-lg whitespace-nowrap"
+                                >
+                                    Lyrics
+                                </Button>
+                            )}
                             <Button
                                 onClick={() => setActiveTab('INFO')}
                                 variant={activeTab === 'INFO' ? 'secondary' : 'ghost'}
@@ -570,7 +650,18 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
 
                         {/* Tab Content */}
                         <div data-lyrics-scroll className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 md:p-6 relative">
-                            {activeTab === 'LYRICS' && (
+                            {activeTab === 'PODCAST' && isPodcast && (
+                                <div className="h-full flex flex-col">
+                                    <PodcastDrawerPanel
+                                        song={currentSong}
+                                        currentTime={currentTime}
+                                        onSeek={onSeek}
+                                        onNavigate={() => setNowPlayingOpen(false)}
+                                    />
+                                </div>
+                            )}
+
+                            {activeTab === 'LYRICS' && !isPodcast && (
                                 <div className="h-full flex flex-col">
                                     <LyricsView song={currentSong} currentTime={currentTime} onSeek={onSeek} isVisible={isDrawerOpen} />
                                 </div>

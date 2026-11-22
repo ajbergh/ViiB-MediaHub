@@ -181,4 +181,30 @@ describe('podcastsAPI', () => {
     expect(await podcastsAPI.unsubscribe('id/path')).toBeUndefined();
     expect(fetchMock.mock.calls[1][0]).toBe('/api/v2/podcasts/feeds/id%2Fpath');
   });
+
+  it('calls directory discover, triage views, chapters/transcripts/bookmarks, queue and retention endpoints', async () => {
+    const fetchMock = vi.fn(async (_url: string, _options?: RequestInit) => ({ ok: true, status: 200, json: async () => ({}) }));
+    vi.stubGlobal('fetch', fetchMock);
+    await podcastsAPI.getDiscoverStatus();
+    await podcastsAPI.searchDirectory('tech', 10);
+    await podcastsAPI.listEpisodesByView('starred', { q: 'ai', offset: 0, limit: 25 });
+    await podcastsAPI.patchEpisodeState('ep/1', { starred: true, archived: false });
+    await podcastsAPI.getEpisodeChapters('ep/1');
+    await podcastsAPI.getEpisodeTranscript('ep/1');
+    await podcastsAPI.createBookmark('ep/1', 15000, 'Key point');
+    await podcastsAPI.addToQueue('ep/1', 'next');
+    await podcastsAPI.setRetentionPolicy('feed/1', { keepLatestCount: 3 });
+
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v2/podcasts/discover/status');
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/v2/podcasts/search?q=tech&max=10');
+    expect(fetchMock.mock.calls[2][0]).toBe('/api/v2/podcasts/episodes?view=starred&offset=0&limit=25&q=ai');
+    expect(fetchMock.mock.calls[3][0]).toBe('/api/v2/podcasts/episodes/ep%2F1/state');
+    expect(fetchMock.mock.calls[3][1]?.method).toBe('PATCH');
+    expect(fetchMock.mock.calls[4][0]).toBe('/api/v2/podcasts/episodes/ep%2F1/chapters');
+    expect(fetchMock.mock.calls[5][0]).toBe('/api/v2/podcasts/episodes/ep%2F1/transcript');
+    expect(fetchMock.mock.calls[6][0]).toBe('/api/v2/podcasts/episodes/ep%2F1/bookmarks');
+    expect(fetchMock.mock.calls[7][0]).toBe('/api/v2/podcasts/queue');
+    expect(fetchMock.mock.calls[8][0]).toBe('/api/v2/podcasts/feeds/feed%2F1/retention');
+    expect(fetchMock.mock.calls[8][1]?.method).toBe('PUT');
+  });
 });
