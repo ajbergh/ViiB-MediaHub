@@ -59,6 +59,10 @@ export interface PodcastProgress {
   completedAt: number;
   lastPlayedAt: number;
 }
+export interface PodcastAutoDownloadPolicy {
+  enabled: boolean;
+  newestCount: number;
+}
 export interface PodcastRefreshStatus {
   lastCheckedAt: number;
   lastSuccessAt: number;
@@ -208,6 +212,14 @@ export const podcastsAPI = {
   },
   refresh(feedId: string, signal?: AbortSignal): Promise<{status: 'queued'}> {
     return request('/feeds/' + encodeURIComponent(feedId) + '/refresh', { method: 'POST', signal });
+  },
+  getAutoDownloadPolicy(feedId: string, signal?: AbortSignal): Promise<{ policy: PodcastAutoDownloadPolicy }> {
+    return request('/feeds/' + encodeURIComponent(feedId) + '/auto-download', { signal });
+  },
+  setAutoDownloadPolicy(feedId: string, policy: PodcastAutoDownloadPolicy, signal?: AbortSignal): Promise<{ policy: PodcastAutoDownloadPolicy }> {
+    return request('/feeds/' + encodeURIComponent(feedId) + '/auto-download', {
+      method: 'PUT', body: JSON.stringify(policy), signal,
+    });
   },
   refreshStatus(feedId: string, signal?: AbortSignal): Promise<PodcastRefreshStatus> {
     return request('/feeds/' + encodeURIComponent(feedId) + '/refresh', { signal });

@@ -5,7 +5,7 @@ import { ArrowLeft, Download, Headphones, Loader2, Plus, RefreshCw, Rss, Trash2 
 import { api } from '../services/api';
 import { podcastEpisodeToTrack, queuePodcastEpisode, type PodcastQueuePosition } from '../lib/podcastPlayback';
 import { useStore } from '../store';
-import { podcastsAPI, PodcastAPIError, type PodcastFeed, type PodcastEpisode, type PodcastPreview, type PodcastRefreshStatus, type PodcastOPMLImportPreview, type PodcastContinueEpisode, type PodcastDownload, type PodcastStorage } from '../services/podcasts';
+import { podcastsAPI, PodcastAPIError, type PodcastFeed, type PodcastEpisode, type PodcastPreview, type PodcastRefreshStatus, type PodcastOPMLImportPreview, type PodcastContinueEpisode, type PodcastDownload, type PodcastStorage, type PodcastAutoDownloadPolicy } from '../services/podcasts';
 
 const inputClass = 'w-full rounded-lg border border-surface-3 bg-surface-1 px-4 py-3 text-text-main outline-none focus-visible:ring-2 focus-visible:ring-brand';
 
@@ -549,6 +549,9 @@ export const PodcastShow: React.FC = () => {
   const [refreshStatus, setRefreshStatus] = useState<PodcastRefreshStatus | null>(null);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(false);
   const [autoRefreshSaving, setAutoRefreshSaving] = useState(false);
+  const [autoDownload, setAutoDownload] = useState<PodcastAutoDownloadPolicy | null>(null);
+  const [autoDownloadSaving, setAutoDownloadSaving] = useState(false);
+  const [autoDownloadMessage, setAutoDownloadMessage] = useState('');
   const [revision, setRevision] = useState(0);
   const lastCheckedRef = useRef<number | null>(null);
   const navigate = useNavigate();
@@ -561,6 +564,35 @@ export const PodcastShow: React.FC = () => {
       .catch(() => { if (mounted) setAutoRefreshEnabled(false); });
     return () => { mounted = false; };
   }, []);
+
+  useEffect(() => {
+    if (!id) return;
+    const controller = new AbortController();
+    setAutoDownload(null);
+    void podcastsAPI.getAutoDownloadPolicy(id, controller.signal)
+      .then(({ policy }) => { if (!controller.signal.aborted) setAutoDownload(policy); })
+      .catch(err => {
+        if (!controller.signal.aborted) setAutoDownloadMessage(readableError(err));
+      });
+    return () => controller.abort();
+  }, [id]);
+
+  const saveAutoDownload = async (policy: PodcastAutoDownloadPolicy) => {
+    if (!id || autoDownloadSaving) return;
+    setAutoDownloadSaving(true);
+    setAutoDownloadMessage('');
+    try {
+      const updated = await podcastsAPI.setAutoDownloadPolicy(id, policy);
+      setAutoDownload(updated.policy);
+      setAutoDownloadMessage(updated.policy.enabled
+        ? 'Automatic downloads enabled for new episodes discovered on future feed refreshes.'
+        : 'Automatic downloads turned off. Existing downloads are unchanged.');
+    } catch (err) {
+      setAutoDownloadMessage(readableError(err));
+    } finally {
+      setAutoDownloadSaving(false);
+    }
+  };
 
   const changeAutoRefresh = async (checked: boolean) => {
     setAutoRefreshSaving(true);
@@ -813,6 +845,42 @@ export const PodcastShow: React.FC = () => {
           </label>
           <p className="mt-1 text-xs text-text-subtle">Feed refreshing is optional. You can browse and follow RSS podcasts without enabling it.</p>
           {refreshMessage && <p role="status" className="mt-2 text-sm text-text-secondary">{refreshMessage}</p>}
+          <div className="mt-4 rounded-lg border border-surface-3 bg-surface-1 p-4">
+            <h2 className="text-sm font-semibold text-text-main">Automatic episode downloads</h2>
+            <label className="mt-2 inline-flex items-center gap-2 text-sm text-text-secondary">
+              <input type="checkbox" aria-label="Automatically download new podcast episodes"
+                checked={autoDownload?.enabled ?? false}
+                disabled={!autoDownload || autoDownloadSaving}
+                onChange={event => void saveAutoDownload({
+                  enabled: event.target.checked, newestCount: autoDownload?.newestCount ?? 1,
+                })} />
+              Download newly discovered episodes for this show
+            </label>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <label htmlFor="podcast-auto-download-count" className="text-xs text-text-secondary">
+                Maximum new episodes per refresh
+              </label>
+              <select id="podcast-auto-download-count" aria-label="Maximum auto-download episodes per refresh"
+                value={autoDownload?.newestCount ?? 1}
+                disabled={!autoDownload || autoDownloadSaving}
+                onChange={event => void saveAutoDownload({
+                  enabled: autoDownload?.enabled ?? false, newestCount: Number(event.target.value),
+                })}
+                className="rounded-md border border-surface-3 bg-surface-2 px-2 py-1.5 text-sm text-text-main">
+                <option value={1}>1 episode</option>
+                <option value={2}>2 episodes</option>
+                <option value={3}>3 episodes</option>
+              </select>
+            </div>
+            <p className="mt-2 text-xs text-text-subtle">
+              Off by default. Only episodes first discovered on future successful RSS refreshes are eligible.
+              No old episodes are downloaded automatically. A global limit of 12 pending downloads applies.
+            </p>
+            {!autoRefreshEnabled && <p className="mt-2 text-xs text-text-subtle">
+              Feed refresh is currently off. Enable it above for automatic downloads to run.
+            </p>}
+            {autoDownloadMessage && <p role="status" className="mt-2 text-xs text-text-secondary">{autoDownloadMessage}</p>}
+          </div>
           {!confirmRemove ? <button type="button" onClick={() => setConfirmRemove(true)} className="mt-4 inline-flex items-center gap-2 text-sm text-text-secondary hover:text-error"><Trash2 size={16}/> Unfollow</button>
             : <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
               <span className="text-text-secondary">Unfollow? Episode history is retained.</span>
