@@ -26,6 +26,19 @@ describe('podcastsAPI', () => {
     );
   });
 
+  it('queues manual refresh without assuming completion', async () => {
+    const mock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 202, json: async () => ({ status: 'queued' }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({
+        lastCheckedAt: 100, lastSuccessAt: 100, nextRefreshAt: 200,
+        failures: 0, refreshing: false,
+      }) });
+    vi.stubGlobal('fetch', mock);
+    expect(await podcastsAPI.refresh('a-feed')).toEqual({ status: 'queued' });
+    expect(await podcastsAPI.refreshStatus('a-feed')).toMatchObject({ lastSuccessAt: 100 });
+    expect(mock.mock.calls[0][1].method).toBe('POST');
+  });
+
   it('handles an empty list and 204 unsubscribe', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ feeds: [] }) })

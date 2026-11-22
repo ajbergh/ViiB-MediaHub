@@ -10,7 +10,6 @@ import (
     "time"
 
     "github.com/ajbergh/viib-mediahub/internal/podcast"
-    "github.com/ajbergh/viib-mediahub/internal/db"
 )
 
 type podcastFeedFetcher interface {
@@ -88,6 +87,3 @@ func (a *API) processPodcastRefresh(ctx context.Context){
     }
 }
 
-// Ensure this file refers to the shared DB refresh contract at compile time,
-// rather than introducing a second, subtly different queue model.
-var _ = (*db.PodcastRefreshTarget)(nil)

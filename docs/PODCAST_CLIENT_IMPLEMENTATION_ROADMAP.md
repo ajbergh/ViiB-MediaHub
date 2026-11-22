@@ -432,7 +432,7 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 
 - [ ] **POD-01A (in progress):** Added additive `EnsurePodcastSchema()`, isolated tables/indexes, transaction-safe feed/episode snapshot upserts, listing, unsubscribe and reopen/progress-preservation tests. Resume-state update methods, schema upgrades, backup/restore qualification and CI confirmation remain.
 - [ ] **POD-01B (in progress):** Implemented bounded RSS 2.0/iTunes parser, plain-text notes, DTD block, HTTPS-default fetcher, public-IP DNS pinning, redirect/size/304 controls and unit tests. Full reserved-address audit, feed identity churn, download/media policy and CI confirmation remain.
-- [ ] **POD-01C (in progress):** Added crash-recoverable SQLite refresh leases, due scheduling, 304/ETag handling, bounded retry backoff and transaction-safe episode reconciliation preserving history. Dedicated serial polling worker, opt-in traffic gate and manual API now implemented; manual UI, feed aliases, E2E fixture and CI qualification remain.
+- [ ] **POD-01C (in progress):** Added crash-recoverable SQLite refresh leases, due scheduling, 304/ETag handling, bounded retry backoff and transaction-safe episode reconciliation preserving history. Dedicated serial polling worker, opt-in traffic gate, manual API, show-page Refresh control and E2E fixture implemented; feed aliases and CI qualification remain.
 - [ ] **POD-01D (in progress):** Added guarded REST preview/subscribe/list/episodes/unsubscribe handlers under `/api/v2/podcasts`, typed `services/podcasts.ts` client and tests plus [provisional API documentation](podcast-api.md). Show detail endpoint, async refresh, endpoint pagination and OpenAPI schemas remain.
 - [ ] **POD-01E (in progress):** Added a gated Podcasts Preview page with RSS preview/follow form, Following grid, show detail, episode list, unsubscribe confirmation, loading/error/empty states. Image proxy, search, pagination, end-to-end tests and visual review remain.
 
@@ -662,7 +662,7 @@ Branch strategy: short-lived `feature/podcasts-*` work branches from updated `ma
 | POD-00D | **In progress** | `backend/internal/podcast/testdata/basic.xml`, parser/fetch tests | More fixture formats, ID churn, OPML, media range, integration coverage |
 | POD-01A | **In progress** | `backend/internal/db/podcast_schema.go`, `podcast_repository.go`, tests | Durable progress API, migrations across future versions, verified backup/restore |
 | POD-01B | **In progress** | `backend/internal/podcast/feed.go`, `fetch.go`, unit tests | Expanded SSRF and RSS-format qualification, CI |
-| POD-01C | **In progress** | `backend/internal/db/podcast_refresh.go`, `backend/internal/api/podcast_refresh.go`: leases, conditional requests, scheduler, manual REST and safe reconciliation | Manual UI, alias/GUID moves, integration tests, CI |
+| POD-01C | **In progress** | Refresh DB, dedicated worker, manual REST and show-page Refresh, client/Playwright tests | Alias/GUID moves, backend integration tests, CI |
 | POD-01D | **In progress** | `backend/internal/api/podcast_routes.go`, `services/podcasts.ts`, API/TS tests and server mount | Async refresh, show details, pagination, OpenAPI, CI |
 | POD-01E | **In progress** | `pages/Podcasts.tsx`, gated Sidebar/Settings toggle, `e2e/podcasts.spec.ts` UI fixture | CI, artwork proxy, full show workflows and refinement |
 | Phase 2–8 | **Not started** | None | Discovery, player, offline downloads and remaining features |
@@ -672,4 +672,4 @@ Commit `b44e89a` adds SQLite persistence and the first status log. API contract 
 
 **Validation status:** Go/Vitest/Playwright tests have been authored and the first draft CI runs started, but the current HEAD has **not yet been confirmed green**. The local execution environment does not have the repo's required Go 1.26 toolchain or dependency cache. Do not mark tests green without a GitHub Actions run.
 
-**Next vertical delivery:** Verify CI and remediate failures; add manual Refresh UI and API/E2E tests, address URL/identity edge cases, then expand secure enclosure/artwork handling. Music playback remains untouched.
+**Next vertical delivery:** Verify CI and remediate failures; add backend worker tests, address URL/identity edge cases, then expand secure enclosure/artwork handling. Music playback remains untouched.

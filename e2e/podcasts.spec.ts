@@ -6,6 +6,7 @@ const feedId = 'podcast-fixture-1';
 test('opt-in podcast preview follows RSS and browses episodes without playback', async ({ page }) => {
   let subscribed = false;
   let unfollowed = false;
+  let refreshed = 0;
   const mutations: string[] = [];
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -39,6 +40,16 @@ test('opt-in podcast preview follows RSS and browses episodes without playback',
         id: feedId, title: 'Independent Podcast', episodeCount: 1,
       } });
     }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/refresh') {
+      if (req.method() === 'POST') {
+        refreshed++;
+        return route.fulfill({ status: 202, json: { status: 'queued' } });
+      }
+      return route.fulfill({ json: {
+        lastCheckedAt: 0, lastSuccessAt: 0, nextRefreshAt: 0,
+        failures: 0, refreshing: false,
+      } });
+    }
     if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/episodes') {
       return route.fulfill({ json: { episodes: [{
         id: 'ep-1', feedId, guid: 'ep-1', title: 'First episode',
@@ -67,6 +78,9 @@ test('opt-in podcast preview follows RSS and browses episodes without playback',
   await page.getByRole('button', { name: 'Follow podcast' }).click();
   await expect(page).toHaveURL('/podcasts/show/' + feedId);
   await expect(page.getByRole('heading', { name: 'First episode' })).toBeVisible();
+  await page.getByRole('button', { name: 'Refresh feed' }).click();
+  await expect(page.getByText('Refresh queued. Episodes will update when the publisher responds.')).toBeVisible();
+  expect(refreshed).toBe(1);
   await expect(page.getByText('Streaming and downloads are coming in a later phase.')).toBeVisible();
   await page.getByRole('button', { name: 'Unfollow', exact: true }).click();
   await page.getByRole('button', { name: 'Confirm', exact: true }).click();
