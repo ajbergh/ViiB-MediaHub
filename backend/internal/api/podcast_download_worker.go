@@ -109,6 +109,8 @@ func (a *API) processPodcastDownload(ctx context.Context){
             code="download_unsupported"
         case errors.Is(err,errPodcastDownloadTooLarge):
             code="download_too_large"
+        case errors.Is(err,db.ErrPodcastOfflineQuotaExceeded):
+            code="download_quota_exceeded"
         case errors.Is(err,os.ErrPermission),errors.Is(err,io.ErrShortWrite):
             code="download_disk_unavailable"
         }
@@ -180,6 +182,8 @@ func (a *API) transferPodcastDownload(ctx context.Context,id,owner string) error
 // user-controlled filesystem path. ServeContent honors RFC 7233 ranges.
 func (a *API) servePodcastOfflineMedia(w http.ResponseWriter,r *http.Request,id string) bool {
     if a.db==nil{return false}
+    a.podcastDownloadFileMu.RLock()
+    defer a.podcastDownloadFileMu.RUnlock()
     file,err:=a.db.PodcastCompletedDownload(r.Context(),id)
     if errors.Is(err,sql.ErrNoRows){return false}
     if err!=nil{
@@ -216,6 +220,15 @@ func (a *API) servePodcastOfflineMedia(w http.ResponseWriter,r *http.Request,id 
         return true
     }
     defer f.Close()
+    // Re-check the opened handle to reject swapped symlinks or changed-size
+    // files between lstat and open, even if another local process writes here.
+    opened,openErr:=f.Stat()
+    if openErr!=nil||!opened.Mode().IsRegular()||opened.Size()!=file.Size{
+        _=a.db.InvalidatePodcastDownload(r.Context(),id)
+        respondV2Error(w,r,http.StatusGone,"podcast_download_missing",
+            "Downloaded audio needs to be retried",false,nil)
+        return true
+    }
     w.Header().Set("Content-Type",file.MIME)
     w.Header().Set("Cache-Control","private, no-store")
     w.Header().Set("X-Content-Type-Options","nosniff")

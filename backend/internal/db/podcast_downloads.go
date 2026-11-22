@@ -11,8 +11,13 @@ import (
 
 const podcastDownloadLease = 90 * time.Second
 const MaxPodcastDownloadBytes int64 = 512 << 20 // bounded early-access offline MVP
+// Includes completed and currently reserved work, even for unfollowed shows.
+const MaxPodcastOfflineLibraryBytes int64 = 2 << 30
 
-var ErrPodcastDownloadNotCancelable = errors.New("podcast download cannot be canceled")
+var (
+    ErrPodcastDownloadNotCancelable = errors.New("podcast download cannot be canceled")
+    ErrPodcastOfflineQuotaExceeded = errors.New("podcast offline storage quota exceeded")
+)
 
 type PodcastDownloadRecord struct {
     ID string `json:"id"`
@@ -143,17 +148,41 @@ RETURNING episode_id`,owner,millis+podcastDownloadLease.Milliseconds(),millis,mi
     return episodeID,err
 }
 
+// PodcastOfflineStorage reports committed and in-flight reservations across
+// ALL downloads, including unfollowed shows whose files still consume disk.
+func (d *DB) PodcastOfflineStorage(ctx context.Context)(int64,error){
+    if err:=d.EnsurePodcastSchema();err!=nil{return 0,err}
+    var used int64
+    err:=d.conn.QueryRowContext(ctx,`
+SELECT COALESCE(SUM(CASE WHEN status='completed' THEN COALESCE(verified_size,0)
+ ELSE COALESCE(expected_bytes,0) END),0)
+FROM podcast_downloads WHERE status IN ('completed','downloading')`).Scan(&used)
+    return used,err
+}
+
 func (d *DB) UpdatePodcastDownloadBytes(ctx context.Context,id,owner string,received,total int64) error {
     if received<0||total<=0||total>MaxPodcastDownloadBytes||received>total{return errors.New("invalid podcast byte count")}
     result,err:=d.conn.ExecContext(ctx,`
 UPDATE podcast_downloads SET bytes_received=?,expected_bytes=?,updated_at=?,
  lease_expires_at=?
-WHERE episode_id=? AND status='downloading' AND lease_owner=?`,
-received,total,time.Now().UnixMilli(),time.Now().Add(podcastDownloadLease).UnixMilli(),id,owner)
+WHERE episode_id=? AND status='downloading' AND lease_owner=?
+AND (SELECT COALESCE(SUM(CASE WHEN status='completed' THEN COALESCE(verified_size,0)
+ ELSE COALESCE(expected_bytes,0) END),0)
+ FROM podcast_downloads WHERE episode_id<>? AND status IN ('completed','downloading')) <= ?`,
+received,total,time.Now().UnixMilli(),time.Now().Add(podcastDownloadLease).UnixMilli(),
+id,owner,id,MaxPodcastOfflineLibraryBytes-total)
     if err!=nil{return err}
     n,err:=result.RowsAffected()
     if err!=nil{return err}
-    if n==0{return sql.ErrNoRows}
+    if n==0 {
+        var status,leaseOwner string
+        err:=d.conn.QueryRowContext(ctx,`SELECT status,COALESCE(lease_owner,'')
+            FROM podcast_downloads WHERE episode_id=?`,id).Scan(&status,&leaseOwner)
+        if err==nil && status=="downloading" && leaseOwner==owner {
+            return ErrPodcastOfflineQuotaExceeded
+        }
+        return sql.ErrNoRows
+    }
     return nil
 }
 
@@ -163,8 +192,12 @@ func (d *DB) CompletePodcastDownload(ctx context.Context,id,owner,filename,mime,
 UPDATE podcast_downloads SET status='completed',destination_relative_path=?,
  temp_relative_path=NULL,bytes_received=?,expected_bytes=?,verified_size=?,sha256=?,mime=?,
  completed_at=?,updated_at=?,lease_owner=NULL,lease_expires_at=NULL,error_code=NULL
-WHERE episode_id=? AND status='downloading' AND lease_owner=?`,
-filename,size,size,size,digest,mime,time.Now().UnixMilli(),time.Now().UnixMilli(),id,owner)
+WHERE episode_id=? AND status='downloading' AND lease_owner=?
+AND (SELECT COALESCE(SUM(CASE WHEN status='completed' THEN COALESCE(verified_size,0)
+ ELSE COALESCE(expected_bytes,0) END),0)
+ FROM podcast_downloads WHERE episode_id<>? AND status IN ('completed','downloading')) <= ?`,
+filename,size,size,size,digest,mime,time.Now().UnixMilli(),time.Now().UnixMilli(),
+id,owner,id,MaxPodcastOfflineLibraryBytes-size)
     if err!=nil{return err}
     n,err:=result.RowsAffected()
     if err!=nil{return err}
@@ -203,4 +236,22 @@ UPDATE podcast_downloads SET status='failed',error_code='cached_media_missing',
  destination_relative_path=NULL,mime=NULL,sha256=NULL,verified_size=NULL,updated_at=?
 WHERE episode_id=? AND status='completed'`,time.Now().UnixMilli(),id)
     return err
+}
+
+// DeletePodcastCompletedDownload releases only a followed episode's completed
+// metadata after the caller has safely removed its fixed-name local file.
+// Listening history and publisher episode metadata remain untouched.
+func (d *DB) DeletePodcastCompletedDownload(ctx context.Context,id string) error {
+    if err:=d.EnsurePodcastSchema();err!=nil{return err}
+    result,err:=d.conn.ExecContext(ctx,`
+DELETE FROM podcast_downloads WHERE episode_id=? AND status='completed'
+AND EXISTS (
+  SELECT 1 FROM podcast_episodes e
+  JOIN podcast_subscriptions s ON s.feed_id=e.feed_id
+  WHERE e.id=podcast_downloads.episode_id)`,id)
+    if err!=nil{return err}
+    n,err:=result.RowsAffected()
+    if err!=nil{return err}
+    if n==0{return sql.ErrNoRows}
+    return nil
 }
