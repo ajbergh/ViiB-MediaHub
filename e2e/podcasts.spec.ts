@@ -385,3 +385,70 @@ test('Continue Listening resumes a saved episode through the shared player', asy
   await expect(page.getByRole('button', { name: 'Queue, 3 tracks' }).first()).toBeVisible();
   await expect(page.getByRole('region', { name: 'Podcast episode player' })).toHaveCount(0);
 });
+
+
+// Central Downloads view is intentionally backed by one safe, local list API,
+// not raw podcast enclosures or filesystem paths.
+test('Podcasts central Downloads filters and confirms completed-file deletion', async ({ page }) => {
+  let state: 'completed' | 'failed' | 'queued' | null = 'completed';
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/*', async route => {
+    const req = route.request();
+    const u = new URL(req.url());
+    if (u.origin !== 'http://127.0.0.1:4173') return route.abort();
+    if (u.pathname === '/api/settings/podcasts_preview_enabled') {
+      return route.fulfill({ json: { key: 'podcasts_preview_enabled', value: 'true' } });
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds' && req.method() === 'GET') {
+      return route.fulfill({ json: { feeds: [] } });
+    }
+    if (u.pathname === '/api/v2/podcasts/episodes/continue') {
+      return route.fulfill({ json: { episodes: [] } });
+    }
+    if (u.pathname === '/api/v2/podcasts/downloads') {
+      return route.fulfill({ json: {
+        downloads: state ? [{
+          id: 'episode-a', episodeId: 'episode-a', feedId: 'feed-a',
+          episodeTitle: 'Saved episode', feedTitle: 'Offline show',
+          status: state, bytesReceived: 0, expectedBytes: 0,
+          verifiedSize: state === 'completed' ? 4096 : 0,
+          createdAt: 10, updatedAt: 20, completedAt: 15,
+        }] : [], storage: { usedBytes: state === 'completed' ? 4096 : 0, maxBytes: 2147483648 },
+      } });
+    }
+    if (u.pathname === '/api/v2/podcasts/episodes/episode-a/download') {
+      if (req.method() === 'DELETE') {
+        if (state === 'completed') {
+          state = null;
+          return route.fulfill({ status: 204, body: '' });
+        }
+        state = 'failed';
+        return route.fulfill({ json: { download: { episodeId: 'episode-a', status: state } } });
+      }
+      if (req.method() === 'POST') {
+        state = 'queued';
+        return route.fulfill({ status: 202, json: { download: { episodeId: 'episode-a', status: state } } });
+      }
+    }
+    if (u.pathname.startsWith('/api/')) return route.fulfill({ status: 503, json: { error: 'fixture only' } });
+    return route.continue();
+  });
+
+  await page.goto('/podcasts');
+  const downloads = page.getByRole('region', { name: 'Podcast downloads' });
+  await expect(downloads.getByRole('heading', { name: 'Downloads' })).toBeVisible();
+  await expect(downloads.getByText('Saved episode')).toBeVisible();
+  await downloads.getByRole('combobox', { name: 'Filter podcast downloads' }).selectOption('active');
+  await expect(downloads.getByText('No downloads match this filter.')).toBeVisible();
+  await downloads.getByRole('combobox', { name: 'Filter podcast downloads' }).selectOption('completed');
+  await expect(downloads.getByText('Available offline', { exact: true })).toBeVisible();
+  await downloads.getByRole('button', { name: 'Remove offline download of Saved episode' }).click();
+  await expect(downloads.getByText('Remove offline audio? Your listening history will remain.')).toBeVisible();
+  await downloads.getByRole('button', { name: 'Keep' }).click();
+  await expect(downloads.getByText('Saved episode')).toBeVisible();
+  await downloads.getByRole('button', { name: 'Remove offline download of Saved episode' }).click();
+  await downloads.getByRole('button', { name: 'Confirm remove download of Saved episode' }).click();
+  await expect(downloads.getByText('No podcast downloads yet.', { exact: false })).toBeVisible();
+  expect(errors).toEqual([]);
+});

@@ -45,6 +45,14 @@ export const Podcasts: React.FC = () => {
   const [feeds, setFeeds] = useState<PodcastFeed[]>([]);
   const [continueEpisodes, setContinueEpisodes] = useState<PodcastContinueEpisode[]>([]);
   const [followingQuery, setFollowingQuery] = useState('');
+  const [downloads, setDownloads] = useState<PodcastDownload[]>([]);
+  const [downloadStorage, setDownloadStorage] = useState<PodcastStorage | null>(null);
+  const [downloadsLoading, setDownloadsLoading] = useState(true);
+  const [downloadsError, setDownloadsError] = useState('');
+  const [downloadsFilter, setDownloadsFilter] = useState<'all' | 'active' | 'completed' | 'attention'>('all');
+  const [workingDownloadId, setWorkingDownloadId] = useState<string | null>(null);
+  const [confirmRemoveDownloadId, setConfirmRemoveDownloadId] = useState<string | null>(null);
+  const selectedPodcastId = useStore(state => state.currentSong?.podcastEpisodeId);
   const [exporting, setExporting] = useState(false);
   const [opml, setOPML] = useState<PodcastOPMLImportPreview | null>(null);
   const [importMode, setImportMode] = useState<'idle' | 'preview' | 'import'>('idle');
@@ -74,6 +82,66 @@ export const Podcasts: React.FC = () => {
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [revision]);
+
+  // Central Downloads view reads only subscription-scoped, path-free local
+  // state. Background activity stays in Go, independent of this component.
+  useEffect(() => {
+    const controller = new AbortController();
+    const refresh = () => {
+      void podcastsAPI.listDownloads(controller.signal)
+        .then(({ downloads: rows, storage }) => {
+          if (controller.signal.aborted) return;
+          setDownloads(rows);
+          setDownloadStorage(storage ?? null);
+          setDownloadsError('');
+        })
+        .catch(err => {
+          if (!controller.signal.aborted) setDownloadsError(readableError(err));
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setDownloadsLoading(false);
+        });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 5000);
+    return () => { controller.abort(); window.clearInterval(timer); };
+  }, [revision]);
+
+  const changeLibraryDownload = async (row: PodcastDownload, action: 'cancel' | 'retry' | 'remove') => {
+    if (workingDownloadId) return;
+    if (action === 'remove' && selectedPodcastId === row.episodeId) {
+      setDownloadsError('Switch away from this playing episode before deleting its offline copy.');
+      return;
+    }
+    setWorkingDownloadId(row.episodeId);
+    setDownloadsError('');
+    try {
+      if (action === 'remove') {
+        await podcastsAPI.removeDownload(row.episodeId);
+        setDownloads(current => current.filter(item => item.episodeId !== row.episodeId));
+        setConfirmRemoveDownloadId(null);
+      } else {
+        const { download } = action === 'cancel'
+          ? await podcastsAPI.cancelDownload(row.episodeId)
+          : await podcastsAPI.queueDownload(row.episodeId);
+        setDownloads(current => current.map(item => item.episodeId === row.episodeId
+          ? { ...item, ...download } : item));
+      }
+      const { downloads: refreshed, storage } = await podcastsAPI.listDownloads();
+      setDownloads(refreshed);
+      if (storage) setDownloadStorage(storage);
+    } catch (err) {
+      setDownloadsError(readableError(err));
+    } finally {
+      setWorkingDownloadId(null);
+    }
+  };
+
+  const filteredDownloads = downloads.filter(row =>
+    downloadsFilter === 'all'
+    || (downloadsFilter === 'active' && (row.status === 'queued' || row.status === 'downloading'))
+    || (downloadsFilter === 'completed' && row.status === 'completed')
+    || (downloadsFilter === 'attention' && ['failed', 'canceled', 'paused'].includes(row.status)));
 
   const showPreview = useCallback(async (event: React.FormEvent) => {
     event.preventDefault();
@@ -211,7 +279,7 @@ export const Podcasts: React.FC = () => {
       <header>
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand">Early access · RSS subscriptions</p>
         <h1 className="mt-2 text-3xl font-bold text-text-main">Podcasts</h1>
-        <p className="mt-2 max-w-3xl text-text-secondary">Follow public RSS podcasts, stream episodes through the shared ViiB player, and resume where you left off. Directory discovery and offline downloads are still under development.</p>
+        <p className="mt-2 max-w-3xl text-text-secondary">Follow public RSS podcasts, use the shared ViiB player, manage offline downloads, and resume where you left off. Directory discovery and advanced download policies are still under development.</p>
       </header>
 
       <section className="rounded-xl border border-surface-3 bg-surface-2 p-5">
@@ -312,6 +380,100 @@ export const Podcasts: React.FC = () => {
           </article>)}
         </div>
       </section>}
+
+      <section aria-label="Podcast downloads" className="rounded-xl border border-surface-3 bg-surface-2 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold text-text-main">Downloads</h2>
+            <p className="mt-1 text-xs text-text-secondary">
+              Recent download activity from followed podcasts (up to 100). Offline copies play through your shared player.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <label htmlFor="podcast-download-filter" className="text-xs text-text-subtle">Show</label>
+            <select id="podcast-download-filter" aria-label="Filter podcast downloads" value={downloadsFilter}
+              onChange={event => { setDownloadsFilter(event.target.value as typeof downloadsFilter); setConfirmRemoveDownloadId(null); }}
+              className="rounded-md border border-surface-3 bg-surface-1 px-3 py-2 text-sm text-text-main">
+              <option value="all">All</option>
+              <option value="active">In progress</option>
+              <option value="completed">Available offline</option>
+              <option value="attention">Needs attention</option>
+            </select>
+            <button type="button" onClick={() => setRevision(value => value + 1)}
+              aria-label="Refresh podcast downloads" className="rounded-md p-2 text-text-secondary hover:bg-surface-highlight">
+              <RefreshCw size={17}/>
+            </button>
+          </div>
+        </div>
+        {downloadStorage && <p className="mt-2 text-xs text-text-subtle">
+          {(downloadStorage.usedBytes / (1024 * 1024)).toFixed(0)} MiB of
+          {' '}{(downloadStorage.maxBytes / (1024 * 1024 * 1024)).toFixed(1)} GiB reserved
+        </p>}
+        {downloadsError && <p role="alert" className="mt-3 text-sm text-error">{downloadsError}</p>}
+        {downloadsLoading && <p role="status" className="mt-3 text-sm text-text-secondary">Loading podcast downloads…</p>}
+        {!downloadsLoading && filteredDownloads.length === 0 && <p className="mt-4 text-sm text-text-secondary">
+          {downloads.length ? 'No downloads match this filter.' : 'No podcast downloads yet. Open a followed show to save an episode for offline listening.'}
+        </p>}
+        {filteredDownloads.length > 0 && <div className="mt-4 space-y-2">
+          {filteredDownloads.map(row => {
+            const isActive = row.status === 'queued' || row.status === 'downloading';
+            const completed = row.status === 'completed';
+            const playableElsewhere = selectedPodcastId === row.episodeId;
+            const progress = row.expectedBytes ? Math.min(100, Math.floor(row.bytesReceived * 100 / row.expectedBytes)) : null;
+            const name = row.episodeTitle || 'Podcast episode';
+            return <article key={row.episodeId} className="rounded-lg border border-surface-3 bg-surface-1 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-brand">{row.feedTitle || 'Followed show'}</p>
+                  <h3 className="mt-1 break-words text-sm font-semibold text-text-main">{name}</h3>
+                  <p className="mt-1 text-xs text-text-secondary">
+                    {completed ? 'Available offline' : row.status === 'downloading'
+                      ? `Downloading${progress === null ? '' : ' ' + progress + '%'}`
+                      : row.status === 'queued' ? 'Queued'
+                      : row.status === 'failed' ? `Failed: ${row.errorCode || 'unavailable'}`
+                      : row.status === 'canceled' ? 'Canceled' : 'Paused'}
+                    {completed && row.verifiedSize > 0 ? ` · ${(row.verifiedSize / (1024 * 1024)).toFixed(1)} MiB` : ''}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {row.feedId && <Link to={'/podcasts/show/' + encodeURIComponent(row.feedId)}
+                    className="rounded-md border border-surface-3 px-3 py-1.5 text-xs font-semibold text-text-secondary hover:text-text-main">
+                    View show
+                  </Link>}
+                  {isActive ? <button type="button" disabled={workingDownloadId !== null}
+                    onClick={() => void changeLibraryDownload(row, 'cancel')}
+                    aria-label={'Cancel download of ' + name}
+                    className="rounded-md border border-surface-3 px-3 py-1.5 text-xs font-semibold text-text-main disabled:opacity-50">
+                    Cancel
+                  </button> : completed ? <button type="button" disabled={workingDownloadId !== null || playableElsewhere}
+                    onClick={() => setConfirmRemoveDownloadId(row.episodeId)}
+                    aria-label={'Remove offline download of ' + name}
+                    className="rounded-md border border-surface-3 px-3 py-1.5 text-xs font-semibold text-text-main disabled:opacity-50">
+                    Remove download
+                  </button> : <button type="button" disabled={workingDownloadId !== null}
+                    onClick={() => void changeLibraryDownload(row, 'retry')}
+                    aria-label={'Retry download of ' + name}
+                    className="rounded-md border border-surface-3 px-3 py-1.5 text-xs font-semibold text-text-main disabled:opacity-50">
+                    Retry
+                  </button>}
+                </div>
+              </div>
+              {completed && playableElsewhere && <p className="mt-2 text-xs text-text-subtle">Switch away from this episode to remove its offline audio.</p>}
+              {completed && confirmRemoveDownloadId === row.episodeId && <div role="group"
+                aria-label={'Confirm removing download of ' + name}
+                className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+                <span>Remove offline audio? Your listening history will remain.</span>
+                <button type="button" disabled={workingDownloadId !== null}
+                  onClick={() => void changeLibraryDownload(row, 'remove')}
+                  aria-label={'Confirm remove download of ' + name}
+                  className="rounded-md bg-brand px-3 py-1.5 font-semibold text-surface-0">Remove copy</button>
+                <button type="button" onClick={() => setConfirmRemoveDownloadId(null)}
+                  className="rounded-md border border-surface-3 px-3 py-1.5">Keep</button>
+              </div>}
+            </article>;
+          })}
+        </div>}
+      </section>
 
       <section aria-label="Followed podcasts">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

@@ -35,6 +35,10 @@ export interface PodcastStorage {
 export interface PodcastDownload {
   id: string;
   episodeId: string;
+  /** Present for subscribed download list rows; never publisher URLs. */
+  feedId?: string;
+  feedTitle?: string;
+  episodeTitle?: string;
   status: 'queued' | 'downloading' | 'completed' | 'failed' | 'canceled' | 'paused';
   bytesReceived: number;
   expectedBytes: number;

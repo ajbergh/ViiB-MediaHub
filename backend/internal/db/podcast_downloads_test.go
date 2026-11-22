@@ -42,6 +42,14 @@ func TestPodcastDownloadLifecycleSurvivesRestartAndValidatesLease(t *testing.T) 
  digest:="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
  if err:=d.CompletePodcastDownload(ctx,id,"worker-c",id+".audio","audio/mpeg",digest,4);err!=nil{t.Fatal(err)}
  file,err:=d.PodcastCompletedDownload(ctx,id);if err!=nil||file.Size!=4||file.MIME!="audio/mpeg"{t.Fatalf("%v %+v",err,file)}
+ // The central Downloads view has safe, human-readable metadata only;
+ // publisher enclosure URLs and local filenames must never leak.
+ listings,err:=d.ListPodcastDownloads(ctx)
+ if err!=nil||len(listings)!=1||listings[0].EpisodeID!=id||
+   listings[0].FeedID!=feedID||listings[0].EpisodeTitle!="Audio"||
+   listings[0].FeedTitle!="Show"{
+    t.Fatalf("download listing metadata: %+v %v",listings,err)
+ }
  done,err:=d.EnqueuePodcastDownload(ctx,id);if err!=nil||done.Status!="completed"{t.Fatalf("completed download overwritten: %v %+v",err,done)}
  if _,err=d.CancelPodcastDownload(ctx,id);!errors.Is(err,ErrPodcastDownloadNotCancelable){t.Fatalf("cancel completed: %v",err)}
  // A completed file with damaged cached bytes must be invalidated and

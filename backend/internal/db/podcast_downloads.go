@@ -22,6 +22,9 @@ var (
 type PodcastDownloadRecord struct {
     ID string `json:"id"`
     EpisodeID string `json:"episodeId"`
+    FeedID string `json:"feedId,omitempty"`
+    EpisodeTitle string `json:"episodeTitle,omitempty"`
+    FeedTitle string `json:"feedTitle,omitempty"`
     Status string `json:"status"`
     BytesReceived int64 `json:"bytesReceived"`
     ExpectedBytes int64 `json:"expectedBytes"`
@@ -67,15 +70,19 @@ WHERE d.episode_id=?`,episodeID))
 func (d *DB) ListPodcastDownloads(ctx context.Context) ([]PodcastDownloadRecord,error) {
     if err:=d.EnsurePodcastSchema();err!=nil{return nil,err}
     rows,err:=d.conn.QueryContext(ctx,`
-SELECT `+podcastDownloadColumns+` FROM podcast_downloads d
+SELECT `+podcastDownloadColumns+`,e.feed_id,e.title,f.title FROM podcast_downloads d
 JOIN podcast_episodes e ON e.id=d.episode_id
 JOIN podcast_subscriptions s ON s.feed_id=e.feed_id
+JOIN podcast_feeds f ON f.id=e.feed_id
 ORDER BY d.updated_at DESC,d.episode_id LIMIT 100`)
     if err!=nil{return nil,err}
     defer rows.Close()
     result:=make([]PodcastDownloadRecord,0)
     for rows.Next(){
-        row,err:=scanPodcastDownload(rows)
+        var row PodcastDownloadRecord
+        err:=rows.Scan(&row.ID,&row.EpisodeID,&row.Status,&row.BytesReceived,
+            &row.ExpectedBytes,&row.VerifiedSize,&row.ErrorCode,&row.CreatedAt,
+            &row.UpdatedAt,&row.CompletedAt,&row.FeedID,&row.EpisodeTitle,&row.FeedTitle)
         if err!=nil{return nil,err}
         result=append(result,row)
     }
