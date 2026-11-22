@@ -62,7 +62,7 @@ Example successful response:
 - Episode pages use `offset`/`limit` ordering by publication date and episode ID. Reload from offset 0 after feed refresh, since new releases can shift page boundaries.
 - Refresh is at-least-once after failure/restart; concurrent/multi-instance
   workers require additional integration qualification before production.
-  Redirected subscription URL aliases are persisted transactionally and reuse existing show IDs when the requested URL redirects again. Publisher GUID moves and collisions between previously independent show identities remain unresolved.
+  Redirected subscription URL aliases are persisted transactionally and reuse existing show IDs on subscribe and scheduled refresh. Canonical URL changes preserve old feed URLs as aliases; conflicting existing canonical ownership rolls back rather than merging histories. Publisher GUID moves and collisions between previously independent show identities still require explicit reconciliation.
 - No custom ports or authenticated/tokenized feeds. Public query parameters are
   restricted to `feed=rss`, `feed=rss2`, `feed=podcast`, `format=rss`, or
   `format=xml`; private feeds require a separate encrypted-credential and

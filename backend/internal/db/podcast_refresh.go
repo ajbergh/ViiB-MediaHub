@@ -124,8 +124,35 @@ func (d *DB) FinishPodcastRefresh(ctx context.Context,target PodcastRefreshTarge
     millis:=now.UnixMilli()
     if !result.NotModified{
         if strings.TrimSpace(result.Feed.Title)=="" {return podcast.ErrInvalidFeed}
-        // Redirect target is validated by the fetcher. Retain original
-        // canonical_url and feed ID until formal alias/redirect migration lands.
+        // The public network fetcher validates every redirect hop. Move
+        // canonical URL atomically while preserving the old URL as an alias,
+        // so a publisher migration does not create a second subscription.
+        // A destination already owned by another show is a genuine identity
+        // conflict; roll back rather than merging history heuristically.
+        newCanonical:=target.URL
+        if result.Feed.URL!="" {
+            normalized,validateErr:=podcast.ValidatePublicURL(result.Feed.URL,false)
+            if validateErr!=nil{return validateErr}
+            newCanonical=normalized.String()
+        }
+        var previousCanonical string
+        err=tx.QueryRowContext(ctx,`SELECT canonical_url FROM podcast_feeds WHERE id=?`,target.ID).Scan(&previousCanonical)
+        if err!=nil{return err}
+        if newCanonical!=previousCanonical {
+            var destinationOwner string
+            lookupErr:=tx.QueryRowContext(ctx,`SELECT id FROM podcast_feeds WHERE canonical_url=?`,newCanonical).Scan(&destinationOwner)
+            if lookupErr==nil && destinationOwner!=target.ID {
+                return fmt.Errorf("podcast redirect identity conflict")
+            }
+            if lookupErr!=nil && !errors.Is(lookupErr,sql.ErrNoRows){return lookupErr}
+            _,err=tx.ExecContext(ctx,`UPDATE podcast_feeds SET canonical_url=? WHERE id=?`,newCanonical,target.ID)
+            if err!=nil{return err}
+            _,err=tx.ExecContext(ctx,`
+INSERT INTO podcast_feed_aliases(original_url,feed_id) VALUES (?,?)
+ON CONFLICT(original_url) DO NOTHING
+`,previousCanonical,target.ID)
+            if err!=nil{return err}
+        }
         _,err=tx.ExecContext(ctx,`
 UPDATE podcast_feeds SET
  title=?,author=?,description=?,image_url=?,language=?

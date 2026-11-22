@@ -50,6 +50,11 @@ func TestPodcastRefreshClaim304AndHistory(t *testing.T) {
     if preservedPosition!=72500||episodeCount!=2||unlistedCount!=1{t.Fatalf("history: position %d episodes %d unlisted %d",preservedPosition,episodeCount,unlistedCount)}
     list,err:=database.ListSubscribedPodcasts(ctx)
     if err!=nil||len(list)!=1||list[0].ID!=id||list[0].Title!="New Name"{t.Fatalf("feed ID lost: %#v %v",list,err)}
+    if list[0].URL!="https://publisher.example/redirected-feed" {t.Fatalf("canonical URL stale: %q",list[0].URL)}
+    var oldAlias string
+    if err=database.conn.QueryRowContext(ctx,`SELECT feed_id FROM podcast_feed_aliases WHERE original_url=?`,"https://example.org/rss").Scan(&oldAlias);err!=nil||oldAlias!=id{
+        t.Fatalf("redirect alias not retained: %q %v",oldAlias,err)
+    }
 }
 func TestPodcastRefreshRetryAndLeaseRecovery(t *testing.T){
     database,err:=New(filepath.Join(t.TempDir(),"podcasts.db"))
@@ -91,5 +96,33 @@ func TestPodcastInitialFetchDoesNotRedownload(t *testing.T) {
     due,err=database.ClaimDuePodcastRefresh(ctx,time.Now())
     if err!=nil||due==nil||due.ETag!="\"v1\""||due.LastModified==""{
         t.Fatalf("manual refresh lost validators: %+v %v",due,err)
+    }
+}
+
+
+func TestPodcastRefreshRedirectCollisionDoesNotMergeShows(t *testing.T) {
+    database,err:=New(filepath.Join(t.TempDir(),"conflicts.db"))
+    if err!=nil{t.Fatal(err)}
+    defer database.Close()
+    ctx:=context.Background()
+    firstURL:="https://first.example.org/feed"
+    secondURL:="https://second.example.org/feed"
+    firstID,err:=database.SavePodcastFeedSnapshot(ctx,podcast.Feed{URL:firstURL,Title:"First"},true)
+    if err!=nil{t.Fatal(err)}
+    secondID,err:=database.SavePodcastFeedSnapshot(ctx,podcast.Feed{URL:secondURL,Title:"Second"},true)
+    if err!=nil{t.Fatal(err)}
+    if err=database.SchedulePodcastRefresh(ctx,firstID);err!=nil{t.Fatal(err)}
+    target,err:=database.ClaimDuePodcastRefresh(ctx,time.Now())
+    if err!=nil||target==nil||target.ID!=firstID{t.Fatalf("first target: %#v %v",target,err)}
+    err=database.FinishPodcastRefresh(ctx,*target,podcast.FetchResult{Feed:podcast.Feed{
+        URL:secondURL,Title:"Should Not Replace",
+    }},time.Now())
+    if err==nil{t.Fatal("redirect collision unexpectedly merged identities")}
+    feeds,err:=database.ListSubscribedPodcasts(ctx)
+    if err!=nil||len(feeds)!=2{t.Fatalf("lost subscriptions: %#v %v",feeds,err)}
+    names:=map[string]string{}
+    for _,feed:=range feeds {names[feed.ID]=feed.Title}
+    if names[firstID]!="First"||names[secondID]!="Second"{
+        t.Fatalf("redirect collision changed history: %#v",names)
     }
 }
