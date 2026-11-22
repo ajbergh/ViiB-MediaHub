@@ -72,3 +72,33 @@ func TestPodcastRedirectAliasesRejectPrivateFeeds(t *testing.T) {
     if err:=database.conn.QueryRow(`SELECT COUNT(*) FROM podcast_feed_aliases`).Scan(&count);err!=nil{t.Fatal(err)}
     if count!=0{t.Fatalf("unsafe alias count=%d",count)}
 }
+
+
+func TestPodcastRedirectCollisionOnSubscribeCannotStealAlias(t *testing.T) {
+    database,err:=New(filepath.Join(t.TempDir(),"collision.db"))
+    if err!=nil{t.Fatal(err)}
+    defer database.Close()
+    ctx:=context.Background()
+    a:="https://podcasts.example.org/feed-a"
+    b:="https://podcasts.example.org/feed-b"
+    request:="https://original.example.org/rss"
+    aID,err:=database.SavePodcastSubscriptionFromFetch(ctx,request,podcast.FetchResult{
+        Feed:podcast.Feed{URL:a,Title:"First"},
+    })
+    if err!=nil{t.Fatal(err)}
+    bID,err:=database.SavePodcastSubscriptionFromFetch(ctx,b,podcast.FetchResult{
+        Feed:podcast.Feed{URL:b,Title:"Second"},
+    })
+    if err!=nil{t.Fatal(err)}
+    if _,err=database.SavePodcastSubscriptionFromFetch(ctx,request,podcast.FetchResult{
+        Feed:podcast.Feed{URL:b,Title:"Reassigned"},
+    });err==nil{t.Fatal("redirect hijacked existing alias")}
+    var mapped string
+    if err=database.conn.QueryRowContext(ctx,"SELECT feed_id FROM podcast_feed_aliases WHERE original_url=?",request).Scan(&mapped);err!=nil{t.Fatal(err)}
+    if mapped!=aID {t.Fatalf("old alias moved to other show: %s vs %s",mapped,aID)}
+    shows,err:=database.ListSubscribedPodcasts(ctx)
+    if err!=nil||len(shows)!=2{t.Fatalf("lost subscriptions: %+v %v",shows,err)}
+    names:=map[string]string{}
+    for _,feed:=range shows{names[feed.ID]=feed.Title}
+    if names[aID]!="First"||names[bID]!="Second"{t.Fatalf("collision mutated show titles: %+v",names)}
+}

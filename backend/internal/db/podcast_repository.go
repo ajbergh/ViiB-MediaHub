@@ -96,6 +96,19 @@ func (d *DB) savePodcastFeed(ctx context.Context, requestedURL string, feed podc
     }
     if feedID==""{ feedID=podcastStableID(feed.URL) }
 
+    // Never reassign an existing user's original feed URL to an unrelated
+    // canonical show just because a publisher's redirect changed. Distinct
+    // histories must be resolved explicitly, not silently merged.
+    var requestedOwner string
+    ownerErr:=tx.QueryRowContext(ctx,
+        "SELECT f.id FROM podcast_feed_aliases a JOIN podcast_feeds f ON f.id=a.feed_id WHERE a.original_url=?",
+        requestedURL).Scan(&requestedOwner)
+    if ownerErr!=nil && !errors.Is(ownerErr,sql.ErrNoRows){return "",ownerErr}
+    if ownerErr==nil && requestedOwner!=feedID{return "",fmt.Errorf("podcast redirect identity conflict")}
+    ownerErr=tx.QueryRowContext(ctx,"SELECT id FROM podcast_feeds WHERE canonical_url=?",requestedURL).Scan(&requestedOwner)
+    if ownerErr!=nil && !errors.Is(ownerErr,sql.ErrNoRows){return "",ownerErr}
+    if ownerErr==nil && requestedOwner!=feedID{return "",fmt.Errorf("podcast canonical identity conflict")}
+
     _,err=tx.ExecContext(ctx,`
 INSERT INTO podcast_feeds (
  id,canonical_url,title,author,description,image_url,language,
@@ -121,9 +134,13 @@ ON CONFLICT(id) DO UPDATE SET
     for _, alias:=range aliases {
         if alias==feed.URL{continue}
         if _,err=podcast.ValidatePublicURL(alias,false);err!=nil{return "",err}
+        var aliasOwner string
+        lookupErr:=tx.QueryRowContext(ctx,"SELECT feed_id FROM podcast_feed_aliases WHERE original_url=?",alias).Scan(&aliasOwner)
+        if lookupErr!=nil && !errors.Is(lookupErr,sql.ErrNoRows){return "",lookupErr}
+        if lookupErr==nil && aliasOwner!=feedID{return "",fmt.Errorf("podcast alias identity conflict")}
         _,err=tx.ExecContext(ctx,`
 INSERT INTO podcast_feed_aliases(original_url,feed_id) VALUES (?,?)
-ON CONFLICT(original_url) DO UPDATE SET feed_id=excluded.feed_id
+ON CONFLICT(original_url) DO NOTHING
 `,alias,feedID)
         if err!=nil{return "",fmt.Errorf("save podcast redirect alias: %w",err)}
     }
