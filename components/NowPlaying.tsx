@@ -3,15 +3,15 @@
  *
  * Full-screen track view with playback controls, lyrics, queue and visualizers.
  * The background uses cover artwork when available, otherwise a deterministic
- * album-name gradient. Artwork is capped at 500px normally; party mode uses a
- * 70vh width capped at 80vw. The Spotify download button queues the streaming
+ * album-name gradient. Party mode keeps the artwork at its pre-fullscreen size.
+ * The Spotify download button queues the streaming
  * track for offline download; it does not save artwork. Player state comes from
  * Zustand and cover URLs from the current song or useAlbumCovers.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useId, useRef } from 'react';
 import { useStore, useAlbumCovers } from '../store';
-import { X, Play, Pause, SkipBack, SkipForward, Shuffle, ListMusic, Activity, SlidersHorizontal, Volume2, Download, Loader2, CheckCircle, Layers, Maximize2, Minimize2, Info, Sparkles, FileText, Tag, Calendar, BarChart3, Clock, Radio, Disc, Mic2 } from 'lucide-react';
+import { X, Play, Pause, SkipBack, SkipForward, Shuffle, PanelRightClose, PanelRightOpen, Activity, SlidersHorizontal, Volume2, Download, Loader2, CheckCircle, Layers, Maximize2, Minimize2, Info, Sparkles, FileText, Tag, Calendar, BarChart3, Clock, Radio, Disc, Mic2 } from 'lucide-react';
 import { formatTime, generateGradient, cssUrl, getAudioFormatInfo } from '../utils';
 import { ContextMenuType, VisualizerMode } from '../types';
 import { api } from '../services/api';
@@ -62,10 +62,24 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
     
     const albumCovers = useAlbumCovers();
     const [activeTab, setActiveTab] = useState<'QUEUE' | 'LYRICS' | 'INFO'>('LYRICS');
+    const [isDrawerOpen, setIsDrawerOpen] = useState(true);
+    const drawerId = useId();
+    const drawerLabel = isDrawerOpen ? 'Collapse now playing drawer' : 'Expand now playing drawer';
     const [isDownloading, setIsDownloading] = useState(false);
     const [showVisualizerOverlay, setShowVisualizerOverlay] = useState(false);
     const [showVisualizerSelector, setShowVisualizerSelector] = useState(false);
     const [showPartyControls, setShowPartyControls] = useState(false);
+    const artworkRef = useRef<HTMLDivElement>(null);
+    const [partyArtworkSize, setPartyArtworkSize] = useState<{ width: number; height: number }>();
+
+    const handlePartyModeToggle = () => {
+        if (!isPartyMode && artworkRef.current) {
+            // Capture the artwork before fullscreen changes the viewport size.
+            const { width, height } = artworkRef.current.getBoundingClientRect();
+            setPartyArtworkSize({ width, height });
+        }
+        togglePartyMode();
+    };
     
     // Handle escape key to exit party mode or close now playing
     useEffect(() => {
@@ -113,7 +127,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
     const lowPower = !!audioSettings.lowPowerVisuals;
     const visualsActive = isPlaying && audioSettings.visualizerEnabled;
     const artworkVisualizer = visualsActive && showVisualizerOverlay && audioSettings.visualizerMode !== "OFF";
-    const fullscreenVisualizer = visualsActive && !artworkVisualizer && audioSettings.visualizerFullscreenEnabled && audioSettings.visualizerBackgroundMode !== "OFF";
+    const fullscreenVisualizer = visualsActive && audioSettings.visualizerFullscreenEnabled && audioSettings.visualizerBackgroundMode !== "OFF";
     const lightweightMode = audioSettings.visualizerMode === "WAVE" ? "WAVE" : "SPECTRUM";
 
     const coverUrl = currentSong.coverUrl || albumCovers[currentSong.album];
@@ -249,7 +263,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                 </div>
                 <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                     <Button
-                        onClick={togglePartyMode}
+                        onClick={handlePartyModeToggle}
                         variant="ghost"
                         className={`rounded-full p-1.5 sm:p-2 backdrop-blur-md ${
                             isPartyMode 
@@ -285,28 +299,32 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                     </Button>
                     {!isPartyMode && (
                         <Button
-                            onClick={() => setActiveTab('QUEUE')}
+                            onClick={() => setIsDrawerOpen(open => !open)}
                             variant="ghost"
-                            className={`rounded-full p-1.5 sm:p-2 backdrop-blur-md ${activeTab === 'QUEUE' ? 'text-text-main bg-surface-1/60 ring-1 ring-text-main/10' : 'text-text-secondary bg-surface-1/40 hover:text-text-main hover:bg-surface-1/60'}`}
-                            title="Queue"
-                            aria-label="Show queue"
+                            className={`rounded-full p-1.5 sm:p-2 backdrop-blur-md ${isDrawerOpen ? 'text-text-main bg-surface-1/60 ring-1 ring-text-main/10' : 'text-text-secondary bg-surface-1/40 hover:text-text-main hover:bg-surface-1/60'}`}
+                            title={drawerLabel}
+                            aria-label={drawerLabel}
+                            aria-expanded={isDrawerOpen}
+                            aria-controls={drawerId}
                         >
-                            <ListMusic size={24} />
+                            {isDrawerOpen ? <PanelRightClose size={24} /> : <PanelRightOpen size={24} />}
                         </Button>
                     )}
                 </div>
             </div>
 
             {/* Main Content */}
-            <div className={`relative z-10 flex-1 min-h-0 flex ${isPartyMode ? 'items-center justify-center' : 'flex-col md:flex-row gap-4 md:gap-12'} px-4 md:px-16 overflow-hidden`}>
+            <div className={`relative z-10 flex-1 min-h-0 px-4 md:px-16 overflow-clip ${isPartyMode
+                ? 'flex items-center justify-center'
+                : `grid md:grid-rows-1 [container-type:inline-size] transition-[grid-template-columns,grid-template-rows,gap] duration-300 ease-out motion-reduce:transition-none ${isDrawerOpen
+                    ? 'grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4 md:gap-12'
+                    : 'grid-rows-[auto_minmax(0,0fr)] md:grid-cols-[minmax(0,1fr)_minmax(0,0fr)] gap-0 items-center'}`}`}>
                 {/* Left Side: Artwork & Metadata - Full screen centered in party mode */}
-                <div className={`flex flex-col ${isPartyMode ? 'items-center justify-center' : 'shrink-0 md:flex-1 justify-center max-w-2xl mx-auto w-full min-h-0'}`}>
-                    <div 
-                        className={`aspect-square bg-surface-2 rounded-xl shadow-2xl relative group overflow-hidden cursor-pointer ring-1 ring-surface-3/60 ${
-                            isPartyMode 
-                                ? 'w-[70vh] max-w-[80vw] max-h-[60vh] mb-8'
-                                : 'w-auto h-[32vh] sm:h-[34vh] md:h-[46vh] max-h-[34vh] md:max-h-[46vh] max-w-[80vw] md:max-w-[500px] mx-auto mb-4 md:mb-10'
-                        }`}
+                <div className={`flex flex-col ${isPartyMode ? 'items-center justify-center' : 'justify-center max-w-2xl mx-auto w-full min-w-0 min-h-0'}`}>
+                    <div
+                        ref={artworkRef}
+                        className={`aspect-square bg-surface-2 rounded-xl shadow-2xl relative group overflow-hidden cursor-pointer ring-1 ring-surface-3/60 w-auto h-[32vh] sm:h-[34vh] md:h-[46vh] max-h-[34vh] md:max-h-[46vh] max-w-[80vw] md:max-w-[500px] mx-auto ${isPartyMode ? 'mb-8' : 'mb-4 md:mb-10'}`}
+                        style={isPartyMode ? partyArtworkSize : undefined}
                         onClick={() => setShowVisualizerOverlay(!showVisualizerOverlay)}
                         onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, currentSong)}
                     >
@@ -464,9 +482,16 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                     </div>
                 </div>
 
-                {/* Right Side: Tabs - Hidden in party mode */}
+                {/* Keep the drawer mounted so collapsing preserves tab content and scroll position. */}
                 {!isPartyMode && (
-                    <div className="flex-1 flex flex-col h-full min-h-0 max-w-xl mx-auto w-full bg-surface-1/30 rounded-t-2xl md:rounded-2xl ring-1 ring-surface-3/60 backdrop-blur-md overflow-hidden">
+                    <aside
+                        id={drawerId}
+                        aria-label="Queue, lyrics, and track info"
+                        inert={!isDrawerOpen}
+                        className={`min-h-0 flex flex-col max-w-xl w-full md:w-[calc(50cqw_-_1.5rem)] justify-self-center self-stretch bg-surface-1/30 rounded-t-2xl md:rounded-2xl ring-1 ring-surface-3/60 backdrop-blur-md overflow-hidden transition-[transform,opacity] duration-300 ease-out motion-reduce:transition-none ${isDrawerOpen
+                            ? 'translate-x-0 opacity-100'
+                            : 'translate-x-full opacity-0'}`}
+                    >
                         {/* Tabs Header */}
                         <div className="flex items-center border-b border-surface-3/60 p-2 gap-2">
                             <Button
@@ -497,7 +522,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 md:p-6 relative">
                             {activeTab === 'LYRICS' && (
                                 <div className="h-full flex flex-col">
-                                    <LyricsView song={currentSong} currentTime={currentTime} onSeek={onSeek} />
+                                    <LyricsView song={currentSong} currentTime={currentTime} onSeek={onSeek} isVisible={isDrawerOpen} />
                                 </div>
                             )}
 
@@ -592,7 +617,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                                 </div>
                             )}
                         </div>
-                    </div>
+                    </aside>
                 )}
             </div>
 

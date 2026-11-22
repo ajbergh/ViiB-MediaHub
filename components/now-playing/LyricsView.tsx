@@ -13,9 +13,10 @@ interface Props {
     song: Song;
     currentTime: number;
     onSeek: (time: number) => void;
+    isVisible: boolean;
 }
 
-export const LyricsView: React.FC<Props> = ({ song, currentTime, onSeek }) => {
+export const LyricsView: React.FC<Props> = ({ song, currentTime, onSeek, isVisible }) => {
     const [lyrics, setLyrics] = useState<string | null>(null);
     const [syncedLyrics, setSyncedLyrics] = useState<SyncedLine[] | null>(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -88,13 +89,13 @@ export const LyricsView: React.FC<Props> = ({ song, currentTime, onSeek }) => {
 
     // Auto-scroll synced lyrics
     useEffect(() => {
-        if (syncedLyrics && activeLineRef.current && containerRef.current) {
+        if (isVisible && syncedLyrics && activeLineRef.current && containerRef.current) {
             activeLineRef.current.scrollIntoView({
                 behavior: 'smooth',
                 block: 'center',
             });
         }
-    }, [currentTime, syncedLyrics]);
+    }, [currentTime, syncedLyrics, isVisible]);
 
     const activeLyricIndex = syncedLyrics 
         ? syncedLyrics.findIndex((line, index) => {
