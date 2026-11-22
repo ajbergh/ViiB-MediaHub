@@ -4,6 +4,7 @@ package db
 
 import (
     "fmt"
+    "strings"
     "sync"
 )
 
@@ -36,6 +37,8 @@ CREATE TABLE IF NOT EXISTS podcast_feeds (
     last_success_at INTEGER,
     next_refresh_at INTEGER,
     last_error_code TEXT,
+    refresh_failures INTEGER NOT NULL DEFAULT 0,
+    refresh_lease_until INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );
@@ -121,7 +124,24 @@ CREATE INDEX IF NOT EXISTS idx_podcast_download_state
 CREATE INDEX IF NOT EXISTS idx_podcast_queue_order
     ON podcast_queue(sort_key, added_at);
 `)
+    // Older preview databases lack the refresh columns. Add them after the
+    // base schema exists; repeated Ensure calls remain idempotent.
+    if err == nil {
+        err = addPodcastColumns(d,
+            "ALTER TABLE podcast_feeds ADD COLUMN refresh_failures INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE podcast_feeds ADD COLUMN refresh_lease_until INTEGER NOT NULL DEFAULT 0",
+        )
+    }
     if err != nil { err = fmt.Errorf("create podcast schema: %w", err) }
     podcastSchemas.Store(d, podcastSchemaResult{err: err})
     return err
+}
+
+func addPodcastColumns(d *DB, statements ...string) error {
+    for _, stmt := range statements {
+        if _, err := d.conn.Exec(stmt); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+            return err
+        }
+    }
+    return nil
 }
