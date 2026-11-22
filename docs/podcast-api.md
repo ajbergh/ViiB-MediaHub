@@ -35,6 +35,8 @@ RSS 2.0 feeds during initial implementation.
 | GET | `/feeds/{id}/artwork` | Proxy the followed show's HTTPS public raster artwork; max 2 MiB; PNG/JPEG/WebP/GIF only; no arbitrary URL parameter |
 | GET | `/feeds/{id}/episodes?offset=0&limit=50` | Paginate episodes, default 50, maximum 100; response includes `nextOffset` (null on last page) |
 | DELETE | `/feeds/{id}` | Atomically unfollow and revoke queued/in-progress podcast download leases; preserve episode metadata/progress. Attempt bounded cleanup of previously completed podcast offline copies, retrying busy files in background |
+| GET | `/feeds/{id}/auto-download` | Read the subscribed show's opt-in `enabled` and bounded `newestCount` (1–3); default is disabled; no media URLs or paths returned |
+| PUT | `/feeds/{id}/auto-download` | Strict JSON `{ "enabled": boolean, "newestCount": 1..3 }` with no unknown fields, 1 KiB body cap; re-arms future-only new episode selection and rejects unfollowed shows |
 | GET | `/feeds/{id}/refresh` | Read last check/success, next refresh, bounded failures and error code |
 | POST | `/feeds/{id}/refresh` | Queue a durable manual refresh, return 202 immediately; requires Podcast Preview enabled |
 
@@ -285,3 +287,8 @@ For supported strong-ETag 206 publishers, the server fsyncs each non-final chunk
 ### Automatic retry for transient download failures (2026-11-22)
 
 A recoverable network interruption (`download_unavailable`) or interrupted worker context (`download_interrupted`) moves the download to `status: "paused"` with a backend-generated `retryAfter` timestamp in **Unix milliseconds**, visible in subscription-scoped `GET /downloads` and `GET /episodes/{id}/download`. After 15s, 60s and 240s backoff windows, at most three automatic claims can occur. Each newly claimed worker must verify its existing strong-ETag partial checkpoint and fresh ownership before continuing; otherwise it starts at zero. While paused, `expectedBytes` continues to reserve capacity against the 2 GiB podcast quota. A paused job may be canceled with the existing DELETE endpoint, and an explicit POST Retry resets its automatic retry budget and staged checkpoint. Terminal validation, SSRF, publisher-representation change, disk and quota failures are not auto-retried; an exhausted job remains `failed` until manually retried. No user-provided `retryAfter` or filesystem paths are accepted.
+
+
+### Per-show new-episode auto-download (2026-11-22)
+
+Automatic download is **disabled by default**. A successful subscription-scoped PUT stores an explicit per-show `enabled` and `newestCount` (1–3), with an internal arming time. No historical episodes are scheduled by enabling or editing this setting. Upon a later successful HTTP 200 RSS refresh, the same SQLite transaction that reconciles episodes may enqueue at most the configured count of **newly inserted public-audio episodes**, excluding played items and existing download records. HTTP 304, feed subscribe/preview and unchanged episodes never trigger automatic work. The scheduler refuses to exceed **12 pending jobs globally** or **3 pending jobs per show**; a full queue intentionally skips rather than defers historical backfill. Publisher fetching and offline playback still use the existing bounded download worker and shared music/Plex/podcast player. Unplayed-N, keep-latest retention and Wi-Fi/metered policies are not implemented; native and real-provider qualification remain open.

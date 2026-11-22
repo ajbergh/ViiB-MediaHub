@@ -38,6 +38,10 @@
 
 ## Feed refresh
 
+### Automatic downloads for new episodes
+
+On an individual followed show, the **Automatic episode downloads** setting is **off by default**. Enable it and choose whether to save the **newest 1, 2 or 3 episodes** first discovered on each successful future feed refresh. It will **not download existing back-catalog episodes** or change listening history. ViiB caps pending work at 3 per show and 12 across all podcasts; full queues skip newly discovered episodes rather than backfilling them later. The existing private one-at-a-time worker still enforces file size, storage and network safety restrictions. To turn off future automatic downloads, uncheck the setting; already downloaded files remain until you explicitly remove them. This feature requires the separate **Enable feed refresh (early access)** option to be on, and it remains unqualified on real native platforms.
+
 Following and playback do not require the optional refresh setting. The **Enable feed refresh (early access)** control on each show toggles the existing global `podcasts_preview_enabled` opt-in. When enabled, the dedicated worker can periodically check public followed feeds with conditional GET and retry/backoff; **Refresh feed** requests an asynchronous refresh. Disable the setting to stop automatic publisher polling. A refresh may take time and should preserve existing episode progress under known GUID identities.
 
 ## OPML portability
@@ -49,7 +53,7 @@ Following and playback do not require the optional refresh setting. The **Enable
 
 Public RSS and artwork retrieval remain strict public-Internet operations. The Go backend validates DNS/IP and redirects, blocks local/private addresses, and restricts media size and MIME. Public audio enclosures may be HTTP(S) and contain CDN-signed query parameters, but those remote URLs stay backend-only; the browser receives only local episode-ID media routes. Do not bypass these restrictions for a problematic publisher.
 
-**Not implemented / not qualified yet:** Podcast Index directory search, authenticated/private RSS, durable curated Up Next/Inbox or starred workflow, chapter/transcript features, advanced configurable retention, richer retry controls and full automatic corruption repair, comprehensive native media-key testing, all-publisher HTTP behavior, and release qualification across Windows/macOS/Linux. Initial offline download and local-range playback exist on the feature branch, **but real network-disconnected restart acceptance remains open**. A 200-only publisher can now be downloaded in a bounded full-file pass, after which local seeking works through the shared player. Live online seeking on an unbuffered 200-only source may still be unavailable.
+**Not implemented / not qualified yet:** Podcast Index directory search, authenticated/private RSS, durable curated Up Next/Inbox or starred workflow, chapter/transcript features, unplayed-N auto policies, advanced configurable retention, richer retry controls and full automatic corruption repair, comprehensive native media-key testing, all-publisher HTTP behavior, and release qualification across Windows/macOS/Linux. Initial offline download and local-range playback exist on the feature branch, **but real network-disconnected restart acceptance remains open**. A 200-only publisher can now be downloaded in a bounded full-file pass, after which local seeking works through the shared player. Live online seeking on an unbuffered 200-only source may still be unavailable.
 
 ## Development and troubleshooting
 
