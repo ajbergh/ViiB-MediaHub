@@ -28,7 +28,9 @@ test('Podcasts follows public RSS and browses episodes without playback', async 
     if (u.pathname === '/api/v2/podcasts/feeds/preview' && req.method() === 'POST') {
       expect(req.postDataJSON()).toEqual({ url: feedURL });
       return route.fulfill({ json: { feed: {
-        url: feedURL, title: 'Independent Podcast', author: 'Publisher',
+        // The preview's final publisher URL differs from the user-entered one.
+        // Subscribe must retain the original input for alias reconciliation.
+        url: 'https://cdn.example.org/canonical.xml', title: 'Independent Podcast', author: 'Publisher',
         description: 'A sample RSS feed', episodes: [{ guid: 'ep-1', title: 'First episode' }],
       }, episodeCount: 1 } });
     }

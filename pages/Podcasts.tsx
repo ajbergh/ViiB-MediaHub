@@ -53,7 +53,7 @@ export const Podcasts: React.FC = () => {
     setWorking(true);
     setError('');
     try {
-      const result = await podcastsAPI.subscribe(preview.feed.url);
+      const result = await podcastsAPI.subscribe(url.trim());
       setPreview(null);
       setURL('');
       setNotice(`Subscribed to ${result.title}`);
@@ -64,7 +64,7 @@ export const Podcasts: React.FC = () => {
     } finally {
       setWorking(false);
     }
-  }, [preview, navigate]);
+  }, [preview, navigate, url]);
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-8 p-5 pb-28 sm:p-8">
