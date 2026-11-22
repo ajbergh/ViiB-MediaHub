@@ -43,7 +43,15 @@ type MediaSegment struct {
 // using the existing public-IP-pinned Feed Fetcher transport.
 func ValidateMediaURL(raw string, allowHTTP bool) (*url.URL,error) {
     if raw==""||len(raw)>2048{return nil,ErrBlockedURL}
-    return ValidatePublicURL(raw,allowHTTP)
+    parsed,err:=ValidatePublicURL(raw,allowHTTP)
+    if err!=nil{return nil,err}
+    hostname:=strings.ToLower(strings.TrimSuffix(parsed.Hostname(),"."))
+    if hostname=="localhost"||strings.HasSuffix(hostname,".localhost")||
+        strings.HasSuffix(hostname,".local")||strings.HasSuffix(hostname,".internal")||
+        strings.HasSuffix(hostname,".home.arpa")||strings.HasSuffix(hostname,".lan"){
+        return nil,ErrBlockedURL
+    }
+    return parsed,nil
 }
 
 // SupportedPodcastAudioMIME blocks HTML, SVG and non-audio response bodies.
