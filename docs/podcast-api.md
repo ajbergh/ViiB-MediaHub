@@ -79,8 +79,7 @@ Example successful response:
   `format=xml`; private feeds require a separate encrypted-credential and
   export-redaction design.
 - Artwork URLs are filtered at RSS parse, save and refresh; unsafe or tokenized artwork references are not persisted. The proxy resolves only subscribed show IDs, verifies public DNS at connection and each redirect, limits response size and sniffs actual raster content (never serves HTML or SVG). Browser caching is private for up to 15 minutes.
-- Publisher enclosure URLs are catalog metadata only and **not** an
-  implemented streaming or download endpoint.
+- Publisher enclosure URLs are backend-only and never serialized into public episode JSON. The implemented subscription-scoped `GET /episodes/{id}/media` route serves guarded 206 ranges or a bounded streaming-200 fallback. Download storage and fully offline playback are **not yet implemented**.
 - **Podcasts** is a permanent Sidebar destination. RSS preview/follow and browsing work without opting in. Background and manual feed refreshing are controlled by an optional `podcasts_preview_enabled` setting on the Podcast Show page or in **Settings → Integrations & Spotify**. Disabled by default.
 - Existing song, Spotify, DJ and music download APIs are untouched.
 
@@ -91,9 +90,7 @@ CI qualification must pass before this preview is marked ready.
 
 ## Troubleshooting RSS preview/follow failures
 
-**Expected today:** supported public HTTPS RSS 2.0 feeds can be previewed and
-followed without enabling the optional automatic-refresh setting. Playback,
-download and podcast directory search are different roadmap milestones.
+**Expected on this draft feature branch:** supported public HTTPS RSS 2.0 feeds can be previewed and followed without enabling optional automatic refresh. Public podcast audio plays and seeks through the shared ViiB player on the user-tested build. Offline downloads, podcast directory search and private authenticated feeds remain separate roadmap milestones.
 
 The previous generic frontend message `The podcast request could not be
 completed` meant the HTTP response had no recognized V2 JSON error envelope.
@@ -108,9 +105,8 @@ same-origin `GET /api/v2/podcasts/feeds` returns a JSON object with a `feeds`
 array, even when empty. A 404 or HTML response instead of JSON strongly
 suggests the UI and Go API aren't running matching builds.
 
-For Vite development, `vite.config.ts` proxies `/api` to
-`http://127.0.0.1:8080`. The Go backend must be built from the **same branch**
-and listening on that port (or the Vite proxy must be reconfigured). Running
+For Vite development, `vite.config.ts` defaults the `/api` proxy to
+`http://127.0.0.1:8080`; the supported loopback-only `VIIB_API_PROXY_TARGET` override can reuse a running Wails backend on 34115. The Go backend must be built from the **same branch** and listening on the configured target. Running
 only `npm run dev` does not start the Go backend. On Windows use
 `./scripts/dev.ps1` from the repository root: it now checks that the
 running Go process actually serves the podcast route before starting Vite. For a Wails desktop build,

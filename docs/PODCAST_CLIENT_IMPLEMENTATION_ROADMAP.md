@@ -490,7 +490,7 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 - [ ] **POD-06C:** Migrate/restore DB fixtures, OPML round-trip, export privacy/backup behavior and unsubscribe choices.
 - [ ] **POD-06D:** CI hardening: add podcast suites to the existing `ci.yml` jobs (which already run `go test -race` and an ubuntu/windows/macos matrix), plus formatter/vet/static checks, TS strict check, Playwright desktop/browser smoke and package tests.
 - [ ] **POD-06E:** Test at scale (1k subscriptions/100k cached episodes where feasible), bound memory, query latency, initial refresh storm and disk behavior.
-- [ ] **POD-06F:** Documentation `docs/podcasts.md`, troubleshooting, security/privacy and full screenshots; update README/docs index and main roadmap.
+- [ ] **POD-06F (partial):** Created feature-branch user guide `docs/podcasts.md` covering supported RSS, shared playback, queue, speed, bulk status, OPML and troubleshooting; updated documentation index, API reference and parent roadmap. Native screenshots, README/release notes, security review and full acceptance remain.
 - [ ] **POD-06G:** Cross-platform release checklist, versioning/rollback and issue triage; stage rollout behind feature flag until gates clear.
 
 **Exit:** End-to-end acceptance suite green; release candidate proven on supported desktop and local-Go browser platforms with no known P0/P1 integrity, SSRF, offline or accessibility blockers.
@@ -890,3 +890,10 @@ failure modes remain open. Full CI must be green before merge.
 - **Scope:** Podcast Show offers confirmation-gated **Mark loaded played/unplayed** actions. The affected set is only the already-loaded episodes (at most the bounded pages already fetched), not all historic episodes or arbitrary feeds. Saved listening position and listened duration are preserved.
 - **Consistency:** Updates are serial, read fresh progress revisions, and use the established optimistic-CAS API. A newer writer wins: conflicts/failures are counted, never force-written. A Stop action cancels in-flight calls and reports partial success; pending work also aborts when the page unmounts.
 - **Tests:** Playwright's followed-feed fixture now verifies the explicit confirmation flow, preserving positions and change of played state after bulk processing. New CI must validate this continuation before acceptance. Retained mark-one controls are disabled while a bulk pass is active.
+
+
+### 2026-11-22 — user documentation accuracy (POD-06F partial)
+
+- Added [user-facing Podcasts guide](podcasts.md) with truthful early-access/branch scope, public RSS steps, shared player, queue, Continue Listening, manual bulk actions, OPML, safety boundaries and supported Vite/Wails troubleshooting.
+- Updated [documentation index](index.md), the parent [product roadmap](ROADMAP.md) and the [Podcast API](podcast-api.md) to distinguish verified public audio transport from still-missing offline downloads/Podcast Index. Historical source snapshots in earlier roadmap sections remain for traceability; the latest dated status is authoritative.
+- Documentation changes must pass automated link checking and current CI; screenshots and platform-native acceptance are not claimed.
