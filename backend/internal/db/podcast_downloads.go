@@ -469,8 +469,8 @@ AND EXISTS (
 func (d *DB) ActivePodcastStagedFilenames(ctx context.Context)(map[string]bool,error){
     if err:=d.EnsurePodcastSchema();err!=nil{return nil,err}
     rows,err:=d.conn.QueryContext(ctx,`SELECT temp_relative_path
-FROM podcast_downloads WHERE status='downloading' AND temp_relative_path IS NOT NULL
-AND etag IS NOT NULL AND staged_sha256 IS NOT NULL`)
+FROM podcast_downloads WHERE status IN ('downloading','paused')
+AND temp_relative_path IS NOT NULL AND etag IS NOT NULL AND staged_sha256 IS NOT NULL`)
     if err!=nil{return nil,err}
     defer rows.Close()
     names:=make(map[string]bool)

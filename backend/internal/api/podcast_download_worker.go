@@ -115,6 +115,15 @@ func (a *API) closePodcastDownloader(){
     a.podcastDownloadWG.Wait()
 }
 
+// Only publisher I/O outages and interrupted context lifetimes qualify for
+// automatic retry. Unsafe/unsupported ranges, integrity mismatch, quota and
+// disk failures remain terminal until an explicit user retry.
+func transientPodcastDownloadError(err error)bool{
+    return errors.Is(err,podcast.ErrMediaUnavailable)||
+        errors.Is(err,context.Canceled)||
+        errors.Is(err,context.DeadlineExceeded)
+}
+
 // Bounded one-at-a-time downloader. The existing HTTP fetcher does strict
 // public-IP DNS pinning, redirect checks, MIME sniffing and Content-Range
 // validation on every 2 MiB chunk. A separately bounded 200-only full-file
@@ -148,7 +157,16 @@ func (a *API) processPodcastDownload(ctx context.Context){
         case errors.Is(err,os.ErrPermission),errors.Is(err,io.ErrShortWrite):
             code="download_disk_unavailable"
         }
-        // Cancellation revoked the lease, so this UPDATE is a no-op.
+        if transientPodcastDownloadError(err){
+            // The task context may have been canceled during shutdown.
+            // Persist a bounded retry with a fresh short-lived DB context.
+            retryCtx,stop:=context.WithTimeout(context.Background(),4*time.Second)
+            paused,pauseErr:=a.db.PausePodcastDownloadForRetry(retryCtx,id,owner,code,time.Now())
+            stop()
+            if pauseErr==nil&&paused{return}
+        }
+        // A canceled/unfollowed worker lost its lease; this is a no-op.
+        // Exhausted transient retries surface as a stable terminal error.
         _=a.db.FailPodcastDownload(context.Background(),id,owner,code)
     }
 }
@@ -340,7 +358,7 @@ func (a *API) restartPodcastRangedTransfer(ctx context.Context,id,owner string,
     return nil
 }
 
-func (a *API) transferPodcastDownload(ctx context.Context,id,owner string) error {
+func (a *API) transferPodcastDownload(ctx context.Context,id,owner string)(transferErr error) {
     if !safePodcastEpisodeID.MatchString(id){return podcast.ErrInvalidMedia}
     raw,declared,err:=a.db.PodcastMediaSource(ctx,id)
     if err!=nil{return err}
@@ -364,7 +382,22 @@ func (a *API) transferPodcastDownload(ctx context.Context,id,owner string) error
     out,err:=os.CreateTemp(dir,".part-*")
     if err!=nil{return err}
     tempPath:=out.Name()
-    defer func(){_ = out.Close();_ = os.Remove(tempPath)}()
+    defer func(){
+        _=out.Close()
+        // Preserve the exact fsynced checkpoint file on transient publisher
+        // failure. The subsequent paused lease retains the same basename and
+        // a new owner must verify/copy the bytes before it resumes. No temp
+        // files are retained for canceled, unsafe or uncheckpointed work.
+        if transientPodcastDownloadError(transferErr){
+            lookup,stop:=context.WithTimeout(context.Background(),3*time.Second)
+            cp,err:=a.db.ReadPodcastDownloadResumeCheckpoint(lookup,id,owner)
+            stop()
+            if err==nil&&cp.Bytes>0&&cp.TempFilename==filepath.Base(tempPath)&&
+                safePodcastTempName.MatchString(cp.TempFilename)&&
+                podcast.StrongMediaETag(cp.ETag)==cp.ETag{return}
+        }
+        _=os.Remove(tempPath)
+    }()
     if err:=out.Chmod(0600);err!=nil{return err}
     fetch:=a.podcastDownloadFetch
     var requestedIfRange string

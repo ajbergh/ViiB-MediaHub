@@ -44,6 +44,8 @@ export interface PodcastDownload {
   expectedBytes: number;
   verifiedSize: number;
   errorCode?: string;
+  /** Scheduled timestamp in milliseconds for a bounded automatic retry. */
+  retryAfter?: number;
   createdAt: number;
   updatedAt: number;
   completedAt: number;

@@ -429,6 +429,8 @@ export const Podcasts: React.FC = () => {
                   <p className="mt-1 text-xs text-text-secondary">
                     {completed ? 'Available offline' : row.status === 'downloading'
                       ? `Downloading${progress === null ? '' : ' ' + progress + '%'}`
+                      : row.status === 'paused' && row.retryAfter
+                      ? `Retry scheduled for ${new Date(row.retryAfter).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
                       : row.status === 'queued' ? 'Queued'
                       : row.status === 'failed' ? `Failed: ${row.errorCode || 'unavailable'}`
                       : row.status === 'canceled' ? 'Canceled' : 'Paused'}
