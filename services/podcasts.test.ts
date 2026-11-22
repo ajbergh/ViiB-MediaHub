@@ -153,6 +153,25 @@ describe('podcastsAPI', () => {
       expect.objectContaining({ method: 'DELETE' }));
   });
 
+  it('reads and updates global and per-show podcast playback settings', async () => {
+    const global = { defaultSpeed: 1.25, skipBackSeconds: 10, skipForwardSeconds: 45 };
+    const show = { defaultSpeed: 1.5, skipIntroSeconds: 20, skipOutroSeconds: 30 };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ playback: global }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ playback: global }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ settings: show }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ settings: show }) });
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await podcastsAPI.getGlobalSettings()).toEqual({ playback: global });
+    expect(await podcastsAPI.setGlobalSettings(global)).toEqual({ playback: global });
+    expect(await podcastsAPI.getShowPlaybackSettings('show/1')).toEqual({ settings: show });
+    expect(await podcastsAPI.setShowPlaybackSettings('show/1', show)).toEqual({ settings: show });
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v2/podcasts/settings');
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: 'PUT', body: JSON.stringify(global) });
+    expect(fetchMock.mock.calls[2][0]).toBe('/api/v2/podcasts/feeds/show%2F1/playback-settings');
+    expect(fetchMock.mock.calls[3][1]).toMatchObject({ method: 'PUT', body: JSON.stringify(show) });
+  });
+
   it('handles an empty list and 204 unsubscribe', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ feeds: [] }) })

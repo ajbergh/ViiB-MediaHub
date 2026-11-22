@@ -41,6 +41,7 @@ import { AudioOutputSettings } from '../components/AudioOutputSettings';
 import { HomeLayoutVariant, VisualizerMode, Song } from '../types';
 import { parseSong } from '../metadata';
 import { api } from '../services/api';
+import { podcastsAPI, type PodcastGlobalPlaybackSettings } from '../services/podcasts';
 import { useStemLibraryScan } from '../hooks/useStemLibraryScan';
 import { Button } from '../components/ui/Button';
 import { ToggleSwitch } from '../components/ui/ToggleSwitch';
@@ -323,14 +324,45 @@ export const Settings: React.FC = () => {
   const [podcastsPreviewEnabled, setPodcastsPreviewEnabled] = useState(false);
   const [podcastsPreviewSaving, setPodcastsPreviewSaving] = useState(false);
   const [podcastsPreviewError, setPodcastsPreviewError] = useState('');
+  const [podcastPlayback, setPodcastPlayback] = useState<PodcastGlobalPlaybackSettings>({
+    defaultSpeed: 1,
+    skipBackSeconds: 15,
+    skipForwardSeconds: 30,
+  });
+  const [podcastPlaybackSaving, setPodcastPlaybackSaving] = useState(false);
+  const [podcastPlaybackStatus, setPodcastPlaybackStatus] = useState('');
+  const [podcastPlaybackError, setPodcastPlaybackError] = useState('');
   useEffect(() => {
     if (!backendAvailable) return;
     let active = true;
     void api.getSetting('podcasts_preview_enabled')
       .then(value => { if (active) setPodcastsPreviewEnabled(value === 'true'); })
       .catch(() => { if (active) setPodcastsPreviewError('Unable to load podcast refresh setting'); });
+    void podcastsAPI.getGlobalSettings()
+      .then(({ playback }) => { if (active) setPodcastPlayback(playback); })
+      .catch(() => { if (active) setPodcastPlaybackError('Unable to load podcast playback defaults'); });
     return () => { active = false; };
   }, [backendAvailable]);
+
+  const savePodcastPlayback = async (next: PodcastGlobalPlaybackSettings) => {
+    if (!backendAvailable || podcastPlaybackSaving) return;
+    const previous = podcastPlayback;
+    setPodcastPlayback(next);
+    setPodcastPlaybackSaving(true);
+    setPodcastPlaybackError('');
+    setPodcastPlaybackStatus('');
+    try {
+      const { playback } = await podcastsAPI.setGlobalSettings(next);
+      setPodcastPlayback(playback);
+      setPodcastPlaybackStatus('Podcast playback defaults saved.');
+      window.dispatchEvent(new CustomEvent('viib:podcast-playback-settings-changed', { detail: playback }));
+    } catch {
+      setPodcastPlayback(previous);
+      setPodcastPlaybackError('Unable to save podcast playback defaults');
+    } finally {
+      setPodcastPlaybackSaving(false);
+    }
+  };
   const changePodcastsPreview = async (enabled: boolean) => {
     setPodcastsPreviewSaving(true);
     setPodcastsPreviewError('');
@@ -1707,6 +1739,75 @@ export const Settings: React.FC = () => {
 
                 {/* DJ Audio Output Devices */}
                 <AudioOutputSettings />
+
+                {/* Global Podcast Playback Defaults */}
+                <div className="border-t border-surface-3 pt-6">
+                  <div className="mb-4 flex items-center gap-3">
+                    <div className="p-2 bg-surface-hover rounded-lg text-text-main shrink-0">
+                      <Headphones size={20} aria-hidden="true" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-semibold text-text-main">Podcast Playback Defaults</h3>
+                      <p className="text-sm text-text-subtle">Default speed and skip intervals for podcast episodes. Individual shows can override speed and intro/outro skips.</p>
+                    </div>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div>
+                      <label htmlFor="settings-podcast-default-speed" className="block text-xs font-semibold text-text-secondary mb-1.5">
+                        Default speed
+                      </label>
+                      <select id="settings-podcast-default-speed" aria-label="Global podcast default speed"
+                        value={podcastPlayback.defaultSpeed}
+                        disabled={!backendAvailable || podcastPlaybackSaving}
+                        onChange={event => void savePodcastPlayback({ ...podcastPlayback, defaultSpeed: Number(event.target.value) })}
+                        className="w-full rounded-lg border border-surface-3 bg-surface-1 px-3 py-2 text-sm text-text-main">
+                        <option value={0.75}>0.75×</option>
+                        <option value={1}>1×</option>
+                        <option value={1.25}>1.25×</option>
+                        <option value={1.5}>1.5×</option>
+                        <option value={1.75}>1.75×</option>
+                        <option value={2}>2×</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="settings-podcast-skip-back" className="block text-xs font-semibold text-text-secondary mb-1.5">
+                        Skip back interval
+                      </label>
+                      <select id="settings-podcast-skip-back" aria-label="Podcast skip back interval"
+                        value={podcastPlayback.skipBackSeconds}
+                        disabled={!backendAvailable || podcastPlaybackSaving}
+                        onChange={event => void savePodcastPlayback({ ...podcastPlayback, skipBackSeconds: Number(event.target.value) })}
+                        className="w-full rounded-lg border border-surface-3 bg-surface-1 px-3 py-2 text-sm text-text-main">
+                        <option value={5}>5 seconds</option>
+                        <option value={10}>10 seconds</option>
+                        <option value={15}>15 seconds</option>
+                        <option value={20}>20 seconds</option>
+                        <option value={30}>30 seconds</option>
+                        <option value={45}>45 seconds</option>
+                        <option value={60}>60 seconds</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="settings-podcast-skip-forward" className="block text-xs font-semibold text-text-secondary mb-1.5">
+                        Skip forward interval
+                      </label>
+                      <select id="settings-podcast-skip-forward" aria-label="Podcast skip forward interval"
+                        value={podcastPlayback.skipForwardSeconds}
+                        disabled={!backendAvailable || podcastPlaybackSaving}
+                        onChange={event => void savePodcastPlayback({ ...podcastPlayback, skipForwardSeconds: Number(event.target.value) })}
+                        className="w-full rounded-lg border border-surface-3 bg-surface-1 px-3 py-2 text-sm text-text-main">
+                        <option value={10}>10 seconds</option>
+                        <option value={15}>15 seconds</option>
+                        <option value={30}>30 seconds</option>
+                        <option value={45}>45 seconds</option>
+                        <option value={60}>60 seconds</option>
+                        <option value={90}>90 seconds</option>
+                      </select>
+                    </div>
+                  </div>
+                  {podcastPlaybackStatus && <p role="status" className="mt-3 text-sm text-brand">{podcastPlaybackStatus}</p>}
+                  {podcastPlaybackError && <p role="alert" className="mt-3 text-sm text-error">{podcastPlaybackError}</p>}
+                </div>
                 </>
               )}
             </div>

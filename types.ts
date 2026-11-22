@@ -92,10 +92,14 @@ export interface Song {
   // Podcast episodes are transient shared-player queue entries, never songs
   // persisted in the music catalog. Their progress remains in podcast tables.
   podcastEpisodeId?: string;
+  podcastFeedId?: string;
   podcastResumeMs?: number;
   podcastListenedMs?: number;
   podcastProgressRevision?: number;
   podcastIsPlayed?: boolean;
+  podcastDefaultSpeed?: number;
+  podcastSkipIntroSeconds?: number;
+  podcastSkipOutroSeconds?: number;
   sourceName?: string;
   stemStatus?: 'none' | 'discovered' | 'validating' | 'ready' | 'stale' | 'invalid' | 'unavailable';
 }

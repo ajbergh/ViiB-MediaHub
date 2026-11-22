@@ -25,9 +25,10 @@
  * @module Player
  */
 
-import React, { lazy, Suspense, useState } from 'react';
+import React, { lazy, Suspense, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
+import { podcastsAPI, type PodcastGlobalPlaybackSettings, type PodcastShowPlaybackSettings } from '../services/podcasts';
 import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, ListMusic, Maximize2, Minimize2, Pin, PinOff, SlidersHorizontal, Loader2, AlertCircle, RefreshCw, Wifi, Moon, Info } from 'lucide-react';
 import { formatTime, generateGradient, getAudioFormatInfo } from '../utils';
 import { ContextMenuType, Song } from '../types';
@@ -54,6 +55,8 @@ type SkinnyPlayerProps = {
   isVisualizerEnabled: boolean;
   lowPowerVisuals?: boolean;
   isAlwaysOnTop: boolean;
+  skipBackSeconds: number;
+  skipForwardSeconds: number;
   onPrevious: () => void;
   onTogglePlay: () => void;
   onNext: () => void;
@@ -74,6 +77,8 @@ const SkinnyPlayer: React.FC<SkinnyPlayerProps> = ({
   isVisualizerEnabled,
   lowPowerVisuals,
   isAlwaysOnTop,
+  skipBackSeconds,
+  skipForwardSeconds,
   onPrevious,
   onTogglePlay,
   onNext,
@@ -123,13 +128,13 @@ const SkinnyPlayer: React.FC<SkinnyPlayerProps> = ({
             <SkipBack size={19} className="fill-current" />
           </Button>
           {currentSong?.source === 'podcast' && <Button
-            onClick={() => onSeek(Math.max(0, currentTime - 15))}
+            onClick={() => onSeek(Math.max(0, currentTime - skipBackSeconds))}
             disabled={!duration}
             variant="ghost"
             className="h-9 rounded-full px-1 text-xs font-semibold"
-            aria-label="Back 15 seconds"
-            title="Back 15 seconds"
-          >−15s</Button>}
+            aria-label={`Back ${skipBackSeconds} seconds`}
+            title={`Back ${skipBackSeconds} seconds`}
+          >−{skipBackSeconds}s</Button>}
           <Button
             onClick={onTogglePlay}
             disabled={!hasSong}
@@ -148,13 +153,13 @@ const SkinnyPlayer: React.FC<SkinnyPlayerProps> = ({
             )}
           </Button>
           {currentSong?.source === 'podcast' && <Button
-            onClick={() => onSeek(Math.min(duration, currentTime + 30))}
+            onClick={() => onSeek(Math.min(duration, currentTime + skipForwardSeconds))}
             disabled={!duration}
             variant="ghost"
             className="h-9 rounded-full px-1 text-xs font-semibold"
-            aria-label="Forward 30 seconds"
-            title="Forward 30 seconds"
-          >+30s</Button>}
+            aria-label={`Forward ${skipForwardSeconds} seconds`}
+            title={`Forward ${skipForwardSeconds} seconds`}
+          >+{skipForwardSeconds}s</Button>}
           <Button
             onClick={onNext}
             disabled={!hasSong}
@@ -279,9 +284,58 @@ export const Player: React.FC = () => {
   } = useAudioPlayer();
 
   // Podcast long-form controls share the existing dual HTMLAudio transport.
-  // Music/Plex return to 1x while the user's podcast speed is remembered.
+  // Music/Plex return to 1x while each show can override the global podcast speed.
   const isPodcast = currentSong?.source === 'podcast';
+  const [globalPodcastSettings, setGlobalPodcastSettings] = useState<PodcastGlobalPlaybackSettings>({
+    defaultSpeed: 1,
+    skipBackSeconds: 15,
+    skipForwardSeconds: 30,
+  });
   const [podcastPlaybackRate, setPodcastPlaybackRate] = useState(1);
+  const manualRateOverrideRef = useRef(false);
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void podcastsAPI.getGlobalSettings(controller.signal)
+      .then(({ playback }) => {
+        if (!controller.signal.aborted) setGlobalPodcastSettings(playback);
+      })
+      .catch(() => { /* Keep default podcast intervals when backend settings are unavailable. */ });
+    const onGlobalChanged = (event: Event) => {
+      const detail = (event as CustomEvent<PodcastGlobalPlaybackSettings>).detail;
+      if (detail) setGlobalPodcastSettings(detail);
+    };
+    const onShowChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ feedId: string; settings: PodcastShowPlaybackSettings }>).detail;
+      if (!detail) return;
+      const active = useStore.getState().currentSong;
+      if (active?.source === 'podcast' && active.podcastFeedId === detail.feedId && !manualRateOverrideRef.current) {
+        setPodcastPlaybackRate(detail.settings.defaultSpeed > 0 ? detail.settings.defaultSpeed : globalPodcastSettings.defaultSpeed);
+      }
+    };
+    window.addEventListener('viib:podcast-playback-settings-changed', onGlobalChanged);
+    window.addEventListener('viib:podcast-show-settings-changed', onShowChanged);
+    return () => {
+      controller.abort();
+      window.removeEventListener('viib:podcast-playback-settings-changed', onGlobalChanged);
+      window.removeEventListener('viib:podcast-show-settings-changed', onShowChanged);
+    };
+  }, [globalPodcastSettings.defaultSpeed]);
+
+  React.useEffect(() => {
+    manualRateOverrideRef.current = false;
+    if (currentSong?.source !== 'podcast') return;
+    const showSpeed = currentSong.podcastDefaultSpeed;
+    setPodcastPlaybackRate(showSpeed && showSpeed > 0 ? showSpeed : globalPodcastSettings.defaultSpeed);
+  }, [currentSong?.id, currentSong?.source, currentSong?.podcastDefaultSpeed]);
+
+  React.useEffect(() => {
+    if (manualRateOverrideRef.current || currentSong?.source !== 'podcast') return;
+    if (!(currentSong.podcastDefaultSpeed && currentSong.podcastDefaultSpeed > 0)) {
+      setPodcastPlaybackRate(globalPodcastSettings.defaultSpeed);
+    }
+  }, [globalPodcastSettings.defaultSpeed, currentSong?.source, currentSong?.podcastDefaultSpeed]);
+
   const effectivePlaybackRate = isPodcast ? podcastPlaybackRate : 1;
   React.useEffect(() => {
     if (primaryRef.current) primaryRef.current.playbackRate = effectivePlaybackRate;
@@ -290,7 +344,14 @@ export const Player: React.FC = () => {
 
   // Windows SMTC / Media Session API integration
   // Provides media key support and Windows media overlay controls
-  useMediaSession(currentTime, duration, seek, effectivePlaybackRate);
+  useMediaSession(
+    currentTime,
+    duration,
+    seek,
+    effectivePlaybackRate,
+    isPodcast ? globalPodcastSettings.skipBackSeconds : 10,
+    isPodcast ? globalPodcastSettings.skipForwardSeconds : 10,
+  );
 
   // Sleep timer state
   const [isSleepTimerOpen, setIsSleepTimerOpen] = useState(false);
@@ -333,6 +394,8 @@ export const Player: React.FC = () => {
           isVisualizerEnabled={audioSettings.visualizerEnabled}
           lowPowerVisuals={audioSettings.lowPowerVisuals}
           isAlwaysOnTop={isSkinnyAlwaysOnTop}
+          skipBackSeconds={globalPodcastSettings.skipBackSeconds}
+          skipForwardSeconds={globalPodcastSettings.skipForwardSeconds}
           onPrevious={prevSong}
           onTogglePlay={togglePlay}
           onNext={nextSong}
@@ -518,10 +581,10 @@ export const Player: React.FC = () => {
             <Button onClick={prevSong} variant="ghost" className="rounded-full p-1.5 text-text-secondary hover:text-text-main" aria-label="Previous track">
                 <SkipBack size={19} className="fill-current" />
             </Button>
-            {isPodcast && <Button onClick={() => seek(Math.max(0, currentTime - 15))}
-                disabled={!duration} variant="ghost" aria-label="Back 15 seconds"
-                title="Back 15 seconds" className="rounded-full px-1.5 py-1 text-xs font-semibold text-text-secondary hover:text-text-main">
-                −15s
+            {isPodcast && <Button onClick={() => seek(Math.max(0, currentTime - globalPodcastSettings.skipBackSeconds))}
+                disabled={!duration} variant="ghost" aria-label={`Back ${globalPodcastSettings.skipBackSeconds} seconds`}
+                title={`Back ${globalPodcastSettings.skipBackSeconds} seconds`} className="rounded-full px-1.5 py-1 text-xs font-semibold text-text-secondary hover:text-text-main">
+                −{globalPodcastSettings.skipBackSeconds}s
             </Button>}
             
             <div className="relative">
@@ -547,10 +610,10 @@ export const Player: React.FC = () => {
                 </button>
             </div>
 
-            {isPodcast && <Button onClick={() => seek(Math.min(duration, currentTime + 30))}
-                disabled={!duration} variant="ghost" aria-label="Forward 30 seconds"
-                title="Forward 30 seconds" className="rounded-full px-1.5 py-1 text-xs font-semibold text-text-secondary hover:text-text-main">
-                +30s
+            {isPodcast && <Button onClick={() => seek(Math.min(duration, currentTime + globalPodcastSettings.skipForwardSeconds))}
+                disabled={!duration} variant="ghost" aria-label={`Forward ${globalPodcastSettings.skipForwardSeconds} seconds`}
+                title={`Forward ${globalPodcastSettings.skipForwardSeconds} seconds`} className="rounded-full px-1.5 py-1 text-xs font-semibold text-text-secondary hover:text-text-main">
+                +{globalPodcastSettings.skipForwardSeconds}s
             </Button>}
             <Button onClick={nextSong} variant="ghost" className="rounded-full p-1.5 text-text-secondary hover:text-text-main" aria-label="Next track">
                 <SkipForward size={19} className="fill-current" />
@@ -558,7 +621,10 @@ export const Player: React.FC = () => {
             {isPodcast && <label className="ml-1 text-xs text-text-secondary">
                 <span className="sr-only">Podcast playback speed</span>
                 <select aria-label="Podcast playback speed" value={podcastPlaybackRate}
-                    onChange={event => setPodcastPlaybackRate(Number(event.target.value))}
+                    onChange={event => {
+                        manualRateOverrideRef.current = true;
+                        setPodcastPlaybackRate(Number(event.target.value));
+                    }}
                     className="rounded-md border border-surface-3 bg-surface-2 px-1.5 py-1 text-xs text-text-main">
                     <option value="0.75">0.75×</option>
                     <option value="1">1×</option>

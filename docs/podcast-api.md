@@ -37,6 +37,10 @@ RSS 2.0 feeds during initial implementation.
 | DELETE | `/feeds/{id}` | Atomically unfollow and revoke queued/in-progress podcast download leases; preserve episode metadata/progress. Attempt bounded cleanup of previously completed podcast offline copies, retrying busy files in background |
 | GET | `/feeds/{id}/auto-download` | Read the subscribed show's opt-in `enabled` and bounded `newestCount` (1–3); default is disabled; no media URLs or paths returned |
 | PUT | `/feeds/{id}/auto-download` | Strict JSON `{ "enabled": boolean, "newestCount": 1..3 }` with no unknown fields, 1 KiB body cap; re-arms future-only new episode selection and rejects unfollowed shows |
+| GET | `/feeds/{id}/playback-settings` | Read the subscribed show's `defaultSpeed` (`0` = global default, or `0.75`–`2`), `skipIntroSeconds` (`0..600`), and `skipOutroSeconds` (`0..600`) |
+| PUT | `/feeds/{id}/playback-settings` | Strict JSON `{ "defaultSpeed", "skipIntroSeconds", "skipOutroSeconds" }` with no unknown fields, 1 KiB body cap; rejects unfollowed shows |
+| GET | `/settings` | Read global podcast playback defaults `{ "playback": { "defaultSpeed", "skipBackSeconds", "skipForwardSeconds" } }` |
+| PUT | `/settings` | Strict JSON updating global podcast `defaultSpeed` (`0.75`–`2`) and skip intervals (`5..120` seconds) |
 | GET | `/feeds/{id}/refresh` | Read last check/success, next refresh, bounded failures and error code |
 | POST | `/feeds/{id}/refresh` | Queue a durable manual refresh, return 202 immediately; requires Podcast Preview enabled |
 

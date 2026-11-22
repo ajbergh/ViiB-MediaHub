@@ -5,7 +5,7 @@ import { ArrowLeft, Download, Headphones, Loader2, Plus, RefreshCw, Rss, Trash2 
 import { api } from '../services/api';
 import { podcastEpisodeToTrack, queuePodcastEpisode, type PodcastQueuePosition } from '../lib/podcastPlayback';
 import { useStore } from '../store';
-import { podcastsAPI, PodcastAPIError, type PodcastFeed, type PodcastEpisode, type PodcastPreview, type PodcastRefreshStatus, type PodcastOPMLImportPreview, type PodcastContinueEpisode, type PodcastDownload, type PodcastStorage, type PodcastAutoDownloadPolicy } from '../services/podcasts';
+import { podcastsAPI, PodcastAPIError, type PodcastFeed, type PodcastEpisode, type PodcastPreview, type PodcastRefreshStatus, type PodcastOPMLImportPreview, type PodcastContinueEpisode, type PodcastDownload, type PodcastStorage, type PodcastAutoDownloadPolicy, type PodcastShowPlaybackSettings } from '../services/podcasts';
 
 const inputClass = 'w-full rounded-lg border border-surface-3 bg-surface-1 px-4 py-3 text-text-main outline-none focus-visible:ring-2 focus-visible:ring-brand';
 
@@ -555,6 +555,13 @@ export const PodcastShow: React.FC = () => {
   // A settings request for show A must not overwrite show B after navigation.
   const autoDownloadFeedRef = useRef(id);
   autoDownloadFeedRef.current = id;
+  const [showPlayback, setShowPlayback] = useState<PodcastShowPlaybackSettings | null>(null);
+  const [skipIntroInput, setSkipIntroInput] = useState('0');
+  const [skipOutroInput, setSkipOutroInput] = useState('0');
+  const [showPlaybackSaving, setShowPlaybackSaving] = useState(false);
+  const [showPlaybackMessage, setShowPlaybackMessage] = useState('');
+  const showPlaybackFeedRef = useRef(id);
+  showPlaybackFeedRef.current = id;
   const [revision, setRevision] = useState(0);
   const lastCheckedRef = useRef<number | null>(null);
   const navigate = useNavigate();
@@ -567,6 +574,63 @@ export const PodcastShow: React.FC = () => {
       .catch(() => { if (mounted) setAutoRefreshEnabled(false); });
     return () => { mounted = false; };
   }, []);
+
+  useEffect(() => {
+    if (!id) return;
+    const controller = new AbortController();
+    setShowPlayback(null);
+    setSkipIntroInput('0');
+    setSkipOutroInput('0');
+    setShowPlaybackSaving(false);
+    setShowPlaybackMessage('');
+    void podcastsAPI.getShowPlaybackSettings(id, controller.signal)
+      .then(({ settings }) => {
+        if (controller.signal.aborted) return;
+        setShowPlayback(settings);
+        setSkipIntroInput(String(settings.skipIntroSeconds));
+        setSkipOutroInput(String(settings.skipOutroSeconds));
+      })
+      .catch(err => {
+        if (!controller.signal.aborted) setShowPlaybackMessage(readableError(err));
+      });
+    return () => controller.abort();
+  }, [id]);
+
+  const saveShowPlayback = async (next: PodcastShowPlaybackSettings) => {
+    if (!id || showPlaybackSaving || !showPlayback) return;
+    const feedID = id;
+    const previous = showPlayback;
+    setShowPlayback(next);
+    setSkipIntroInput(String(next.skipIntroSeconds));
+    setSkipOutroInput(String(next.skipOutroSeconds));
+    setShowPlaybackSaving(true);
+    setShowPlaybackMessage('');
+    try {
+      const { settings } = await podcastsAPI.setShowPlaybackSettings(feedID, next);
+      if (showPlaybackFeedRef.current !== feedID) return;
+      setShowPlayback(settings);
+      setSkipIntroInput(String(settings.skipIntroSeconds));
+      setSkipOutroInput(String(settings.skipOutroSeconds));
+      setFeed(current => current ? {
+        ...current,
+        defaultSpeed: settings.defaultSpeed,
+        skipIntroSeconds: settings.skipIntroSeconds,
+        skipOutroSeconds: settings.skipOutroSeconds,
+      } : current);
+      window.dispatchEvent(new CustomEvent('viib:podcast-show-settings-changed', {
+        detail: { feedId: feedID, settings },
+      }));
+      setShowPlaybackMessage('Show playback defaults saved.');
+    } catch (err) {
+      if (showPlaybackFeedRef.current !== feedID) return;
+      setShowPlayback(previous);
+      setSkipIntroInput(String(previous.skipIntroSeconds));
+      setSkipOutroInput(String(previous.skipOutroSeconds));
+      setShowPlaybackMessage(readableError(err));
+    } finally {
+      if (showPlaybackFeedRef.current === feedID) setShowPlaybackSaving(false);
+    }
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -910,6 +974,75 @@ export const PodcastShow: React.FC = () => {
             </p>}
             {autoDownloadMessage && <p role="status" className="mt-2 text-xs text-text-secondary">{autoDownloadMessage}</p>}
           </div>
+          <form onSubmit={event => {
+            event.preventDefault();
+            if (!showPlayback) return;
+            const parsedIntro = Math.max(0, Math.min(600, Math.trunc(Number(skipIntroInput) || 0)));
+            const parsedOutro = Math.max(0, Math.min(600, Math.trunc(Number(skipOutroInput) || 0)));
+            void saveShowPlayback({
+              defaultSpeed: showPlayback.defaultSpeed,
+              skipIntroSeconds: parsedIntro,
+              skipOutroSeconds: parsedOutro,
+            });
+          }} className="mt-4 rounded-lg border border-surface-3 bg-surface-1 p-4">
+            <h2 className="text-sm font-semibold text-text-main">Show playback defaults</h2>
+            <div className="mt-3 flex flex-wrap items-end gap-4">
+              <div>
+                <label htmlFor="podcast-show-default-speed" className="block text-xs text-text-secondary">
+                  Default playback speed
+                </label>
+                <select id="podcast-show-default-speed" aria-label="Show default playback speed"
+                  value={showPlayback?.defaultSpeed ?? 0}
+                  disabled={!showPlayback || showPlaybackSaving}
+                  onChange={event => {
+                    if (!showPlayback) return;
+                    void saveShowPlayback({
+                      ...showPlayback,
+                      defaultSpeed: Number(event.target.value),
+                    });
+                  }}
+                  className="mt-1 rounded-md border border-surface-3 bg-surface-2 px-2 py-1.5 text-sm text-text-main">
+                  <option value={0}>Use global default</option>
+                  <option value={0.75}>0.75×</option>
+                  <option value={1}>1×</option>
+                  <option value={1.25}>1.25×</option>
+                  <option value={1.5}>1.5×</option>
+                  <option value={1.75}>1.75×</option>
+                  <option value={2}>2×</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="podcast-show-skip-intro" className="block text-xs text-text-secondary">
+                  Skip intro (seconds)
+                </label>
+                <input id="podcast-show-skip-intro" type="number" min={0} max={600} step={5}
+                  aria-label="Show skip intro seconds"
+                  value={skipIntroInput}
+                  disabled={!showPlayback || showPlaybackSaving}
+                  onChange={event => setSkipIntroInput(event.target.value)}
+                  className="mt-1 w-24 rounded-md border border-surface-3 bg-surface-2 px-2 py-1.5 text-sm text-text-main" />
+              </div>
+              <div>
+                <label htmlFor="podcast-show-skip-outro" className="block text-xs text-text-secondary">
+                  Skip outro (seconds)
+                </label>
+                <input id="podcast-show-skip-outro" type="number" min={0} max={600} step={5}
+                  aria-label="Show skip outro seconds"
+                  value={skipOutroInput}
+                  disabled={!showPlayback || showPlaybackSaving}
+                  onChange={event => setSkipOutroInput(event.target.value)}
+                  className="mt-1 w-24 rounded-md border border-surface-3 bg-surface-2 px-2 py-1.5 text-sm text-text-main" />
+              </div>
+              <button type="submit" disabled={!showPlayback || showPlaybackSaving}
+                className="rounded-md border border-surface-3 bg-surface-2 px-3 py-1.5 text-sm font-semibold text-text-main hover:bg-surface-highlight disabled:opacity-50">
+                Save skip timings
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-text-subtle">
+              Applies when starting episodes of this show in the shared player. Saved resume positions are not overwritten by skip intro.
+            </p>
+            {showPlaybackMessage && <p role="status" className="mt-2 text-xs text-text-secondary">{showPlaybackMessage}</p>}
+          </form>
           {!confirmRemove ? <button type="button" onClick={() => setConfirmRemove(true)} className="mt-4 inline-flex items-center gap-2 text-sm text-text-secondary hover:text-error"><Trash2 size={16}/> Unfollow</button>
             : <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
               <span className="text-text-secondary">Unfollow? Episode history is retained.</span>

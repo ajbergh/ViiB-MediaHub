@@ -26,7 +26,9 @@ export const useMediaSession = (
     currentTime: number,
     duration: number,
     onSeek: (time: number) => void,
-    playbackRate = 1
+    playbackRate = 1,
+    seekBackwardSeconds = 10,
+    seekForwardSeconds = 10,
 ) => {
     const { currentSong, isPlaying, togglePlay, nextSong, prevSong } = useStore(useShallow(state => ({
         currentSong: state.currentSong,
@@ -35,10 +37,10 @@ export const useMediaSession = (
         nextSong: state.nextSong,
         prevSong: state.prevSong,
     })));
-    const timeline = useRef({ currentTime, duration, onSeek });
+    const timeline = useRef({ currentTime, duration, onSeek, seekBackwardSeconds, seekForwardSeconds });
     useLayoutEffect(() => {
-        timeline.current = { currentTime, duration, onSeek };
-    }, [currentTime, duration, onSeek]);
+        timeline.current = { currentTime, duration, onSeek, seekBackwardSeconds, seekForwardSeconds };
+    }, [currentTime, duration, onSeek, seekBackwardSeconds, seekForwardSeconds]);
 
     // =========================================================================
     // Phase 1: Metadata Updates
@@ -224,8 +226,8 @@ export const useMediaSession = (
      * Handle seek backward action (rewind).
      */
     const handleSeekBackward = useCallback((details: MediaSessionActionDetails) => {
-        const skipTime = details.seekOffset || 10; // Default 10 seconds
-        const { currentTime, onSeek } = timeline.current;
+        const { currentTime, onSeek, seekBackwardSeconds } = timeline.current;
+        const skipTime = details.seekOffset || seekBackwardSeconds;
         const newTime = Math.max(currentTime - skipTime, 0);
         console.log('[MediaSession] Seek backward:', skipTime, 'seconds to', newTime);
         onSeek(newTime);
@@ -235,8 +237,8 @@ export const useMediaSession = (
      * Handle seek forward action (fast forward).
      */
     const handleSeekForward = useCallback((details: MediaSessionActionDetails) => {
-        const skipTime = details.seekOffset || 10; // Default 10 seconds
-        const { currentTime, duration, onSeek } = timeline.current;
+        const { currentTime, duration, onSeek, seekForwardSeconds } = timeline.current;
+        const skipTime = details.seekOffset || seekForwardSeconds;
         const newTime = Math.min(currentTime + skipTime, duration);
         console.log('[MediaSession] Seek forward:', skipTime, 'seconds to', newTime);
         onSeek(newTime);

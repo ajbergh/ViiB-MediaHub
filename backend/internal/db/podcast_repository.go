@@ -24,6 +24,9 @@ type PodcastFeedRecord struct {
     ImageURL string `json:"imageUrl"`
     Language string `json:"language"`
     EpisodeCount int64 `json:"episodeCount"`
+    DefaultSpeed float64 `json:"defaultSpeed"`
+    SkipIntroSeconds int `json:"skipIntroSeconds"`
+    SkipOutroSeconds int `json:"skipOutroSeconds"`
 }
 
 type PodcastEpisodeRecord struct {
@@ -177,7 +180,8 @@ func (d *DB) ListSubscribedPodcasts(ctx context.Context) ([]PodcastFeedRecord,er
     if err:=d.EnsurePodcastSchema();err!=nil{return nil,err}
     rows,err:=d.conn.QueryContext(ctx,`
 SELECT f.id,f.canonical_url,f.title,f.author,f.description,f.image_url,f.language,
- (SELECT COUNT(*) FROM podcast_episodes e WHERE e.feed_id=f.id)
+ (SELECT COUNT(*) FROM podcast_episodes e WHERE e.feed_id=f.id),
+ s.playback_speed_custom,s.default_speed,s.skip_intro_seconds,s.skip_outro_seconds
 FROM podcast_subscriptions s JOIN podcast_feeds f ON f.id=s.feed_id
 ORDER BY s.subscribed_at DESC,f.id`)
     if err!=nil{return nil,err}
@@ -185,10 +189,16 @@ ORDER BY s.subscribed_at DESC,f.id`)
     result:=make([]PodcastFeedRecord,0)
     for rows.Next(){
         var record PodcastFeedRecord
+        var customSpeed int
+        var rawSpeed float64
         if err:=rows.Scan(&record.ID,&record.URL,&record.Title,&record.Author,
-            &record.Description,&record.ImageURL,&record.Language,&record.EpisodeCount);err!=nil{
+            &record.Description,&record.ImageURL,&record.Language,&record.EpisodeCount,
+            &customSpeed,&rawSpeed,&record.SkipIntroSeconds,&record.SkipOutroSeconds);err!=nil{
             return nil,err
         }
+        record.DefaultSpeed=normalizePodcastShowSpeed(customSpeed,rawSpeed)
+        record.SkipIntroSeconds=clampSkipTrim(record.SkipIntroSeconds)
+        record.SkipOutroSeconds=clampSkipTrim(record.SkipOutroSeconds)
         result=append(result,record)
     }
     return result,rows.Err()
@@ -199,13 +209,22 @@ ORDER BY s.subscribed_at DESC,f.id`)
 func (d *DB) GetSubscribedPodcast(ctx context.Context,feedID string) (PodcastFeedRecord,error) {
     var record PodcastFeedRecord
     if err:=d.EnsurePodcastSchema();err!=nil{return record,err}
+    var customSpeed int
+    var rawSpeed float64
     err:=d.conn.QueryRowContext(ctx,`
 SELECT f.id,f.canonical_url,f.title,f.author,f.description,f.image_url,f.language,
- (SELECT COUNT(*) FROM podcast_episodes e WHERE e.feed_id=f.id)
+ (SELECT COUNT(*) FROM podcast_episodes e WHERE e.feed_id=f.id),
+ s.playback_speed_custom,s.default_speed,s.skip_intro_seconds,s.skip_outro_seconds
 FROM podcast_subscriptions s JOIN podcast_feeds f ON f.id=s.feed_id
 WHERE f.id=?
 `,feedID).Scan(&record.ID,&record.URL,&record.Title,&record.Author,
-        &record.Description,&record.ImageURL,&record.Language,&record.EpisodeCount)
+        &record.Description,&record.ImageURL,&record.Language,&record.EpisodeCount,
+        &customSpeed,&rawSpeed,&record.SkipIntroSeconds,&record.SkipOutroSeconds)
+    if err==nil {
+        record.DefaultSpeed=normalizePodcastShowSpeed(customSpeed,rawSpeed)
+        record.SkipIntroSeconds=clampSkipTrim(record.SkipIntroSeconds)
+        record.SkipOutroSeconds=clampSkipTrim(record.SkipOutroSeconds)
+    }
     return record,err
 }
 

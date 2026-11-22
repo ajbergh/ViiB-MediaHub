@@ -78,6 +78,7 @@ export const useAudioPlayer = () => {
     const secondaryRef = useRef<HTMLAudioElement>(null);
     const activePlayerIndex = useRef<number>(0); // 0 or 1
     const podcastProgressRef = useRef<PodcastProgressTracker | null>(null);
+    const outroSkippedForRef = useRef<string | null>(null);
     
     // Track if we've already triggered preload for current song
     const hasTriggeredPreload = useRef<string | null>(null);
@@ -461,6 +462,7 @@ export const useAudioPlayer = () => {
         if (currentPlayer.getAttribute('src') !== currentSong.url) {
             // One physical audio transport owns local, Plex and podcasts.
             // Persist outgoing podcast progress before any queue handoff.
+            outroSkippedForRef.current = null;
             void podcastProgressRef.current?.flush();
             podcastProgressRef.current = currentSong.source === 'podcast' && currentSong.podcastEpisodeId
                 ? new PodcastProgressTracker(currentSong, message =>
@@ -576,11 +578,17 @@ export const useAudioPlayer = () => {
         const player = playerIndex === 0 ? primaryRef.current : secondaryRef.current;
         const song = useStore.getState().currentSong;
         if (!player || !song) return;
-        if (song.source === 'podcast' && song.podcastResumeMs) {
-            const position = song.podcastResumeMs / 1000;
-            player.currentTime = Number.isFinite(player.duration)
-                ? Math.min(Math.max(0, player.duration - 1), position) : position;
-            podcastProgressRef.current?.seek(player.currentTime);
+        if (song.source === 'podcast') {
+            const resumeSeconds = (song.podcastResumeMs ?? 0) / 1000;
+            const skipIntro = song.podcastSkipIntroSeconds ?? 0;
+            if (resumeSeconds > 0) {
+                player.currentTime = Number.isFinite(player.duration)
+                    ? Math.min(Math.max(0, player.duration - 1), resumeSeconds) : resumeSeconds;
+                podcastProgressRef.current?.seek(player.currentTime);
+            } else if (skipIntro > 0 && (!Number.isFinite(player.duration) || player.duration > skipIntro + 5)) {
+                player.currentTime = skipIntro;
+                podcastProgressRef.current?.seek(player.currentTime);
+            }
         }
         if (Number.isFinite(player.duration)) setDuration(player.duration);
     };
@@ -614,7 +622,17 @@ export const useAudioPlayer = () => {
                 setDuration(dur);
             }
             
-            const { currentSong, updateSongDuration, preloadNextTrack } = useStore.getState();
+            const { currentSong, updateSongDuration, preloadNextTrack, nextSong } = useStore.getState();
+
+            if (currentSong?.source === 'podcast' && !player.paused && !player.seeking) {
+                const skipOutro = currentSong.podcastSkipOutroSeconds ?? 0;
+                if (skipOutro > 0 && dur > skipOutro + 5 && time >= dur - skipOutro && outroSkippedForRef.current !== currentSong.id) {
+                    outroSkippedForRef.current = currentSong.id;
+                    podcastProgressRef.current?.finished(dur);
+                    nextSong();
+                    return;
+                }
+            }
             
             // Fix duration if it differs significantly from stored metadata
             // Only do this once per song, when we have a valid duration

@@ -27,6 +27,9 @@ export interface PodcastContinueEpisode extends PodcastEpisode {
   positionMs: number;
   listenedMs: number;
   progressRevision: number;
+  defaultSpeed?: number;
+  skipIntroSeconds?: number;
+  skipOutroSeconds?: number;
 }
 export interface PodcastStorage {
   usedBytes: number;
@@ -63,6 +66,16 @@ export interface PodcastAutoDownloadPolicy {
   enabled: boolean;
   newestCount: number;
 }
+export interface PodcastShowPlaybackSettings {
+  defaultSpeed: number;
+  skipIntroSeconds: number;
+  skipOutroSeconds: number;
+}
+export interface PodcastGlobalPlaybackSettings {
+  defaultSpeed: number;
+  skipBackSeconds: number;
+  skipForwardSeconds: number;
+}
 export interface PodcastRefreshStatus {
   lastCheckedAt: number;
   lastSuccessAt: number;
@@ -80,6 +93,9 @@ export interface PodcastFeed {
   imageUrl: string;
   language: string;
   episodeCount: number;
+  defaultSpeed?: number;
+  skipIntroSeconds?: number;
+  skipOutroSeconds?: number;
 }
 export interface PodcastPreview {
   feed: {
@@ -219,6 +235,22 @@ export const podcastsAPI = {
   setAutoDownloadPolicy(feedId: string, policy: PodcastAutoDownloadPolicy, signal?: AbortSignal): Promise<{ policy: PodcastAutoDownloadPolicy }> {
     return request('/feeds/' + encodeURIComponent(feedId) + '/auto-download', {
       method: 'PUT', body: JSON.stringify(policy), signal,
+    });
+  },
+  getShowPlaybackSettings(feedId: string, signal?: AbortSignal): Promise<{ settings: PodcastShowPlaybackSettings }> {
+    return request('/feeds/' + encodeURIComponent(feedId) + '/playback-settings', { signal });
+  },
+  setShowPlaybackSettings(feedId: string, settings: PodcastShowPlaybackSettings, signal?: AbortSignal): Promise<{ settings: PodcastShowPlaybackSettings }> {
+    return request('/feeds/' + encodeURIComponent(feedId) + '/playback-settings', {
+      method: 'PUT', body: JSON.stringify(settings), signal,
+    });
+  },
+  getGlobalSettings(signal?: AbortSignal): Promise<{ playback: PodcastGlobalPlaybackSettings }> {
+    return request('/settings', { signal });
+  },
+  setGlobalSettings(playback: PodcastGlobalPlaybackSettings, signal?: AbortSignal): Promise<{ playback: PodcastGlobalPlaybackSettings }> {
+    return request('/settings', {
+      method: 'PUT', body: JSON.stringify(playback), signal,
     });
   },
   refreshStatus(feedId: string, signal?: AbortSignal): Promise<PodcastRefreshStatus> {

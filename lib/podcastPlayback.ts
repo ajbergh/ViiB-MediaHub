@@ -2,18 +2,23 @@
  * Queue entries are ephemeral; they are never inserted into music tables. */
 import type { Song } from '../types';
 import type { PlayerSlice } from '../slices/types';
-import type { PodcastEpisode, PodcastFeed } from '../services/podcasts';
+import type { PodcastContinueEpisode, PodcastEpisode, PodcastFeed } from '../services/podcasts';
 import { podcastsAPI } from '../services/podcasts';
 
 export function podcastEpisodeToTrack(episode: PodcastEpisode, feed: PodcastFeed): Song {
+  const continueEpisode = episode as Partial<PodcastContinueEpisode>;
   return {
     id: 'podcast_' + episode.id,
     source: 'podcast',
     podcastEpisodeId: episode.id,
+    podcastFeedId: feed.id,
     podcastResumeMs: episode.positionMs ?? 0,
     podcastListenedMs: episode.listenedMs ?? 0,
     podcastProgressRevision: episode.progressRevision ?? 0,
     podcastIsPlayed: episode.isPlayed ?? false,
+    podcastDefaultSpeed: feed.defaultSpeed ?? continueEpisode.defaultSpeed ?? 0,
+    podcastSkipIntroSeconds: feed.skipIntroSeconds ?? continueEpisode.skipIntroSeconds ?? 0,
+    podcastSkipOutroSeconds: feed.skipOutroSeconds ?? continueEpisode.skipOutroSeconds ?? 0,
     playbackContext: 'podcast',
     title: episode.title,
     artist: feed.author || feed.title,

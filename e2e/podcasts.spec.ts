@@ -619,3 +619,114 @@ test('Per-show auto-download is off by default and persists an explicit new-epis
   expect(policy.enabled).toBe(false);
   expect(errors).toEqual([]);
 });
+
+test('Per-show and global podcast playback defaults control speed, intro/outro skip, and player skip intervals', async ({ page }) => {
+  let globalSettings = { defaultSpeed: 1, skipBackSeconds: 15, skipForwardSeconds: 30 };
+  let showSettings = { defaultSpeed: 0, skipIntroSeconds: 0, skipOutroSeconds: 0 };
+  let rejectShowUpdate = false;
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+
+  await page.route('**/*', async route => {
+    const req = route.request();
+    const u = new URL(req.url());
+    if (u.origin !== 'http://127.0.0.1:4173') return route.abort();
+    if (u.pathname === '/api/health') return route.fulfill({ json: { status: 'ok' } });
+    if (u.pathname === '/api/library/songs') return route.fulfill({ json: { songs: [] } });
+    if (u.pathname === '/api/playlists') return route.fulfill({ json: { playlists: [] } });
+    if (u.pathname === '/api/library/scan/status') return route.fulfill({ json: { scanning: false } });
+    if (u.pathname.startsWith('/api/settings/')) {
+      return route.fulfill({ json: { key: u.pathname.split('/').pop(), value: '' } });
+    }
+    if (u.pathname === '/api/v2/podcasts/settings') {
+      if (req.method() === 'GET') return route.fulfill({ json: { playback: globalSettings } });
+      if (req.method() === 'PUT') {
+        globalSettings = req.postDataJSON() as typeof globalSettings;
+        return route.fulfill({ json: { playback: globalSettings } });
+      }
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/playback-settings') {
+      if (req.method() === 'GET') return route.fulfill({ json: { settings: showSettings } });
+      if (req.method() === 'PUT') {
+        if (rejectShowUpdate) {
+          rejectShowUpdate = false;
+          return route.fulfill({ status: 503, json: {
+            error: { code: 'podcast_library_unavailable', message: 'Cannot save show playback defaults' },
+          } });
+        }
+        showSettings = req.postDataJSON() as typeof showSettings;
+        return route.fulfill({ json: { settings: showSettings } });
+      }
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/auto-download') {
+      return route.fulfill({ json: { policy: { enabled: false, newestCount: 1 } } });
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId && req.method() === 'GET') {
+      return route.fulfill({ json: { feed: {
+        id: feedId, url: feedURL, title: 'Speed & Skip Show', author: 'Publisher',
+        description: '', imageUrl: '', language: 'en', episodeCount: 1,
+        ...showSettings,
+      } } });
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/episodes') {
+      return route.fulfill({ json: { episodes: [{
+        id: 'ep-speed-1', feedId, guid: 'ep-speed-1', title: 'Configurable Episode',
+        description: '', hasAudio: true, enclosureType: 'audio/mpeg',
+        publishedAt: 1795377600000, durationMs: 1800000,
+      }], nextOffset: null } });
+    }
+    if (u.pathname === '/api/v2/podcasts/feeds/' + feedId + '/refresh') {
+      return route.fulfill({ json: {
+        lastCheckedAt: 0, lastSuccessAt: 0, nextRefreshAt: 0, failures: 0, refreshing: false,
+      } });
+    }
+    if (u.pathname === '/api/v2/podcasts/downloads') {
+      return route.fulfill({ json: { downloads: [], storage: { usedBytes: 0, maxBytes: 2147483648 } } });
+    }
+    if (u.pathname.startsWith('/api/')) {
+      return route.fulfill({ status: 503, json: { error: 'fixture backend unavailable' } });
+    }
+    return route.continue();
+  });
+
+  // Configure global podcast defaults in Settings -> Playback & Audio.
+  await page.goto('/settings');
+  await page.getByRole('button', { name: 'Playback & Audio' }).click();
+  await expect(page.getByRole('heading', { name: 'Podcast Playback Defaults' })).toBeVisible();
+  await page.getByRole('combobox', { name: 'Global podcast default speed' }).selectOption('1.25');
+  await page.getByRole('combobox', { name: 'Podcast skip back interval' }).selectOption('10');
+  await page.getByRole('combobox', { name: 'Podcast skip forward interval' }).selectOption('45');
+  await expect(page.getByText('Podcast playback defaults saved.')).toBeVisible();
+
+  // Open show page: inherits global default until explicitly overridden.
+  await page.goto('/podcasts/show/' + feedId);
+  const showSpeed = page.getByRole('combobox', { name: 'Show default playback speed' });
+  const skipIntro = page.getByRole('spinbutton', { name: 'Show skip intro seconds' });
+  const skipOutro = page.getByRole('spinbutton', { name: 'Show skip outro seconds' });
+  await expect(showSpeed).toHaveValue('0');
+
+  // Start episode: player applies global default 1.25x and configured 10s/45s skips.
+  await page.getByRole('button', { name: 'Listen to Configurable Episode' }).click();
+  await expect(page.getByRole('button', { name: 'Back 10 seconds' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Forward 45 seconds' })).toBeVisible();
+  await expect(page.locator('audio[src="/api/v2/podcasts/episodes/ep-speed-1/media"]')).toHaveJSProperty('playbackRate', 1.25);
+
+  // Override per-show speed and intro/outro skip timings; verify persistence and rollback.
+  await showSpeed.selectOption('1.5');
+  await expect(page.locator('audio[src="/api/v2/podcasts/episodes/ep-speed-1/media"]')).toHaveJSProperty('playbackRate', 1.5);
+  await skipIntro.fill('30');
+  await skipOutro.fill('45');
+  await page.getByRole('button', { name: 'Save skip timings' }).click();
+  await expect(page.getByText('Show playback defaults saved.')).toBeVisible();
+
+  await page.reload();
+  await expect(showSpeed).toHaveValue('1.5');
+  await expect(skipIntro).toHaveValue('30');
+  await expect(skipOutro).toHaveValue('45');
+
+  rejectShowUpdate = true;
+  await showSpeed.selectOption('2');
+  await expect(page.getByText('Cannot save show playback defaults')).toBeVisible();
+  await expect(showSpeed).toHaveValue('1.5');
+  expect(errors).toEqual([]);
+});
