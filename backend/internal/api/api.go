@@ -113,6 +113,8 @@ type API struct {
 	podcastDownloadWake   chan struct{}
 	podcastDownloadOwner  string
 	podcastDownloadFileMu sync.RWMutex
+	podcastIntegrityMu    sync.Mutex
+	podcastIntegrityCache map[string]podcastFileVerification
 	podcastDownloadFetch  func(context.Context,string,string,string)(podcast.MediaSegment,error)
 	jobSchedulerMu         sync.Mutex
 	jobSchedulerOn         bool

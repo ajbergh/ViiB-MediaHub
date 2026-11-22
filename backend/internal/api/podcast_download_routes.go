@@ -150,6 +150,7 @@ func (a *API) removeCompletedPodcastDownload(w http.ResponseWriter,r *http.Reque
                 "Unable to remove offline audio; close other players and retry",true,nil);return
         }
     }
+    a.clearPodcastOfflineVerification(id)
     if err:=a.db.DeletePodcastCompletedDownload(r.Context(),id);err!=nil{
         respondV2Error(w,r,http.StatusInternalServerError,"podcast_download_unavailable",
             "Offline file was removed but its status needs repair",true,nil);return

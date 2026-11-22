@@ -13,13 +13,67 @@ import (
     "os"
     "path/filepath"
     "regexp"
+    "strings"
     "time"
  
     "github.com/ajbergh/viib-mediahub/internal/db"
     "github.com/ajbergh/viib-mediahub/internal/podcast"
 )
 
-var safePodcastEpisodeID = regexp.MustCompile(`^[0-9a-f]{40}$`)
+var safePodcastEpisodeID = regexp.MustCompile(`^[0-9a-f]{40}package api
+
+import (
+    "context"
+    "crypto/rand"
+    "crypto/sha256"
+    "encoding/hex"
+    "errors"
+    "database/sql"
+    "fmt"
+    "io"
+    "net/http"
+    "os"
+    "path/filepath"
+    "regexp"
+    "strings"
+    "time"
+ 
+    "github.com/ajbergh/viib-mediahub/internal/db"
+    "github.com/ajbergh/viib-mediahub/internal/podcast"
+)
+
+)
+var safePodcastTempName = regexp.MustCompile(`^\.part-[0-9]{7,20}package api
+
+import (
+    "context"
+    "crypto/rand"
+    "crypto/sha256"
+    "encoding/hex"
+    "errors"
+    "database/sql"
+    "fmt"
+    "io"
+    "net/http"
+    "os"
+    "path/filepath"
+    "regexp"
+    "strings"
+    "time"
+ 
+    "github.com/ajbergh/viib-mediahub/internal/db"
+    "github.com/ajbergh/viib-mediahub/internal/podcast"
+)
+
+)
+
+const podcastAbandonedPartGrace = 4*time.Hour
+
+type podcastFileVerification struct {
+    size int64
+    modified time.Time
+    digest string
+}
 
 const podcastDownloadChunkBytes = podcast.MaxMediaSegmentBytes
 const podcastDownloadTick = 3*time.Second
@@ -54,6 +108,9 @@ func (a *API) startPodcastDownloader() {
     a.podcastDownloadWG.Add(1)
     go func(){
         defer a.podcastDownloadWG.Done()
+        if dir,err:=a.podcastStorageDir();err==nil {
+            a.cleanupPodcastAbandonedParts(dir,time.Now())
+        }
         ticker:=time.NewTicker(podcastDownloadTick)
         defer ticker.Stop()
         // Recover expired leased transfers without waiting for a UI request.
@@ -121,12 +178,91 @@ func (a *API) processPodcastDownload(ctx context.Context){
 
 var errPodcastDownloadTooLarge=errors.New("podcast audio exceeds offline size limit")
 
+// Abandoned temporary transfers never become playable. Remove only old,
+ // numeric os.CreateTemp-generated .part-* regular files inside ViiB's own
+ // fixed podcast directory. Recent files and foreign/symlink names are kept.
+func (a *API) cleanupPodcastAbandonedParts(dir string,now time.Time){
+    handle,err:=os.Open(dir)
+    if err!=nil{return}
+    defer handle.Close()
+    scanned:=0
+    for scanned<4096 {
+        batch,err:=handle.ReadDir(64)
+        if err!=nil&&err!=io.EOF{return}
+        for _,entry:=range batch {
+            scanned++
+            name:=entry.Name()
+            if !safePodcastTempName.MatchString(name){continue}
+            path:=filepath.Join(dir,name)
+            stat,statErr:=os.Lstat(path)
+            if statErr!=nil||!stat.Mode().IsRegular()||now.Sub(stat.ModTime())<podcastAbandonedPartGrace{continue}
+            _=os.Remove(path)
+        }
+        if err==io.EOF||len(batch)==0{return}
+    }
+}
+
+// First local read in each process verifies the full SHA-256 persisted at
+// download publication. Subsequent bounded HTTP Range requests reuse the
+// result only while size/modtime/digest remain stable. Never trust a file
+// merely because its name and length match SQLite.
+func (a *API) verifyPodcastOfflineFile(id string,f *os.File,size int64,modified time.Time,want string) error{
+    if size<=0||size>db.MaxPodcastDownloadBytes||len(want)!=64 {
+        return errors.New("invalid podcast offline integrity metadata")
+    }
+    a.podcastIntegrityMu.Lock()
+    defer a.podcastIntegrityMu.Unlock()
+    if cache,ok:=a.podcastIntegrityCache[id];ok &&
+        cache.size==size&&cache.modified.Equal(modified)&&strings.EqualFold(cache.digest,want){
+        _,err:=f.Seek(0,io.SeekStart)
+        return err
+    }
+    if _,err:=f.Seek(0,io.SeekStart);err!=nil{return err}
+    hasher:=sha256.New()
+    n,err:=io.CopyN(hasher,f,size)
+    if err!=nil||n!=size{return errors.New("podcast offline integrity read failed")}
+    if !strings.EqualFold(hex.EncodeToString(hasher.Sum(nil)),want) {
+        return errors.New("podcast offline checksum mismatch")
+    }
+    if _,err:=f.Seek(0,io.SeekStart);err!=nil{return err}
+    if a.podcastIntegrityCache==nil||len(a.podcastIntegrityCache)>=128{
+        a.podcastIntegrityCache=make(map[string]podcastFileVerification)
+    }
+    a.podcastIntegrityCache[id]=podcastFileVerification{
+        size:size,modified:modified,digest:want,
+    }
+    return nil
+}
+
+func (a *API) clearPodcastOfflineVerification(id string){
+    a.podcastIntegrityMu.Lock()
+    delete(a.podcastIntegrityCache,id)
+    a.podcastIntegrityMu.Unlock()
+}
+
 func (a *API) transferPodcastDownload(ctx context.Context,id,owner string) error {
     if !safePodcastEpisodeID.MatchString(id){return podcast.ErrInvalidMedia}
     raw,declared,err:=a.db.PodcastMediaSource(ctx,id)
     if err!=nil{return err}
     dir,err:=a.podcastStorageDir()
     if err!=nil{return err}
+    // If an earlier worker crashed after rename but before publication, its
+    // known-ID final file is orphaned. This job owns the new lease: remove
+    // only that regular file, under the same lock as offline ServeContent.
+    finalName:=id+".audio"
+    dest:=filepath.Join(dir,finalName)
+    a.podcastDownloadFileMu.Lock()
+    orphan,orphanErr:=os.Lstat(dest)
+    if orphanErr==nil {
+        if !orphan.Mode().IsRegular(){
+            a.podcastDownloadFileMu.Unlock()
+            return podcast.ErrInvalidMedia
+        }
+        orphanErr=os.Remove(dest)
+    } else if errors.Is(orphanErr,os.ErrNotExist){orphanErr=nil}
+    a.podcastDownloadFileMu.Unlock()
+    if orphanErr!=nil{return orphanErr}
+    a.clearPodcastOfflineVerification(id)
     out,err:=os.CreateTemp(dir,".part-*")
     if err!=nil{return err}
     tempPath:=out.Name()
@@ -164,9 +300,7 @@ func (a *API) transferPodcastDownload(ctx context.Context,id,owner string) error
     }
     if err:=out.Sync();err!=nil{return err}
     if err:=out.Close();err!=nil{return err}
-    finalName:=id+".audio"
-    dest:=filepath.Join(dir,finalName)
-    // Never publish over a previously completed file or a symlink.
+    // Never publish over a newly created file or a symlink.
     if _,err:=os.Lstat(dest);err==nil{return errors.New("podcast destination already exists")}else if !errors.Is(err,os.ErrNotExist){return err}
     if err:=os.Rename(tempPath,dest);err!=nil{return err}
     tempPath="" // renamed: remove only on a failed database publication
@@ -174,6 +308,7 @@ func (a *API) transferPodcastDownload(ctx context.Context,id,owner string) error
         _=os.Remove(dest)
         return err
     }
+    a.clearPodcastOfflineVerification(id)
     return nil
 }
 
@@ -225,8 +360,16 @@ func (a *API) servePodcastOfflineMedia(w http.ResponseWriter,r *http.Request,id 
     opened,openErr:=f.Stat()
     if openErr!=nil||!opened.Mode().IsRegular()||opened.Size()!=file.Size{
         _=a.db.InvalidatePodcastDownload(r.Context(),id)
+        a.clearPodcastOfflineVerification(id)
         respondV2Error(w,r,http.StatusGone,"podcast_download_missing",
             "Downloaded audio needs to be retried",false,nil)
+        return true
+    }
+    if err:=a.verifyPodcastOfflineFile(id,f,file.Size,opened.ModTime(),file.SHA256);err!=nil{
+        _=a.db.InvalidatePodcastDownload(r.Context(),id)
+        a.clearPodcastOfflineVerification(id)
+        respondV2Error(w,r,http.StatusGone,"podcast_download_corrupt",
+            "Downloaded audio failed integrity checks; retry the download",false,nil)
         return true
     }
     w.Header().Set("Content-Type",file.MIME)
