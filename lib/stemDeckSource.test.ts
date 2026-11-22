@@ -174,6 +174,25 @@ describe('StemDeckSource', () => {
     } finally { source.dispose(); }
   });
 
+  it('keeps the playhead continuous and skips repeated worklet rate messages', async () => {
+    const { source, worklet, context } = fixture();
+    try {
+      await source.load({ id: 'song', title: 'Song' } as never);
+      await source.play();
+      worklet.port.onmessage?.({ data: { type: 'position', frame: 1000 } } as MessageEvent);
+      Object.assign(context, { currentTime: 0.5 });
+      expect(source.getPosition()).toBe(1.5);
+      worklet.port.postMessage.mockClear();
+
+      source.setTempo(1.2);
+      source.setTempo(1.2);
+      expect(source.getPosition()).toBe(1.5);
+      expect(worklet.port.postMessage.mock.calls).toEqual([[{ type: 'rate', rate: 1.2 }]]);
+      Object.assign(context, { currentTime: 1 });
+      expect(source.getPosition()).toBeCloseTo(2.1);
+    } finally { source.dispose(); }
+  });
+
   it('ignores a failed old-track seek after a new track has loaded', async () => {
     const { source, fetcher } = fixture();
     await source.load({ id: 'song', title: 'First' } as never);

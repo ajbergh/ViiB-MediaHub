@@ -40,7 +40,7 @@ func New(apiHandler *api.API, frontendFS fs.FS) http.Handler {
 
 	r.Use(cors.Handler(cors.Options{
 		AllowOriginFunc:  func(r *http.Request, origin string) bool { return IsTrustedOrigin(origin, r.Host) },
-		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowedMethods:   []string{"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "If-Match", "Last-Event-ID", "Range", "X-Request-ID"},
 		ExposedHeaders:   []string{"ETag", "X-Request-ID", api.DiagnosticTokenHeader, "Content-Range", "Accept-Ranges", "Content-Length"},
 		AllowCredentials: true,

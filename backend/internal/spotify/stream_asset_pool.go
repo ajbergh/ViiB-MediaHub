@@ -12,6 +12,7 @@ import (
 type streamAssetKey struct {
 	track, quality string
 	generation     uint64
+	mp3            bool
 }
 type streamAsset struct {
 	newReader   func() (io.ReadSeekCloser, error)
@@ -50,6 +51,15 @@ type streamAssetPool struct {
 
 func newStreamAssetPool() *streamAssetPool {
 	return &streamAssetPool{entries: map[streamAssetKey]*streamAssetEntry{}, maxEntries: 3, maxBytes: 32 << 20, maxAssetBytes: 16 << 20, idleTTL: 30 * time.Second}
+}
+
+// MP3 renditions are disk-backed. Keep longer mixes seekable without taking
+// retention capacity from the original Spotify assets.
+func newMP3StreamAssetPool() *streamAssetPool {
+	return &streamAssetPool{
+		entries: make(map[streamAssetKey]*streamAssetEntry), maxEntries: 4,
+		maxBytes: 128 << 20, maxAssetBytes: 64 << 20, idleTTL: 5 * time.Minute,
+	}
 }
 
 // A request owns a session lease separately. Idle entries hold only a child

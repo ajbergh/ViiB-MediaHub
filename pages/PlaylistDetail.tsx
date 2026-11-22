@@ -10,7 +10,7 @@ import { Page, PageHeader } from '../components/ui/Page';
 import { TextInput } from '../components/ui/TextInput';
 import { PlaylistArtwork } from '../components/PlaylistArtwork';
 import { getPlaylistArtwork } from '../lib/playlistArtwork';
-import { resolvePlaylistSongs } from '../lib/playlistContents';
+import { indexPlaylistSongs, resolvePlaylistSongs } from '../lib/playlistContents';
 import { formatTime } from '../utils';
 
 const buttonClass = 'rounded-lg px-3 py-2 text-sm font-medium bg-surface-2 hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 disabled:cursor-not-allowed';
@@ -29,7 +29,7 @@ const PlaylistEditor: React.FC<{ playlist: Playlist }> = ({ playlist }) => {
   const [saved, setSaved] = useState(false);
   const songIds = draft ?? playlist.songIds;
   const dirty = draft !== null && (draft.length !== playlist.songIds.length || draft.some((id, i) => id !== playlist.songIds[i]));
-  const songsById = useMemo(() => new Map(songs.map(song => [song.id, song])), [songs]);
+  const songsById = indexPlaylistSongs(songs);
   const covers = useMemo(() => getPlaylistArtwork(songIds, songsById, albumCovers), [songIds, songsById, albumCovers]);
   const matches = useMemo(() => {
     const normalized = deferredQuery.trim().toLocaleLowerCase();

@@ -21,120 +21,193 @@
 
 import { Song, SmartMix } from '../types';
 
+const MIX_SIZE = 50;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const CHILL_GENRE_RE = /acoustic|folk|jazz|lo-fi|singer-songwriter|chill|ambient|piano|classical/;
+const ALT_GENRE_RE = /rock|alternative|grunge|indie|punk/;
+const WORKOUT_GENRE_RE = /pop|dance|electronic|hip hop|rock|metal|techno|house|drum and bass|edm|workout|energy|upbeat/;
+const FOCUS_GENRE_RE = /instrumental|soundtrack|ambient|classical|jazz|lo-fi|study|focus|piano|score|cinematic/;
+
+interface TopScoreEntry {
+    id: string;
+    score: number;
+    index: number;
+}
+
+class TopMixHeap {
+    private heap: TopScoreEntry[] = [];
+
+    // Root is the weakest entry in the current top MIX_SIZE (lowest score, or highest index on tie).
+    private isWorse(a: TopScoreEntry, b: TopScoreEntry): boolean {
+        return a.score < b.score || (a.score === b.score && a.index > b.index);
+    }
+
+    push(id: string, score: number, index: number): void {
+        if (this.heap.length < MIX_SIZE) {
+            this.heap.push({ id, score, index });
+            let idx = this.heap.length - 1;
+            while (idx > 0) {
+                const parent = (idx - 1) >> 1;
+                if (this.isWorse(this.heap[idx], this.heap[parent])) {
+                    const tmp = this.heap[idx];
+                    this.heap[idx] = this.heap[parent];
+                    this.heap[parent] = tmp;
+                    idx = parent;
+                } else {
+                    break;
+                }
+            }
+            return;
+        }
+
+        if (score <= this.heap[0].score) return;
+
+        this.heap[0] = { id, score, index };
+        let idx = 0;
+        const len = this.heap.length;
+        while (true) {
+            const left = (idx << 1) + 1;
+            const right = left + 1;
+            let worst = idx;
+            if (left < len && this.isWorse(this.heap[left], this.heap[worst])) worst = left;
+            if (right < len && this.isWorse(this.heap[right], this.heap[worst])) worst = right;
+            if (worst === idx) break;
+            const tmp = this.heap[idx];
+            this.heap[idx] = this.heap[worst];
+            this.heap[worst] = tmp;
+            idx = worst;
+        }
+    }
+
+    toIds(): string[] {
+        this.heap.sort((a, b) => (b.score - a.score) || (a.index - b.index));
+        return this.heap.map(entry => entry.id);
+    }
+}
+
+function pushReservoir(sample: string[], seen: number, id: string): number {
+    const nextSeen = seen + 1;
+    if (sample.length < MIX_SIZE) {
+        sample.push(id);
+    } else {
+        const slot = Math.floor(Math.random() * nextSeen);
+        if (slot < MIX_SIZE) sample[slot] = id;
+    }
+    return nextSeen;
+}
+
+function shuffleInPlace(ids: string[]): string[] {
+    for (let i = ids.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [ids[i], ids[j]] = [ids[j], ids[i]];
+    }
+    return ids;
+}
+
 export const generateSmartMixes = (songs: Song[]): SmartMix[] => {
     const now = Date.now();
-    const daysAgo = (days: number) => now - (days * 24 * 60 * 60 * 1000);
-    const mixes: SmartMix[] = [];
+    const cutoff90 = now - 90 * DAY_MS;
+    const cutoff30 = now - 30 * DAY_MS;
 
-    // 1. Heavy Rotation: Most played recently
-    const heavyRotationIds = [...songs]
-        .filter(s => (s.playCount || 0) > 0 && (s.lastPlayed || 0) > daysAgo(90))
-        .sort((a, b) => (b.playCount || 0) - (a.playCount || 0))
-        .slice(0, 50)
-        .map(s => s.id);
+    const heavyHeap = new TopMixHeap();
+    const rediscoverHeap = new TopMixHeap();
+    const freshHeap = new TopMixHeap();
 
-    // Only add if we have enough data or just show empty state later
-    mixes.push({
-        id: 'heavy-rotation',
-        name: 'Heavy Rotation',
-        description: 'Your most played tracks recently.',
-        coverColors: ['#FF512F', '#DD2476'],
-        songIds: heavyRotationIds,
-        rules: 'heavy-rotation',
-        updatedAt: now
-    });
+    const chillIds: string[] = [];
+    const ninetiesIds: string[] = [];
+    const workoutIds: string[] = [];
+    const focusIds: string[] = [];
+    let chillSeen = 0;
+    let ninetiesSeen = 0;
+    let workoutSeen = 0;
+    let focusSeen = 0;
 
-    // 2. Rediscover Favorites: High play count but old lastPlayed
-    const rediscoverIds = [...songs]
-        .filter(s => (s.playCount || 0) > 2 && (s.lastPlayed || 0) < daysAgo(30))
-        .sort((a, b) => (b.playCount || 0) - (a.playCount || 0))
-        .slice(0, 50)
-        .map(s => s.id);
-    
-    mixes.push({
-        id: 'rediscover',
-        name: 'Rediscover Favorites',
-        description: 'Great songs you haven\'t heard in a while.',
-        coverColors: ['#8E2DE2', '#4A00E0'],
-        songIds: rediscoverIds,
-        rules: 'rediscover',
-        updatedAt: now
-    });
+    for (let i = 0; i < songs.length; i++) {
+        const song = songs[i];
+        const playCount = song.playCount || 0;
+        const lastPlayed = song.lastPlayed || 0;
 
-    // 3. Fresh Finds: Recently added
-    const freshFindsIds = [...songs]
-        .sort((a, b) => b.addedAt - a.addedAt)
-        .slice(0, 50)
-        .map(s => s.id);
+        if (playCount > 0 && lastPlayed > cutoff90) {
+            heavyHeap.push(song.id, playCount, i);
+        }
+        if (playCount > 2 && lastPlayed < cutoff30) {
+            rediscoverHeap.push(song.id, playCount, i);
+        }
+        freshHeap.push(song.id, song.addedAt, i);
 
-    mixes.push({
-        id: 'fresh-finds',
-        name: 'Fresh Finds',
-        description: 'Recently added to your library.',
-        coverColors: ['#11998e', '#38ef7d'],
-        songIds: freshFindsIds,
-        rules: 'fresh-finds',
-        updatedAt: now
-    });
+        const rawGenres = song.genre;
+        const hasGenre = Boolean(rawGenres && rawGenres.length > 0);
+        const genresLower = hasGenre
+            ? (rawGenres!.length === 1 ? rawGenres![0] : rawGenres!.join(' ')).toLowerCase()
+            : '';
 
-    // 4. Chill Acoustic Evening: Genre based
-    const chillKeywords = ['acoustic', 'folk', 'jazz', 'lo-fi', 'singer-songwriter', 'chill', 'ambient', 'piano', 'classical'];
-    const chillIds = [...songs]
-        .filter(s => {
-            if (!s.genre || s.genre.length === 0) return false;
-            const genres = s.genre.join(' ').toLowerCase();
-            return chillKeywords.some(k => genres.includes(k));
-        })
-        .sort(() => 0.5 - Math.random()) // Shuffle
-        .slice(0, 50)
-        .map(s => s.id);
-    
-    mixes.push({
-        id: 'chill-acoustic',
-        name: 'Chill Acoustic Evening',
-        description: 'Mellow, acoustic, and low-energy tracks.',
-        coverColors: ['#FDC830', '#F37335'],
-        songIds: chillIds,
-        rules: 'chill-acoustic',
-        updatedAt: now
-    });
+        if (hasGenre) {
+            if (CHILL_GENRE_RE.test(genresLower)) {
+                chillSeen = pushReservoir(chillIds, chillSeen, song.id);
+            }
+            if (WORKOUT_GENRE_RE.test(genresLower)) {
+                workoutSeen = pushReservoir(workoutIds, workoutSeen, song.id);
+            }
+            if (FOCUS_GENRE_RE.test(genresLower)) {
+                focusSeen = pushReservoir(focusIds, focusSeen, song.id);
+            }
+        }
 
-    // 5. 90s Alternative Mix: Year + Genre
-    const altKeywords = ['rock', 'alternative', 'grunge', 'indie', 'punk'];
-    const ninetiesIds = [...songs]
-        .filter(s => {
-            const is90s = s.year && s.year >= 1990 && s.year <= 1999;
-            if (!is90s) return false;
-            // If year matches, check genre if available
-            if (!s.genre || s.genre.length === 0) return true; 
-            const genres = s.genre.join(' ').toLowerCase();
-            return altKeywords.some(k => genres.includes(k));
-        })
-        .sort(() => 0.5 - Math.random())
-        .slice(0, 50)
-        .map(s => s.id);
+        if (song.year && song.year >= 1990 && song.year <= 1999) {
+            if (!hasGenre || ALT_GENRE_RE.test(genresLower)) {
+                ninetiesSeen = pushReservoir(ninetiesIds, ninetiesSeen, song.id);
+            }
+        }
+    }
 
-    mixes.push({
-        id: '90s-alt',
-        name: '90s Alternative Mix',
-        description: 'Nostalgia trip: Alternative & Rock from the 90s.',
-        coverColors: ['#232526', '#414345'],
-        songIds: ninetiesIds,
-        rules: '90s-alt',
-        updatedAt: now
-    });
-
-    // 6. High Energy Workout: Upbeat genres
-    const workoutKeywords = ['pop', 'dance', 'electronic', 'hip hop', 'rock', 'metal', 'techno', 'house', 'drum and bass', 'edm', 'workout', 'energy', 'upbeat'];
-    const workoutIds = [...songs]
-        .filter(s => {
-            if (!s.genre || s.genre.length === 0) return false;
-            const genres = s.genre.join(' ').toLowerCase();
-            return workoutKeywords.some(k => genres.includes(k));
-        })
-        .sort(() => 0.5 - Math.random())
-        .slice(0, 50)
-        .map(s => s.id);
+    const mixes: SmartMix[] = [
+        {
+            id: 'heavy-rotation',
+            name: 'Heavy Rotation',
+            description: 'Your most played tracks recently.',
+            coverColors: ['#FF512F', '#DD2476'],
+            songIds: heavyHeap.toIds(),
+            rules: 'heavy-rotation',
+            updatedAt: now
+        },
+        {
+            id: 'rediscover',
+            name: 'Rediscover Favorites',
+            description: 'Great songs you haven\'t heard in a while.',
+            coverColors: ['#8E2DE2', '#4A00E0'],
+            songIds: rediscoverHeap.toIds(),
+            rules: 'rediscover',
+            updatedAt: now
+        },
+        {
+            id: 'fresh-finds',
+            name: 'Fresh Finds',
+            description: 'Recently added to your library.',
+            coverColors: ['#11998e', '#38ef7d'],
+            songIds: freshHeap.toIds(),
+            rules: 'fresh-finds',
+            updatedAt: now
+        },
+        {
+            id: 'chill-acoustic',
+            name: 'Chill Acoustic Evening',
+            description: 'Mellow, acoustic, and low-energy tracks.',
+            coverColors: ['#FDC830', '#F37335'],
+            songIds: shuffleInPlace(chillIds),
+            rules: 'chill-acoustic',
+            updatedAt: now
+        },
+        {
+            id: '90s-alt',
+            name: '90s Alternative Mix',
+            description: 'Nostalgia trip: Alternative & Rock from the 90s.',
+            coverColors: ['#232526', '#414345'],
+            songIds: shuffleInPlace(ninetiesIds),
+            rules: '90s-alt',
+            updatedAt: now
+        }
+    ];
 
     if (workoutIds.length > 5) {
         mixes.push({
@@ -142,23 +215,11 @@ export const generateSmartMixes = (songs: Song[]): SmartMix[] => {
             name: 'High Energy Workout',
             description: 'Pump up the volume with these energetic tracks.',
             coverColors: ['#FF416C', '#FF4B2B'],
-            songIds: workoutIds,
+            songIds: shuffleInPlace(workoutIds),
             rules: 'workout-energy',
             updatedAt: now
         });
     }
-
-    // 7. Focus Mode: Instrumental and calm
-    const focusKeywords = ['instrumental', 'soundtrack', 'ambient', 'classical', 'jazz', 'lo-fi', 'study', 'focus', 'piano', 'score', 'cinematic'];
-    const focusIds = [...songs]
-        .filter(s => {
-            if (!s.genre || s.genre.length === 0) return false;
-            const genres = s.genre.join(' ').toLowerCase();
-            return focusKeywords.some(k => genres.includes(k));
-        })
-        .sort(() => 0.5 - Math.random())
-        .slice(0, 50)
-        .map(s => s.id);
 
     if (focusIds.length > 5) {
         mixes.push({
@@ -166,7 +227,7 @@ export const generateSmartMixes = (songs: Song[]): SmartMix[] => {
             name: 'Focus Mode',
             description: 'Instrumental and ambient tracks for deep work.',
             coverColors: ['#00c6ff', '#0072ff'],
-            songIds: focusIds,
+            songIds: shuffleInPlace(focusIds),
             rules: 'focus-mode',
             updatedAt: now
         });

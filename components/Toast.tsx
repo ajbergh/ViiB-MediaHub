@@ -126,7 +126,8 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
  * Place this once in your app layout
  */
 export const ToastContainer: React.FC = () => {
-  const { toasts, dismissToast } = useStore();
+  const toasts = useStore(state => state.toasts);
+  const dismissToast = useStore(state => state.dismissToast);
 
   if (toasts.length === 0) return null;
 

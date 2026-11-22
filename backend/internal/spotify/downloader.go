@@ -80,6 +80,8 @@ func NewDownloader(sessionManager *SessionManager, downloadDir string) *Download
 // Files smaller than this are considered incomplete/corrupt and will be re-downloaded.
 const MinValidFileSize = 4 * 1024 // Ogg headers plus a small amount of audio
 
+const downloadAudioIdleTimeout = 20 * time.Second
+
 type destinationLock struct {
 	semaphore chan struct{}
 	refs      int
@@ -419,19 +421,10 @@ func (d *Downloader) DownloadTrack(ctx context.Context, spotifyID string, artist
 
 	dLog("Starting download stream...")
 	reportActivity(DownloadPhaseStreaming)
-	readerDone := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			dLog("Context cancelled, stopping asset download")
-			_ = assetReader.Close()
-			_ = assetCtx.Close()
-		case <-readerDone:
-		}
-	}()
-	defer close(readerDone)
-
-	bytesRead, err := copySpotifyDownload(ctx, bufWriter, assetReader, progressCallback)
+	bytesRead, err := copySpotifyDownloadWithTimeout(ctx, bufWriter, assetReader, func() {
+		_ = assetReader.Close()
+		_ = assetCtx.Close()
+	}, downloadAudioIdleTimeout, progressCallback)
 	if err != nil {
 		return "", fmt.Errorf("copy Spotify asset: %w", err)
 	}

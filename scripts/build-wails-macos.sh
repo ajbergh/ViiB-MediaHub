@@ -210,18 +210,20 @@ rm -rf build/bin/ViiB-MediaHub.app \
     build/bin/ViiB-MediaHub-amd64.app \
     build/bin/ViiB-MediaHub-arm64.app
 
+if [[ "$DEBUG" == "true" ]]; then
+    WAILS_MODE=(-debug)
+else
+    WAILS_MODE=(-ldflags "-s -w")
+fi
+
 # Universal builds: build amd64 + arm64 then lipo-combine
 if [[ "$ARCH" == "universal" ]]; then
     echo "  Building amd64 slice..."
-    WAILS_ARGS=(-platform darwin/amd64)
-    [[ "$DEBUG" == "false" ]] && WAILS_ARGS+=(-ldflags "-s -w")
-    wails build "${WAILS_ARGS[@]}"
+    wails build -platform darwin/amd64 "${WAILS_MODE[@]}"
     mv build/bin/ViiB-MediaHub.app build/bin/ViiB-MediaHub-amd64.app
 
     echo "  Building arm64 slice..."
-    WAILS_ARGS=(-platform darwin/arm64)
-    [[ "$DEBUG" == "false" ]] && WAILS_ARGS+=(-ldflags "-s -w")
-    wails build "${WAILS_ARGS[@]}"
+    wails build -platform darwin/arm64 "${WAILS_MODE[@]}"
     mv build/bin/ViiB-MediaHub.app build/bin/ViiB-MediaHub-arm64.app
 
     echo "  Combining with lipo..."
@@ -230,12 +232,13 @@ if [[ "$ARCH" == "universal" ]]; then
         "build/bin/ViiB-MediaHub-amd64.app/Contents/MacOS/ViiB-MediaHub" \
         "build/bin/ViiB-MediaHub-arm64.app/Contents/MacOS/ViiB-MediaHub" \
         -output "build/bin/ViiB-MediaHub.app/Contents/MacOS/ViiB-MediaHub"
+    # Replacing the executable invalidates the app bundle's existing signature.
+    codesign --force --sign - "build/bin/ViiB-MediaHub.app"
+    codesign --verify --strict "build/bin/ViiB-MediaHub.app"
     rm -rf build/bin/ViiB-MediaHub-amd64.app build/bin/ViiB-MediaHub-arm64.app
     echo "  ✓ Universal binary created"
 else
-    WAILS_ARGS=(-platform "darwin/$ARCH")
-    [[ "$DEBUG" == "false" ]] && WAILS_ARGS+=(-ldflags "-s -w")
-    wails build "${WAILS_ARGS[@]}"
+    wails build -platform "darwin/$ARCH" "${WAILS_MODE[@]}"
 fi
 
 popd > /dev/null

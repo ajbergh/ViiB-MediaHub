@@ -23,6 +23,9 @@ const (
 
 var artifactMagic = [4]byte{'V', 'B', 'G', 1}
 
+// MaxEncodedBytes bounds two counts and two varint sequences in a VBG v1 artifact.
+const MaxEncodedBytes = len(artifactMagic) + binary.MaxVarintLen64*(2+2*maxBeats)
+
 // Grid is a time-ordered beat timeline in seconds. Downbeats are indices into
 // Beats, rather than duplicate timestamps, so a caller can retain arbitrary
 // meter and later support irregular/downbeat-only annotations.

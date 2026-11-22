@@ -18,12 +18,34 @@ func (*poolTestReader) Close() error { return nil }
 func poolTestAsset(size int64, closes *atomic.Int32) *streamAsset {
 	return &streamAsset{size: size, contentType: "audio/ogg", newReader: func() (io.ReadSeekCloser, error) { return &poolTestReader{bytes.NewReader([]byte("0123456789"))}, nil }, close: func() { closes.Add(1) }}
 }
+
+func TestMP3StreamAssetPoolReusesLongRendition(t *testing.T) {
+	pool := newMP3StreamAssetPool()
+	defer pool.close()
+	var closes atomic.Int32
+	key := streamAssetKey{track: "long-track", quality: "high", generation: 1, mp3: true}
+	first, release, err := pool.acquire(t.Context(), key, func() (*streamAsset, error) {
+		return poolTestAsset(24<<20, &closes), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	second, release, err := pool.acquire(t.Context(), key, func() (*streamAsset, error) {
+		t.Fatal("a later byte range initiated another conversion")
+		return nil, nil
+	})
+	if err != nil || second != first || closes.Load() != 0 {
+		t.Fatalf("asset was lost between range requests: %v", err)
+	}
+	release()
+}
 func TestStreamAssetReuseHasIndependentReaders(t *testing.T) {
 	pool := newStreamAssetPool()
 	defer pool.close()
 	var loads, closes atomic.Int32
 	load := func() (*streamAsset, error) { loads.Add(1); return poolTestAsset(10, &closes), nil }
-	key := streamAssetKey{"track", "high", 1}
+	key := streamAssetKey{"track", "high", 1, false}
 	first, releaseFirst, err := pool.acquire(context.Background(), key, load)
 	if err != nil {
 		t.Fatal(err)
@@ -75,7 +97,7 @@ func TestStreamAssetPreparationCoalescesAndWaiterCanCancel(t *testing.T) {
 		<-ready
 		return poolTestAsset(10, &closes), nil
 	}
-	key := streamAssetKey{"track", "high", 1}
+	key := streamAssetKey{"track", "high", 1, false}
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -116,10 +138,10 @@ func TestStreamAssetGenerationQualityAndRetirement(t *testing.T) {
 	pool := newStreamAssetPool()
 	var loads, closes atomic.Int32
 	load := func() (*streamAsset, error) { loads.Add(1); return poolTestAsset(10, &closes), nil }
-	_, r1, _ := pool.acquire(context.Background(), streamAssetKey{"track", "high", 1}, load)
-	_, r2, _ := pool.acquire(context.Background(), streamAssetKey{"track", "low", 1}, load)
+	_, r1, _ := pool.acquire(context.Background(), streamAssetKey{"track", "high", 1, false}, load)
+	_, r2, _ := pool.acquire(context.Background(), streamAssetKey{"track", "low", 1, false}, load)
 	r2()
-	_, r3, err := pool.acquire(context.Background(), streamAssetKey{"track", "high", 2}, load)
+	_, r3, err := pool.acquire(context.Background(), streamAssetKey{"track", "high", 2, false}, load)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +157,7 @@ func TestStreamAssetGenerationQualityAndRetirement(t *testing.T) {
 	if closes.Load() != 3 || loads.Load() != 3 {
 		t.Fatal("quality/generation ownership incorrect")
 	}
-	if _, _, err := pool.acquire(context.Background(), streamAssetKey{"track", "high", 2}, load); err == nil {
+	if _, _, err := pool.acquire(context.Background(), streamAssetKey{"track", "high", 2, false}, load); err == nil {
 		t.Fatal("retired pool reopened")
 	}
 }
@@ -148,9 +170,9 @@ func TestStreamAssetBoundsAndIdleExpiry(t *testing.T) {
 	defer pool.close()
 	var closes atomic.Int32
 	load := func() (*streamAsset, error) { return poolTestAsset(10, &closes), nil }
-	_, release, _ := pool.acquire(context.Background(), streamAssetKey{"one", "high", 1}, load)
+	_, release, _ := pool.acquire(context.Background(), streamAssetKey{"one", "high", 1, false}, load)
 	release()
-	_, release, _ = pool.acquire(context.Background(), streamAssetKey{"two", "high", 1}, load)
+	_, release, _ = pool.acquire(context.Background(), streamAssetKey{"two", "high", 1, false}, load)
 	if closes.Load() != 1 {
 		t.Fatal("idle entry not evicted at budget")
 	}
@@ -164,7 +186,7 @@ func TestStreamAssetBoundsAndIdleExpiry(t *testing.T) {
 			time.Sleep(time.Millisecond)
 		}
 	}
-	_, release, _ = pool.acquire(context.Background(), streamAssetKey{"large", "high", 1}, func() (*streamAsset, error) { return poolTestAsset(11, &closes), nil })
+	_, release, _ = pool.acquire(context.Background(), streamAssetKey{"large", "high", 1, false}, func() (*streamAsset, error) { return poolTestAsset(11, &closes), nil })
 	release()
 	if closes.Load() != 3 {
 		t.Fatal("oversized asset retained idle")
@@ -176,7 +198,7 @@ func TestStreamAssetClosingDuringPreparationReleasesAsset(t *testing.T) {
 	entered, ready := make(chan struct{}), make(chan struct{})
 	done := make(chan error, 1)
 	go func() {
-		_, release, err := pool.acquire(context.Background(), streamAssetKey{"one", "high", 1}, func() (*streamAsset, error) { close(entered); <-ready; return poolTestAsset(10, &closes), nil })
+		_, release, err := pool.acquire(context.Background(), streamAssetKey{"one", "high", 1, false}, func() (*streamAsset, error) { close(entered); <-ready; return poolTestAsset(10, &closes), nil })
 		if release != nil {
 			release()
 		}
@@ -195,7 +217,7 @@ func TestStreamAssetClosingDuringPreparationReleasesAsset(t *testing.T) {
 func TestStreamAssetFailureAndDiscardCanBeRetried(t *testing.T) {
 	pool := newStreamAssetPool()
 	defer pool.close()
-	key := streamAssetKey{"one", "high", 1}
+	key := streamAssetKey{"one", "high", 1, false}
 	if _, _, err := pool.acquire(context.Background(), key, func() (*streamAsset, error) { return nil, fmt.Errorf("fixture failure") }); err == nil {
 		t.Fatal("failed preparation accepted")
 	}
@@ -223,11 +245,11 @@ func TestStreamAssetByteBudgetDoesNotEvictActiveReaders(t *testing.T) {
 	defer pool.close()
 	var closes atomic.Int32
 	load := func() (*streamAsset, error) { return poolTestAsset(10, &closes), nil }
-	first, releaseFirst, err := pool.acquire(context.Background(), streamAssetKey{"one", "high", 1}, load)
+	first, releaseFirst, err := pool.acquire(context.Background(), streamAssetKey{"one", "high", 1, false}, load)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, releaseSecond, err := pool.acquire(context.Background(), streamAssetKey{"two", "high", 1}, load)
+	_, releaseSecond, err := pool.acquire(context.Background(), streamAssetKey{"two", "high", 1, false}, load)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +260,7 @@ func TestStreamAssetByteBudgetDoesNotEvictActiveReaders(t *testing.T) {
 	if closes.Load() != 1 {
 		t.Fatal("new asset beyond byte budget retained idle")
 	}
-	same, releaseSame, err := pool.acquire(context.Background(), streamAssetKey{"one", "high", 1}, func() (*streamAsset, error) { t.Fatal("active cached asset prepared twice"); return nil, nil })
+	same, releaseSame, err := pool.acquire(context.Background(), streamAssetKey{"one", "high", 1, false}, func() (*streamAsset, error) { t.Fatal("active cached asset prepared twice"); return nil, nil })
 	if err != nil {
 		t.Fatal(err)
 	}

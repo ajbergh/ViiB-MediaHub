@@ -34,7 +34,8 @@ import { backendService } from '../services/backendService';
 import { libraryOperationsV2 } from '../services/libraryOperationsV2';
 import api, { ApiAlbumMetadata, ApiArtistMetadata } from '../services/api';
 import { Playlist, Song, AlbumMetadata, ArtistMetadata } from '../types';
-import { libraryIndex } from '../lib/libraryIndex';
+import { affectsSmartMixes, catalogDeltas, compareLibraryText, LibraryIndex, patchCatalogSong, rebaseCatalogDelta } from '../lib/libraryIndex';
+import { libraryV2, LibraryResnapshotRequired } from '../services/libraryV2';
 
 function mapCachedArtistMetadata(entries: ApiArtistMetadata[]): Record<string, ArtistMetadata> {
     const artistMetadata: Record<string, ArtistMetadata> = {};
@@ -58,10 +59,61 @@ function mapCachedArtistMetadata(entries: ApiArtistMetadata[]): Record<string, A
     return artistMetadata;
 }
 
-let isPollingActive = false;
 const SCAN_LIBRARY_REFRESH_INTERVAL_MS = 3000;
+const IDLE_MIX_DEBOUNCE_MS = 400;
+const SCAN_MIX_DEBOUNCE_MS = 1500;
 
-export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = (set, get) => ({
+export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = (set, get) => {
+  const libraryIndex = new LibraryIndex();
+  const albumRequests = new Map<string, number>();
+  let isPollingActive = false;
+  let revision: number | null = null;
+  let lastLegacyRead = 0;
+  let initializing: Promise<void> | undefined;
+  let syncing: Promise<void> | undefined;
+  let rerun = false;
+  let recoveryRequested = false;
+  let mixTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const scheduleMixes = () => {
+    if (mixTimer !== undefined) return;
+    const delay = get().isScanning ? SCAN_MIX_DEBOUNCE_MS : IDLE_MIX_DEBOUNCE_MS;
+    mixTimer = setTimeout(() => {
+      mixTimer = undefined;
+      set({ smartMixes: generateSmartMixes(get().songs) });
+    }, delay);
+  };
+
+  const loadCatalog = async (onFirstPage?: (songs: Song[]) => void) => {
+    try {
+      const snapshot = await libraryV2.getSnapshot(undefined, onFirstPage);
+      revision = snapshot.revision;
+      return libraryIndex.initialize(snapshot.songs);
+    } catch (error) {
+      console.warn("Library snapshot unavailable; using legacy catalog", error);
+      const songs = await backendService.getAllSongs();
+      revision = null;
+      lastLegacyRead = Date.now();
+      return libraryIndex.initialize(songs);
+    }
+  };
+
+  const publishCatalog = (songs: Song[], songIds?: string[], analysisSongIds?: string[]) => {
+    if (songs !== get().songs) {
+      rebaseCatalogDelta(songs, get().songs);
+      const delta = catalogDeltas.get(songs);
+      const refreshMixes = !delta || delta.previous.deref() !== get().songs || delta.orderChanged || delta.changes.some(affectsSmartMixes);
+      set({ songs });
+      if (refreshMixes) scheduleMixes();
+    }
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("library_updated", {
+        detail: songIds ? { source: "library_delta", revision, songIds, analysisSongIds } : { source: "full_refresh" },
+      }));
+    }
+  };
+
+  return {
   songs: [],
   playlists: [],
   smartMixes: [],
@@ -73,6 +125,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
   scanProgress: '',
   backendAvailable: false,
   isLibraryInitializing: true,
+  libraryPreviewSongs: undefined,
   scanFolders: [],
   likedSongIds: new Set(),
   likedAlbumKeys: new Set(),
@@ -85,7 +138,9 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
     message: '',
   },
 
-  initLibrary: async () => {
+  initLibrary: () => {
+    if (initializing) return initializing;
+    initializing = (async () => {
       // First, check if backend is available
       const backendAvailable = await backendService.init();
       set({ backendAvailable });
@@ -96,16 +151,22 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
           
           // Load from Go backend
           try {
-              const [songs, playlists, scanFolders, cachedAlbumMetadata, cachedArtistMetadata, likedIds, likedAlbumKeysList] = await Promise.all([
-                  backendService.getAllSongs(),
-                  backendService.getAllPlaylists(),
-                  backendService.getFolders(),
+              const folders = backendService.getFolders().catch(() => get().scanFolders);
+              const metadata = Promise.all([
+                  backendService.getAllPlaylists().catch(() => get().playlists),
                   api.getAllAlbumMetadata().catch(() => [] as ApiAlbumMetadata[]),
                   api.getAllArtistMetadata().catch(() => [] as ApiArtistMetadata[]),
-                  api.getLikedSongIds().catch(() => [] as string[]),
-                  api.getLikedAlbumKeys().catch(() => [] as string[])
+                  api.getLikedSongIds().catch(() => Array.from(get().likedSongIds)),
+                  api.getLikedAlbumKeys().catch(() => Array.from(get().likedAlbumKeys)),
               ]);
-              
+              const [songs, scanFolders] = await Promise.all([loadCatalog(firstPage => {
+                  if (get().songs.length === 0) set({ libraryPreviewSongs: firstPage });
+              }), folders]);
+              set({ songs, scanFolders, isLibraryInitializing: false, libraryPreviewSongs: undefined });
+              scheduleMixes();
+              void get().pollScanStatus();
+              const [playlists, cachedAlbumMetadata, cachedArtistMetadata, likedIds, likedAlbumKeysList] = await metadata;
+
               // Convert cached album metadata to the format used by the store
               const albumMetadata: Record<string, AlbumMetadata> = {};
               for (const cached of cachedAlbumMetadata) {
@@ -131,23 +192,13 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
               console.log(`📦 Processing ${cachedArtistMetadata.length} cached artist metadata entries`);
               const artistMetadata = mapCachedArtistMetadata(cachedArtistMetadata);
               
-              const indexedSongs = libraryIndex.initialize(songs);
-              const mixes = generateSmartMixes(indexedSongs);
-              const likedSongIds = new Set(likedIds);
-              const likedAlbumKeys = new Set(likedAlbumKeysList);
-              set({ songs: indexedSongs, playlists, smartMixes: mixes, scanFolders, albumMetadata, artistMetadata, likedSongIds, likedAlbumKeys });
-              console.log(`✅ Loaded ${songs.length} songs, ${Object.keys(albumMetadata).length} cached album metadata, ${Object.keys(artistMetadata).length} cached artist metadata, ${likedIds.length} liked songs, ${likedAlbumKeysList.length} liked albums from backend`);
-              
-              // Note: isScanning is already set to true at the start of initLibrary
-              // The SSE connection will handle scan_complete events to reset it
-              // Start polling to ensure we catch scan completion even if SSE events are missed
-              get().pollScanStatus();
+              set({ playlists, albumMetadata, artistMetadata, likedSongIds: new Set(likedIds), likedAlbumKeys: new Set(likedAlbumKeysList) });
           } catch (e) {
               console.error("Failed to initialize library from backend", e);
               // Reset scanning state on error
               set({ isScanning: false, scanProgress: '' });
           } finally {
-              set({ isLibraryInitializing: false });
+              set({ isLibraryInitializing: false, libraryPreviewSongs: undefined });
           }
       } else {
           // Fallback: Load from IndexedDB (browser-only mode)
@@ -172,32 +223,64 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
               set({ isLibraryInitializing: false });
           }
       }
+    })().finally(() => { initializing = undefined; });
+    return initializing;
+  },
+
+  getLibraryRevision: () => revision,
+
+  syncLibraryCatalog: (recover = false) => {
+    if (!get().backendAvailable || get().isLibraryInitializing) return Promise.resolve();
+    recoveryRequested ||= recover;
+    if (syncing) {
+      // A commit can arrive after the current request captured its revision.
+      rerun = true;
+      return syncing;
+    }
+    syncing = (async () => {
+      do {
+        rerun = false;
+        const forceRecovery = recoveryRequested;
+        recoveryRequested = false;
+        try {
+          if (revision === null) {
+            if (forceRecovery || Date.now() - lastLegacyRead >= SCAN_LIBRARY_REFRESH_INTERVAL_MS) {
+              lastLegacyRead = Date.now();
+              publishCatalog(await loadCatalog());
+            }
+            continue;
+          }
+          const delta = await libraryV2.getChanges(revision);
+          revision = delta.revision;
+          if (delta.changes.length) {
+            publishCatalog(
+              libraryIndex.apply(delta.changes, delta.songs),
+              [...new Set(delta.changes.map(change => change.songId))],
+              [...new Set(delta.changes.filter(change => change.analysisChanged !== false).map(change => change.songId))],
+            );
+          }
+        } catch (error) {
+          if (error instanceof LibraryResnapshotRequired || forceRecovery || Date.now() - lastLegacyRead >= SCAN_LIBRARY_REFRESH_INTERVAL_MS) {
+            lastLegacyRead = Date.now();
+            try { publishCatalog(await loadCatalog()); }
+            catch (recoveryError) { console.warn("Unable to recover library catalog", recoveryError); }
+          }
+        }
+      } while (rerun && get().backendAvailable);
+    })().finally(() => { syncing = undefined; });
+    return syncing;
   },
 
   refreshLibrary: async () => {
-      const { backendAvailable } = get();
-      
-      if (backendAvailable) {
-          try {
-              console.log('🔄 Refreshing library from backend...');
-              const [songs, playlists, scanFolders, cachedArtistMetadata] = await Promise.all([
-                  backendService.getAllSongs(),
-                  backendService.getAllPlaylists(),
-                  backendService.getFolders(),
-                  api.getAllArtistMetadata()
-              ]);
-              
-              const indexedSongs = libraryIndex.initialize(songs);
-              const mixes = generateSmartMixes(indexedSongs);
-              set({ songs: indexedSongs, playlists, smartMixes: mixes, scanFolders, artistMetadata: mapCachedArtistMetadata(cachedArtistMetadata) });
-              console.log(`✅ Library refreshed: ${songs.length} songs`);
-              if (typeof window !== 'undefined') {
-                  window.dispatchEvent(new CustomEvent('library_updated', { detail: { source: 'full_refresh' } }));
-              }
-          } catch (e) {
-              console.error("Failed to refresh library from backend", e);
-          }
-      }
+    if (!get().backendAvailable) return;
+    try {
+      const [, playlists, scanFolders, artistMetadata] = await Promise.all([
+        get().syncLibraryCatalog(true), backendService.getAllPlaylists(), backendService.getFolders(), api.getAllArtistMetadata(),
+      ]);
+      set({ playlists, scanFolders, artistMetadata: mapCachedArtistMetadata(artistMetadata) });
+    } catch (error) {
+      console.warn("Unable to refresh library metadata", error);
+    }
   },
 
   addSongs: (newSongs) => {
@@ -223,20 +306,19 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       // Only re-sort if new songs were actually added
       const updatedSongs = hasNew
         ? Array.from(songMap.values()).sort((a, b) => {
-            if (a.album !== b.album) return a.album.localeCompare(b.album);
+            if (a.album !== b.album) return compareLibraryText(a.album, b.album);
             if (a.discNumber !== b.discNumber) return (a.discNumber || 0) - (b.discNumber || 0);
             if (a.trackNumber !== b.trackNumber) return (a.trackNumber || 0) - (b.trackNumber || 0);
-            return a.title.localeCompare(b.title);
+            return compareLibraryText(a.title, b.title);
           })
         : state.songs;
       
       const shouldInitQueue = state.queue.length === 0;
-      const mixes = generateSmartMixes(updatedSongs);
+      if (hasNew) scheduleMixes();
 
       return { 
           songs: updatedSongs,
-          queue: shouldInitQueue ? updatedSongs : state.queue,
-          smartMixes: mixes
+          queue: shouldInitQueue ? updatedSongs : state.queue
       };
     })
   },
@@ -363,9 +445,11 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       }
   },
 
-  refreshSmartMixes: () => set((state) => ({
-      smartMixes: generateSmartMixes(state.songs)
-  })),
+  refreshSmartMixes: () => {
+    if (mixTimer !== undefined) clearTimeout(mixTimer);
+    mixTimer = undefined;
+    set({ smartMixes: generateSmartMixes(get().songs) });
+  },
 
   saveSmartMixAsPlaylist: async (mixId) => {
       const { backendAvailable } = get();
@@ -401,27 +485,17 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
      * - When backend is not available: update IndexedDB via libraryService
      */
     recordPlay: (songId) => {
-      const { backendAvailable } = get();
-      set((state) => {
-          const updatedSongs = state.songs.map(s => {
-              if (s.id === songId) {
-                  const updated = {
-                      ...s,
-                      playCount: (s.playCount || 0) + 1,
-                      lastPlayed: Date.now()
-                  };
-                  // Persist the play count
-                  if (backendAvailable) {
-                      backendService.recordPlay(songId).catch(e => console.error('Failed to record play on backend:', e));
-                  } else {
-                      libraryService.saveSongs([updated]);
-                  }
-                  return updated;
-              }
-              return s;
-          });
-          return { songs: updatedSongs };
-      });
+      const { backendAvailable, songs } = get();
+      const song = songs.find(item => item.id === songId);
+      if (!song) return;
+      const patch = { playCount: (song.playCount || 0) + 1, lastPlayed: Date.now() };
+      set({ songs: patchCatalogSong(songs, songId, patch) });
+      scheduleMixes();
+      if (backendAvailable) {
+          backendService.recordPlay(songId).catch(e => console.error('Failed to record play on backend:', e));
+      } else {
+          libraryService.saveSongs([{ ...song, ...patch }]);
+      }
   },
 
   /**
@@ -453,9 +527,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       console.log(`🔧 Fixing duration for "${song.title}": ${song.duration.toFixed(1)}s → ${duration.toFixed(1)}s`);
       
       set((state) => ({
-          songs: state.songs.map(s => 
-              s.id === songId ? { ...s, duration } : s
-          )
+          songs: patchCatalogSong(state.songs, songId, { duration }),
       }));
       
       // Persist to backend
@@ -494,11 +566,12 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
           await libraryService.saveSongs([updatedSong]);
       }
       set((state) => ({
-          songs: state.songs.map(s => s.id === songId ? { ...s, ...patch } : s),
+          songs: patchCatalogSong(state.songs, songId, patch),
           currentSong: state.currentSong?.id === songId ? { ...state.currentSong, ...patch } : state.currentSong,
           queue: state.queue.map(s => s.id === songId ? { ...s, ...patch } : s),
           songInfoModalSong: state.songInfoModalSong?.id === songId ? { ...state.songInfoModalSong, ...patch } : state.songInfoModalSong,
       }));
+      if (affectsSmartMixes({ before: existing, after: updatedSong })) scheduleMixes();
   },
 
   fetchArtistMetadata: async (artistName) => {
@@ -641,29 +714,18 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
       const state = get();
       const generation = state.spotifySessionGeneration;
       
-      // Skip if already have metadata or currently fetching
-      if (state.albumMetadata[key] || state.fetchingAlbums.has(key)) return;
-
-      // Check if we've already checked Spotify and found nothing (cached "not found")
-      try {
-          const cached = await api.getAlbumMetadata(key);
-          if (cached?.spotifyChecked && !cached.spotifyFound) {
-              // Already checked, Spotify had nothing - don't re-query
-              console.log(`📦 Album "${albumName}" already checked - Spotify had no results`);
-              return;
-          }
-      } catch {
-          // Ignore cache lookup errors
-      }
-
-      set((s) => {
-          const newSet = new Set(s.fetchingAlbums);
-          newSet.add(key);
-          return { fetchingAlbums: newSet };
-      });
+      if (!state.spotifyConnected || state.albumMetadata[key] || albumRequests.get(key) === generation) return;
+      albumRequests.set(key, generation);
+      set(s => ({ fetchingAlbums: new Set(s.fetchingAlbums).add(key) }));
 
       try {
+          const cached = await api.getAlbumMetadata(key).catch(() => null);
           assertSpotifySession(generation);
+          const fetchedAt = cached?.fetchedAt ?? 0;
+          const timestampMs = fetchedAt < 10_000_000_000 ? fetchedAt * 1000 : fetchedAt;
+          if (cached?.spotifyChecked && !cached.spotifyFound &&
+              Date.now() - timestampMs < 30 * 24 * 60 * 60 * 1000) return;
+
           const data = await SpotifyService.searchAlbum(albumName, artistName);
           assertSpotifySession(generation);
 
@@ -687,36 +749,32 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
               cacheEntry.copyright = data.copyright;
           }
 
-          // Save to backend cache (fire and forget)
-          api.saveAlbumMetadata(cacheEntry).catch(e => {
-              console.warn('Failed to cache album metadata:', e);
+          await api.saveAlbumMetadata(cacheEntry).catch(error => {
+              console.warn('Failed to cache album metadata:', error);
           });
+          if (get().spotifySessionGeneration !== generation) return;
 
-          // If we got artwork URL and backend is available, download cover.jpg to album folder
-          if (data?.coverUrl && state.backendAvailable) {
-              api.downloadAlbumCover(key, data.coverUrl).catch(e => {
-                  console.warn('Failed to download album cover:', e);
+          if (data) {
+              set(s => ({ albumMetadata: { ...s.albumMetadata, [key]: data } }));
+              if (state.backendAvailable && data.coverUrl) {
+                  api.downloadAlbumCover(key, data.coverUrl).catch(error => {
+                      console.warn('Failed to download album cover:', error);
+                  });
+              }
+          }
+      } catch (error) {
+          if (get().spotifySessionGeneration === generation) {
+              console.error('Failed to fetch album metadata:', albumName, error);
+          }
+      } finally {
+          if (albumRequests.get(key) === generation) {
+              albumRequests.delete(key);
+              set(s => {
+                  const fetchingAlbums = new Set(s.fetchingAlbums);
+                  fetchingAlbums.delete(key);
+                  return { fetchingAlbums };
               });
           }
-
-          set((s) => {
-              const newFetching = new Set(s.fetchingAlbums);
-              newFetching.delete(key);
-              if (data) {
-                  return {
-                      albumMetadata: { ...s.albumMetadata, [key]: data },
-                      fetchingAlbums: newFetching
-                  };
-              }
-              return { fetchingAlbums: newFetching };
-          });
-      } catch (error) {
-          console.error(`Failed to fetch album metadata for "${albumName}":`, error);
-          set((s) => {
-              const newFetching = new Set(s.fetchingAlbums);
-              newFetching.delete(key);
-              return { fetchingAlbums: newFetching };
-          });
       }
   },
 
@@ -834,23 +892,8 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
 	  // window right after launch (before the startup scan flips its flag).
 	  const pollStartedAt = Date.now();
 	  let everSawScanning = false;
-      let lastLibraryRefreshAt = 0;
+      let lastCatchup: number | undefined;
 
-      const refreshVisibleSongs = async (force = false) => {
-          const now = Date.now();
-          if (!force && now - lastLibraryRefreshAt < SCAN_LIBRARY_REFRESH_INTERVAL_MS) return;
-          lastLibraryRefreshAt = now;
-
-          try {
-              const songs = libraryIndex.initialize(await backendService.getAllSongs());
-              set({ songs, smartMixes: generateSmartMixes(songs) });
-              console.log(`🔄 Refreshed ${songs.length} visible songs during scan`);
-          } catch (error) {
-              // A transient catalog read must not stop scan-status polling.
-              console.warn('Failed to refresh songs during scan', error);
-          }
-      };
-      
       const poll = async () => {
           try {
               const status = await backendService.getScanStatus();
@@ -869,7 +912,10 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
                   // SSE/revision events are the efficient fast path. This
                   // periodic read guarantees fresh installs still populate if
                   // either stream connects late or drops an early batch event.
-                  await refreshVisibleSongs();
+                  if (lastCatchup === undefined || Date.now() - lastCatchup >= SCAN_LIBRARY_REFRESH_INTERVAL_MS) {
+                    lastCatchup = Date.now();
+                    await get().syncLibraryCatalog();
+                  }
                   // Continue polling
                   setTimeout(poll, 1000);
               } else {
@@ -877,24 +923,15 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
 	              // This is especially important on startup when the backend may delay
 	              // the quick scan by a couple seconds.
 	              if (!everSawScanning && Date.now() - pollStartedAt < 8000) {
-	                  await refreshVisibleSongs();
 	                  setTimeout(poll, 500);
 	                  return;
 	              }
 
-                  // Scan complete - reload library
-                  console.log('✅ Scan complete detected via polling, resetting UI...');
-                  isPollingActive = false;
-                  // Keep the loading state until the final catalog is available.
-                  // Refresh songs from backend
-                  const [loadedSongs, folders] = await Promise.all([
-                      backendService.getAllSongs(),
-                      backendService.getFolders()
+                  const [, scanFolders] = await Promise.all([
+                    get().syncLibraryCatalog(true), backendService.getFolders().catch(() => get().scanFolders),
                   ]);
-                  const songs = libraryIndex.initialize(loadedSongs);
-                  const mixes = generateSmartMixes(songs);
-                  set({ songs, smartMixes: mixes, scanFolders: folders, isScanning: false, scanProgress: '' });
-                  console.log('✅ Library refreshed after scan completion');
+                  isPollingActive = false;
+                  set({ isScanning: false, scanProgress: "", scanFolders });
               }
           } catch (e) {
               console.error("Error polling scan status", e);
@@ -931,9 +968,7 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
           // library array see the update; retain all unaffected song identities.
           set((state) => ({
               likedSongIds: newLikedIds,
-              songs: state.songs.map(song => song.id === songId
-                  ? { ...song, liked: result.liked, likedAt: result.liked ? Date.now() : undefined }
-                  : song),
+              songs: patchCatalogSong(state.songs, songId, { liked: result.liked, likedAt: result.liked ? Date.now() : undefined }),
           }));
 
           console.log(`${result.liked ? '❤️' : '💔'} Song ${songId} ${result.liked ? 'liked' : 'unliked'}`);
@@ -1020,4 +1055,5 @@ export const createLibrarySlice: StateCreator<AppState, [], [], LibrarySlice> = 
   isLikedAlbum: (albumKey: string) => {
       return get().likedAlbumKeys.has(albumKey);
   },
-});
+  };
+};

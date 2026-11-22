@@ -24,12 +24,12 @@ function loadStretchCore(sampleRate: number) {
   return context.__viibStretchCore;
 }
 
-function createTransport({ sampleRate = 48000, core }: { sampleRate?: number; core?: unknown } = {}) {
+function createTransport({ sampleRate = 48000, core, buses = 4 }: { sampleRate?: number; core?: unknown; buses?: number } = {}) {
   class WorkletBase {
     port = { onmessage: null as ((event: { data: Record<string, unknown> }) => void) | null, postMessage: (message: unknown) => messages.push(message as Record<string, unknown>) };
   }
   const messages: Record<string, unknown>[] = [];
-  let Processor: (new () => Transport) | undefined;
+  let Processor: (new (options: { processorOptions: { buses: number } }) => Transport) | undefined;
   const source = readFileSync(new URL('./stemTransport.worklet.js', import.meta.url), 'utf8');
   runInNewContext(source, {
     AudioWorkletProcessor: WorkletBase,
@@ -40,21 +40,21 @@ function createTransport({ sampleRate = 48000, core }: { sampleRate?: number; co
     Math,
   });
   if (!Processor) throw new Error('Worklet processor was not registered');
-  const processor = new Processor();
+  const processor = new Processor({ processorOptions: { buses } });
   const command = (data: Record<string, unknown>) => processor.port.onmessage?.({ data });
   const render = (frames: number) => {
-    const outputs = Array.from({ length: 4 }, () => [new Float32Array(frames), new Float32Array(frames)]);
+    const outputs = Array.from({ length: buses }, () => [new Float32Array(frames), new Float32Array(frames)]);
     processor.process([], outputs);
     return outputs;
   };
   const configure = (frames: number, packageRate = sampleRate, channels = 2, generation = 1) =>
     command({ type: 'configure', sampleRate: packageRate, channels, frames, generation });
   const addFrames = (startFrame: number, frameCount: number, sample: (frame: number, bus: number, channel: number) => number, channels = 2, generation = 1) => {
-    const samples = new Float32Array(frameCount * 4 * channels);
+    const samples = new Float32Array(frameCount * buses * channels);
     for (let frame = 0; frame < frameCount; frame++) {
-      for (let bus = 0; bus < 4; bus++) {
+      for (let bus = 0; bus < buses; bus++) {
         for (let channel = 0; channel < channels; channel++) {
-          samples[(frame * 4 + bus) * channels + channel] = sample(startFrame + frame, bus, channel);
+          samples[(frame * buses + bus) * channels + channel] = sample(startFrame + frame, bus, channel);
         }
       }
     }
@@ -214,6 +214,36 @@ function renderSeconds(transport: ReturnType<typeof createTransport>, seconds: n
 }
 
 describe('stem transport key lock', () => {
+  it('keeps buffered full-track audio audible while changing tempo inside a quarter-beat loop', async () => {
+    const transport = createTransport({ sampleRate: RATE, core: loadStretchCore(RATE), buses: 1 });
+    transport.configure(RATE, RATE, 1);
+    transport.addFrames(0, RATE, sine(440), 1);
+    for (let attempt = 0; attempt < 200 && !transport.messages.some(message => message.type === 'stretch'); attempt++) {
+      transport.render(128);
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    expect(transport.messages).toContainEqual({ type: 'stretch', ready: true });
+    const startFrame = 4400;
+    const endFrame = startFrame + Math.round(RATE / 8);
+    transport.command({ type: 'loop', startFrame, endFrame, enabled: true });
+    transport.command({ type: 'seek', frame: startFrame, revision: 1 });
+    transport.command({ type: 'keyLock', enabled: true });
+    transport.command({ type: 'play' });
+    let frames = 0;
+    for (let change = 0; change < 85; change++) {
+      const rate = 1 + 0.35 * Math.sin(change / 8);
+      transport.command({ type: 'rate', rate });
+      for (let quantum = 0; quantum < 5; quantum++) {
+        const [left, right] = transport.render(128)[0];
+        expect(left.every((sample, index) => Math.abs(sample - right[index]) < 0.001)).toBe(true);
+        expect(left.some(sample => Math.abs(sample) > 0.01)).toBe(true);
+        frames += 128 * rate;
+      }
+    }
+    expect(transport.processor.position).toBeCloseTo(startFrame + frames % (endFrame - startFrame));
+    expect(transport.messages.some(message => message.type === 'underrun')).toBe(false);
+  });
+
   it('keeps the original pitch at a changed tempo while the clock still follows tempo', async () => {
     const transport = await keyLockTransport();
     transport.command({ type: 'keyLock', enabled: true });

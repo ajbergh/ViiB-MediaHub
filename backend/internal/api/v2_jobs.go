@@ -22,6 +22,7 @@ const (
 	// schedulerIdlePollInterval bounds how long durable queued work can wait
 	// when no explicit wake signal arrives.
 	schedulerIdlePollInterval = 30 * time.Second
+	jobEventsFallbackPoll     = 10 * time.Second
 	minJobPriority            = -100
 	maxJobPriority            = 100
 )
@@ -393,29 +394,52 @@ func (a *API) jobEventsV2(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("X-Accel-Buffering", "no")
 
-	ticker := time.NewTicker(time.Second)
-	heartbeat := time.NewTicker(15 * time.Second)
-	defer ticker.Stop()
-	defer heartbeat.Stop()
+	jobCh, unsub := a.db.SubscribeJobEvents()
+	defer unsub()
+
 	lastPayload := ""
+	var lastSeq uint64
+	sendSnapshot := func() bool {
+		seq := a.db.JobEventSequence()
+		jobs, err := a.db.ListJobs(100, "")
+		if err != nil {
+			return true
+		}
+		lastSeq = seq
+		payload, err := json.Marshal(map[string]any{"jobs": jobs})
+		if err != nil || string(payload) == lastPayload {
+			return true
+		}
+		lastPayload = string(payload)
+		if _, err := fmt.Fprintf(w, "event: jobs\ndata: %s\n\n", payload); err != nil {
+			return false
+		}
+		flusher.Flush()
+		return true
+	}
+	if !sendSnapshot() {
+		return
+	}
+
+	fallbackTicker := time.NewTicker(jobEventsFallbackPoll)
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer fallbackTicker.Stop()
+	defer heartbeat.Stop()
 	for {
 		select {
 		case <-r.Context().Done():
 			return
-		case <-ticker.C:
-			jobs, err := a.db.ListJobs(100, "")
-			if err != nil {
-				continue
-			}
-			payload, err := json.Marshal(map[string]any{"jobs": jobs})
-			if err != nil || string(payload) == lastPayload {
-				continue
-			}
-			lastPayload = string(payload)
-			if _, err := fmt.Fprintf(w, "event: jobs\ndata: %s\n\n", payload); err != nil {
+		case <-jobCh:
+			if !sendSnapshot() {
 				return
 			}
-			flusher.Flush()
+		case <-fallbackTicker.C:
+			if a.db.JobEventSequence() == lastSeq {
+				continue
+			}
+			if !sendSnapshot() {
+				return
+			}
 		case <-heartbeat.C:
 			if _, err := fmt.Fprint(w, ": heartbeat\n\n"); err != nil {
 				return

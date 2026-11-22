@@ -89,6 +89,44 @@ func TestLibrarySnapshotAndChanges(t *testing.T) {
 	}
 }
 
+func TestPlaybackDeltaLeavesSearchAndAnalysisUntouched(t *testing.T) {
+	database := openLibrarySyncTestDB(t)
+	song := testLibrarySong("song", "Track", "local.wav")
+	if err := database.SaveSong(&song); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.conn.Exec(`CREATE TABLE search_writes (song_id TEXT);
+		CREATE TRIGGER count_search_update AFTER UPDATE ON song_search BEGIN
+			INSERT INTO search_writes VALUES (NEW.song_id);
+		END;`); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpdatePlayCount(song.ID); err != nil {
+		t.Fatal(err)
+	}
+	var writes int
+	if err := database.conn.QueryRow(`SELECT count(*) FROM search_writes`).Scan(&writes); err != nil || writes != 0 {
+		t.Fatalf("playback wrote %d search rows, err=%v", writes, err)
+	}
+	song.Artist = "Changed Performer"
+	song.FileHash = "changed"
+	if err := database.SaveSong(&song); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.RecordSongLibraryChange(song.ID); err != nil {
+		t.Fatal(err)
+	}
+	page, err := database.GetLibraryChanges(0, 20)
+	if err != nil || len(page.Changes) != 4 || !page.Changes[0].AnalysisChanged || page.Changes[1].AnalysisChanged ||
+		!page.Changes[2].AnalysisChanged || !page.Changes[3].AnalysisChanged {
+		t.Fatalf("unexpected analysis invalidations: %+v, err=%v", page.Changes, err)
+	}
+	result, err := database.SearchLibrary("performer", 5)
+	if err != nil || len(result.Artists) != 1 || result.Artists[0].Name != song.Artist {
+		t.Fatalf("changed artist was not indexed: %+v, err=%v", result.Artists, err)
+	}
+}
+
 func TestSearchLibraryUsesBackfilledIndex(t *testing.T) {
 	database := openLibrarySyncTestDB(t)
 	song := testLibrarySong("search", "Northern Lights", filepath.Join(t.TempDir(), "northern.flac"))
@@ -214,5 +252,52 @@ func TestConcurrentDeltaCannotAdvancePastUnseenChanges(t *testing.T) {
 	}
 	if len(seen) != 50 {
 		t.Fatalf("lost changes: %d", len(seen))
+	}
+}
+
+func TestRecordSongLibraryChangeNotifiesSubscribers(t *testing.T) {
+	database := openLibrarySyncTestDB(t)
+	ch, unsub := database.SubscribeLibraryRevision()
+	defer unsub()
+
+	if err := database.RecordSongLibraryChange("song-1"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-ch:
+	case <-time.After(time.Second):
+		t.Fatal("expected library revision notification after RecordSongLibraryChange")
+	}
+}
+
+func TestPruneLibraryChangesChunkedRetainsNewest(t *testing.T) {
+	database := openLibrarySyncTestDB(t)
+	tx, err := database.conn.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 5500; i++ {
+		if _, err := tx.Exec(`INSERT INTO library_changes(revision, song_id, operation, changed_at) VALUES (?, ?, 'upsert', 1)`, i, fmt.Sprint(i)); err != nil {
+			tx.Rollback()
+			t.Fatal(err)
+		}
+	}
+	if _, err := tx.Exec(`UPDATE library_state SET revision = 5500 WHERE id = 1`); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := database.PruneLibraryChanges(400); err != nil {
+		t.Fatal(err)
+	}
+	oldest, ok, err := database.OldestLibraryChangeRevision()
+	if err != nil || !ok {
+		t.Fatalf("oldest revision lookup failed: ok=%v err=%v", ok, err)
+	}
+	if oldest != 5100 {
+		t.Fatalf("oldest retained revision = %d, want 5100", oldest)
 	}
 }

@@ -2,8 +2,8 @@
  * Zustand slice for Spotify connection, account generation, profile, search,
  * playback preferences, and download count. Disconnect and authentication failure
  * retire Spotify playback and invalidate requests from the prior generation.
- * Legacy OAuth fields remain for compatibility. Cookies and active Web Player
- * bearer tokens stay in the backend; renderer persistence excludes secrets and tokens.
+ * Retains legacy OAuth fields for compatibility. Active Web Player and desktop
+ * OAuth credentials belong to the backend. Renderer persistence excludes credentials.
  *
  * @module spotifySlice
  */
@@ -13,10 +13,11 @@ import { AppState, SpotifySlice } from './types';
 
 export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = (set, get) => ({
   spotifyAccountProduct: 'unknown',
-  setSpotifyAccountProduct: (product) => {
+  spotifyWebAPIOnly: false,
+  setSpotifyAccountProduct: (product, webAPIOnly = false) => {
     const next = product === 'premium' ? 'premium' : product === 'free' || product === 'open' ? 'free' : 'unknown';
     if (get().spotifyAccountProduct === 'premium' && next !== 'premium') get().retireSpotifyPlayback();
-    set({ spotifyAccountProduct: next });
+    set({ spotifyAccountProduct: next, spotifyWebAPIOnly: webAPIOnly });
   },
   spotifyConnected: false,
   spotifySessionGeneration: 0,
@@ -29,6 +30,7 @@ export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = 
       spotifySessionGeneration: nextGeneration,
       ...(!connected ? {
         spotifyAccountProduct: 'unknown',
+        spotifyWebAPIOnly: false,
         spotifyUser: null,
         spotifySearchResults: null,
         spotifyLastSearchedQuery: '',
@@ -46,6 +48,7 @@ export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = 
       return {
         spotifyConnected: false, spotifyAuthRequired: true,
         spotifyAccountProduct: 'unknown',
+        spotifyWebAPIOnly: false,
         spotifySessionGeneration: nextGeneration,
         spotifyUser: null, spotifySearchResults: null,
         spotifyLastSearchedQuery: '',
@@ -92,6 +95,7 @@ export const createSpotifySlice: StateCreator<AppState, [], [], SpotifySlice> = 
         spotifySessionGeneration: nextGeneration,
         spotifyAuthRequired: false,
         spotifyAccountProduct: 'unknown',
+        spotifyWebAPIOnly: false,
         spotifyConnected: false,
         spotifySearchResults: null,
         spotifyLastSearchedQuery: '',

@@ -1,4 +1,4 @@
-// Routes cookie catalog requests and legacy OAuth token refresh through shared request and cooldown handling.
+// Routes Web Player and OAuth requests through the selected token provider and shared cooldown handling.
 package api
 
 import (
@@ -117,12 +117,6 @@ func loadValidSpotifyCredentials(ctx context.Context, database *db.DB) (SpotifyC
 func (a *API) doSpotifyRequest(ctx context.Context, method, target string, body []byte, contentType string) (*http.Response, error) {
 	manager := a.spotifyTokens()
 	ctx, endRequest := manager.requestContext(ctx)
-	if ctx.Value(spotifyOwnerBootstrapKey{}) != true {
-		if err := manager.ensureMetadataOwner(ctx); err != nil {
-			endRequest()
-			return nil, err
-		}
-	}
 	// The response body owns cancellation once a request succeeds.
 	finished := false
 	defer func() {
@@ -131,13 +125,32 @@ func (a *API) doSpotifyRequest(ctx context.Context, method, target string, body 
 		}
 	}()
 	status := manager.status()
-	if status.Provider == "webplayer" {
+	cookieMode := status.Provider == "webplayer"
+	if cookieMode {
 		u, err := url.Parse(target)
 		if err != nil || u.Scheme != "https" || u.Host != "api.spotify.com" || u.User != nil {
 			return nil, spotifyauth.ErrDisabled
 		}
+		if spotifyAccountRequiresOAuth(u.Path) {
+			return nil, errSpotifyAccountRequiresOAuth
+		}
 	}
-	cookieMode := status.Provider == "webplayer"
+	if ctx.Value(spotifyOwnerBootstrapKey{}) != true {
+		if err := manager.ensureMetadataOwner(ctx); err != nil {
+			return nil, err
+		}
+	}
+	replaySafe := method == http.MethodGet || method == http.MethodHead
+	if !cookieMode && method == http.MethodGet {
+		if u, err := url.Parse(target); err == nil && u.Path == "/v1/search" {
+			q := u.Query()
+			if limit, err := strconv.Atoi(q.Get("limit")); err == nil && limit > 10 {
+				q.Set("limit", "10")
+				u.RawQuery = q.Encode()
+				target = u.String()
+			}
+		}
+	}
 	var catalogTarget *url.URL
 	if cookieMode && method == http.MethodGet {
 		parsed, _ := url.Parse(target)
@@ -147,7 +160,7 @@ func (a *API) doSpotifyRequest(ctx context.Context, method, target string, body 
 		_, _, playlistPath := catalog.PlaylistPath(parsed.Path)
 		_, libraryPath := catalog.LibraryPath(parsed.Path)
 		_, _, trackPath := catalog.TrackPath(parsed.Path)
-		if parsed.Path == "/v1/me" || parsed.Path == "/v1/search" || albumPath || artistPath || artistAlbumsPath || playlistPath || libraryPath || trackPath {
+		if parsed.Path == "/v1/me" || parsed.Path == "/v1/search" || catalog.RecentsPath(parsed.Path) || albumPath || artistPath || artistAlbumsPath || playlistPath || libraryPath || trackPath {
 			catalogTarget = parsed
 		}
 	}
@@ -209,7 +222,7 @@ func (a *API) doSpotifyRequest(ctx context.Context, method, target string, body 
 		if err != nil {
 			return nil, err
 		}
-		if response.StatusCode == http.StatusUnauthorized && !refreshed {
+		if response.StatusCode == http.StatusUnauthorized && !refreshed && replaySafe {
 			response.Body.Close()
 			token, err = manager.Refresh(ctx, spotifyauth.WebAPI, token)
 			if err != nil {
@@ -230,7 +243,7 @@ func (a *API) doSpotifyRequest(ctx context.Context, method, target string, body 
 			}
 			response.Header.Set("Retry-After", strconv.FormatInt(int64((manager.webAPICooldownRemaining()+time.Second-1)/time.Second), 10))
 		}
-		if response.StatusCode == http.StatusTooManyRequests && !cookieMode && rateRetries < 2 && ctx.Value(spotifyOwnerBootstrapKey{}) != true {
+		if response.StatusCode == http.StatusTooManyRequests && !cookieMode && replaySafe && rateRetries < 2 && ctx.Value(spotifyOwnerBootstrapKey{}) != true {
 			delaySeconds, _ := strconv.Atoi(response.Header.Get("Retry-After"))
 			if delaySeconds < 1 {
 				delaySeconds = 1
@@ -261,8 +274,7 @@ func (a *API) doSpotifyRequest(ctx context.Context, method, target string, body 
 	}
 }
 
-// spotifyOAuthManager preserves the existing OAuth owner and persistence.
-// Internal analysis remains disabled in the application until explicitly composed.
+// spotifyOAuthManager loads and refreshes stored desktop and legacy OAuth tokens.
 func spotifyOAuthManager(database *db.DB) *spotifyauth.Manager {
 	load := func(ctx context.Context, force bool) (spotifyauth.Token, error) {
 		credentials, err := refreshSpotifyCredentials(ctx, database, force)

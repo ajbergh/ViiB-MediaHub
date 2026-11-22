@@ -25,12 +25,11 @@
  * @module Player
  */
 
-import React, { useState } from 'react';
+import React, { lazy, Suspense, useState } from 'react';
 import { useStore } from '../store';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
 import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, ListMusic, Maximize2, Minimize2, Pin, PinOff, SlidersHorizontal, Loader2, AlertCircle, RefreshCw, Wifi, Moon, Info } from 'lucide-react';
 import { formatTime, generateGradient, getAudioFormatInfo } from '../utils';
-import { NowPlaying } from './NowPlaying';
 import { ContextMenuType, Song } from '../types';
 import { Visualizer } from './Visualizer';
 import { EqualizerPanel } from './Equalizer';
@@ -39,6 +38,8 @@ import { useMediaSession } from '../hooks/useMediaSession';
 import { Button } from './ui/Button';
 import { VIIB_COLOR_VALUES } from './ui/tokens';
 import { isNativeWindowRuntimeAvailable } from '../services/skinnyWindowService';
+
+const NowPlaying = lazy(() => import('./NowPlaying').then(module => ({ default: module.NowPlaying })));
 
 const skinnyDragStyle = { '--wails-draggable': 'drag' } as React.CSSProperties;
 const skinnyNoDragStyle = { '--wails-draggable': 'no-drag' } as React.CSSProperties;
@@ -51,6 +52,7 @@ type SkinnyPlayerProps = {
   isBuffering: boolean;
   volume: number;
   isVisualizerEnabled: boolean;
+  lowPowerVisuals?: boolean;
   isAlwaysOnTop: boolean;
   onPrevious: () => void;
   onTogglePlay: () => void;
@@ -70,6 +72,7 @@ const SkinnyPlayer: React.FC<SkinnyPlayerProps> = ({
   isBuffering,
   volume,
   isVisualizerEnabled,
+  lowPowerVisuals,
   isAlwaysOnTop,
   onPrevious,
   onTogglePlay,
@@ -181,7 +184,7 @@ const SkinnyPlayer: React.FC<SkinnyPlayerProps> = ({
 
         <div className="hidden h-8 w-20 flex-shrink-0 items-end pb-1 xl:flex" title="Spectrum Analyzer">
           {isVisualizerEnabled && (
-            <Visualizer mode="SPECTRUM" barColor={VIIB_COLOR_VALUES.playbackGreen} />
+            <Visualizer mode="SPECTRUM" active={isPlaying} lowPower={lowPowerVisuals} barColor={VIIB_COLOR_VALUES.playbackGreen} />
           )}
         </div>
 
@@ -221,13 +224,31 @@ const SkinnyPlayer: React.FC<SkinnyPlayerProps> = ({
 };
 
 export const Player: React.FC = () => {
-  const { 
-      currentSong, isPlaying, togglePlay, nextSong, prevSong, volume, setVolume, 
-      isQueueOpen, setQueueOpen, queue, isNowPlayingOpen, setNowPlayingOpen, 
-      openContextMenu, audioSettings, toggleEqPanel, isBuffering, bufferProgress,
-      streamError, retryStream, clearStreamError, openSongInfoModal,
-      isSkinnyMode, isSkinnyAlwaysOnTop, setSkinnyMode, setSkinnyAlwaysOnTop
-  } = useStore();
+  const currentSong = useStore(state => state.currentSong);
+  const isPlaying = useStore(state => state.isPlaying);
+  const togglePlay = useStore(state => state.togglePlay);
+  const nextSong = useStore(state => state.nextSong);
+  const prevSong = useStore(state => state.prevSong);
+  const volume = useStore(state => state.volume);
+  const setVolume = useStore(state => state.setVolume);
+  const isQueueOpen = useStore(state => state.isQueueOpen);
+  const setQueueOpen = useStore(state => state.setQueueOpen);
+  const queue = useStore(state => state.queue);
+  const isNowPlayingOpen = useStore(state => state.isNowPlayingOpen);
+  const setNowPlayingOpen = useStore(state => state.setNowPlayingOpen);
+  const openContextMenu = useStore(state => state.openContextMenu);
+  const audioSettings = useStore(state => state.audioSettings);
+  const toggleEqPanel = useStore(state => state.toggleEqPanel);
+  const isBuffering = useStore(state => state.isBuffering);
+  const bufferProgress = useStore(state => state.bufferProgress);
+  const streamError = useStore(state => state.streamError);
+  const retryStream = useStore(state => state.retryStream);
+  const clearStreamError = useStore(state => state.clearStreamError);
+  const openSongInfoModal = useStore(state => state.openSongInfoModal);
+  const isSkinnyMode = useStore(state => state.isSkinnyMode);
+  const isSkinnyAlwaysOnTop = useStore(state => state.isSkinnyAlwaysOnTop);
+  const setSkinnyMode = useStore(state => state.setSkinnyMode);
+  const setSkinnyAlwaysOnTop = useStore(state => state.setSkinnyAlwaysOnTop);
   
   const { 
       primaryRef, secondaryRef,
@@ -273,6 +294,7 @@ export const Player: React.FC = () => {
           isBuffering={isBuffering}
           volume={volume}
           isVisualizerEnabled={audioSettings.visualizerEnabled}
+          lowPowerVisuals={audioSettings.lowPowerVisuals}
           isAlwaysOnTop={isSkinnyAlwaysOnTop}
           onPrevious={prevSong}
           onTogglePlay={togglePlay}
@@ -570,7 +592,7 @@ export const Player: React.FC = () => {
             {/* Mini Visualizer - Hidden on smaller screens */}
             <div className="hidden lg:flex w-20 h-8 mx-1 items-end opacity-90 pb-1" title="Spectrum Analyzer">
                 {audioSettings.visualizerEnabled && (
-                    <Visualizer mode="SPECTRUM" barColor={VIIB_COLOR_VALUES.playbackGreen} />
+                    <Visualizer mode="SPECTRUM" active={isPlaying && !isNowPlayingOpen} lowPower={audioSettings.lowPowerVisuals} barColor={VIIB_COLOR_VALUES.playbackGreen} />
                 )}
             </div>
 
@@ -609,11 +631,13 @@ export const Player: React.FC = () => {
         </div>
 
         {isNowPlayingOpen && (
+          <Suspense fallback={null}>
             <NowPlaying 
                 currentTime={currentTime} 
                 duration={duration} 
-                onSeek={seek} 
+                onSeek={seek}
             />
+          </Suspense>
         )}
         
         <EqualizerPanel />

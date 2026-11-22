@@ -1,15 +1,15 @@
 /** Manages Plex source configuration, synchronization, and reviewed AI metadata writeback. */
 
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ExternalLink, Eye, Loader2, Music, RefreshCw, Search, Server, ShieldCheck, Trash2, WifiOff } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ExternalLink, Eye, Loader2, Music, RefreshCw, Search, Server, ShieldCheck, Trash2 } from 'lucide-react';
 import { Button } from './ui/Button';
 import { TextInput } from './ui/TextInput';
 import { useStore } from '../store';
-import { plexService, type PlexAccountServer, type PlexMetadataWritebackPreview, type PlexServer } from '../services/plex';
-import { openExternalURL, shouldUseSystemBrowser } from '../services/externalNavigation';
-import { initialPlexSettingsState, plexSettingsReducer, plexSourceNeedsAuthentication } from '../lib/plexSettingsState';
+import { PlexRequestError, plexService, type PlexAccountServer, type PlexMetadataWritebackPreview, type PlexServer } from '../services/plex';
+import { openExternalURL, reserveExternalBrowserTab, shouldUseSystemBrowser } from '../services/externalNavigation';
+import { connectPlexWithConfirmation, initialPlexSettingsState, plexSettingsReducer, plexSourceNeedsAuthentication, type PlexSettingsState } from '../lib/plexSettingsState';
 
-const busyLabel: Record<string, string> = {
+const busyLabel: Record<NonNullable<PlexSettingsState['busy']>, string> = {
   loading: 'Loading Plex configuration…',
   discovering: 'Searching the local network…',
   account_servers: 'Finding servers available to your Plex account…',
@@ -17,7 +17,9 @@ const busyLabel: Record<string, string> = {
   authenticating: 'Waiting for Plex sign-in…',
   libraries: 'Loading music libraries…',
   saving: 'Saving music library…',
+  saving_schedule: 'Saving Plex sync schedule…',
   syncing: 'Synchronizing Plex music…',
+  canceling_sync: 'Canceling Plex sync…',
   disconnecting: 'Removing Plex source…',
 };
 
@@ -41,23 +43,26 @@ export const PlexMusicSourceSettings: React.FC = () => {
   const [writebackApproved, setWritebackApproved] = useState(false);
   const [writebackMessage, setWritebackMessage] = useState('');
   const [writebackError, setWritebackError] = useState('');
+  const [authUrl, setAuthUrl] = useState('');
   const authTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [autoSync, setAutoSync] = useState(true);
   const disposed = useRef(false);
   const refreshLibrary = useStore(store => store.refreshLibrary);
   const addLog = useStore(store => store.addLog);
 
   const clearTimers = useCallback(() => {
     if (authTimer.current) clearTimeout(authTimer.current);
-    if (syncTimer.current) clearTimeout(syncTimer.current);
     authTimer.current = null;
-    syncTimer.current = null;
   }, []);
 
   const loadLibraries = useCallback(async () => {
     dispatch({ type: 'busy', busy: 'libraries' });
     try {
-      const libraries = await plexService.getLibraries();
+      const libraries = await plexService.getLibraries().finally(async () => {
+        if (disposed.current) return;
+        const config = await plexService.getConfig().catch(() => null);
+        if (config && !disposed.current) dispatch({ type: 'source', source: config.source });
+      });
       if (!disposed.current) dispatch({ type: 'libraries', libraries });
     } catch (error) {
       if (!disposed.current) dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Unable to load Plex music libraries' });
@@ -71,7 +76,7 @@ export const PlexMusicSourceSettings: React.FC = () => {
       if (disposed.current) return;
       dispatch({ type: 'account_servers', servers });
       if (servers.length === 0) {
-        dispatch({ type: 'message', message: 'Your Plex account has no reachable media servers or shared servers right now.' });
+        dispatch({ type: 'message', message: 'Your Plex account has no media servers to choose from.' });
       }
     } catch (error) {
       if (!disposed.current) dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Unable to load Plex account servers' });
@@ -83,21 +88,17 @@ export const PlexMusicSourceSettings: React.FC = () => {
     try {
       const config = await plexService.getConfig();
       if (disposed.current) return;
+      setAutoSync(config.autoSync ?? true);
       dispatch({ type: 'loaded', source: config.source, authenticated: config.authenticated });
       if (!config.source) {
         if (config.authenticated) await loadAccountServers();
         return;
       }
-      try {
-        const libraries = await plexService.getLibraries();
-        if (!disposed.current) dispatch({ type: 'libraries', libraries });
-      } catch (error) {
-        if (!disposed.current) dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Plex authentication may be required' });
-      }
+      await loadLibraries();
     } catch (error) {
       if (!disposed.current) dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Unable to load Plex configuration' });
     }
-  }, [loadAccountServers]);
+  }, [loadAccountServers, loadLibraries]);
 
   useEffect(() => {
     disposed.current = false;
@@ -126,16 +127,16 @@ export const PlexMusicSourceSettings: React.FC = () => {
     if (!url.trim()) return;
     dispatch({ type: 'busy', busy: 'connecting', message: '' });
     try {
-      const server = await plexService.connect(url.trim());
+      const server = await connectPlexWithConfirmation(replace => plexService.connect(url.trim(), replace));
+      if (!server) {
+        dispatch({ type: 'busy', busy: null });
+        return;
+      }
       addLog('success', `[Plex] Connected to ${server.name || server.host}`);
       setEditingServer(false);
       const config = await plexService.getConfig();
       dispatch({ type: 'loaded', source: config.source, authenticated: config.authenticated });
-      try {
-        dispatch({ type: 'libraries', libraries: await plexService.getLibraries() });
-      } catch (error) {
-        dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Sign in to Plex to view this server’s music libraries' });
-      }
+      await loadLibraries();
     } catch (error) {
       dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Unable to connect to Plex Media Server' });
     }
@@ -144,12 +145,16 @@ export const PlexMusicSourceSettings: React.FC = () => {
   const connectAccountServer = async (server: PlexAccountServer) => {
     dispatch({ type: 'busy', busy: 'connecting', message: '' });
     try {
-      const connected = await plexService.connectAccountServer(server.machineIdentifier);
+      const connected = await connectPlexWithConfirmation(replace => plexService.connectAccountServer(server.machineIdentifier, replace));
+      if (!connected) {
+        dispatch({ type: 'busy', busy: null });
+        return;
+      }
       addLog('success', `[Plex] Connected to ${connected.name || server.name || connected.machineIdentifier}`);
       setEditingServer(false);
       const config = await plexService.getConfig();
       dispatch({ type: 'loaded', source: config.source, authenticated: config.authenticated });
-      dispatch({ type: 'libraries', libraries: await plexService.getLibraries() });
+      await loadLibraries();
     } catch (error) {
       dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Unable to connect to Plex account server' });
     }
@@ -159,19 +164,28 @@ export const PlexMusicSourceSettings: React.FC = () => {
     if (disposed.current) return;
     try {
       const status = await plexService.getAuthStatus();
+      if (disposed.current) return;
       if (status.authenticated) {
+        setAuthUrl('');
         dispatch({ type: 'authenticated', authenticated: true });
         addLog('success', '[Plex] Authentication completed');
+        dispatch({ type: 'message', message: 'Plex sign-in complete.' });
         await loadConfig();
-        dispatch({ type: 'message', message: 'Plex sign-in complete. Your available servers are ready to choose.' });
         return;
       }
       if (!status.pending || Date.now() >= expiresAt * 1000) {
+        setAuthUrl('');
         dispatch({ type: 'error', error: status.message || 'Plex sign-in expired. Start sign-in again.' });
         return;
       }
       authTimer.current = setTimeout(() => void pollAuthentication(expiresAt), 2000);
     } catch (error) {
+      if (disposed.current) return;
+      if (Date.now() < expiresAt * 1000 && (!(error instanceof PlexRequestError) || error.status >= 500)) {
+        authTimer.current = setTimeout(() => void pollAuthentication(expiresAt), 2000);
+        return;
+      }
+      setAuthUrl('');
       dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Unable to check Plex sign-in status' });
     }
   }, [addLog, loadConfig]);
@@ -181,7 +195,8 @@ export const PlexMusicSourceSettings: React.FC = () => {
     // Open a blank window synchronously while this click still has a user
     // gesture. Opening only after the network request is commonly popup-blocked.
     const useSystemBrowser = shouldUseSystemBrowser();
-    const authWindow = useSystemBrowser ? null : window.open('', '_blank', 'noopener,noreferrer');
+    setAuthUrl('');
+    const authWindow = useSystemBrowser ? null : reserveExternalBrowserTab();
     try {
       const start = await plexService.startAuth();
       if (useSystemBrowser) {
@@ -189,15 +204,7 @@ export const PlexMusicSourceSettings: React.FC = () => {
       } else if (authWindow) {
         authWindow.location.href = start.authUrl;
       } else {
-        const secondAttempt = window.open(start.authUrl, '_blank', 'noopener,noreferrer');
-        if (!secondAttempt) {
-          try {
-            await navigator.clipboard.writeText(start.authUrl);
-            dispatch({ type: 'message', message: 'The Plex sign-in popup was blocked. The official Plex authorization URL was copied to your clipboard.' });
-          } catch {
-            dispatch({ type: 'message', message: 'The Plex sign-in popup was blocked. Allow popups for ViiB and choose Sign in / Reconnect again.' });
-          }
-        }
+        setAuthUrl(start.authUrl);
       }
       // Keep ViiB open and poll even if the authorization window needed a
       // second attempt; never navigate the desktop app away from its UI.
@@ -209,7 +216,7 @@ export const PlexMusicSourceSettings: React.FC = () => {
   };
 
   const selectLibrary = async (libraryId: string) => {
-    dispatch({ type: 'selected_library', id: libraryId });
+    if (state.source?.libraryId === libraryId) return;
     dispatch({ type: 'busy', busy: 'saving', message: '' });
     try {
       const selected = await plexService.selectLibrary(libraryId);
@@ -222,38 +229,68 @@ export const PlexMusicSourceSettings: React.FC = () => {
     }
   };
 
-  const pollSync = useCallback(async () => {
-    if (disposed.current) return;
-    try {
-      const source = await plexService.getSyncStatus();
-      dispatch({ type: 'source', source });
-      if (!source) {
-        dispatch({ type: 'error', error: 'Plex source was removed while synchronizing.' });
-        return;
+  const sourceId = state.source?.id;
+  const syncStatus = state.source?.lastSyncStatus;
+  const lastSyncAt = state.source?.lastSyncAt;
+  useEffect(() => {
+    if (!sourceId || editingServer) return;
+    const delay = syncStatus === 'running' ? 1500 : 5000;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const checkSync = async () => {
+      try {
+        const source = await plexService.getSyncStatus();
+        if (stopped || (source && source.id !== sourceId)) return;
+        dispatch({ type: 'source', source });
+        if (source?.lastSyncStatus === 'complete' && (syncStatus === 'running' || source.lastSyncAt !== lastSyncAt)) {
+          addLog('success', `[Plex] Synchronized ${source.libraryTitle || 'music library'}`);
+          await refreshLibrary();
+        }
+      } catch {
+        // The sync runs on the backend. Continue monitoring after a temporary
+        // failure to reach the status endpoint.
+      } finally {
+        if (!stopped) timer = setTimeout(() => void checkSync(), delay);
       }
-      if (source.lastSyncStatus === 'running') {
-        syncTimer.current = setTimeout(() => void pollSync(), 1500);
-        return;
-      }
-      if (source.lastSyncStatus === 'complete') {
-        await refreshLibrary();
-        dispatch({ type: 'message', message: 'Plex music synchronization complete.' });
-        addLog('success', `[Plex] Synchronized ${source.libraryTitle || 'music library'}`);
-        return;
-      }
-      dispatch({ type: 'error', error: source.lastSyncError || (source.lastSyncStatus === 'auth_required' ? 'Plex authentication is required. Reconnect and try again.' : 'Plex synchronization failed.') });
-    } catch (error) {
-      dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Unable to check Plex synchronization status' });
-    }
-  }, [addLog, refreshLibrary]);
+    };
+    timer = setTimeout(() => void checkSync(), delay);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [addLog, editingServer, lastSyncAt, refreshLibrary, sourceId, syncStatus]);
 
   const sync = async () => {
     dispatch({ type: 'busy', busy: 'syncing', message: '' });
     try {
-      await plexService.sync();
-      syncTimer.current = setTimeout(() => void pollSync(), 1000);
+      await plexService.sync().catch(error => {
+        if (!(error instanceof PlexRequestError && error.code === 'plex_sync_running')) throw error;
+      });
+      if (state.source) dispatch({ type: 'source', source: { ...state.source, lastSyncStatus: 'running', lastSyncError: undefined } });
+      dispatch({ type: 'busy', busy: null });
     } catch (error) {
       dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Unable to start Plex synchronization' });
+    }
+  };
+
+  const changeAutoSync = async (enabled: boolean) => {
+    dispatch({ type: 'busy', busy: 'saving_schedule', message: '' });
+    try {
+      setAutoSync(await plexService.setAutoSync(enabled));
+      dispatch({ type: 'busy', busy: null });
+    } catch (error) {
+      dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Unable to save the Plex sync schedule' });
+    }
+  };
+
+  const cancelSync = async () => {
+    dispatch({ type: 'busy', busy: 'canceling_sync', message: '' });
+    try {
+      await plexService.cancelSync();
+      dispatch({ type: 'source', source: await plexService.getSyncStatus() });
+      dispatch({ type: 'busy', busy: null });
+    } catch (error) {
+      dispatch({ type: 'error', error: error instanceof Error ? error.message : 'Unable to cancel Plex synchronization' });
     }
   };
 
@@ -311,7 +348,9 @@ export const PlexMusicSourceSettings: React.FC = () => {
   };
 
   const sourceNeedsAuth = plexSourceNeedsAuthentication(state.source, state.error);
-  const busy = state.busy !== null;
+  const sourceConnected = state.source?.available && !sourceNeedsAuth;
+  const syncRunning = syncStatus === 'running';
+  const busy = state.busy !== null || syncRunning;
 
   return (
     <section className="rounded-xl border border-surface-highlight bg-surface-1 p-5">
@@ -324,8 +363,8 @@ export const PlexMusicSourceSettings: React.FC = () => {
           </div>
         </div>
         {state.source && (
-          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${state.source.available ? 'bg-success/15 text-success' : 'bg-warning/15 text-warning'}`}>
-            {state.source.available ? 'Connected' : 'Offline / unavailable'}
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${sourceConnected ? 'bg-success/15 text-success' : 'bg-warning/15 text-warning'}`}>
+            {sourceNeedsAuth ? 'Sign-in required' : sourceConnected ? 'Connected' : 'Unavailable'}
           </span>
         )}
       </div>
@@ -337,13 +376,20 @@ export const PlexMusicSourceSettings: React.FC = () => {
         </div>
       )}
 
+
+      {authUrl && (
+        <a href={authUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block text-sm font-semibold text-brand underline">
+          Open Plex sign-in
+        </a>
+      )}
+
       {state.source && !editingServer ? (
         <div className="mt-5 space-y-4">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-lg bg-surface-2 p-3"><div className="text-xs uppercase tracking-wide text-text-subtle">Server</div><div className="mt-1 font-semibold text-text-main">{state.source.name || state.source.machineIdentifier}</div></div>
             <div className="rounded-lg bg-surface-2 p-3"><div className="text-xs uppercase tracking-wide text-text-subtle">Address</div><div className="mt-1 truncate font-mono text-xs text-text-main" title={state.source.baseUrl}>{state.source.baseUrl}</div></div>
             <div className="rounded-lg bg-surface-2 p-3"><div className="text-xs uppercase tracking-wide text-text-subtle">Music library</div><div className="mt-1 font-semibold text-text-main">{state.source.libraryTitle || 'Not selected'}</div></div>
-            <div className="rounded-lg bg-surface-2 p-3"><div className="text-xs uppercase tracking-wide text-text-subtle">Last sync</div><div className="mt-1 text-sm text-text-main">{formatSyncTime(state.source.lastSyncAt)}</div></div>
+            <div className="rounded-lg bg-surface-2 p-3"><div className="text-xs uppercase tracking-wide text-text-subtle">Last successful sync</div><div className="mt-1 text-sm text-text-main">{formatSyncTime(state.source.lastSyncAt)}</div></div>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -354,10 +400,17 @@ export const PlexMusicSourceSettings: React.FC = () => {
             <Button variant="secondary" disabled={busy} onClick={() => void disconnect()} leftIcon={<Trash2 size={16} />} className="hover:text-error">Remove Plex Source</Button>
           </div>
 
-          {state.source.lastSyncStatus === 'error' && state.source.lastSyncError && (
+          {syncRunning && (
+            <div className="flex items-center gap-2 text-sm text-text-secondary" role="status">
+              <Loader2 size={16} className="animate-spin" />
+              <span>{state.source.syncTracks ? `Read ${state.source.syncTracks.toLocaleString()}${state.source.syncTotal ? ` of ${state.source.syncTotal.toLocaleString()}` : ''} Plex tracks` : 'Synchronizing Plex music…'}</span>
+              <Button variant="secondary" disabled={state.busy !== null} onClick={() => void cancelSync()}>Cancel sync</Button>
+            </div>
+          )}
+          {!syncRunning && state.source.lastSyncError && (
             <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
-              <WifiOff size={16} className="mt-0.5" />
-              <span>{state.source.lastSyncError}. Cached Plex music remains in ViiB until a later successful sync confirms changes.</span>
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              <span>{state.source.lastSyncError} ViiB kept any previously synced tracks.</span>
             </div>
           )}
         </div>
@@ -423,6 +476,13 @@ export const PlexMusicSourceSettings: React.FC = () => {
             {state.source.libraryId && <Button variant="primary" accent="brand" disabled={busy || sourceNeedsAuth} onClick={() => void sync()} leftIcon={<RefreshCw size={16} />}>{state.source.lastSyncAt ? 'Resynchronize' : 'Synchronize'}</Button>}
           </div>
 
+          {state.source.libraryId && (
+            <label className="mb-3 flex items-center gap-2 text-sm text-text-secondary">
+              <input type="checkbox" checked={autoSync} disabled={state.busy !== null} onChange={event => void changeAutoSync(event.target.checked)} />
+              Sync automatically every hour while ViiB is open
+            </label>
+          )}
+
           {sourceNeedsAuth ? (
             <p className="text-sm text-text-secondary">Sign in to Plex to retrieve music libraries from this claimed server.</p>
           ) : state.libraries.length === 0 ? (
@@ -430,7 +490,7 @@ export const PlexMusicSourceSettings: React.FC = () => {
           ) : (
             <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
               {state.libraries.map(library => {
-                const selected = state.selectedLibraryId === library.id || state.source?.libraryId === library.id;
+                const selected = state.selectedLibraryId === library.id;
                 return (
                   <button type="button" key={library.id} disabled={busy} onClick={() => void selectLibrary(library.id)} className={`rounded-lg border p-3 text-left transition disabled:opacity-50 ${selected ? 'border-brand bg-brand/10' : 'border-surface-border bg-surface-2 hover:border-brand/60'}`}>
                     <div className="flex items-center gap-2"><Music size={15} className={selected ? 'text-brand' : 'text-text-subtle'} /><span className="font-semibold text-text-main">{library.title}</span></div>

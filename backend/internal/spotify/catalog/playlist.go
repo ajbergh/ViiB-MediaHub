@@ -14,8 +14,9 @@ import (
 const playlistHash = "346811f856fb0b7e4f6c59f8ebea78dd081c6e2fb01b77c954b26259d5fc6763"
 
 type PlaylistItem struct {
-	AddedAt *string `json:"added_at"`
-	Track   *Track  `json:"track"`
+	OccurrenceID string  `json:"occurrence_id,omitempty"`
+	AddedAt      *string `json:"added_at"`
+	Track        *Track  `json:"track"`
 }
 type Playlist struct {
 	PlaylistSummary
@@ -138,8 +139,9 @@ func (c *Client) Playlist(ctx context.Context, token auth.Token, q PlaylistQuery
 		}
 		r.Followers = &Followers{Total: *wire.Followers}
 	}
-	for _, raw := range p.Items {
+	for position, raw := range p.Items {
 		var item struct {
+			UID     string `json:"uid"`
 			AddedAt *struct {
 				ISO string `json:"isoString"`
 			} `json:"addedAt"`
@@ -160,7 +162,10 @@ func (c *Client) Playlist(ctx context.Context, token auth.Token, q PlaylistQuery
 		if json.Unmarshal(raw, &item) != nil || item.Item == nil {
 			return Playlist{}, ErrSchema
 		}
-		row := &PlaylistItem{}
+		row := &PlaylistItem{OccurrenceID: item.UID}
+		if row.OccurrenceID == "" && wire.Revision != nil && *wire.Revision != "" {
+			row.OccurrenceID = *wire.Revision + ":" + strconv.Itoa(q.Offset+position)
+		}
 		if item.AddedAt != nil && item.AddedAt.ISO != "" {
 			row.AddedAt = &item.AddedAt.ISO
 		}

@@ -40,6 +40,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/llm"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/mediafetch"
+	"github.com/ajbergh/viib-mediahub/internal/plex"
 	"github.com/ajbergh/viib-mediahub/internal/releasedate"
 	"github.com/ajbergh/viib-mediahub/internal/scanner"
 	"github.com/ajbergh/viib-mediahub/internal/semantic"
@@ -67,6 +68,7 @@ type API struct {
 	spotifyAuthMu          sync.Mutex
 	spotifyHooksOnce       sync.Once
 	spotifyAuth            *spotifyAuthRuntime
+	spotifyOAuthCallback   string
 	spotifyAnalysisMu      sync.RWMutex
 	spotifyAnalysis        *spotifyrefresh.Service
 	spotifyAnalysisClosed  bool
@@ -76,6 +78,7 @@ type API struct {
 	db                     *db.DB
 	dataDir                string
 	coverDir               string
+	coverThumbnails        coverThumbnailCache
 	downloadManager        *DownloadManager
 	scanner                *scanner.Scanner
 	lastfmClient           *lastfm.Client
@@ -97,6 +100,21 @@ type API struct {
 	analysisPressure       playbackPressure
 	plexAnalysisMu         sync.Mutex
 	plexAnalysisGates      map[string]chan struct{}
+	plexAuthMu             sync.Mutex
+	plexAuthFactory        func() *plex.AuthClient
+	plexRecoveryAttempts   map[string]time.Time
+	plexSyncMu             sync.Mutex
+	plexSync               *plexSyncRun
+	plexSyncClosed         bool
+	plexSyncWorkers        sync.WaitGroup
+	plexScheduleCancel     context.CancelFunc
+	plexLastAttemptSource  string
+	plexLastAttemptAt      time.Time
+	djWaveformMu           sync.Mutex
+	djWaveformFlights      map[string]*djWaveformFlight
+	libraryPruneMu         sync.Mutex
+	libraryPruneRunning    bool
+	libraryLastPrunedRev   int64
 }
 
 // New constructs a new API instance using the given database and
@@ -156,6 +174,7 @@ func New(database *db.DB, dataDir string) *API {
 	dm.spotifyReleaseDate = api.spotifyTrackEditionDate
 	api.releaseMusicBrainz = releasedate.NewClient()
 	api.startReleaseMetadataWorker()
+	api.startPlexSyncScheduler()
 	dm.Start()
 	// Initialize Last.FM client if configured
 	api.initLastFMClient()
@@ -263,6 +282,8 @@ func (a *API) Routes() chi.Router {
 	r.Get("/spotify/playlists/{id}/scrape", a.spotifyGetPlaylistByScraping) // Get first-party playlist details via scraping
 	r.Get("/spotify/me", a.spotifyGetUserProfile)
 	r.Get("/spotify/proxy", a.spotifyProxy)
+	r.Get("/spotify/account", a.spotifyAccountCapabilities)
+	r.Get("/spotify/account/{view}", a.spotifyAccountRead)
 	r.Post("/spotify/proxy", a.spotifyProxy)
 	r.Get("/spotify/analysis/status", a.getSpotifyAnalysisStatus)
 	r.Get("/spotify/analysis/{trackID}", a.getSpotifyAnalysisCache)
@@ -273,6 +294,7 @@ func (a *API) Routes() chi.Router {
 	r.Get("/spotify/auth/status", a.getSpotifyAuthStatus)
 	r.Post("/spotify/auth/refresh", a.refreshSpotifyAuth)
 	r.Post("/spotify/auth/browser-login", a.startSpotifyBrowserLogin)
+	r.Post("/spotify/auth/oauth-login", a.startSpotifyOAuthLogin)
 	r.Get("/spotify/auth/browser-login/{id}", a.getSpotifyBrowserLogin)
 	r.Delete("/spotify/auth/browser-login/{id}", a.cancelSpotifyBrowserLogin)
 	r.Post("/spotify/auth/session", a.connectSpotifySession)
@@ -294,11 +316,13 @@ func (a *API) Routes() chi.Router {
 
 	// Spotify Streaming
 	r.Get("/spotify/stream/{id}", a.spotifyMediaOnly(a.streamSpotifyTrack))
+	r.Head("/spotify/stream/{id}", a.spotifyMediaOnly(a.streamSpotifyTrack))
 
 	// Album metadata cache
 	r.Get("/albums/metadata", a.getAllAlbumMetadata)
 	r.Get("/albums/metadata/expired", a.getExpiredAlbumMetadata)
 	r.Get("/albums/metadata/unchecked", a.getUncheckedAlbumMetadata)
+	r.Get("/albums/metadata/next", a.getNextAlbumMetadata)
 	r.Get("/albums/metadata/{key}", a.getAlbumMetadata)
 	r.Post("/albums/metadata", a.saveAlbumMetadata)
 	r.Post("/albums/metadata/batch", a.batchGetAlbumMetadata)
@@ -1296,8 +1320,8 @@ func (a *API) serveCover(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if isAllowed {
-			if _, err := os.Stat(normalizedPath); err == nil {
-				http.ServeFile(w, r, normalizedPath)
+			if info, err := os.Stat(normalizedPath); err == nil {
+				a.serveCoverFile(w, r, normalizedPath, info)
 				return
 			}
 			logger.API("Cover file not found at path: %s", normalizedPath)
@@ -1310,16 +1334,16 @@ func (a *API) serveCover(w http.ResponseWriter, r *http.Request) {
 	song, err := a.db.GetSongByID(pathOrID)
 	if err == nil && song.CoverPath != "" {
 		// Song has a cover path set - serve that file
-		if _, err := os.Stat(song.CoverPath); err == nil {
-			http.ServeFile(w, r, song.CoverPath)
+		if info, err := os.Stat(song.CoverPath); err == nil {
+			a.serveCoverFile(w, r, song.CoverPath, info)
 			return
 		}
 	}
 
 	// Fallback: try legacy per-song cover file
 	coverPath := filepath.Join(a.coverDir, pathOrID+".jpg")
-	if _, err := os.Stat(coverPath); err == nil {
-		http.ServeFile(w, r, coverPath)
+	if info, err := os.Stat(coverPath); err == nil {
+		a.serveCoverFile(w, r, coverPath, info)
 		return
 	}
 
@@ -1403,10 +1427,17 @@ func (a *API) browseFolder(w http.ResponseWriter, r *http.Request) {
 
 	for _, entry := range entries {
 		// Only show directories for folder browsing
-		if entry.IsDir() {
+		path := filepath.Join(req.Path, entry.Name())
+		isDir := entry.IsDir()
+		if runtime.GOOS == "darwin" && entry.Type()&os.ModeSymlink != 0 {
+			if target, err := os.Stat(path); err == nil {
+				isDir = target.IsDir()
+			}
+		}
+		if isDir {
 			result = append(result, FolderEntry{
 				Name:  entry.Name(),
-				Path:  filepath.Join(req.Path, entry.Name()),
+				Path:  path,
 				IsDir: true,
 			})
 		}
@@ -1666,6 +1697,15 @@ func (a *API) getUncheckedAlbumMetadata(w http.ResponseWriter, r *http.Request) 
 	}
 
 	respondJSON(w, metadata)
+}
+
+func (a *API) getNextAlbumMetadata(w http.ResponseWriter, r *http.Request) {
+	album, err := a.db.NextAlbumNeedingMetadata(30)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Unable to select the next album")
+		return
+	}
+	respondJSON(w, album)
 }
 
 // Artist metadata handlers

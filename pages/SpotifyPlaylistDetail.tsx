@@ -1,5 +1,3 @@
-import { SpotifyAccountNotice } from '../components/SpotifyAccountNotice';
-import { savedLibraryDownloadOrigins } from '../lib/spotifyDownloadOrigins';
 /**
  * ViiB MediaHub - Spotify Playlist Detail Page
  * 
@@ -18,6 +16,8 @@ import { savedLibraryDownloadOrigins } from '../lib/spotifyDownloadOrigins';
  * @module SpotifyPlaylistDetail
  */
 
+import { SpotifyAccountNotice } from '../components/SpotifyAccountNotice';
+import { savedLibraryDownloadOrigins } from '../lib/spotifyDownloadOrigins';
 import {fetchSpotifyPlaylist} from '../services/spotifyPlaylist';
 import { backendSpotifyFetch } from '../services/spotifyBackend';
 import { SpotifyArtistLinks } from '../components/SpotifyArtistLinks';
@@ -45,6 +45,7 @@ interface SpotifyPlaylistFull {
     total: number;
     items: {
       added_at: string | null;
+      occurrence_id?: string;
       track: {
         id: string;
         name: string;
@@ -127,10 +128,13 @@ export const SpotifyPlaylistDetail: React.FC = () => {
     setIsDownloading(true);
     try {
       await api.downloadPlaylist(playlist.id, playlist.name, playlist.owner.display_name, downloadOrigins);
-      addLog('success', `Started download for playlist: ${playlist.name}`);
+      const message = `Playlist download queued: ${playlist.name}`;
+      addLog('success', message);
+      useStore.getState().showToast({type: 'success', message});
     } catch (err) {
-      console.error('Download failed:', err);
-      addLog('error', 'Failed to start playlist download');
+      const message = err instanceof Error ? err.message : 'Could not queue playlist download.';
+      addLog('error', message);
+      useStore.getState().showToast({type: 'error', message});
     } finally {
       setIsDownloading(false);
     }
@@ -390,7 +394,7 @@ export const SpotifyPlaylistDetail: React.FC = () => {
           {/* Tracks */}
           {playlist.tracks.items.filter(item => item.track).map((item, idx) => (
             <div 
-              key={item.track.id || idx}
+              key={item.occurrence_id ?? idx}
               aria-disabled={mediaDisabled}
               onClick={mediaDisabled ? undefined : () => handlePlayTrack(idx)}
               onContextMenu={(e) => handleTrackContextMenu(e, item.track)}

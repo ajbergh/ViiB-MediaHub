@@ -179,5 +179,8 @@ func (c *Client) Album(ctx context.Context, token auth.Token, q AlbumQuery) (Alb
 		prev := albumTrackLink(q, offset)
 		r.Tracks.Previous = &prev
 	}
+	if ctx.Err() == nil {
+		c.rememberTrackAlbum(summary)
+	}
 	return r, nil
 }

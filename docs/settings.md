@@ -114,13 +114,13 @@ Device routing uses the Web Audio API's `setSinkId`. Devices are listed after th
 
 | Setting | Description |
 |---|---|
-| Spotify account | Sign in through Spotify in Chrome/Edge/Chromium, switch accounts, cancel a pending sign-in, or disconnect |
+| Spotify account | Connect through Web Player or, on desktop, through your default browser. Cancel a pending attempt, switch connections, or disconnect. |
 | Download Location | Folder where downloaded OGG files are saved |
 | Concurrent Downloads | How many simultaneous downloads are allowed (1–10, default 3) |
 | Quick Scan After Downloads | Number of completed downloads before an automatic quick scan; 0 disables it |
 | MP3 Conversion | Optional Ogg-to-MP3 conversion and worker count |
 
-Normal Spotify sign-in requires an installed Chrome, Microsoft Edge, or Chromium browser and a reachable Go backend. Enter credentials on Spotify’s own page; ViiB captures and stores the validated session encrypted on this device. No Developer app or cookie-paste field is required. See [Spotify Integration](spotify.md) for sign-in, session expiry, and current parity limitations.
+Web Player sign-in requires Chrome, Microsoft Edge, or Chromium on the device running the backend. A verified Premium Web Player session enables ViiB streaming and downloads. On desktop, default-browser sign-in supports Safari and uses a Spotify Developer Client ID for Web API features. Both flows use Spotify’s own sign-in page and save the resulting session encrypted. [Spotify sign-in and troubleshooting](spotify.md)
 
 ### Last.FM Integration
 

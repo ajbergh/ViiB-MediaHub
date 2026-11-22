@@ -5,10 +5,94 @@ package db
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
+
+func TestListTrackAnalysisPageReadsOnlyRequestedRange(t *testing.T) {
+	database, err := New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	if err := database.EnsureTrackAnalysisSchema(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.conn.Exec(`INSERT INTO songs(id, title, artist, album, file_path, added_at) VALUES
+		('a', 'A', '', '', 'a.wav', 1), ('b', 'B', '', '', 'b.wav', 1), ('c', 'C', '', '', 'c.wav', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	// If the query scans beyond the limit, reading the malformed binding will fail.
+	if _, err := database.conn.Exec(`INSERT INTO track_analysis(song_id, status, analysis_version, algorithm_version, source_fingerprint, spotify_bindings_json) VALUES
+		('a', 'complete', 1, 'v1', 'fp', NULL), ('b', 'complete', 1, 'v1', 'fp', NULL), ('c', 'complete', 1, 'v1', 'fp', 'invalid')`); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := database.ListTrackAnalysisPage(t.Context(), "", 2)
+	if err != nil || len(rows) != 2 || rows[0].SongID != "a" || rows[1].SongID != "b" {
+		t.Fatalf("first page = %+v, err = %v", rows, err)
+	}
+	rows, err = database.ListTrackAnalysisPage(t.Context(), "a", 2, "a", "b")
+	if err != nil || len(rows) != 1 || rows[0].SongID != "b" {
+		t.Fatalf("scoped page = %+v, err = %v", rows, err)
+	}
+	if _, err := database.ListTrackAnalysisPage(t.Context(), "b", 2); err == nil {
+		t.Fatal("expected malformed binding to fail when included in the page")
+	}
+}
+
+func TestVisitTrackAnalysisArtifactsBoundedGroupsTracksAndSkipsOversizedPayloads(t *testing.T) {
+	database, err := New(filepath.Join(t.TempDir(), "library.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	if err := database.EnsureTrackAnalysisSchema(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.conn.Exec(`INSERT INTO songs(id, title, artist, album, file_path, added_at) VALUES
+		('a', 'A', '', '', 'a.wav', 1), ('c', 'C', '', '', 'c.wav', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, artifact := range []TrackAnalysisArtifact{
+		{ID: "a-first", SongID: "a", Kind: "first", FormatVersion: 1, AlgorithmVersion: "v1", Encoding: "test", Data: []byte("abc")},
+		{ID: "a-second", SongID: "a", Kind: "second", FormatVersion: 1, AlgorithmVersion: "v1", Encoding: "test", Data: []byte("xy")},
+		{ID: "c-first", SongID: "c", Kind: "first", FormatVersion: 1, AlgorithmVersion: "v1", Encoding: "test", Data: []byte("abcd")},
+	} {
+		if err := database.UpsertTrackAnalysisArtifact(artifact); err != nil {
+			t.Fatal(err)
+		}
+	}
+	specs := []TrackAnalysisArtifactSpec{
+		{Kind: "first", FormatVersion: 1, AlgorithmVersion: "v1", MaxPayloadBytes: 3},
+		{Kind: "second", FormatVersion: 1, AlgorithmVersion: "v1", MaxPayloadBytes: 3},
+	}
+	var visited []string
+	err = database.VisitTrackAnalysisArtifactsBounded(t.Context(), []string{"d", "c", "b", "a", "c"}, specs, func(songID string, artifacts map[TrackAnalysisArtifactKey]TrackAnalysisArtifactLookup) error {
+		visited = append(visited, songID)
+		first := artifacts[TrackAnalysisArtifactKey{SongID: songID, Kind: "first", FormatVersion: 1, AlgorithmVersion: "v1"}]
+		switch songID {
+		case "a":
+			if len(artifacts) != 2 || string(first.Artifact.Data) != "abc" || first.Err != nil {
+				t.Errorf("a artifacts = %+v", artifacts)
+			}
+		case "c":
+			if len(artifacts) != 1 || !errors.Is(first.Err, ErrTrackAnalysisArtifactTooLarge) || first.Artifact.Data != nil {
+				t.Errorf("c artifacts = %+v", artifacts)
+			}
+		default:
+			if len(artifacts) != 0 {
+				t.Errorf("unexpected artifacts for %s: %+v", songID, artifacts)
+			}
+		}
+		return nil
+	})
+	if err != nil || !reflect.DeepEqual(visited, []string{"a", "b", "c", "d"}) {
+		t.Fatalf("visited %v, err = %v", visited, err)
+	}
+}
 
 func TestTrackAnalysisSchemaPreservesLegacySongBPM(t *testing.T) {
 	database, err := New(filepath.Join(t.TempDir(), "library.db"))

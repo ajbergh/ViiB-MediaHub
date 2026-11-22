@@ -104,19 +104,15 @@ export const isWailsEnvironment = (): boolean => {
 };
 
 /**
- * The registered Spotify OAuth redirect URI for the desktop application.
- * `wails.localhost` is an internal WebView origin, not the loopback server
- * that receives the OAuth callback in the user's browser.
+ * Default redirect URI to register for desktop Spotify OAuth.
+ * A custom backend port changes the actual redirect URI.
  */
 export const SPOTIFY_DESKTOP_CALLBACK_URL = 'http://127.0.0.1:34115/callback';
 
 /**
- * Gets the OAuth callback URL, handling the Wails environment specially.
- * In Wails, we need to use the backend server URL for OAuth callbacks
- * since 'wails.localhost' is not a valid redirect URI for Spotify.
- * 
- * For Wails builds, this returns the registered desktop loopback callback.
- * For web builds, this returns the current origin + /callback
+ * Gets the loopback callback URI displayed by desktop Spotify setup.
+ * Outside Wails it returns a legacy browser callback URL on the page origin,
+ * normalizing localhost to 127.0.0.1.
  */
 export const getOAuthCallbackUrl = async (): Promise<string> => {
   if (isWailsEnvironment()) {

@@ -8,6 +8,7 @@ import { StemDeckSource, type StemBus, type StemDeckState, type StemDeckStatus }
 import { SingleTrackDeckSource } from './singleTrackDeckSource';
 import { connectFourChannelOutput, type DJOutputMode } from './djOutputRouting';
 import { getDJSamplerEngine } from './djSampler';
+import { isMacOSWails } from './webglSafety';
 /**
  * ViiB MediaHub - DJ Audio Engine
  * 
@@ -66,6 +67,7 @@ export interface PreparedDeckTrack {
   readonly source: StemDeckSource;
   readonly expectedSource: DeckSource;
   readonly expectedLoadGeneration: number;
+  readonly audioURL: string;
   state: 'prepared' | 'committed' | 'discarded';
 }
 
@@ -73,6 +75,8 @@ export interface RetainedDeckSource {
   readonly deck: DeckId;
   readonly source: DeckSource;
   readonly trackId: string | null;
+  readonly audioURL: string | undefined;
+  readonly autoGainFactor: number;
   readonly position: number;
   readonly wasPlaying: boolean;
   readonly committedSource: DeckSource;
@@ -240,7 +244,6 @@ export class DJAudioEngine {
 
   // Animation frame for position updates
   private animationFrameId: number | null = null;
-  private vuAnimationFrameId: number | null = null;
   
   private trackLoadGenerationA = 0;
   private trackLoadGenerationB = 0;
@@ -270,8 +273,13 @@ export class DJAudioEngine {
   }>> = {};
 
   // VU metering state
+  private readonly VU_SAMPLE_INTERVAL_MS = 40; // ~25 Hz shared sample cadence
   private vuLevels: VULevels = { deckA: { left: 0, right: 0 }, deckB: { left: 0, right: 0 }, master: { left: 0, right: 0 } };
-  private vuIdleTimer: ReturnType<typeof setTimeout> | null = null;
+  private vuTimerId: ReturnType<typeof setTimeout> | null = null;
+  private vuDataA: Uint8Array<ArrayBuffer> | null = null;
+  private vuDataB: Uint8Array<ArrayBuffer> | null = null;
+  private vuDataMaster: Uint8Array<ArrayBuffer> | null = null;
+  private lastVUSampleTime = -Infinity;
 
   constructor(config?: DJAudioEngineConfig) {
     this.config = {
@@ -803,8 +811,9 @@ export class DJAudioEngine {
     const stemStatus = source.getStemStatus();
     if (stemStatus.mode !== 'stems') {
       const url = this.deckAudioUrls[deck];
-      if (url && generation === this.getDeckLoadGeneration(deck) && !this.scratchNodes[deck] && !this.scratchLoads[deck]) {
-        void this.prepareScratchAudio(deck, url, generation);
+      if (url && generation === this.getDeckLoadGeneration(deck) && !source.bufferedScratchPort
+        && !this.scratchNodes[deck] && !this.scratchLoads[deck] && !this.scratchQueue[deck]) {
+        this.queueScratchAudio(deck, url, generation);
       }
       return;
     }
@@ -910,11 +919,11 @@ export class DJAudioEngine {
     if (deck === 'A') this.loadedTrackIdA = null; else this.loadedTrackIdB = null;
 
     this.clearScratchAudio(deck);
-    const audioUrl = track.url || `/api/audio/${track.id}`;
-    this.deckAudioUrls[deck] = audioUrl;
-    console.log(`🎧 DJ Audio: Loading track to Deck ${deck}: ${track.title}, URL: ${audioUrl}`);
-    const loadPromise = source.load(track);
-    try { await loadPromise; }
+    this.resetAutoGain(deck);
+    delete this.deckAudioUrls[deck];
+    console.log(`🎧 DJ Audio: Loading track to Deck ${deck}: ${track.title}`);
+    let audioUrl: string;
+    try { audioUrl = await source.load(track); }
     catch (error) {
       if (deck === 'A' && this.activeTrackLoadGenerationA === generation) this.activeTrackLoadGenerationA = null;
       if (deck === 'B' && this.activeTrackLoadGenerationB === generation) this.activeTrackLoadGenerationB = null;
@@ -934,64 +943,60 @@ export class DJAudioEngine {
 
     if (generation !== (deck === 'A' ? this.trackLoadGenerationA : this.trackLoadGenerationB)) return;
     if (deck === 'A') this.loadedTrackIdA = track.id; else this.loadedTrackIdB = track.id;
-    if (!(source instanceof StemDeckSource && source.getStemStatus().mode === 'stems')) void this.prepareScratchAudio(deck, audioUrl, generation);
+    this.deckAudioUrls[deck] = audioUrl;
+    if (!(source instanceof StemDeckSource && source.getStemStatus().mode === 'stems')) this.queueScratchAudio(deck, audioUrl, generation);
 
-    // Auto-gain: analyze track loudness and compute normalization factor
-    const storeState = useStore.getState();
-    const autoGainEnabled = deck === 'A' ? storeState.djMixer.autoGainA : storeState.djMixer.autoGainB;
-    if (autoGainEnabled) {
-      this.analyzeAutoGain(deck, audioUrl).catch(err => {
-        console.warn(`🎧 Auto-gain analysis failed for Deck ${deck}:`, err);
-      });
-    } else {
-      // Reset auto-gain factor when disabled
-      if (deck === 'A') this.autoGainFactorA = 1.0;
-      else this.autoGainFactorB = 1.0;
-    }
+    this.prepareAutoGain(deck, track, audioUrl, generation);
   }
 
-  /**
-   * Analyze track loudness for auto-gain normalization.
-   * Fetches audio data, decodes it, and computes peak/RMS to determine gain correction.
-   * Target: -3 dBFS peak (~0.71 linear) for consistent loudness across tracks.
-   */
-  private async analyzeAutoGain(deck: DeckId, audioUrl: string): Promise<void> {
-    if (!this.audioContext) return;
-    
+  private autoGainLoads: Partial<Record<DeckId, AbortController>> = {};
+
+  private resetAutoGain(deck: DeckId): void {
+    this.autoGainLoads[deck]?.abort();
+    delete this.autoGainLoads[deck];
+    this.setAutoGainFactor(deck, 1);
+  }
+
+  private prepareAutoGain(deck: DeckId, track: Song, audioUrl: string, generation: number): void {
+    const mixer = useStore.getState().djMixer;
+    if (!(deck === "A" ? mixer.autoGainA : mixer.autoGainB)) return;
+    if (typeof track.replayGainDb === "number" && Number.isFinite(track.replayGainDb)) {
+      const peakLimit = track.replayPeak && track.replayPeak > 0 ? 0.707 / track.replayPeak : 3;
+      this.setAutoGainFactor(deck, Math.min(3, peakLimit, 10 ** (track.replayGainDb / 20)));
+      return;
+    }
+    void this.analyzeAutoGain(deck, audioUrl, generation);
+  }
+
+  private setAutoGainFactor(deck: DeckId, factor: number): void {
+    if (this.getAutoGainFactor(deck) === factor) return;
+    if (deck === "A") this.autoGainFactorA = factor;
+    else this.autoGainFactorB = factor;
+    this.applyAutoGain(deck);
+  }
+
+  private async analyzeAutoGain(deck: DeckId, audioUrl: string, generation: number): Promise<void> {
+    const context = this.audioContext;
+    if (!context) return;
+    const controller = new AbortController();
+    this.autoGainLoads[deck] = controller;
+    const current = () => !controller.signal.aborted && context === this.audioContext && generation === this.getDeckLoadGeneration(deck);
     try {
-      const response = await fetch(audioUrl);
-      const arrayBuffer = await response.arrayBuffer();
-      const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
-      
-      // Find peak amplitude across all channels
+      const response = await fetch(audioUrl, { signal: controller.signal });
+      if (!response.ok) throw new Error("Unable to read audio for auto-gain");
+      const bytes = await response.arrayBuffer();
+      if (!current()) return;
+      const buffer = await context.decodeAudioData(bytes);
+      if (!current()) return;
       let peak = 0;
-      for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
-        const channelData = audioBuffer.getChannelData(ch);
-        for (let i = 0; i < channelData.length; i++) {
-          const abs = Math.abs(channelData[i]);
-          if (abs > peak) peak = abs;
-        }
+      for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+        for (const sample of buffer.getChannelData(channel)) peak = Math.max(peak, Math.abs(sample));
       }
-      
-      // Compute gain factor to normalize peak to target (-3 dBFS = 0.707)
-      const targetPeak = 0.707;
-      const gainFactor = peak > 0.01 ? Math.min(3.0, targetPeak / peak) : 1.0; // Cap at +9.5dB
-      
-      if (deck === 'A') {
-        this.autoGainFactorA = gainFactor;
-      } else {
-        this.autoGainFactorB = gainFactor;
-      }
-      
-      const gainDb = 20 * Math.log10(gainFactor);
-      console.log(`🎧 Auto-gain Deck ${deck}: peak=${peak.toFixed(3)}, factor=${gainFactor.toFixed(2)} (${gainDb.toFixed(1)}dB)`);
-      
-      // Apply auto-gain by adjusting the channel gain node
-      this.applyAutoGain(deck);
-    } catch (err) {
-      console.warn(`🎧 Auto-gain analysis error for Deck ${deck}:`, err);
-      if (deck === 'A') this.autoGainFactorA = 1.0;
-      else this.autoGainFactorB = 1.0;
+      this.setAutoGainFactor(deck, peak > 0.01 ? Math.min(3, 0.707 / peak) : 1);
+    } catch (error) {
+      if (current()) console.warn("DJ auto-gain unavailable", error);
+    } finally {
+      if (this.autoGainLoads[deck] === controller) delete this.autoGainLoads[deck];
     }
   }
 
@@ -1005,7 +1010,8 @@ export class DJAudioEngine {
     
     const storeState = useStore.getState();
     const deckState = deck === 'A' ? storeState.djDeckA : storeState.djDeckB;
-    const autoGainFactor = deck === 'A' ? this.autoGainFactorA : this.autoGainFactorB;
+    const enabled = deck === "A" ? storeState.djMixer.autoGainA : storeState.djMixer.autoGainB;
+    const autoGainFactor = enabled ? (deck === "A" ? this.autoGainFactorA : this.autoGainFactorB) : 1;
     
     const effectiveGain = deckState.volume * autoGainFactor;
     gainNode.gain.setValueAtTime(
@@ -1029,6 +1035,7 @@ export class DJAudioEngine {
     else { ++this.trackLoadGenerationB; this.activeTrackLoadGenerationB = null; }
     if (deck === 'A') this.loadedTrackIdA = null; else this.loadedTrackIdB = null;
     this.clearScratchAudio(deck);
+    this.resetAutoGain(deck);
     delete this.deckAudioUrls[deck];
     this.getDeckSource(deck)?.unload();
     this.reconcileLoopTicker();
@@ -1146,16 +1153,13 @@ export class DJAudioEngine {
     const context = this.audioContext;
     const expectedSource = this.getDeckSource(deck);
     if (!context || !expectedSource) throw new Error('Audio engine is not initialized');
-    const prepared: PreparedDeckTrack = {
-      deck, track, source: this.createPreparedSource(context), expectedSource,
-      expectedLoadGeneration: this.getDeckLoadGeneration(deck), state: 'prepared',
-    };
+    const source = this.createPreparedSource(context);
+    const expectedLoadGeneration = this.getDeckLoadGeneration(deck);
     try {
-      await prepared.source.load(track);
-      return prepared;
+      const audioURL = await source.load(track);
+      return { deck, track, source, expectedSource, expectedLoadGeneration, audioURL, state: 'prepared' };
     } catch (error) {
-      prepared.state = 'discarded';
-      prepared.source.dispose();
+      source.dispose();
       throw error;
     }
   }
@@ -1206,6 +1210,7 @@ export class DJAudioEngine {
     if (!gain) { this.discardPreparedTrack(prepared); return null; }
     const retained: RetainedDeckSource = {
       deck, source: current, trackId: this.getDeckLoadedTrackId(deck),
+      audioURL: this.deckAudioUrls[deck], autoGainFactor: this.getAutoGainFactor(deck),
       position: originalTransport?.position ?? current.getPosition(),
       wasPlaying: originalTransport?.wasPlaying ?? current.isPlaying(),
       committedSource: source, committedLoadGeneration: this.getDeckLoadGeneration(deck) + 1, state: 'retained',
@@ -1225,13 +1230,15 @@ export class DJAudioEngine {
       console.error(`Unable to connect prepared source for Deck ${deck}`, error);
       return null;
     }
+    this.resetAutoGain(deck);
     this.setActiveDeckSource(deck, source);
     this.bindDeckSourceListeners(deck, source);
     if (deck === 'A') { ++this.trackLoadGenerationA; this.loadedTrackIdA = prepared.track.id; }
     else { ++this.trackLoadGenerationB; this.loadedTrackIdB = prepared.track.id; }
     prepared.state = 'committed';
-    this.deckAudioUrls[deck] = prepared.track.url || `/api/audio/${prepared.track.id}`;
-    if (!(source instanceof StemDeckSource && source.getStemStatus().mode === 'stems')) void this.prepareScratchAudio(deck, this.deckAudioUrls[deck]!, this.getDeckLoadGeneration(deck));
+    this.deckAudioUrls[deck] = prepared.audioURL;
+    if (!(source instanceof StemDeckSource && source.getStemStatus().mode === 'stems')) this.queueScratchAudio(deck, this.deckAudioUrls[deck]!, this.getDeckLoadGeneration(deck));
+    this.prepareAutoGain(deck, prepared.track, this.deckAudioUrls[deck]!, this.getDeckLoadGeneration(deck));
     return retained;
   }
 
@@ -1265,13 +1272,21 @@ export class DJAudioEngine {
       this.discardRetainedDeckSource(retained);
       return false;
     }
+    this.clearScratchAudio(deck);
+    this.resetAutoGain(deck);
     this.setActiveDeckSource(deck, source);
     this.bindDeckSourceListeners(deck, source);
     source.seek(retained.position);
     if (deck === 'A') { ++this.trackLoadGenerationA; this.loadedTrackIdA = retained.trackId; }
     else { ++this.trackLoadGenerationB; this.loadedTrackIdB = retained.trackId; }
-    retained.state = 'restored';
+    retained.state = "restored";
+    if (retained.audioURL) this.deckAudioUrls[deck] = retained.audioURL;
+    else delete this.deckAudioUrls[deck];
     beforeResume?.();
+    this.setAutoGainFactor(deck, retained.autoGainFactor);
+    if (retained.audioURL && !(source instanceof StemDeckSource && source.getStemStatus().mode === "stems")) {
+      this.queueScratchAudio(deck, retained.audioURL, this.getDeckLoadGeneration(deck));
+    }
     current.dispose();
     if (retained.wasPlaying) void source.play().then(() => this.reconcileLoopTicker());
     return true;
@@ -1384,6 +1399,13 @@ export class DJAudioEngine {
   private scratchNodes: Partial<Record<DeckId, AudioWorkletNode>> = {};
   private scratchReady: Partial<Record<DeckId, boolean>> = {};
   private scratchLoads: Partial<Record<DeckId, AbortController>> = {};
+  private scratchQueue: Partial<Record<DeckId, { url: string; generation: number }>> = {};
+  private scratchBytes: Partial<Record<DeckId, number>> = {};
+  private loopBufferBytes: Partial<Record<DeckId, number>> = {};
+  private scratchTimer: ReturnType<typeof setTimeout> | undefined;
+  private scratchPreparing = false;
+  private static readonly scratchBudget = 192 * 1024 * 1024;
+  private static readonly loopBufferBudget = 128 * 1024 * 1024;
   private scratchModule: Promise<void> | null = null;
   private scratchToken = 0;
   private deckAudioUrls: Partial<Record<DeckId, string>> = {};
@@ -1392,13 +1414,13 @@ export class DJAudioEngine {
   private scratchPort(deck: DeckId): { postMessage(message: Record<string, unknown>): void } | null {
     const stem = this.getStemDeckSource(deck);
     if (stem?.getStemStatus().mode === 'stems') return stem.scratchPort;
-    return this.scratchNodes[deck]?.port ?? null;
+    return stem?.bufferedScratchPort ?? this.scratchNodes[deck]?.port ?? null;
   }
 
   canScratch(deck: DeckId): boolean {
     const stem = this.getStemDeckSource(deck);
     if (stem?.getStemStatus().mode === 'stems') return stem.canScratch();
-    return !!this.scratchReady[deck] && !!this.scratchNodes[deck];
+    return !!stem?.bufferedScratchPort || (!!this.scratchReady[deck] && !!this.scratchNodes[deck]);
   }
 
   private handleScratchMessage(deck: DeckId, message: { type: string; token?: number; position?: number; time?: number; rate?: number }): void {
@@ -1419,12 +1441,16 @@ export class DJAudioEngine {
   getScratchStatus(deck: DeckId): string {
     const stem = this.getStemDeckSource(deck);
     if (stem?.getStemStatus().mode === 'stems') return stem.canScratch() ? 'Scratch' : 'Scratch unavailable';
-    if (this.scratchReady[deck]) return 'Scratch';
-    return this.scratchLoads[deck] || this.scratchNodes[deck] ? 'Preparing scratch…' : 'Scratch unavailable';
+    if (stem?.bufferedScratchPort || this.scratchReady[deck]) return 'Scratch';
+    return this.scratchQueue[deck] || this.scratchLoads[deck] || this.scratchNodes[deck] ? 'Preparing scratch…' : 'Scratch unavailable';
   }
 
   private clearScratchAudio(deck: DeckId): void {
     this.endScratch(deck, 0, false);
+    this.getStemDeckSource(deck)?.setLoopBuffer(null);
+    delete this.scratchQueue[deck];
+    delete this.scratchBytes[deck];
+    delete this.loopBufferBytes[deck];
     this.scratchLoads[deck]?.abort();
     delete this.scratchLoads[deck];
     this.scratchNodes[deck]?.port.close();
@@ -1433,29 +1459,106 @@ export class DJAudioEngine {
     this.scratchReady[deck] = false;
   }
 
+  /** Reconsider an unprepared deck when it becomes the active work surface. */
+  prioritizeScratch(deck: DeckId): void {
+    const url = this.deckAudioUrls[deck];
+    const source = this.getStemDeckSource(deck);
+    if (!url || this.scratchNodes[deck] || this.scratchLoads[deck] || this.scratchQueue[deck]
+      || source?.bufferedScratchPort || source?.getStemStatus().mode === 'stems') return;
+    this.queueScratchAudio(deck, url, this.getDeckLoadGeneration(deck));
+  }
+
+  private queueScratchAudio(deck: DeckId, url: string, generation: number): void {
+    if (!this.audioContext?.audioWorklet) return;
+    this.scratchQueue[deck] = { url, generation };
+    this.scheduleScratchPreparation();
+  }
+
+  private scheduleScratchPreparation(): void {
+    if (this.scratchPreparing || this.scratchTimer !== undefined || (!this.scratchQueue.A && !this.scratchQueue.B)) return;
+    // Leave the playback load and transport controls a turn before decoding.
+    this.scratchTimer = setTimeout(async () => {
+      this.scratchTimer = undefined;
+      const selected = useStore.getState().djActiveDeck;
+      const deck: DeckId = this.scratchQueue[selected] ? selected : selected === "A" ? "B" : "A";
+      const request = this.scratchQueue[deck];
+      if (!request) return;
+      delete this.scratchQueue[deck];
+      this.scratchPreparing = true;
+      try { await this.prepareScratchAudio(deck, request.url, request.generation); }
+      finally {
+        this.scratchPreparing = false;
+        this.scheduleScratchPreparation();
+      }
+    }, 100);
+  }
+
   private async prepareScratchAudio(deck: DeckId, url: string, generation: number): Promise<void> {
     const context = this.audioContext;
-    if (!context?.audioWorklet) return;
+    if (!context?.audioWorklet || generation !== this.getDeckLoadGeneration(deck)) return;
+    const other: DeckId = deck === "A" ? "B" : "A";
+    let retained = this.scratchBytes[other] ?? 0;
+    const duration = this.getDuration(deck);
+    const estimatedBytes = Math.ceil(duration * context.sampleRate) * 2 * Float32Array.BYTES_PER_ELEMENT;
+    if (!Number.isFinite(estimatedBytes) || estimatedBytes <= 0 || estimatedBytes > DJAudioEngine.scratchBudget) return;
+    if (retained + estimatedBytes > DJAudioEngine.scratchBudget) {
+      if (useStore.getState().djActiveDeck !== deck || this.isPlaying(other) || this.isScratching(other)) return;
+      this.clearScratchAudio(other);
+      retained = 0;
+    }
     const controller = new AbortController();
     this.scratchLoads[deck] = controller;
     const current = () => !controller.signal.aborted && this.audioContext === context &&
       generation === (deck === 'A' ? this.trackLoadGenerationA : this.trackLoadGenerationB);
-    try {
+    const source = this.getStemDeckSource(deck);
+    const useBufferedTransport = source && isMacOSWails();
+    const loadVinylModule = () => {
       this.scratchModule ??= context.audioWorklet.addModule(new URL('./vinylScratch.worklet.js', import.meta.url).href)
         .catch(error => { this.scratchModule = null; throw error; });
-      await this.scratchModule;
+      return this.scratchModule;
+    };
+    try {
+      if (!useBufferedTransport) await loadVinylModule();
       if (!current()) return;
       const response = await fetch(url, { signal: controller.signal });
       if (!response.ok) throw new Error(`Scratch audio: HTTP ${response.status}`);
-      const buffer = await context.decodeAudioData(await response.arrayBuffer());
+      const compressed = await response.arrayBuffer();
       if (!current()) return;
+      const buffer = await context.decodeAudioData(compressed);
+      if (!current()) return;
+      const channelCount = Math.min(2, buffer.numberOfChannels);
+      const bytes = buffer.length * channelCount * Float32Array.BYTES_PER_ELEMENT;
+      if (retained + bytes > DJAudioEngine.scratchBudget) return;
+      if (useBufferedTransport && buffer.numberOfChannels <= 2) {
+        const prepared = await source.prepareBufferedTransport(buffer, () => {
+          if (this.getDeckSource(deck) !== source || generation !== this.getDeckLoadGeneration(deck)) return;
+          delete this.scratchBytes[deck];
+          this.endScratch(deck, 0, true);
+          this.reconcileLoopTicker();
+        });
+        if (!current()) return;
+        if (prepared) {
+          this.scratchBytes[deck] = bytes;
+          this.reconcileLoopTicker();
+          return;
+        }
+      }
+      if (useBufferedTransport) {
+        // Keep the media element's speaker downmix for multichannel material.
+        await loadVinylModule();
+        if (!current()) return;
+      }
       const node = new AudioWorkletNode(context, 'vinyl-scratch', {
-        numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [Math.min(2, buffer.numberOfChannels)],
+        numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [channelCount],
       });
-      const channels = Array.from({ length: Math.min(2, buffer.numberOfChannels) }, (_, ch) => buffer.getChannelData(ch).slice());
+      const channels: Float32Array<ArrayBuffer>[] = [];
+      for (let channel = 0; channel < channelCount; channel++) channels.push(buffer.getChannelData(channel).slice());
       node.port.postMessage({ type: 'load', channels }, channels.map(channel => channel.buffer));
       node.connect((deck === 'A' ? this.gainNodeA : this.gainNodeB)!);
       this.scratchNodes[deck] = node;
+      this.scratchBytes[deck] = bytes;
+      // Keep native loop buffers independently bounded.
+      const bufferBytes = buffer.length * buffer.numberOfChannels * Float32Array.BYTES_PER_ELEMENT;
       node.port.onmessage = event => {
         if (this.scratchNodes[deck] === node) this.handleScratchMessage(deck, event.data);
       };
@@ -1466,7 +1569,16 @@ export class DJAudioEngine {
         node.disconnect();
         node.port.close();
         delete this.scratchNodes[deck];
+        this.getStemDeckSource(deck)?.setLoopBuffer(null);
+        delete this.scratchBytes[deck];
+        delete this.loopBufferBytes[deck];
+        this.reconcileLoopTicker();
       };
+      if (source && (this.loopBufferBytes[other] ?? 0) + bufferBytes <= DJAudioEngine.loopBufferBudget) {
+        source.setLoopBuffer(buffer);
+        this.loopBufferBytes[deck] = bufferBytes;
+        this.reconcileLoopTicker();
+      }
     } catch (error) {
       if (current()) console.warn(`Scratch audio unavailable on Deck ${deck}`, error);
     } finally {
@@ -2106,9 +2218,17 @@ export class DJAudioEngine {
     
     // Fallback approach: use HTMLAudioElement
     const audio = this.headphoneAudioElement as HTMLAudioElement & { setSinkId?: (deviceId: string) => Promise<void> };
+    // WebKit asks for a user gesture even when selecting the already-active
+    // system default. The element is already routed there without a request.
+    const currentSink = audio.sinkId === 'default' ? '' : audio.sinkId || '';
+    const requestedSink = deviceId === 'default' ? '' : deviceId;
+    if (currentSink === requestedSink) {
+      await this.ensureHeadphoneOutputPlaying();
+      return;
+    }
     if (typeof audio.setSinkId === 'function') {
       try {
-        await audio.setSinkId(deviceId || '');
+        await audio.setSinkId(requestedSink);
         await this.ensureHeadphoneOutputPlaying();
         console.log(`🎧 Headphone output device set to: ${deviceId || 'default'}`);
       } catch (error) {
@@ -2172,6 +2292,7 @@ export class DJAudioEngine {
    */
   setTempo(deck: DeckId, tempo: number): void {
     this.getDeckSource(deck)?.setTempo(tempo);
+    this.reconcileLoopTicker();
   }
 
   /**
@@ -2180,6 +2301,7 @@ export class DJAudioEngine {
    */
   setKeyLock(deck: DeckId, enabled: boolean): void {
     this.getDeckSource(deck)?.setKeyLock(enabled);
+    this.reconcileLoopTicker();
   }
 
   /**
@@ -2699,11 +2821,12 @@ export class DJAudioEngine {
       const endBeat = nearest + beats;
       const whole = Math.floor(endBeat);
       const fraction = endBeat - whole;
-      const beatAt = (index: number) => beatGrid[Math.min(index, beatGrid.length - 1)] + offset;
+      const lastBeat = beatGrid.length - 1;
+      const finalInterval = beatGrid[lastBeat] - beatGrid[lastBeat - 1];
+      const beatAt = (index: number) => beatGrid[Math.min(index, lastBeat)] + offset +
+        Math.max(0, index - lastBeat) * finalInterval;
       start = beatAt(nearest);
-      end = whole < beatGrid.length
-        ? beatAt(whole) + (whole + 1 < beatGrid.length ? (beatAt(whole + 1) - beatAt(whole)) * fraction : 0)
-        : start + beats * (60 / bpm);
+      end = beatAt(whole) + (beatAt(whole + 1) - beatAt(whole)) * fraction;
     }
     end = Math.min(end, source.getDuration());
     
@@ -2768,18 +2891,19 @@ export class DJAudioEngine {
       const aScratch = this.scratchStateA?.active ?? false;
       const bScratch = this.scratchStateB?.active ?? false;
 
+      let positionA: number | undefined;
+      let positionB: number | undefined;
       if (this.deckSourceA && (!aPaused || aScratch) && now - this.lastPositionUpdateA >= this.POSITION_UPDATE_INTERVAL) {
         this.lastPositionUpdateA = now;
-        const position = this.getPosition('A');
-        this.onPositionUpdate?.('A', position);
-        storeState.setDeckPosition('A', position);
+        positionA = this.getPosition('A');
+        this.onPositionUpdate?.('A', positionA);
       }
       if (this.deckSourceB && (!bPaused || bScratch) && now - this.lastPositionUpdateB >= this.POSITION_UPDATE_INTERVAL) {
         this.lastPositionUpdateB = now;
-        const position = this.getPosition('B');
-        this.onPositionUpdate?.('B', position);
-        storeState.setDeckPosition('B', position);
+        positionB = this.getPosition('B');
+        this.onPositionUpdate?.('B', positionB);
       }
+      if (positionA !== undefined || positionB !== undefined) storeState.setDeckPositions(positionA, positionB);
       if (aPaused && !aScratch && bPaused && !bScratch) {
         this.positionIdleTimer = setTimeout(() => { this.animationFrameId = requestAnimationFrame(updatePositions); }, 250);
       } else this.animationFrameId = requestAnimationFrame(updatePositions);
@@ -2793,8 +2917,14 @@ export class DJAudioEngine {
       const source = this.getDeckSource(deck);
       const loop = (deck === 'A' ? state.djDeckA : state.djDeckB).loop;
       return source?.isPlaying() && !this.isScratching(deck) && loop.enabled && loop.end > loop.start
-        && !(source instanceof StemDeckSource && source.getStemStatus().supportsSampleAccurateLoop);
+        && !this.hasSampleAccurateLoop(source);
     });
+  }
+
+  private hasSampleAccurateLoop(source: DeckSource | null): boolean {
+    return source instanceof StemDeckSource
+      ? source.getStemStatus().supportsSampleAccurateLoop
+      : source?.supportsSampleAccurateLoop?.() ?? false;
   }
 
   private stopLoopTicker(): void {
@@ -2828,9 +2958,7 @@ export class DJAudioEngine {
     for (const deck of ['A', 'B'] as const) {
       const source = this.getDeckSource(deck);
       const loop = (deck === 'A' ? state.djDeckA : state.djDeckB).loop;
-      if (source instanceof StemDeckSource && source.getStemStatus().supportsSampleAccurateLoop) {
-        continue;
-      }
+      if (this.hasSampleAccurateLoop(source)) continue;
       if (!source || !source.isPlaying() || (this.scratchStateA?.active && deck === 'A') || (this.scratchStateB?.active && deck === 'B')) continue;
       const length = loop.end - loop.start;
       const position = source.getPosition();
@@ -2844,68 +2972,98 @@ export class DJAudioEngine {
   // VU Metering
   // ============================================================================
 
-  private startVUMetering(): void {
-    const bufferLengthA = this.analyserA?.frequencyBinCount || 128;
-    const bufferLengthB = this.analyserB?.frequencyBinCount || 128;
-    const bufferLengthMaster = this.analyserMaster?.frequencyBinCount || 128;
-    
-    const dataArrayA = new Uint8Array(bufferLengthA);
-    const dataArrayB = new Uint8Array(bufferLengthB);
-    const dataArrayMaster = new Uint8Array(bufferLengthMaster);
+  private ensureVUDataBuffer(
+    current: Uint8Array<ArrayBuffer> | null,
+    analyser: AnalyserNode,
+  ): Uint8Array<ArrayBuffer> {
+    const length = analyser.frequencyBinCount || 128;
+    if (current && current.length === length) return current;
+    return new Uint8Array(length);
+  }
 
-    const updateVU = () => {
-      // When both decks are paused, skip expensive FFT and throttle to ~4fps
-      const aPaused = !this.deckSourceA || !this.deckSourceA.isPlaying();
-      const bPaused = !this.deckSourceB || !this.deckSourceB.isPlaying();
-      if (aPaused && bPaused && !this.isScratching('A') && !this.isScratching('B')) {
-        this.vuLevels = {
-          deckA: { left: 0, right: 0 },
-          deckB: { left: 0, right: 0 },
-          master: { left: 0, right: 0 },
-        };
-        this.onVUUpdate?.(this.vuLevels);
-        if (this.vuIdleTimer) clearTimeout(this.vuIdleTimer);
-        this.vuIdleTimer = setTimeout(() => {
-          this.vuAnimationFrameId = requestAnimationFrame(updateVU);
-        }, 250);
-        return;
-      }
-      if (this.vuIdleTimer) {
-        clearTimeout(this.vuIdleTimer);
-        this.vuIdleTimer = null;
-      }
+  private sampleVULevels(force = false): VULevels {
+    const now = performance.now();
+    if (!force && now - this.lastVUSampleTime < this.VU_SAMPLE_INTERVAL_MS) {
+      return this.vuLevels;
+    }
+    this.lastVUSampleTime = now;
 
-      const levels: VULevels = {
+    const aActive = Boolean(this.deckSourceA?.isPlaying() || this.isScratching('A'));
+    const bActive = Boolean(this.deckSourceB?.isPlaying() || this.isScratching('B'));
+    if (!aActive && !bActive) {
+      this.vuLevels = {
         deckA: { left: 0, right: 0 },
         deckB: { left: 0, right: 0 },
         master: { left: 0, right: 0 },
       };
+      return this.vuLevels;
+    }
 
-      // Get levels from analysers
-      if (this.analyserA) {
-        this.analyserA.getByteFrequencyData(dataArrayA);
-        const avg = this.getAverageLevel(dataArrayA);
-        levels.deckA = { left: avg, right: avg }; // Mono for now
-      }
-
-      if (this.analyserB) {
-        this.analyserB.getByteFrequencyData(dataArrayB);
-        const avg = this.getAverageLevel(dataArrayB);
-        levels.deckB = { left: avg, right: avg };
-      }
-
-      if (this.analyserMaster) {
-        this.analyserMaster.getByteFrequencyData(dataArrayMaster);
-        const avg = this.getAverageLevel(dataArrayMaster);
-        levels.master = { left: avg, right: avg };
-      }
-
-      this.vuLevels = levels;
-      this.onVUUpdate?.(levels);
-      this.vuAnimationFrameId = requestAnimationFrame(updateVU);
+    const levels: VULevels = {
+      deckA: { left: 0, right: 0 },
+      deckB: { left: 0, right: 0 },
+      master: { left: 0, right: 0 },
     };
 
-    this.vuAnimationFrameId = requestAnimationFrame(updateVU);
+    if (aActive && this.analyserA) {
+      this.vuDataA = this.ensureVUDataBuffer(this.vuDataA, this.analyserA);
+      this.analyserA.getByteFrequencyData(this.vuDataA);
+      const avg = this.getAverageLevel(this.vuDataA);
+      levels.deckA = { left: avg, right: avg };
+    }
+
+    if (bActive && this.analyserB) {
+      this.vuDataB = this.ensureVUDataBuffer(this.vuDataB, this.analyserB);
+      this.analyserB.getByteFrequencyData(this.vuDataB);
+      const avg = this.getAverageLevel(this.vuDataB);
+      levels.deckB = { left: avg, right: avg };
+    }
+
+    if (this.analyserMaster) {
+      this.vuDataMaster = this.ensureVUDataBuffer(this.vuDataMaster, this.analyserMaster);
+      this.analyserMaster.getByteFrequencyData(this.vuDataMaster);
+      const avg = this.getAverageLevel(this.vuDataMaster);
+      levels.master = { left: avg, right: avg };
+    }
+
+    this.vuLevels = levels;
+    return levels;
+  }
+
+  private scheduleVUCallbackLoop(): void {
+    if (this.vuTimerId) {
+      clearTimeout(this.vuTimerId);
+      this.vuTimerId = null;
+    }
+    if (!this.onVUUpdate) return;
+
+    const tick = () => {
+      this.vuTimerId = null;
+      if (!this.isInitialized || !this.onVUUpdate) return;
+      const levels = this.sampleVULevels(true);
+      this.onVUUpdate(levels);
+      const active = Boolean(
+        this.deckSourceA?.isPlaying()
+        || this.deckSourceB?.isPlaying()
+        || this.isScratching('A')
+        || this.isScratching('B'),
+      );
+      this.vuTimerId = setTimeout(tick, active ? this.VU_SAMPLE_INTERVAL_MS : 250);
+    };
+
+    this.vuTimerId = setTimeout(tick, this.VU_SAMPLE_INTERVAL_MS);
+  }
+
+  private startVUMetering(): void {
+    this.lastVUSampleTime = -Infinity;
+    if (this.analyserA) this.vuDataA = this.ensureVUDataBuffer(this.vuDataA, this.analyserA);
+    if (this.analyserB) this.vuDataB = this.ensureVUDataBuffer(this.vuDataB, this.analyserB);
+    if (this.analyserMaster) this.vuDataMaster = this.ensureVUDataBuffer(this.vuDataMaster, this.analyserMaster);
+    // Poll on a lightweight ~25 Hz timer only when an onVUUpdate listener is registered;
+    // visual meters (DJVUMeter / DJScopeView) pull lazily via getVULevels() on demand.
+    if (this.onVUUpdate) {
+      this.scheduleVUCallbackLoop();
+    }
   }
 
   private getAverageLevel(dataArray: Uint8Array): number {
@@ -2924,8 +3082,18 @@ export class DJAudioEngine {
     this.onPositionUpdate = callback;
   }
 
-  setOnVUUpdate(callback: (levels: VULevels) => void): void {
+  setOnVUUpdate(callback: ((levels: VULevels) => void) | null): void {
     this.onVUUpdate = callback;
+    if (!callback) {
+      if (this.vuTimerId) {
+        clearTimeout(this.vuTimerId);
+        this.vuTimerId = null;
+      }
+      return;
+    }
+    if (this.isInitialized && !this.vuTimerId) {
+      this.scheduleVUCallbackLoop();
+    }
   }
 
   setOnTrackEnd(callback: (deck: DeckId) => void): void {
@@ -2951,13 +3119,14 @@ export class DJAudioEngine {
     ++this.trackLoadGenerationB;
     this.clearScratchAudio('A');
     this.clearScratchAudio('B');
+    this.resetAutoGain('A');
+    this.resetAutoGain('B');
+    clearTimeout(this.scratchTimer);
+    this.scratchTimer = undefined;
     this.scratchModule = null;
     // Stop animation loops
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
-    }
-    if (this.vuAnimationFrameId) {
-      cancelAnimationFrame(this.vuAnimationFrameId);
     }
     if (this.positionIdleTimer) {
       clearTimeout(this.positionIdleTimer);
@@ -2971,10 +3140,15 @@ export class DJAudioEngine {
       clearInterval(this.loopCheckTimer);
       this.loopCheckTimer = null;
     }
-    if (this.vuIdleTimer) {
-      clearTimeout(this.vuIdleTimer);
-      this.vuIdleTimer = null;
+    if (this.vuTimerId) {
+      clearTimeout(this.vuTimerId);
+      this.vuTimerId = null;
     }
+    this.vuDataA = null;
+    this.vuDataB = null;
+    this.vuDataMaster = null;
+    this.lastVUSampleTime = -Infinity;
+    this.vuLevels = { deckA: { left: 0, right: 0 }, deckB: { left: 0, right: 0 }, master: { left: 0, right: 0 } };
 
     // Stop and clean up deck transports.
     this.deckSourceA?.dispose();
@@ -3028,10 +3202,11 @@ export class DJAudioEngine {
   }
 
   /**
-   * Get cached VU levels (updated by startVUMetering loop).
+   * Get VU levels sampled at most every VU_SAMPLE_INTERVAL_MS (~25 Hz).
    */
   getVULevels(): VULevels {
-    return this.vuLevels;
+    if (!this.isInitialized) return this.vuLevels;
+    return this.sampleVULevels(false);
   }
   /**
    * Get a MediaStream from the master output for recording.

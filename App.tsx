@@ -10,7 +10,7 @@
  * 
  * @module App
  */
-import React, { useEffect, Component, ReactNode } from 'react';
+import React, { useEffect, Component, ReactNode, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
@@ -21,34 +21,35 @@ import { Artists } from './pages/Artists';
 import { ArtistDetail } from './pages/ArtistDetail';
 import { Genres } from './pages/Genres';
 import { GenreDetail } from './pages/GenreDetail';
-import { SmartPlaylists } from './pages/SmartPlaylists';
 import { Playlists } from './pages/Playlists';
 import { PlaylistDetail } from './pages/PlaylistDetail';
 import { LikedSongs } from './pages/LikedSongs';
 import { LikedAlbums } from './pages/LikedAlbums';
-import { Spotify } from './pages/Spotify';
 import { SpotifyCallback } from './pages/SpotifyCallback';
-import { SpotifyArtistDetail } from './pages/SpotifyArtistDetail';
-import { SpotifyAlbumDetail } from './pages/SpotifyAlbumDetail';
-import { SpotifyPlaylistDetail } from './pages/SpotifyPlaylistDetail';
-import { Downloads } from './pages/Downloads';
 import { Search } from './pages/Search';
-import { Settings } from './pages/Settings';
-import { Duplicates } from './pages/Duplicates';
-import { Stats } from './pages/Stats';
 import { SmartMixDetail } from './pages/SmartMixDetail';
-import { DJModeV2 } from './pages/DJModeV2';
 import { useStore } from './store';
 import { api } from './services/api';
 import { plexService } from './services/plex';
 import DownloadManager from './components/DownloadManager';
 import LibraryEventListener from './components/LibraryEventListener';
 import ConfirmDialog from './components/ConfirmDialog';
-import FirstLaunchDialog from './components/FirstLaunchDialog';
-import { SongInfoDialog } from './components/SongInfoDialog';
 import { useBackgroundEnrichment } from './hooks/useBackgroundEnrichment';
 import { setupGlobalErrorHandlers, createLogger } from './services/loggerService';
 import { openExternalURL, shouldUseSystemBrowser } from './services/externalNavigation';
+
+const Spotify = lazy(() => import('./pages/Spotify').then(module => ({ default: module.Spotify })));
+const SpotifyArtistDetail = lazy(() => import('./pages/SpotifyArtistDetail').then(module => ({ default: module.SpotifyArtistDetail })));
+const SpotifyAlbumDetail = lazy(() => import('./pages/SpotifyAlbumDetail').then(module => ({ default: module.SpotifyAlbumDetail })));
+const SpotifyPlaylistDetail = lazy(() => import('./pages/SpotifyPlaylistDetail').then(module => ({ default: module.SpotifyPlaylistDetail })));
+const Downloads = lazy(() => import('./pages/Downloads').then(module => ({ default: module.Downloads })));
+const SmartPlaylists = lazy(() => import('./pages/SmartPlaylists').then(module => ({ default: module.SmartPlaylists })));
+const Stats = lazy(() => import('./pages/Stats').then(module => ({ default: module.Stats })));
+const Duplicates = lazy(() => import('./pages/Duplicates').then(module => ({ default: module.Duplicates })));
+const Settings = lazy(() => import('./pages/Settings').then(module => ({ default: module.Settings })));
+const DJModeV2 = lazy(() => import('./pages/DJModeV2').then(module => ({ default: module.DJModeV2 })));
+const FirstLaunchDialog = lazy(() => import('./components/FirstLaunchDialog').then(module => ({ default: module.FirstLaunchDialog })));
+const SongInfoDialog = lazy(() => import('./components/SongInfoDialog').then(module => ({ default: module.SongInfoDialog })));
 
 setupGlobalErrorHandlers();
 const appLogger = createLogger('App');
@@ -76,10 +77,13 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 const App: React.FC = () => {
   const initLibrary = useStore(state => state.initLibrary);
   const setSpotifyConnected = useStore(state => state.setSpotifyConnected);
+  const hasLocalLibrary = useStore(state => state.songs.length > 0 || state.scanFolders.length > 0);
+  const hasSongInfo = useStore(state => Boolean(state.songInfoModalSong));
   const confirmDialog = useStore(state => state.confirmDialog);
   const closeConfirmDialog = useStore(state => state.closeConfirmDialog);
   const hasCompletedSetup = useStore(state => state.hasCompletedSetup);
   const setHasCompletedSetup = useStore(state => state.setHasCompletedSetup);
+  const isLibraryInitializing = useStore(state => state.isLibraryInitializing);
   const backendAvailable = useStore(state => state.backendAvailable);
 
   useBackgroundEnrichment();
@@ -87,21 +91,23 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const checkExistingConfig = async () => {
-      if (!backendAvailable || hasCompletedSetup) return;
+      if (!backendAvailable || hasCompletedSetup || isLibraryInitializing) return;
+      if (hasLocalLibrary) {
+        setHasCompletedSetup(true);
+        return;
+      }
       try {
-        const [folders, creds, songs, plexConfig] = await Promise.all([
-          api.getFolders().catch(() => []),
+        const [creds, plexConfig] = await Promise.all([
           api.getSpotifyAuthStatus().catch(() => null),
-          api.getSongs().catch(() => []),
           plexService.getConfig().catch(() => null),
         ]);
-        if (folders.length > 0 || songs.length > 0 || Boolean(creds?.connected) || Boolean(plexConfig?.source?.libraryId)) {
+        if (Boolean(creds?.connected) || Boolean(plexConfig?.source?.libraryId)) {
           setHasCompletedSetup(true);
         }
       } catch (error) { appLogger.warn('Failed to check existing configuration', error); }
     };
     void checkExistingConfig();
-  }, [backendAvailable, hasCompletedSetup, setHasCompletedSetup]);
+  }, [backendAvailable, hasCompletedSetup, hasLocalLibrary, isLibraryInitializing, setHasCompletedSetup]);
 
   useEffect(() => {
     if (!backendAvailable) return;
@@ -111,7 +117,7 @@ const App: React.FC = () => {
       if (!active || generation !== useStore.getState().spotifySessionGeneration) return;
       const connected = status.connected && !status.authRequired;
       setSpotifyConnected(connected);
-      useStore.getState().setSpotifyAccountProduct(connected ? status.product : undefined);
+      useStore.getState().setSpotifyAccountProduct(connected ? status.product : undefined, connected && status.webApiOnly);
     }).catch(() => {
       if (active && generation === useStore.getState().spotifySessionGeneration) setSpotifyConnected(false);
     });
@@ -145,6 +151,7 @@ const App: React.FC = () => {
     <ErrorBoundary>
       <BrowserRouter>
         <Layout>
+          <Suspense fallback={<p role="status" className="p-6 text-text-secondary">Loading page?</p>}>
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/songs" element={<Songs />} />
@@ -175,6 +182,7 @@ const App: React.FC = () => {
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </Suspense>
           <DownloadManager />
           <LibraryEventListener />
         </Layout>
@@ -188,8 +196,12 @@ const App: React.FC = () => {
           onConfirm={() => confirmDialog?.onConfirm()}
           onCancel={closeConfirmDialog}
         />
-        <FirstLaunchDialog isOpen={backendAvailable && !hasCompletedSetup} onComplete={() => setHasCompletedSetup(true)} />
-        <SongInfoDialog />
+        <Suspense fallback={null}>
+          {backendAvailable && !isLibraryInitializing && !hasCompletedSetup && !hasLocalLibrary && (
+            <FirstLaunchDialog isOpen onComplete={() => setHasCompletedSetup(true)} />
+          )}
+          {hasSongInfo && <SongInfoDialog />}
+        </Suspense>
       </BrowserRouter>
     </ErrorBoundary>
   );

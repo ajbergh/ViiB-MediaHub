@@ -2202,7 +2202,7 @@ func (d *DB) AddDownloads(downloads []*SpotifyDownload) ([]string, error) {
 	if len(downloads) == 0 {
 		return []string{}, nil
 	}
-	tx, err := d.conn.Begin()
+	tx, err := d.beginSpotifyWriteTx()
 	if err != nil {
 		return nil, err
 	}
@@ -2659,22 +2659,28 @@ func (d *DB) GetSetting(key string) (string, error) {
 // Empty Value Handling:
 // Empty strings are stored without encryption to avoid unnecessary processing.
 func (d *DB) SetSetting(key, value string) error {
-	storeValue := value
+	storeValue, err := d.encodeSettingValue(key, value)
+	if err != nil {
+		return err
+	}
+	_, err = d.conn.Exec(upsertSettingSQL, key, storeValue)
+	return err
+}
 
-	// Encrypt sensitive settings
+const upsertSettingSQL = `
+	INSERT INTO settings (key, value) VALUES (?, ?)
+	ON CONFLICT(key) DO UPDATE SET value = excluded.value
+`
+
+func (d *DB) encodeSettingValue(key, value string) (string, error) {
 	if crypto.IsSensitiveKey(key) && value != "" {
 		encrypted, err := d.credentialKeys.Encrypt(value)
 		if err != nil {
-			return fmt.Errorf("failed to encrypt setting %s: %w", key, err)
+			return "", fmt.Errorf("failed to encrypt setting %s: %w", key, err)
 		}
-		storeValue = encrypted
+		return encrypted, nil
 	}
-
-	_, err := d.conn.Exec(`
-		INSERT INTO settings (key, value) VALUES (?, ?)
-		ON CONFLICT(key) DO UPDATE SET value = excluded.value
-	`, key, storeValue)
-	return err
+	return value, nil
 }
 
 // SetSettingsBatch atomically saves multiple settings in a single transaction.
@@ -2686,18 +2692,11 @@ func (d *DB) SetSettingsBatch(settings map[string]string) error {
 	defer tx.Rollback()
 
 	for key, value := range settings {
-		storeValue := value
-		if crypto.IsSensitiveKey(key) && value != "" {
-			encrypted, err := d.credentialKeys.Encrypt(value)
-			if err != nil {
-				return fmt.Errorf("failed to encrypt setting %s: %w", key, err)
-			}
-			storeValue = encrypted
+		storeValue, err := d.encodeSettingValue(key, value)
+		if err != nil {
+			return err
 		}
-		if _, err := tx.Exec(`
-			INSERT INTO settings (key, value) VALUES (?, ?)
-			ON CONFLICT(key) DO UPDATE SET value = excluded.value
-		`, key, storeValue); err != nil {
+		if _, err := tx.Exec(upsertSettingSQL, key, storeValue); err != nil {
 			return fmt.Errorf("failed to save setting %s: %w", key, err)
 		}
 	}
@@ -2943,6 +2942,26 @@ func (d *DB) GetAlbumsNeedingMetadata() ([]AlbumMetadata, error) {
 	}
 
 	return results, nil
+}
+
+// NextAlbumNeedingMetadata returns the next unchecked or expired album.
+func (d *DB) NextAlbumNeedingMetadata(expirationDays int) (*AlbumMetadata, error) {
+	expiry := time.Now().Add(-time.Duration(expirationDays) * 24 * time.Hour)
+	var album AlbumMetadata
+	err := d.conn.QueryRow(`SELECT album_key, album_name, artist_name FROM (
+		SELECT album_key, album_name, artist_name FROM album_metadata WHERE spotify_checked = 0
+		UNION ALL
+		SELECT album_key, album_name, artist_name FROM album_metadata
+		WHERE spotify_checked = 1 AND spotify_found = 0 AND
+			(fetched_at < ? OR fetched_at BETWEEN 10000000000 AND ?)
+	) LIMIT 1`, expiry.Unix(), expiry.UnixMilli()-1).Scan(&album.AlbumKey, &album.AlbumName, &album.ArtistName)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &album, nil
 }
 
 // ResetAlbumSpotifyCheck resets the spotify_checked flag for an album to force re-fetch
@@ -4075,6 +4094,31 @@ func (d *DB) GetFileMetadataCacheMap() (map[string]FileMetadataCache, error) {
 		result[cache.FilePath] = cache
 	}
 	return result, nil
+}
+
+// FileCheckpoint holds the fields needed to detect changes without opening media.
+type FileCheckpoint struct {
+	FileSize int64
+	Mtime    int64
+}
+
+func (d *DB) GetFileCheckpoints() (map[string]FileCheckpoint, error) {
+	rows, err := d.conn.Query(`SELECT file_path, file_size, mtime FROM file_metadata_cache`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	checkpoints := make(map[string]FileCheckpoint)
+	for rows.Next() {
+		var path string
+		var checkpoint FileCheckpoint
+		if err := rows.Scan(&path, &checkpoint.FileSize, &checkpoint.Mtime); err != nil {
+			return nil, err
+		}
+		checkpoints[path] = checkpoint
+	}
+	return checkpoints, rows.Err()
 }
 
 // DeleteFileMetadataCache removes a file metadata cache entry by path.

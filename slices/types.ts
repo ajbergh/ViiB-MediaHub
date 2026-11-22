@@ -61,6 +61,7 @@ export interface PlayerSlice {
   reorderQueue: (fromIndex: number, toIndex: number) => void;
   playQueueItem: (index: number) => void;
   
+  setLowPowerVisuals: (enabled: boolean) => void;
   setVisualizerMode: (mode: VisualizerMode) => void;
   setVisualizerBackgroundMode: (mode: VisualizerMode) => void;
   setVisualizerArtworkOpacity: (opacity: number) => void;
@@ -166,6 +167,7 @@ export interface LibrarySlice {
   scanProgress: string;
   backendAvailable: boolean;
   isLibraryInitializing: boolean;
+  libraryPreviewSongs: Song[] | undefined;
   scanFolders: ScanFolder[];
   
   // Likes state
@@ -177,6 +179,8 @@ export interface LibrarySlice {
   
   initLibrary: () => Promise<void>;
   refreshLibrary: () => Promise<void>;
+  syncLibraryCatalog: (recover?: boolean) => Promise<void>;
+  getLibraryRevision: () => number | null;
   addSongs: (newSongs: Song[]) => void;
   resetLibrary: () => Promise<void>;
   createPlaylist: (name: string, songIds?: string[]) => Promise<Playlist | void>;
@@ -228,7 +232,8 @@ export interface LibrarySlice {
 
 export interface SpotifySlice {
   spotifyAccountProduct: 'premium' | 'free' | 'unknown';
-  setSpotifyAccountProduct: (product?: string) => void;
+  spotifyWebAPIOnly: boolean;
+  setSpotifyAccountProduct: (product?: string, webAPIOnly?: boolean) => void;
   spotifyConnected: boolean;
   spotifySessionGeneration: number;
   spotifyAuthRequired: boolean;
@@ -245,7 +250,7 @@ export interface SpotifySlice {
   spotifySearchQuery: string;
   spotifyLastSearchedQuery: string;
   spotifySearchResults: any | null;
-  spotifyActiveTab: 'search' | 'recent' | 'albums' | 'playlists';
+  spotifyActiveTab: 'search' | 'recent' | 'albums' | 'playlists' | 'account';
   spotifyRecentlyPlayed: any | null;
   spotifySavedAlbums: any | null;
   spotifySavedPlaylists: any | null;
@@ -260,7 +265,7 @@ export interface SpotifySlice {
   setSpotifySearchQuery: (query: string) => void;
   setSpotifyLastSearchedQuery: (query: string) => void;
   setSpotifySearchResults: (results: any | null) => void;
-  setSpotifyActiveTab: (tab: 'search' | 'recent' | 'albums' | 'playlists') => void;
+  setSpotifyActiveTab: (tab: 'search' | 'recent' | 'albums' | 'playlists' | 'account') => void;
   setSpotifyRecentlyPlayed: (data: any | null) => void;
   setSpotifySavedAlbums: (data: any | null) => void;
   setSpotifySavedPlaylists: (data: any | null) => void;

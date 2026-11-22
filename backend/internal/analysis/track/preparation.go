@@ -1,3 +1,4 @@
+// Checks preparation artifacts and settles claims for analysis that is already current.
 package track
 
 import (
@@ -42,6 +43,16 @@ func preparationVersions() map[string]string {
 	return map[string]string{threeband.Kind: threeband.AlgorithmVersion, "local_duration": db.LocalDurationAlgorithmVersion, "local_scalars": AlgorithmVersion, "local_energy": features.EnergyLevelAlgorithmVersion, "local_features": features.AlgorithmVersion, "local_loudness": features.BS1770AlgorithmVersion, "local_beatgrid": beatgrid.AlgorithmVersion, "local_amplitude": waveformartifact.AlgorithmVersion}
 }
 
+func preparationArtifactSpecs() []db.TrackAnalysisArtifactSpec {
+	return []db.TrackAnalysisArtifactSpec{
+		{Kind: threeband.Kind, FormatVersion: threeband.FormatVersion, AlgorithmVersion: threeband.AlgorithmVersion, MaxPayloadBytes: threeband.MaxBytes},
+		{Kind: waveformartifact.Kind, FormatVersion: waveformartifact.FormatVersion, AlgorithmVersion: waveformartifact.AlgorithmVersion, MaxPayloadBytes: waveformartifact.MaxBytes},
+		{Kind: features.ArtifactKind, FormatVersion: features.FormatVersion, AlgorithmVersion: features.AlgorithmVersion, MaxPayloadBytes: features.MaxStructureStatusArtifactBytes},
+		{Kind: features.BS1770ArtifactKind, FormatVersion: features.BS1770FormatVersion, AlgorithmVersion: features.BS1770AlgorithmVersion, MaxPayloadBytes: features.MaxBS1770ArtifactBytes},
+		{Kind: beatgrid.ArtifactKind, FormatVersion: beatgrid.FormatVersion, AlgorithmVersion: beatgrid.AlgorithmVersion, MaxPayloadBytes: int64(beatgrid.MaxEncodedBytes)},
+	}
+}
+
 // A settled abstention is output too. Missing/corrupt available artifacts are
 // repairable; unavailable output stays settled until bytes or version change.
 func missingPreparation(database *db.DB, source analysis.ResolvedSource, record db.TrackAnalysis) (map[string]bool, error) {
@@ -49,11 +60,37 @@ func missingPreparation(database *db.DB, source analysis.ResolvedSource, record 
 	if err != nil {
 		return nil, err
 	}
+	artifacts, err := database.GetTrackAnalysisArtifactsBounded(source.SongID, preparationArtifactSpecs())
+	if err != nil {
+		return nil, err
+	}
+	overrides, err := database.ListTrackAnalysisOverridesBatch([]string{source.SongID})
+	if err != nil {
+		return nil, err
+	}
+	var overridePtr *db.TrackAnalysisOverride
+	if o, ok := overrides[source.SongID]; ok {
+		overridePtr = &o
+	}
+	return missingPreparationWithLookup(source, record, states, artifacts, overridePtr), nil
+}
+
+func missingPreparationWithLookup(
+	source analysis.ResolvedSource,
+	record db.TrackAnalysis,
+	states map[string]db.TrackCapabilityStatus,
+	artifacts map[db.TrackAnalysisArtifactKey]db.TrackAnalysisArtifactLookup,
+	override *db.TrackAnalysisOverride,
+) map[string]bool {
 	missing := map[string]bool{}
 	versions := preparationVersions()
-	artifactValid := func(kind string, format int, algorithm, encoding string, maxBytes int64, decode func([]byte) bool) bool {
-		a, err := database.GetTrackAnalysisArtifactBounded(source.SongID, kind, format, algorithm, maxBytes)
-		return err == nil && a.SourceFingerprint == source.Fingerprint && (a.Encoding == encoding || kind == threeband.Kind && threeband.SupportsEncoding(a.Encoding)) && a.Provenance != "unknown" && decode(a.Data)
+	artifactValid := func(kind string, format int, algorithm, encoding string, decode func([]byte) bool) bool {
+		entry, ok := artifacts[db.TrackAnalysisArtifactKey{SongID: source.SongID, Kind: kind, FormatVersion: format, AlgorithmVersion: algorithm}]
+		if !ok || entry.Err != nil {
+			return false
+		}
+		a := entry.Artifact
+		return a.SourceFingerprint == source.Fingerprint && (a.Encoding == encoding || kind == threeband.Kind && threeband.SupportsEncoding(a.Encoding)) && a.Provenance != "unknown" && decode(a.Data)
 	}
 	durationAvailable := db.HasCurrentLocalScalarField(record.Local, source.Fingerprint, "local_duration_seconds")
 	localScalarsAvailable := record.Local != nil && record.Local.AlgorithmVersion == AlgorithmVersion && db.ValidLocalScalarObservation(record.Local, source.Fingerprint)
@@ -63,15 +100,26 @@ func missingPreparation(database *db.DB, source analysis.ResolvedSource, record 
 		localEnergyAvailable = localEnergyAvailable && db.HasCurrentLocalScalarField(record.Local, source.Fingerprint, "local_energy_level")
 	}
 	loudnessAvailable := false
-	if artifact, artifactErr := database.GetTrackAnalysisArtifactBounded(source.SongID, features.BS1770ArtifactKind, features.BS1770FormatVersion, features.BS1770AlgorithmVersion, features.MaxBS1770ArtifactBytes); artifactErr == nil && artifact.SourceFingerprint == source.Fingerprint && artifact.Encoding == features.BS1770Encoding && artifact.Provenance != "unknown" {
-		if measurements, decodeErr := features.DecodeBS1770(artifact.Data); decodeErr == nil {
-			loudnessAvailable = true
-			if measurements.LoudnessStatus == "available" && measurements.IntegratedLUFS != nil {
-				loudnessAvailable = loudnessAvailable && db.HasCurrentLocalScalarField(record.Local, source.Fingerprint, "integrated_lufs_bs1770")
+	if entry, ok := artifacts[db.TrackAnalysisArtifactKey{SongID: source.SongID, Kind: features.BS1770ArtifactKind, FormatVersion: features.BS1770FormatVersion, AlgorithmVersion: features.BS1770AlgorithmVersion}]; ok && entry.Err == nil {
+		artifact := entry.Artifact
+		if artifact.SourceFingerprint == source.Fingerprint && artifact.Encoding == features.BS1770Encoding && artifact.Provenance != "unknown" {
+			if measurements, decodeErr := features.DecodeBS1770(artifact.Data); decodeErr == nil {
+				loudnessAvailable = true
+				if measurements.LoudnessStatus == "available" && measurements.IntegratedLUFS != nil {
+					loudnessAvailable = loudnessAvailable && db.HasCurrentLocalScalarField(record.Local, source.Fingerprint, "integrated_lufs_bs1770")
+				}
+				if measurements.TruePeakStatus == "available" && measurements.TruePeakDBTP != nil {
+					loudnessAvailable = loudnessAvailable && db.HasCurrentLocalScalarField(record.Local, source.Fingerprint, "true_peak_dbtp")
+				}
 			}
-			if measurements.TruePeakStatus == "available" && measurements.TruePeakDBTP != nil {
-				loudnessAvailable = loudnessAvailable && db.HasCurrentLocalScalarField(record.Local, source.Fingerprint, "true_peak_dbtp")
-			}
+		}
+	}
+	waveformAvailable := false
+	if entry, ok := artifacts[db.TrackAnalysisArtifactKey{SongID: source.SongID, Kind: waveformartifact.Kind, FormatVersion: waveformartifact.FormatVersion, AlgorithmVersion: waveformartifact.AlgorithmVersion}]; ok && entry.Err == nil {
+		artifact := entry.Artifact
+		if artifact.Encoding == waveformartifact.Encoding && artifact.Provenance == "measured" && source.Fingerprint != "" && artifact.SourceFingerprint == source.Fingerprint {
+			_, decErr := waveformartifact.Decode(artifact.Data)
+			waveformAvailable = decErr == nil
 		}
 	}
 	// A provider capability is a historical decision, not a retained artifact
@@ -79,21 +127,18 @@ func missingPreparation(database *db.DB, source analysis.ResolvedSource, record 
 	// provider lookup before suppressing local fallback.
 	valid := map[string]bool{
 		"local_duration":  durationAvailable,
-		threeband.Kind:    artifactValid(threeband.Kind, threeband.FormatVersion, threeband.AlgorithmVersion, threeband.Encoding, threeband.MaxBytes, func(b []byte) bool { _, e := threeband.Decode(b); return e == nil }),
+		threeband.Kind:    artifactValid(threeband.Kind, threeband.FormatVersion, threeband.AlgorithmVersion, threeband.Encoding, func(b []byte) bool { _, e := threeband.Decode(b); return e == nil }),
 		"local_scalars":   localScalarsAvailable,
 		"local_energy":    localEnergyAvailable,
-		"local_amplitude": currentWaveform(database, source),
-		"local_features": artifactValid(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion, features.Encoding, features.MaxStructureStatusArtifactBytes, func(b []byte) bool {
-			_, e := features.DecodeCurrentBounded(b, features.MaxStructureStatusArtifactBytes)
-			return e == nil
+		"local_amplitude": waveformAvailable,
+		"local_features": artifactValid(features.ArtifactKind, features.FormatVersion, features.AlgorithmVersion, features.Encoding, func(b []byte) bool {
+			return features.InspectStructureBounded(b, features.MaxStructureStatusArtifactBytes).Native
 		}),
 		"local_loudness": loudnessAvailable,
-		"local_beatgrid": artifactValid(beatgrid.ArtifactKind, beatgrid.FormatVersion, beatgrid.AlgorithmVersion, beatgrid.Encoding, 16<<20, func(b []byte) bool { _, e := beatgrid.Decode(b); return e == nil }),
+		"local_beatgrid": artifactValid(beatgrid.ArtifactKind, beatgrid.FormatVersion, beatgrid.AlgorithmVersion, beatgrid.Encoding, func(b []byte) bool { _, e := beatgrid.Decode(b); return e == nil }),
 	}
-	locked := false
-	if o, e := database.GetTrackAnalysisOverride(source.SongID); e == nil {
-		locked = o.BeatgridLocked
-	}
+	locked := override != nil && override.BeatgridLocked
+	now := time.Now().UnixMilli()
 	for capability, version := range versions {
 		if capability == "local_beatgrid" && locked {
 			continue
@@ -102,12 +147,12 @@ func missingPreparation(database *db.DB, source analysis.ResolvedSource, record 
 			continue
 		}
 		s, ok := states[capability]
-		if ok && s.Version == version && (s.State == "unavailable" || s.State == "unsupported" || (s.State == "failed" && s.RetryAt > time.Now().UnixMilli())) {
+		if ok && s.Version == version && (s.State == "unavailable" || s.State == "unsupported" || (s.State == "failed" && s.RetryAt > now)) {
 			continue
 		}
 		missing[capability] = true
 	}
-	return missing, nil
+	return missing
 }
 
 // Older envelopes had no attempt markers. Recover a skipped estimator only

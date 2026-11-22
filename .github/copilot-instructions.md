@@ -10,7 +10,7 @@ ViiB MediaHub is a local media player application with a React frontend and Go b
 - **State Management**: Zustand with persistent slices (`store.ts`, `slices/`)
   - `playerSlice.ts`: Playback, queue, audio settings, streaming state
   - `librarySlice.ts`: Songs, playlists, metadata, scanning, likes
-  - `spotifySlice.ts`: Session status, legacy OAuth compatibility fields, user profile and streaming settings; active cookie/bearer credentials belong to the backend
+  - `spotifySlice.ts`: Session status, media capability, user profile, streaming settings, and legacy compatibility fields. The backend owns active Web Player and desktop OAuth credentials.
   - `uiSlice.ts`: Context menus, dialogs, logs, toasts
 - **Data Persistence**:
   - Backend uses SQLite for all persistent data
@@ -27,7 +27,7 @@ ViiB MediaHub is a local media player application with a React frontend and Go b
 - **Database**: SQLite (`modernc.org/sqlite`) with WAL mode
 - **Entry Points**:
   - `backend/cmd/wails/main.go`: Native desktop app (production)
-  - `backend/cmd/viib/main.go`: Web-embedded build (legacy)
+  - `backend/cmd/viib/main.go`: Local browser/server build
 
 ### Key Backend Packages
 - `internal/api/`: HTTP handlers, SSE events, download manager
@@ -42,10 +42,8 @@ ViiB MediaHub is a local media player application with a React frontend and Go b
 ## Development Workflow
 
 ### Start Development Server
-Run `scripts/dev-wails.ps1` in PowerShell:
-- Starts Go backend on dynamic port (stored in registry)
-- Starts Vite frontend on port 5173 with HMR
-- Frontend proxies `/api` requests to backend
+- Run `scripts/dev-wails.ps1` for native development. It runs `wails dev` with staged frontend assets and the desktop loopback API. The current Wails configuration leaves the frontend watcher disabled.
+- Run `scripts/dev.ps1` for browser development. Vite defaults to port 3000 and proxies `/api` to the Go backend.
 
 ### Build Production
 Run `scripts/build-wails.ps1`:
@@ -124,7 +122,7 @@ backend/
 
 #### Scanner System
 - Fast incremental scanning using directory signatures
-- Platform-specific filesystem journals (USN on Windows, FSEvents on macOS)
+- USN journal on Windows and metadata-cache comparison on macOS
 - Background workers for metadata extraction
 - File metadata caching for change detection
 

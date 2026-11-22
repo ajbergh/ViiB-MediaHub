@@ -26,3 +26,25 @@ export function stretchModuleUrl(): Promise<string> {
   moduleUrl.catch(() => { moduleUrl = null; });
   return moduleUrl;
 }
+
+const stretchLoads = new WeakMap<AudioContext, Promise<void>>();
+const transportLoads = new WeakMap<AudioContext, Promise<void>>();
+
+function loadOnce(context: AudioContext, loads: WeakMap<AudioContext, Promise<void>>, load: () => Promise<void>): Promise<void> {
+  let loading = loads.get(context);
+  if (!loading) {
+    loading = load();
+    loads.set(context, loading);
+    loading.catch(() => loads.delete(context));
+  }
+  return loading;
+}
+
+export function loadDeckStretchModule(context: AudioContext): Promise<void> {
+  return loadOnce(context, stretchLoads, async () => context.audioWorklet.addModule(await stretchModuleUrl()));
+}
+
+export function loadDeckTransportModule(context: AudioContext): Promise<void> {
+  return loadOnce(context, transportLoads, async () =>
+    context.audioWorklet.addModule(new URL('./stemTransport.worklet.js', import.meta.url)));
+}

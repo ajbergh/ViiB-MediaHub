@@ -1,14 +1,13 @@
 /**
  * Spotify catalog and metadata service using the backend-owned session.
- * Browser sign-in and token renewal run in the backend; catalog requests send
- * resource paths and reject results from a retired session generation.
+ * Web Player capture, desktop PKCE, and active token renewal run in the backend.
+ * Catalog requests send resource paths and reject results from retired sessions.
  * Background metadata work is queued with 200 ms spacing. Interactive searches
  * bypass that queue; the backend enforces concurrency bounds and provider cooldowns.
- * Includes typed failures, fuzzy artist/album matching, and retained OAuth helpers
- * for compatibility. The normal connection UI uses Spotify browser sign-in.
+ * Includes typed failures, fuzzy artist/album matching, and legacy OAuth helpers.
  */
 
-import { backendSpotifyFetch, assertSpotifySession, SpotifySessionChangedError } from './spotifyBackend';
+import { backendSpotifyFetch, assertSpotifySession, SpotifySessionChangedError, throwIfSpotifyRequestAborted } from './spotifyBackend';
 import { ArtistMetadata, AlbumMetadata, SpotifyProfile } from '../types';
 import { useStore } from '../store';
 import { isWailsEnvironment } from '../utils';
@@ -65,10 +64,10 @@ const enqueue = <T>(task: () => Promise<T>): Promise<T> => {
 // The backend bounds catalog concurrency and enforces the shared cooldown.
 const runInteractive = async <T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> => {
     const generation = useStore.getState().spotifySessionGeneration;
-    signal?.throwIfAborted();
+    throwIfSpotifyRequestAborted(signal);
     assertSpotifySession(generation);
     const result = await task();
-    signal?.throwIfAborted();
+    throwIfSpotifyRequestAborted(signal);
     assertSpotifySession(generation);
     return result;
 };
@@ -234,6 +233,7 @@ export const SpotifyService = {
             'user-read-email',
             'user-read-private',
             'user-library-read',
+            'user-top-read',
             'user-read-playback-state',
             'user-modify-playback-state',
             'playlist-read-private'
@@ -504,7 +504,7 @@ export const SpotifyService = {
                 }
 
                 const results = await res.json();
-                options.signal?.throwIfAborted();
+                throwIfSpotifyRequestAborted(options.signal);
                 assertSpotifySession(generation);
                 options.onCatalogResults?.(results);
                 
@@ -513,10 +513,10 @@ export const SpotifyService = {
                 if (types.includes('playlist') && offset === 0) {
                     try {
                         const { api } = await import('./api');
-                        options.signal?.throwIfAborted();
+                        throwIfSpotifyRequestAborted(options.signal);
                         assertSpotifySession(generation);
                         const fallbackResults = await api.searchPlaylistsFallback(query, options.signal);
-                        options.signal?.throwIfAborted();
+                        throwIfSpotifyRequestAborted(options.signal);
                         assertSpotifySession(generation);
                         
                         if (fallbackResults?.playlists?.items?.length > 0) {
@@ -560,12 +560,12 @@ export const SpotifyService = {
         }, options.signal);
     },
 
-    async getRecentlyPlayed(limit: number = 20): Promise<any> {
+    async getRecentlyPlayed(limit: number = 50, offset: number = 0): Promise<any> {
         return enqueue(async () => {
             const store = useStore.getState();
 
             try {
-                const res = await backendSpotifyFetch(`${API_BASE}/me/player/recently-played?limit=${limit}`);
+                const res = await backendSpotifyFetch(`${API_BASE}/me/player/recently-played?limit=${limit}${offset ? `&offset=${offset}` : ''}`);
 
                 if (res.status === 429) {
                     const retryAfter = res.headers.get('Retry-After');

@@ -1,9 +1,9 @@
 /** Implements multi-stem deck loading, routing, transport, and scratch coordination. */
 
 import type { Song } from '../types';
-import type { DeckSource } from './deckSource';
+import type { DeckSource, ScratchEvent, ScratchPort } from './deckSource';
 import { SingleTrackDeckSource } from './singleTrackDeckSource';
-import { stretchModuleUrl } from './stemStretchModule';
+import { loadDeckStretchModule, loadDeckTransportModule } from './stemStretchModule';
 
 export type StemBus = 'vocals' | 'drums' | 'bass' | 'music';
 export type StemMode = 'full' | 'stems' | 'fallback';
@@ -41,9 +41,6 @@ interface StemWorkletNode {
   connect(destination: AudioNode, output?: number, input?: number): unknown;
   disconnect(): void;
 }
-/** Vinyl-scratch protocol messages (see vinylScratch.worklet.js), relayed to the stem worklet. */
-export interface ScratchPort { postMessage(message: Record<string, unknown>): void }
-export type ScratchEvent = { type: string; token?: number; position?: number; time?: number; rate?: number };
 export interface StemDeckSourceOptions {
   fetch?: typeof fetch;
   createFallback?: (context: AudioContext) => DeckSource;
@@ -212,9 +209,9 @@ export class StemDeckSource implements DeckSource {
   private async createBrowserWorklet(): Promise<StemWorkletNode> {
     if (!this.context.audioWorklet || typeof AudioWorkletNode === 'undefined') throw new Error('AudioWorklet is unavailable');
     // Key lock only; the transport reports the stretcher as unavailable without it.
-    try { await this.context.audioWorklet.addModule(await stretchModuleUrl()); }
+    try { await loadDeckStretchModule(this.context); }
     catch (error) { console.warn('Stem key lock unavailable', error); }
-    await this.context.audioWorklet.addModule(new URL('./stemTransport.worklet.js', import.meta.url));
+    await loadDeckTransportModule(this.context);
     return new AudioWorkletNode(this.context, 'viib-stem-transport', {
       numberOfInputs: 0, numberOfOutputs: 4, outputChannelCount: [2, 2, 2, 2],
     }) as unknown as StemWorkletNode;
@@ -321,14 +318,18 @@ export class StemDeckSource implements DeckSource {
   }
 
   private currentFrame(): number {
+    return Math.floor(this.positionAt(this.context.currentTime));
+  }
+
+  private positionAt(time: number): number {
     const descriptor = this.descriptor;
     if (!descriptor) return 0;
     let frame = this.positionFrame;
-    if (this.playing && !this.buffering && this.mode === 'stems') frame += Math.max(0, this.context.currentTime - this.positionAnchorTime) * descriptor.sampleRate * this.tempo;
+    if (this.playing && !this.buffering && this.mode === 'stems') frame += Math.max(0, time - this.positionAnchorTime) * descriptor.sampleRate * this.tempo;
     if (this.loop.enabled && this.loop.endFrame > this.loop.startFrame && frame >= this.loop.endFrame) {
       frame = this.loop.startFrame + ((frame - this.loop.startFrame) % (this.loop.endFrame - this.loop.startFrame));
     }
-    return Math.max(0, Math.min(descriptor.frames, Math.floor(frame)));
+    return Math.max(0, Math.min(descriptor.frames, frame));
   }
 
   async setStemMode(mode: 'full' | 'stems'): Promise<void> {
@@ -494,7 +495,8 @@ export class StemDeckSource implements DeckSource {
       mode: this.mode, available: !!this.descriptor,
       bufferedSeconds: this.descriptor ? Math.max(0, (this.bufferEndFrame - this.currentFrame()) / this.descriptor.sampleRate) : 0,
       underruns: this.underruns, supportsKeyLock: !supportsStems || this.stretchReady, supportsScratch: true,
-      supportsSampleAccurateLoop: supportsStems && this.loopFitsBuffer, ...(this.error ? { error: this.error } : {}),
+      supportsSampleAccurateLoop: supportsStems ? this.loopFitsBuffer : this.fallback.supportsSampleAccurateLoop?.() ?? false,
+      ...(this.error ? { error: this.error } : {}),
     };
   }
 
@@ -567,8 +569,15 @@ export class StemDeckSource implements DeckSource {
     this.emit('timeupdate');
   }
   setTempo(rate: number): void {
-    this.tempo = Number.isFinite(rate) ? Math.max(0.5, Math.min(1.5, rate)) : 1;
-    this.fallback.setTempo(this.tempo);
+    const next = Number.isFinite(rate) ? Math.max(0.5, Math.min(1.5, rate)) : 1;
+    this.fallback.setTempo(next);
+    if (this.tempo === next) return;
+    if (this.mode === 'stems' && this.playing && !this.buffering) {
+      const now = this.context.currentTime;
+      this.positionFrame = this.positionAt(now);
+      this.positionAnchorTime = now;
+    }
+    this.tempo = next;
     this.worklet?.port.postMessage({ type: 'rate', rate: this.tempo });
   }
   setKeyLock(enabled: boolean): void {
@@ -577,6 +586,7 @@ export class StemDeckSource implements DeckSource {
     this.worklet?.port.postMessage({ type: 'keyLock', enabled });
   }
   setLoop(start: number, end: number, enabled: boolean): void {
+    this.fallback.setLoop(start, end, enabled);
     const descriptor = this.descriptor;
     if (!descriptor) return;
     const startFrame = Math.max(0, Math.min(descriptor.frames, Math.round(start * descriptor.sampleRate)));
@@ -589,6 +599,16 @@ export class StemDeckSource implements DeckSource {
     this.worklet?.port.postMessage({ type: 'loop', ...this.loop, generation: this.generation });
     ++this.loopPrefetchGeneration;
     if (next.enabled) void this.prefetchLoopFrames(this.generation, startFrame, endFrame);
+  }
+  setLoopBuffer(buffer: AudioBuffer | null): void {
+    if (this.fallback instanceof SingleTrackDeckSource) this.fallback.setLoopBuffer(buffer);
+  }
+  get bufferedScratchPort(): ScratchPort | null {
+    return this.fallback instanceof SingleTrackDeckSource ? this.fallback.scratchPort : null;
+  }
+  async prepareBufferedTransport(buffer: AudioBuffer, onError: () => void): Promise<boolean> {
+    return this.fallback instanceof SingleTrackDeckSource &&
+      this.fallback.prepareBufferedTransport(buffer, event => this.onScratchEvent?.(event), onError);
   }
   getPosition(): number { return this.mode === 'stems' && this.descriptor ? this.currentFrame() / this.descriptor.sampleRate : this.fallback.getPosition(); }
   getDuration(): number { return this.descriptor?.durationSeconds || this.fallback.getDuration(); }

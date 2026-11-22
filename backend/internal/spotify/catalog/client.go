@@ -40,6 +40,7 @@ type Options struct {
 	OnDomain      func(context.Context, []CapturedEntity)
 }
 type Client struct {
+	trackAlbums           map[string]cachedTrackAlbum
 	mu                    sync.Mutex
 	gate                  chan struct{}
 	http                  http.Client
@@ -80,6 +81,7 @@ func (c *Client) Close() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.closed = true
+	c.trackAlbums = nil
 	c.cancel()
 	c.clientToken = ""
 	c.clientID = ""

@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/logger"
@@ -260,6 +261,90 @@ func (d *DB) markDownloadCompletedWithRevision(ctx context.Context, id string, r
 	return true, nil
 }
 
+// ReconcileSpotifyDownloads reconciles a batch of song paths using a single
+// evidence lookup per chunk so scans without matching downloads skip per-song
+// queries and filesystem reads.
+func (d *DB) ReconcileSpotifyDownloads(ctx context.Context, paths []string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	if err := d.EnsureExternalTrackAnalysisSchema(); err != nil {
+		return err
+	}
+
+	absPaths := make([]string, len(paths))
+	for i, path := range paths {
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			return err
+		}
+		absPaths[i] = filepath.Clean(absolute)
+	}
+
+	const maxBindParams = 500
+	var matched map[string]struct{}
+	for start := 0; start < len(absPaths); start += maxBindParams {
+		end := start + maxBindParams
+		if end > len(absPaths) {
+			end = len(absPaths)
+		}
+		chunk := absPaths[start:end]
+		placeholders := strings.Repeat("?,", len(chunk)-1) + "?"
+		args := make([]any, len(chunk))
+		for i, p := range chunk {
+			args[i] = p
+		}
+		rows, err := d.conn.QueryContext(ctx, `SELECT DISTINCT file_path FROM spotify_download_evidence WHERE file_path IN (`+placeholders+`)`, args...)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var found string
+			if err := rows.Scan(&found); err != nil {
+				rows.Close()
+				return err
+			}
+			if matched == nil {
+				matched = make(map[string]struct{})
+			}
+			matched[found] = struct{}{}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return err
+		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+	}
+
+	if len(matched) == 0 {
+		return nil
+	}
+
+	var firstErr error
+	seen := make(map[string]struct{}, len(matched))
+	for i, path := range paths {
+		if ctx.Err() != nil {
+			if firstErr == nil {
+				firstErr = ctx.Err()
+			}
+			break
+		}
+		if _, ok := matched[absPaths[i]]; !ok {
+			continue
+		}
+		if _, done := seen[path]; done {
+			continue
+		}
+		seen[path] = struct{}{}
+		if err := d.reconcileSpotifyDownloadMatched(ctx, path, absPaths[i]); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
 // ReconcileSpotifyDownload uses only durable completion evidence and the
 // canonical persisted path identity. Manual links and explicit removals win.
 func (d *DB) ReconcileSpotifyDownload(ctx context.Context, path string) error {
@@ -278,8 +363,12 @@ func (d *DB) ReconcileSpotifyDownload(ctx context.Context, path string) error {
 	if candidates == 0 {
 		return nil
 	} // No filesystem reads for unrelated library songs.
+	return d.reconcileSpotifyDownloadMatched(ctx, path, absolute)
+}
+
+func (d *DB) reconcileSpotifyDownloadMatched(ctx context.Context, path, absolute string) error {
 	var song Song
-	err = d.conn.QueryRowContext(ctx, "SELECT id,file_path,COALESCE(file_hash,'') FROM songs WHERE file_path=?", path).Scan(&song.ID, &song.FilePath, &song.FileHash)
+	err := d.conn.QueryRowContext(ctx, "SELECT id,file_path,COALESCE(file_hash,'') FROM songs WHERE file_path=?", path).Scan(&song.ID, &song.FilePath, &song.FileHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}

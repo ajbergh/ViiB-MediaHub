@@ -3,13 +3,17 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
+
+	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
 )
 
 // TrackAnalysisArtifact stores a versioned opaque payload such as a beat grid.
@@ -363,19 +367,62 @@ func getTrackAnalysis(executor preparationExecutor, songID string) (TrackAnalysi
 	return scanTrackAnalysis(row)
 }
 
+// Build the same keyed filter for the related analysis tables using bound IDs.
+func analysisSongFilter(prefix string, ids []string) string {
+	if len(ids) == 0 {
+		return ""
+	}
+	return prefix + "song_id IN (" + strings.Repeat("?,", len(ids)-1) + "?)"
+}
+
+func analysisSongArgs(args []any, ids []string) []any {
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	return args
+}
+
 // ListTrackAnalysis returns the current scalar record for every analyzed
 // song. It is intentionally one ordered query so library consumers do not
 // issue one database read per visible row.
-func (d *DB) ListTrackAnalysis() ([]TrackAnalysis, error) {
+func (d *DB) ListTrackAnalysis(songIDs ...string) ([]TrackAnalysis, error) {
+	return d.listTrackAnalysis(context.Background(), songIDs, "", 0)
+}
+
+// ListTrackAnalysisPage reads at most limit records after an exclusive song ID cursor.
+func (d *DB) ListTrackAnalysisPage(ctx context.Context, after string, limit int, songIDs ...string) ([]TrackAnalysis, error) {
+	if limit <= 0 {
+		return nil, errors.New("analysis page limit must be positive")
+	}
+	return d.listTrackAnalysis(ctx, songIDs, after, limit)
+}
+
+func (d *DB) listTrackAnalysis(ctx context.Context, songIDs []string, after string, limit int) ([]TrackAnalysis, error) {
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return nil, err
 	}
-	rows, err := d.conn.Query(`SELECT song_id, status, analysis_version, algorithm_version, decoder_id,
+	query := `SELECT song_id, status, analysis_version, algorithm_version, decoder_id,
 		source_fingerprint, source_size, source_mtime, source_revision,
 		bpm, bpm_confidence, bpm_alt_candidate, tempo_stability, tempo_kind, bpm_source,
 		key_tonic, key_mode, key_confidence, key_source, camelot_key, open_key,
 		energy_level, energy_level_confidence, energy_algorithm_version,
-		analyzed_at, error_code, error_message, local_scalar_json, spotify_bindings_json, COALESCE((SELECT value FROM settings WHERE key='spotify_metadata_active_context'),'') FROM track_analysis ORDER BY song_id`)
+	analyzed_at, error_code, error_message, local_scalar_json, spotify_bindings_json, COALESCE((SELECT value FROM settings WHERE key='spotify_metadata_active_context'),'') FROM track_analysis`
+	args := analysisSongArgs(nil, songIDs)
+	query += analysisSongFilter(" WHERE ", songIDs)
+	if after != "" {
+		if len(songIDs) == 0 {
+			query += " WHERE song_id > ?"
+		} else {
+			query += " AND song_id > ?"
+		}
+		args = append(args, after)
+	}
+	query += " ORDER BY song_id"
+	if limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, limit)
+	}
+	rows, err := d.conn.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -503,12 +550,12 @@ func (d *DB) ListTrackAnalysisArtifacts(kind string, formatVersion int, algorith
 
 // ListTrackAnalysisArtifactMetadata returns current-version artifact identity
 // without materializing compressed payload BLOBs for every library track.
-func (d *DB) ListTrackAnalysisArtifactMetadata(kind string, formatVersion int, algorithmVersion string) ([]TrackAnalysisArtifactMetadata, error) {
+func (d *DB) ListTrackAnalysisArtifactMetadata(kind string, formatVersion int, algorithmVersion string, songIDs ...string) ([]TrackAnalysisArtifactMetadata, error) {
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return nil, err
 	}
 	rows, err := d.conn.Query(`SELECT id, song_id, kind, format_version, algorithm_version, encoding, provenance, source_fingerprint, created_at, LENGTH(data)
-		FROM track_analysis_artifacts WHERE kind = ? AND format_version = ? AND algorithm_version = ? ORDER BY song_id`, kind, formatVersion, algorithmVersion)
+		FROM track_analysis_artifacts WHERE kind = ? AND format_version = ? AND algorithm_version = ?`+analysisSongFilter(" AND ", songIDs)+` ORDER BY song_id`, analysisSongArgs([]any{kind, formatVersion, algorithmVersion}, songIDs)...)
 	if err != nil {
 		return nil, err
 	}
@@ -801,12 +848,12 @@ func (d *DB) GetTrackAnalysisOverride(songID string) (TrackAnalysisOverride, err
 
 // ListTrackAnalysisOverrides returns every manual override keyed by song ID.
 // Pair it with ListTrackAnalysis when rendering a library-wide feature map.
-func (d *DB) ListTrackAnalysisOverrides() (map[string]TrackAnalysisOverride, error) {
+func (d *DB) ListTrackAnalysisOverrides(songIDs ...string) (map[string]TrackAnalysisOverride, error) {
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return nil, err
 	}
 	rows, err := d.conn.Query(`SELECT song_id, bpm, bpm_source_fingerprint, key_source_fingerprint, key_tonic, key_mode, beatgrid_artifact_id, bpm_locked, key_locked, beatgrid_locked, updated_at
-		FROM track_analysis_overrides`)
+		FROM track_analysis_overrides`+analysisSongFilter(" WHERE ", songIDs), analysisSongArgs(nil, songIDs)...)
 	if err != nil {
 		return nil, err
 	}
@@ -1004,4 +1051,363 @@ func validateTrackAnalysis(analysis TrackAnalysis) error {
 		return fmt.Errorf("invalid track analysis status %q", analysis.Status)
 	}
 	return nil
+}
+
+// TrackAnalysisArtifactSpec describes one artifact family and its bounded read limit.
+type TrackAnalysisArtifactSpec struct {
+	Kind             string
+	FormatVersion    int
+	AlgorithmVersion string
+	MaxPayloadBytes  int64
+}
+
+// TrackAnalysisArtifactKey identifies one persisted artifact entry in a batch result.
+type TrackAnalysisArtifactKey struct {
+	SongID           string
+	Kind             string
+	FormatVersion    int
+	AlgorithmVersion string
+}
+
+// TrackAnalysisArtifactLookup carries either a loaded artifact or a size-limit error.
+type TrackAnalysisArtifactLookup struct {
+	Artifact TrackAnalysisArtifact
+	Err      error
+}
+
+func uniqueNonEmptyIDs(ids []string) []string {
+	if len(ids) == 0 {
+		return nil
+	}
+	unique := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	return unique
+}
+
+// GetTrackAnalysisBatch returns scalar analysis records keyed by song ID using
+// chunked IN queries so callers avoid per-track query roundtrips.
+func (d *DB) GetTrackAnalysisBatch(songIDs []string) (map[string]TrackAnalysis, error) {
+	unique := uniqueNonEmptyIDs(songIDs)
+	results := make(map[string]TrackAnalysis, len(unique))
+	if len(unique) == 0 {
+		return results, nil
+	}
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return nil, err
+	}
+	const chunkSize = 400
+	for start := 0; start < len(unique); start += chunkSize {
+		end := start + chunkSize
+		if end > len(unique) {
+			end = len(unique)
+		}
+		chunk := unique[start:end]
+		rows, err := d.conn.Query(`SELECT song_id, status, analysis_version, algorithm_version, decoder_id,
+			source_fingerprint, source_size, source_mtime, source_revision,
+			bpm, bpm_confidence, bpm_alt_candidate, tempo_stability, tempo_kind, bpm_source,
+			key_tonic, key_mode, key_confidence, key_source, camelot_key, open_key,
+			energy_level, energy_level_confidence, energy_algorithm_version,
+			analyzed_at, error_code, error_message, local_scalar_json, spotify_bindings_json,
+			COALESCE((SELECT value FROM settings WHERE key='spotify_metadata_active_context'),'')
+			FROM track_analysis`+analysisSongFilter(" WHERE ", chunk), analysisSongArgs(nil, chunk)...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			analysis, scanErr := scanTrackAnalysis(rows)
+			if scanErr != nil {
+				rows.Close()
+				return nil, scanErr
+			}
+			results[analysis.SongID] = analysis
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+	}
+	return results, nil
+}
+
+// ListTrackCapabilityStatusesBatch loads all current capability status rows for
+// the given song IDs, keyed by song_id then capability. Callers must verify
+// SourceFingerprint matches the expected source revision.
+func (d *DB) ListTrackCapabilityStatusesBatch(songIDs []string) (map[string]map[string]TrackCapabilityStatus, error) {
+	unique := uniqueNonEmptyIDs(songIDs)
+	results := make(map[string]map[string]TrackCapabilityStatus, len(unique))
+	if len(unique) == 0 {
+		return results, nil
+	}
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return nil, err
+	}
+	const chunkSize = 400
+	for start := 0; start < len(unique); start += chunkSize {
+		end := start + chunkSize
+		if end > len(unique) {
+			end = len(unique)
+		}
+		chunk := unique[start:end]
+		rows, err := d.conn.Query(`SELECT song_id, source_fingerprint, capability, version, state, reason, retry_at, updated_at
+			FROM track_metadata_capability_status`+analysisSongFilter(" WHERE ", chunk), analysisSongArgs(nil, chunk)...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var s TrackCapabilityStatus
+			if scanErr := rows.Scan(&s.SongID, &s.SourceFingerprint, &s.Capability, &s.Version, &s.State, &s.Reason, &s.RetryAt, &s.UpdatedAt); scanErr != nil {
+				rows.Close()
+				return nil, scanErr
+			}
+			byCap := results[s.SongID]
+			if byCap == nil {
+				byCap = make(map[string]TrackCapabilityStatus)
+				results[s.SongID] = byCap
+			}
+			byCap[s.Capability] = s
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+	}
+	return results, nil
+}
+
+// ListTrackAnalysisOverridesBatch returns manual analysis overrides for the
+// supplied song IDs in bounded chunks. Unlike ListTrackAnalysisOverrides(),
+// an empty input returns an empty map rather than the full table.
+func (d *DB) ListTrackAnalysisOverridesBatch(songIDs []string) (map[string]TrackAnalysisOverride, error) {
+	unique := uniqueNonEmptyIDs(songIDs)
+	results := make(map[string]TrackAnalysisOverride, len(unique))
+	if len(unique) == 0 {
+		return results, nil
+	}
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return nil, err
+	}
+	const chunkSize = 400
+	for start := 0; start < len(unique); start += chunkSize {
+		end := start + chunkSize
+		if end > len(unique) {
+			end = len(unique)
+		}
+		chunk := unique[start:end]
+		rows, err := d.conn.Query(`SELECT song_id, bpm, bpm_source_fingerprint, key_source_fingerprint, key_tonic, key_mode, beatgrid_artifact_id, bpm_locked, key_locked, beatgrid_locked, updated_at
+			FROM track_analysis_overrides`+analysisSongFilter(" WHERE ", chunk), analysisSongArgs(nil, chunk)...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var result TrackAnalysisOverride
+			var bpm sql.NullFloat64
+			var keyTonic sql.NullInt64
+			var keyMode, artifactID sql.NullString
+			var bpmLocked, keyLocked, gridLocked int
+			if scanErr := rows.Scan(&result.SongID, &bpm, &result.BPMSourceFingerprint, &result.KeySourceFingerprint, &keyTonic, &keyMode, &artifactID, &bpmLocked, &keyLocked, &gridLocked, &result.UpdatedAt); scanErr != nil {
+				rows.Close()
+				return nil, scanErr
+			}
+			result.BPM = optionalFloat64(bpm)
+			if keyTonic.Valid {
+				value := int(keyTonic.Int64)
+				result.KeyTonic = &value
+			}
+			result.KeyMode = optionalString(keyMode)
+			result.BeatgridArtifactID = optionalString(artifactID)
+			result.BPMLocked = bpmLocked != 0
+			result.KeyLocked = keyLocked != 0
+			result.BeatgridLocked = gridLocked != 0
+			results[result.SongID] = result
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+	}
+	return results, nil
+}
+
+// GetTrackAnalysisArtifactsBounded fetches the requested artifact families for one song.
+func (d *DB) GetTrackAnalysisArtifactsBounded(songID string, specs []TrackAnalysisArtifactSpec) (map[TrackAnalysisArtifactKey]TrackAnalysisArtifactLookup, error) {
+	var result map[TrackAnalysisArtifactKey]TrackAnalysisArtifactLookup
+	err := d.VisitTrackAnalysisArtifactsBounded(context.Background(), []string{songID}, specs, func(_ string, artifacts map[TrackAnalysisArtifactKey]TrackAnalysisArtifactLookup) error {
+		result = artifacts
+		return nil
+	})
+	return result, err
+}
+
+// VisitTrackAnalysisArtifactsBounded visits each requested song, including songs
+// without artifacts. The visitor must not retain artifact payloads or query the DB.
+func (d *DB) VisitTrackAnalysisArtifactsBounded(ctx context.Context, songIDs []string, specs []TrackAnalysisArtifactSpec, visit func(string, map[TrackAnalysisArtifactKey]TrackAnalysisArtifactLookup) error) error {
+	if len(specs) == 0 {
+		return errors.New("artifact specs are required")
+	}
+	type specKey struct {
+		kind             string
+		formatVersion    int
+		algorithmVersion string
+	}
+	maxBySpec := make(map[specKey]int64, len(specs))
+	for _, spec := range specs {
+		if spec.Kind == "" || spec.FormatVersion <= 0 || spec.AlgorithmVersion == "" || spec.MaxPayloadBytes <= 0 {
+			return errors.New("artifact spec requires identity, version, and positive payload limit")
+		}
+		key := specKey{kind: spec.Kind, formatVersion: spec.FormatVersion, algorithmVersion: spec.AlgorithmVersion}
+		if _, exists := maxBySpec[key]; exists {
+			return errors.New("duplicate artifact spec")
+		}
+		maxBySpec[key] = spec.MaxPayloadBytes
+	}
+	unique := uniqueNonEmptyIDs(songIDs)
+	if len(unique) == 0 {
+		return nil
+	}
+	sort.Strings(unique)
+	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return err
+	}
+
+	var caseBuilder strings.Builder
+	caseBuilder.WriteString("CASE")
+	caseArgs := make([]any, 0, len(specs)*4)
+	for _, spec := range specs {
+		caseBuilder.WriteString(" WHEN kind = ? AND format_version = ? AND algorithm_version = ? AND LENGTH(data) <= ? THEN data")
+		caseArgs = append(caseArgs, spec.Kind, spec.FormatVersion, spec.AlgorithmVersion, spec.MaxPayloadBytes)
+	}
+	caseBuilder.WriteString(" ELSE NULL END")
+
+	var specFilterBuilder strings.Builder
+	specArgs := make([]any, 0, len(specs)*3)
+	for i, spec := range specs {
+		if i > 0 {
+			specFilterBuilder.WriteString(" OR ")
+		}
+		specFilterBuilder.WriteString("(kind = ? AND format_version = ? AND algorithm_version = ?)")
+		specArgs = append(specArgs, spec.Kind, spec.FormatVersion, spec.AlgorithmVersion)
+	}
+
+	const chunkSize = 300
+	for start := 0; start < len(unique); start += chunkSize {
+		end := start + chunkSize
+		if end > len(unique) {
+			end = len(unique)
+		}
+		chunk := unique[start:end]
+		args := make([]any, 0, len(caseArgs)+len(chunk)+len(specArgs))
+		args = append(args, caseArgs...)
+		args = analysisSongArgs(args, chunk)
+		args = append(args, specArgs...)
+		// The song index supplies the visit order without sorting BLOBs into a temporary table.
+		query := `SELECT id, song_id, kind, format_version, algorithm_version, encoding, provenance, source_fingerprint, ` +
+			caseBuilder.String() + `, created_at, LENGTH(data) FROM track_analysis_artifacts INDEXED BY idx_track_analysis_artifacts_song` +
+			analysisSongFilter(" WHERE ", chunk) + ` AND (` + specFilterBuilder.String() + `) ORDER BY song_id`
+		if err := func() error {
+			rows, err := d.conn.QueryContext(ctx, query, args...)
+			if err != nil {
+				return err
+			}
+			defer rows.Close()
+			index := 0
+			var artifacts map[TrackAnalysisArtifactKey]TrackAnalysisArtifactLookup
+			for rows.Next() {
+				var artifact TrackAnalysisArtifact
+				var payloadBytes int64
+				if scanErr := rows.Scan(&artifact.ID, &artifact.SongID, &artifact.Kind, &artifact.FormatVersion, &artifact.AlgorithmVersion, &artifact.Encoding, &artifact.Provenance, &artifact.SourceFingerprint, &artifact.Data, &artifact.CreatedAt, &payloadBytes); scanErr != nil {
+					return scanErr
+				}
+				for chunk[index] != artifact.SongID {
+					if err := visit(chunk[index], artifacts); err != nil {
+						return err
+					}
+					artifacts = nil
+					index++
+				}
+				if artifacts == nil {
+					artifacts = make(map[TrackAnalysisArtifactKey]TrackAnalysisArtifactLookup, len(specs))
+				}
+				key := TrackAnalysisArtifactKey{
+					SongID:           artifact.SongID,
+					Kind:             artifact.Kind,
+					FormatVersion:    artifact.FormatVersion,
+					AlgorithmVersion: artifact.AlgorithmVersion,
+				}
+				maxBytes := maxBySpec[specKey{kind: artifact.Kind, formatVersion: artifact.FormatVersion, algorithmVersion: artifact.AlgorithmVersion}]
+				if payloadBytes > maxBytes {
+					artifacts[key] = TrackAnalysisArtifactLookup{Artifact: artifact, Err: ErrTrackAnalysisArtifactTooLarge}
+				} else {
+					artifacts[key] = TrackAnalysisArtifactLookup{Artifact: artifact}
+				}
+			}
+			if err := rows.Err(); err != nil {
+				return err
+			}
+			for ; index < len(chunk); index++ {
+				if err := visit(chunk[index], artifacts); err != nil {
+					return err
+				}
+				artifacts = nil
+			}
+			return nil
+		}(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// LockedBeatGridCapabilityFromArtifact computes the locked beatgrid capability
+// status from pre-loaded override and artifact lookup data.
+func LockedBeatGridCapabilityFromArtifact(song, fp string, override *TrackAnalysisOverride, lookup TrackAnalysisArtifactLookup, exists bool) *TrackCapabilityStatus {
+	if override == nil || !override.BeatgridLocked {
+		return nil
+	}
+	s := &TrackCapabilityStatus{SongID: song, SourceFingerprint: fp, Capability: "local_beatgrid", Version: beatgrid.AlgorithmVersion, State: "available"}
+	var reason string
+	switch {
+	case fp == "":
+		reason = "source_unavailable"
+	case !exists:
+		reason = "missing"
+	case lookup.Artifact.SourceFingerprint == "" || lookup.Artifact.SourceFingerprint != fp:
+		reason = "source_mismatch"
+	case lookup.Artifact.Encoding != beatgrid.Encoding:
+		reason = "invalid_encoding"
+	case lookup.Err != nil:
+		reason = "corrupt"
+	default:
+		grid, err := beatgrid.Decode(lookup.Artifact.Data)
+		if err != nil {
+			reason = "corrupt"
+		} else if p := beatgrid.Provenance(lookup.Artifact.Provenance); !p.Valid() {
+			reason = "invalid_provenance"
+		} else if len(grid.Beats) < 2 {
+			reason = "insufficient_beats"
+		}
+	}
+	if reason != "" {
+		s.State = "unavailable"
+		s.Reason = "locked_beatgrid_" + reason
+	}
+	return s
 }

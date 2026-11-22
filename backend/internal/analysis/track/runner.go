@@ -5,9 +5,12 @@ package track
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/analysis"
+	"github.com/ajbergh/viib-mediahub/internal/analysis/beatgrid"
 	"github.com/ajbergh/viib-mediahub/internal/analysis/threeband"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
@@ -189,20 +192,32 @@ func analyzeOne(ctx context.Context, database *db.DB, registry *analysis.Decoder
 		logger.Scan("local_preparation song_id=%q status=deferred", songID)
 		return outcomeSkipped
 	}
-	valid, err := database.TrackAnalysisValid(songID, source.Fingerprint, AnalysisVersion, AlgorithmVersion)
+	record, readErr := database.GetTrackAnalysis(songID)
+	err = nil
+	if readErr != nil && !errors.Is(readErr, sql.ErrNoRows) {
+		err = readErr
+	}
+	valid := readErr == nil && record.ValidFor(source.Fingerprint, AnalysisVersion, AlgorithmVersion)
 	if err == nil && valid {
-		record, readErr := database.GetTrackAnalysis(songID)
-		if readErr != nil {
+		artifacts, artErr := database.GetTrackAnalysisArtifactsBounded(songID, preparationArtifactSpecs())
+		if artErr != nil {
 			return outcomeFailed
 		}
-		missing, planErr := missingPreparation(database, source, record)
-		if planErr != nil {
+		overrides, ovErr := database.ListTrackAnalysisOverridesBatch([]string{songID})
+		if ovErr != nil {
 			return outcomeFailed
 		}
+		var overridePtr *db.TrackAnalysisOverride
+		if o, ok := overrides[songID]; ok {
+			overridePtr = &o
+		}
+		missing := missingPreparationWithLookup(source, record, states, artifacts, overridePtr)
 		core := states["core_preparation"]
-		lockedState, stateErr := database.LockedBeatGridCapability(songID, source.Fingerprint)
-		if stateErr != nil {
-			return outcomeFailed
+		var lockedState *db.TrackCapabilityStatus
+		if overridePtr != nil && overridePtr.BeatgridLocked {
+			bgKey := db.TrackAnalysisArtifactKey{SongID: songID, Kind: beatgrid.ArtifactKind, FormatVersion: beatgrid.FormatVersion, AlgorithmVersion: beatgrid.AlgorithmVersion}
+			bgLookup, bgExists := artifacts[bgKey]
+			lockedState = db.LockedBeatGridCapabilityFromArtifact(songID, source.Fingerprint, overridePtr, bgLookup, bgExists)
 		}
 		lockedSettled := true
 		if lockedState != nil {

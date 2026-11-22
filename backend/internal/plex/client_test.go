@@ -371,6 +371,39 @@ func TestFetchTracksContinuesWhenServerReturnsShortPageWithTotalRemaining(t *tes
 	}
 }
 
+func TestFetchTracksRejectsIncompleteSnapshots(t *testing.T) {
+	first := `{"MediaContainer":{"offset":0,"size":1,"totalSize":2,"Metadata":[{"ratingKey":"1","title":"One"}]}}`
+	for _, tc := range []struct {
+		name string
+		next string
+	}{
+		{"early empty page", `{"MediaContainer":{"offset":1,"size":0,"totalSize":2}}`},
+		{"omitted container", `{}`},
+		{"offset gap", `{"MediaContainer":{"offset":2,"size":1,"totalSize":2,"Metadata":[{"ratingKey":"2","title":"Two"}]}}`},
+		{"changed total", `{"MediaContainer":{"offset":1,"size":0,"totalSize":1}}`},
+		{"duplicated track", `{"MediaContainer":{"offset":1,"size":1,"totalSize":2,"Metadata":[{"ratingKey":"1","title":"One"}]}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				page := tc.next
+				if r.Header.Get("X-Plex-Container-Start") == "0" {
+					page = first
+				}
+				_, _ = w.Write([]byte(page))
+			}))
+			defer server.Close()
+			client, err := NewClientWithHTTP(server.URL, "", "", server.Client())
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := client.FetchTracks(context.Background(), Library{TrackKey: "/tracks"})
+			if err == nil || len(result.Tracks) > 0 {
+				t.Fatalf("incomplete snapshot accepted: %+v, err=%v", result, err)
+			}
+		})
+	}
+}
+
 func TestMediaRequestNeverLeaksTokenCrossOrigin(t *testing.T) {
 	client, err := NewClient("http://127.0.0.1:32400", "secret-token", "viib-test")
 	if err != nil {

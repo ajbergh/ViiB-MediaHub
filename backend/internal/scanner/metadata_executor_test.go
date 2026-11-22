@@ -1,3 +1,4 @@
+// Tests metadata executor handling of timed-out and canceled work.
 package scanner
 
 import (
@@ -80,7 +81,10 @@ func TestMetadataExecutorRecoversPanicAndReleasesSlot(t *testing.T) {
 }
 
 func TestFullFolderScanHonorsParserQuarantine(t *testing.T) {
-	root := t.TempDir()
+	root, err := resolveScanRoot(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	music := filepath.Join(root, "music")
 	if err := os.Mkdir(music, 0700); err != nil {
 		t.Fatal(err)

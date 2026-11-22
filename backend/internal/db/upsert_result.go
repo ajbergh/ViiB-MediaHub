@@ -47,15 +47,17 @@ func (d *DB) SaveSongsWithResult(songs []Song) (SongUpsertResult, error) {
 	if err := d.SaveSongs(songs); err != nil {
 		return result, err
 	}
+	paths := make([]string, 0, len(songs))
 	for _, song := range songs {
-		if err := d.ReconcileSpotifyDownload(context.Background(), song.FilePath); err != nil {
-			log.Printf("Spotify recording reconciliation failed: %v", err)
-		}
+		paths = append(paths, song.FilePath)
 		if _, found := existing[song.FilePath]; found {
 			result.Updated++
 		} else {
 			result.Inserted++
 		}
+	}
+	if err := d.ReconcileSpotifyDownloads(context.Background(), paths); err != nil {
+		log.Printf("Spotify recording reconciliation failed: %v", err)
 	}
 	return result, nil
 }

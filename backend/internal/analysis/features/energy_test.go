@@ -158,6 +158,18 @@ func TestDecodeBoundedRejectsOversizedDecompressedArtifact(t *testing.T) {
 	if err != nil || len(decoded.Sections) != 1 {
 		t.Fatalf("DecodeBounded result=%#v err=%v", decoded, err)
 	}
+	for range 2 {
+		if got := InspectStructureBounded(encoded, MaxStructureStatusArtifactBytes); !got.Decodable || !got.ValidSections {
+			t.Fatalf("cached valid structure rejected: %+v", got)
+		}
+		if got := InspectStructureBounded(encoded, 1); got.Decodable {
+			t.Fatalf("cached structure escaped its size bound: %+v", got)
+		}
+	}
+	encoded[len(encoded)-8] ^= 1 // Change the checksum without changing payload size.
+	if got := InspectStructureBounded(encoded, MaxStructureStatusArtifactBytes); got.Decodable {
+		t.Fatalf("replaced structure reused prior validation: %+v", got)
+	}
 }
 
 func TestCueSuggestionsSnapToDownbeats(t *testing.T) {

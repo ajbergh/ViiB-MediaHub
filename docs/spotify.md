@@ -6,20 +6,33 @@
 
 The Spotify page connects ViiB to your Spotify account for browsing, streaming, and downloads. Spotify browsing is separate from the local/Plex catalog; downloaded media becomes part of that catalog after scanning.
 
-## Prerequisites
+## Connect your Spotify account
 
-Run the Go backend and install **Chrome**, **Microsoft Edge**, or **Chromium** on the same device. Safari is not supported for sign-in. Normal sign-in requires no Spotify Developer app, client ID/secret, redirect-URI setup, or pasted cookie.
+Open **Spotify** or **Settings → Integrations & Spotify → Spotify account**. Select **Sign in with Spotify** for one saved connection that covers search, streaming, and downloads. Streaming and downloads require verified Spotify Premium. Desktop users can also choose **Browsing-only sign-in** to connect through their default browser.
 
-## Signing in and managing your session
+| Connection | Availability | Features |
+|---|---|---|
+| Web Player | Desktop and browser/server builds with Chrome, Edge, or Chromium on the backend device | Catalog, supported library views, Web Player Recents, and ViiB streaming and downloads with verified Premium |
+| Default browser | Wails desktop, including Safari on Mac | Spotify Web API catalog, library, top tracks, top artists, and Connect device and queue views, subject to Spotify app and account access |
 
-1. Open **Spotify**, or **Settings → Integrations & Spotify → Spotify account**.
-2. Click **Sign in with Spotify**.
-3. Enter your credentials on Spotify's own page in the browser window that opens. ViiB connects automatically when sign-in finishes and validates the captured session.
-4. Use **Cancel sign-in** to stop a pending attempt. In Settings, **Switch Spotify account** starts a new sign-in and **Disconnect** retires the current session; the Spotify page also has **Disconnect**.
+### Default-browser sign-in on desktop
 
-The backend stores your session encrypted on this device and restores it on startup. Cookies and bearer tokens are not exposed by public session/status responses or persisted to renderer localStorage. Requests renew authentication when possible; if the session expires or requires authentication, sign in again. Disconnect stops account-owned work and clears the connected session.
+1. Expand **Browsing-only sign-in** and select **Sign in with your default browser**. If the release includes a Spotify Client ID, Spotify authorization opens immediately.
+2. To use your own Spotify Developer app, add the redirect URI shown in ViiB to the app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard). The default is `http://127.0.0.1:34115/callback`. If you start ViiB with a different `-port`, register the exact URI shown. Add your Spotify account to the app's allowed users when using Development Mode.
+3. Enter the app's **Spotify Client ID** and select **Open Spotify authorization**. Builds with a bundled Client ID also offer **Use your own Spotify Client ID**.
+4. Approve access on Spotify's page. When the browser confirms the connection, close the tab and return to ViiB.
 
-Legacy OAuth remains a compatibility path for installations that have not selected cookie authentication. It is not the normal sign-in procedure.
+The desktop flow uses Spotify's Authorization Code with PKCE and requires only the public Client ID. Release maintainers can supply it through the GitHub Actions repository variable `SPOTIFY_CLIENT_ID`. Local desktop builds can set `VITE_SPOTIFY_CLIENT_ID` when building the frontend. Register the redirect URI for that app and verify its eligibility for the intended audience. [Spotify PKCE flow](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow) · [Spotify quota modes](https://developer.spotify.com/documentation/web-api/concepts/quota-modes)
+
+### Web Player sign-in
+
+1. Install Chrome, Microsoft Edge, or Chromium on the device running the ViiB backend.
+2. Select **Sign in with Spotify**. If you already have a browsing-only session, select **Connect for streaming and downloads**.
+3. Sign in on Spotify's page in the separate browser window. ViiB validates the session and closes the temporary window.
+
+Web Player sign-in requires no Spotify Developer app or redirect setup. You can keep Safari as your default browser.
+
+Use **Cancel sign-in** to stop a pending attempt. A successful new connection replaces the previous one. **Disconnect** clears the saved session and stops account-owned work. The backend encrypts both session types, restores them at startup, and renews authentication when possible. Sign in again if Spotify requires it.
 
 ## Browsing
 
@@ -28,13 +41,13 @@ Legacy OAuth remains a compatibility path for installations that have not select
 | Search | Search tracks, albums, artists, and playlists; load more results, open detail views, play, queue, or download |
 | Saved Albums | Browse saved albums and open track listings with download actions |
 | Playlists | Browse your playlists and open their contents |
-| Recently Played | Request recent listening data when available to the session; complete play-event history parity is not yet verified |
+| Recently Played | Web Player shows dated Recents groups with offset pagination. Desktop Web API sessions use Spotify's recently played endpoint. |
 
 Artist results open profiles with top tracks and albums. Saved-library pages support pagination, loading/error state, and retry. Account/profile fields and Recently Played can be unavailable or rate limited; an incomplete response does not establish full account-history support. The [parity audit](SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md) tracks remaining gaps and the [validation log](SPOTIFY_WEBPLAYER_VALIDATION.md) records dated evidence.
 
 ## Account plans
 
-Free and unknown-plan sessions can search and browse artists, albums, playlists, and saved-library metadata. Streaming, playback queue additions, shuffle playback, and downloads require a confirmed **Spotify Premium** account. Unsupported media actions are disabled in the UI and rejected by the backend. Local-file playback does not require Spotify Premium. The [dated Free-account probe](SPOTIFY_FREE_ACCOUNT_PROBE.md) records the current transport's provider-side Premium rejection and its account/market limits.
+Free and unknown-plan sessions can search and browse artists, albums, playlists, and saved-library metadata. A verified **Spotify Premium** Web Player connection enables streaming, playback queue additions, shuffle playback, and downloads in ViiB. Local-file playback works independently of Spotify Premium. The [dated Free-account probe](SPOTIFY_FREE_ACCOUNT_PROBE.md) records the transport's provider-side Premium rejection and its account and market limits.
 
 ## Streaming and queue actions
 
@@ -54,7 +67,8 @@ Source-bound Spotify three-band waveform selection and expanded sanitized metada
 
 ## Troubleshooting
 
-- **Sign-in does not open:** check the backend connection and installed Chrome/Edge/Chromium prerequisite.
+- **Web Player sign-in does not open:** check the backend connection and that Chrome, Edge, or Chromium is installed on the backend device.
+- **Default-browser authorization fails:** compare the redirect URI shown in ViiB with the app's Spotify Dashboard entry, then check the Client ID and account access.
 - **Session expired:** reconnect from Spotify or Settings.
 - **Rate limited:** respect the displayed retry delay, then retry the failed operation.
 - **Missing history/profile fields:** consult the parity audit; saved-library access does not prove every account field is available.

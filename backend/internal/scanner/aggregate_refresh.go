@@ -12,7 +12,9 @@ import (
 type aggregateRefreshState struct {
 	mu      sync.Mutex
 	timer   *time.Timer
+	dueAt   time.Time
 	pending bool
+	stopped bool
 }
 
 var aggregateRefreshes sync.Map // map[*Scanner]*aggregateRefreshState
@@ -22,15 +24,22 @@ func (s *Scanner) scheduleAggregateRefresh() {
 	state := value.(*aggregateRefreshState)
 	state.mu.Lock()
 	defer state.mu.Unlock()
+	state.stopped = false
 	state.pending = true
+	state.dueAt = time.Now().Add(750 * time.Millisecond)
 	if state.timer != nil {
 		state.timer.Reset(750 * time.Millisecond)
 		return
 	}
 	state.timer = time.AfterFunc(750*time.Millisecond, func() {
 		state.mu.Lock()
-		if !state.pending {
+		if state.stopped || !state.pending {
 			state.timer = nil
+			state.mu.Unlock()
+			return
+		}
+		if remaining := time.Until(state.dueAt); remaining > 0 {
+			state.timer.Reset(remaining)
 			state.mu.Unlock()
 			return
 		}
@@ -49,10 +58,15 @@ func (s *Scanner) scheduleAggregateRefresh() {
 
 func (s *Scanner) stopAggregateRefresh() {
 	value, ok := aggregateRefreshes.LoadAndDelete(s)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	state := value.(*aggregateRefreshState)
 	state.mu.Lock()
-	if state.timer != nil { state.timer.Stop() }
+	state.stopped = true
+	if state.timer != nil {
+		state.timer.Stop()
+	}
 	state.pending = false
 	state.timer = nil
 	state.mu.Unlock()

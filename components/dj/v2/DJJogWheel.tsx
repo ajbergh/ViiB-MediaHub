@@ -96,6 +96,11 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
     let idleTimeoutId: ReturnType<typeof setTimeout>;
     const lastPosRef = { current: -1 };
     const lastGlowRef = { current: -1 };
+    let lastGlowVisible: boolean | null = null;
+    let lastScratchLabel = '';
+    let lastTimeText = '';
+    let lastProgressVisible: boolean | null = null;
+    let lastProgressAngle = -1;
     
     const scheduleNext = (idle: boolean) => {
       if (idle) {
@@ -115,7 +120,13 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
       const playing = deckState.isPlaying;
       const engine = getDJAudioEngine();
       const scratching = engine?.isScratching(deck) ?? false;
-      if (scratchLabelRef.current) scratchLabelRef.current.textContent = engine.getScratchStatus(deck);
+      if (scratchLabelRef.current) {
+        const nextLabel = engine.getScratchStatus(deck);
+        if (nextLabel !== lastScratchLabel) {
+          lastScratchLabel = nextLabel;
+          scratchLabelRef.current.textContent = nextLabel;
+        }
+      }
       const pos = (playing || scratching) && engine?.initialized
         ? engine.getPosition(deck)
         : deckState.position;
@@ -173,47 +184,58 @@ export const DJJogWheel: React.FC<DJJogWheelProps> = ({ deck, size = 180, respon
             glowRingRef.current.setAttribute('stroke-width', String(2 + gi * 3));
             glowRingRef.current.setAttribute('opacity', String(0.3 + gi * 0.5));
           }
-          glowRingRef.current.style.display = '';
+          if (lastGlowVisible !== true) {
+            lastGlowVisible = true;
+            glowRingRef.current.style.display = '';
+          }
         } else {
-          if (lastGlowRef.current !== 0) {
+          if (lastGlowRef.current !== 0 || lastGlowVisible !== false) {
             lastGlowRef.current = 0;
+            lastGlowVisible = false;
             glowRingRef.current.style.display = 'none';
           }
         }
       }
       
-      // --- Time display update ---
+      // --- Time display update (10 Hz: only write when formatted tenths change) ---
       if (timeTextRef.current) {
         const mins = Math.floor(pos / 60);
         const secs = Math.floor(pos % 60);
         const tenths = Math.floor((pos % 1) * 10);
-        timeTextRef.current.textContent = 
-          `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${tenths}`;
+        const timeText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${tenths}`;
+        if (timeText !== lastTimeText) {
+          lastTimeText = timeText;
+          timeTextRef.current.textContent = timeText;
+        }
       }
       
-      // --- Progress arc ---
+      // --- Progress arc (only rewrite path when angle changes by >= 0.25 deg) ---
       if (progressArcRef.current) {
         const dur = deckState.duration;
-        if (dur > 0) {
-          const progress = (pos / dur) * 100;
-          if (progress > 0.5) {
-            const progressAngle = (progress / 100) * 360;
+        const progress = dur > 0 ? (pos / dur) * 100 : 0;
+        if (progress > 0.5) {
+          const progressAngle = Math.min((progress / 100) * 360, 359.9);
+          if (lastProgressVisible !== true || Math.abs(progressAngle - lastProgressAngle) >= 0.25) {
+            lastProgressAngle = progressAngle;
             const center = currentSize / 2;
             const radius = currentSize / 2 - 7;
             const startRad = (-90 * Math.PI) / 180;
-            const endRad = ((Math.min(progressAngle, 359.9) - 90) * Math.PI) / 180;
+            const endRad = ((progressAngle - 90) * Math.PI) / 180;
             const startX = center + radius * Math.cos(startRad);
             const startY = center + radius * Math.sin(startRad);
             const endX = center + radius * Math.cos(endRad);
             const endY = center + radius * Math.sin(endRad);
             const largeArc = progressAngle > 180 ? 1 : 0;
-            progressArcRef.current.setAttribute('d', 
+            progressArcRef.current.setAttribute('d',
               `M ${startX} ${startY} A ${radius} ${radius} 0 ${largeArc} 1 ${endX} ${endY}`);
-            progressArcRef.current.style.display = '';
-          } else {
-            progressArcRef.current.style.display = 'none';
           }
-        } else {
+          if (lastProgressVisible !== true) {
+            lastProgressVisible = true;
+            progressArcRef.current.style.display = '';
+          }
+        } else if (lastProgressVisible !== false) {
+          lastProgressVisible = false;
+          lastProgressAngle = -1;
           progressArcRef.current.style.display = 'none';
         }
       }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/art-media-platform/amp.SDK/stdlib/task"
@@ -139,6 +140,8 @@ type Streamer struct {
 	mu             sync.RWMutex             // Protects activeStreams
 	closed         bool
 	assets         *streamAssetPool
+	mp3Assets      *streamAssetPool
+	mp3Encode      chan struct{}
 	maxConcurrent  int // Maximum concurrent streams allowed
 }
 
@@ -158,6 +161,8 @@ func NewStreamer(sessionManager *SessionManager) *Streamer {
 		activeStreams:  make(map[string]*ActiveStream),
 		maxConcurrent:  5,
 		assets:         newStreamAssetPool(),
+		mp3Assets:      newMP3StreamAssetPool(),
+		mp3Encode:      make(chan struct{}, 1),
 	}
 }
 
@@ -205,6 +210,15 @@ func (s *Streamer) StreamTrack(ctx context.Context, spotifyID string, requestID 
 // quality preference ("high"/"medium"/"low") and returns an ActiveStream
 // which supports seeking.
 func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string, requestID string, quality string) (*ActiveStream, error) {
+	return s.streamTrack(ctx, spotifyID, requestID, quality, false)
+}
+
+// StreamTrackAsMP3 prepares a seekable rendition for players without Vorbis support.
+func (s *Streamer) StreamTrackAsMP3(ctx context.Context, spotifyID, requestID, quality string) (*ActiveStream, error) {
+	return s.streamTrack(ctx, spotifyID, requestID, quality, true)
+}
+
+func (s *Streamer) streamTrack(ctx context.Context, spotifyID, requestID, quality string, mp3 bool) (*ActiveStream, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -257,8 +271,20 @@ func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string,
 		}
 	}
 
-	key := streamAssetKey{track: spotifyID, quality: quality, generation: s.sessionManager.Generation()}
-	shared, releaseAsset, err := s.assets.acquire(ctx, key, func() (*streamAsset, error) {
+	key := streamAssetKey{track: spotifyID, quality: quality, generation: s.sessionManager.Generation(), mp3: mp3}
+	pool := s.assets
+	if mp3 {
+		pool = s.mp3Assets
+	}
+	shared, releaseAsset, err := pool.acquire(ctx, key, func() (*streamAsset, error) {
+		if mp3 {
+			select {
+			case s.mp3Encode <- struct{}{}:
+				defer func() { <-s.mp3Encode }()
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
 		pinOpts := respot.PinOpts{StartInternally: false, Format: asset.AssetFormat{AudioFormats: audioFormats}}
 		releaseKey, err := s.sessionManager.acquireAudioKeyRequest(ctx)
 		if err != nil {
@@ -285,6 +311,15 @@ func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string,
 			stopCancel()
 			_ = assetCtx.Close()
 			return nil, err
+		}
+		if mp3 {
+			defer assetCtx.Close()
+			defer stopCancel()
+			defer probe.Close()
+			start := time.Now()
+			rendition, err := prepareMP3StreamAsset(ctx, probe)
+			stLog("Spotify MP3 conversion completed in %s (success: %t)", time.Since(start).Round(time.Millisecond), err == nil)
+			return rendition, err
 		}
 		size, err := probe.Seek(0, io.SeekEnd)
 		_ = probe.Close()
@@ -313,25 +348,29 @@ func (s *Streamer) StreamTrackWithQuality(ctx context.Context, spotifyID string,
 	}
 	reader, err := shared.newReader()
 	if err != nil {
-		s.assets.discard(key, shared)
+		pool.discard(key, shared)
 		releaseAsset()
 		return nil, err
 	}
 
 	// Create cancellable context for cleanup
 	streamCtx, cancel := context.WithCancel(ctx)
+	format := "OGG_VORBIS"
+	if mp3 {
+		format = "MP3"
+	}
 
 	// Create active stream wrapper
 	stream := &ActiveStream{
 		reader: reader,
 		info: StreamInfo{
 			SpotifyID:   spotifyID,
-			Format:      "OGG_VORBIS",
+			Format:      format,
 			ContentType: shared.contentType,
 		},
 		cancelCtx:  cancel,
 		totalSize:  shared.size,
-		invalidate: func() { s.assets.discard(key, shared) },
+		invalidate: func() { pool.discard(key, shared) },
 		release:    func() { releaseAsset(); releaseSession(); releaseCapacity() },
 	}
 	releaseNeeded = false
@@ -380,6 +419,9 @@ func (s *Streamer) CloseAllStreams() {
 
 	if s.assets != nil {
 		s.assets.close()
+	}
+	if s.mp3Assets != nil {
+		s.mp3Assets.close()
 	}
 	for id, stream := range streams {
 		stLog("Closing stream: %s", id)

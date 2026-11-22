@@ -1,11 +1,3 @@
-export interface SpotifyDownloadOrigin {
-  kind: 'playlist' | 'album' | 'library';
-  id: string;
-  revision?: string;
-  entityId?: string;
-  position: number;
-}
-
 /**
  * API Client for ViiB MediaHub Backend
  * 
@@ -14,15 +6,15 @@ export interface SpotifyDownloadOrigin {
  * also call backend routes directly.
  * 
  * Architecture:
- * - Development: Vite dev server proxies /api requests to Go backend (port 8080)
- * - Production: Backend serves both the built frontend and API from same origin
+ * - Development: Vite proxies /api to the configured Go backend
+ * - Production: Browser builds serve /api directly and Wails proxies it to loopback
  * - Structured responses are typed JSON; event streams and file exports use separate formats
  * - TypeScript interfaces match backend Go structs
  * 
  * Features:
  * - Library management (songs, playlists, folders)
  * - File scanning and metadata extraction
- * - Spotify browser sign-in, redacted session status, and legacy credential endpoints
+ * - Spotify Web Player and desktop OAuth sign-in, redacted status, and legacy credential endpoints
  * - Spotify download queue management
  * - Real-time download progress via SSE (handled by DownloadManager component)
  * 
@@ -50,20 +42,36 @@ export interface SpotifyDownloadOrigin {
 import { AudioSettings } from '../types';
 import { requestJSON } from './httpClient';
 import { getEventStreamURL } from './eventStreamURL';
+import { needsSpotifyMP3 } from './spotifyPlaybackFormat';
+
+export interface SpotifyDownloadOrigin {
+  kind: 'playlist' | 'album' | 'library';
+  id: string;
+  revision?: string;
+  entityId?: string;
+  position: number;
+}
 
 export interface SpotifySessionStatus {
   provider: 'oauth' | 'webplayer';
   connected: boolean;
   authRequired: boolean;
+  webApiOnly?: boolean;
   message: string;
   product?: 'premium' | 'free' | 'unknown';
   canStream?: boolean;
   canDownload?: boolean;
 }
 
-export interface SpotifyBrowserLoginStatus { id: string; state: 'pending' | 'connected' | 'canceled' | 'failed'; message?: string }
+export interface SpotifyBrowserLoginStatus { id: string; state: 'pending' | 'connected' | 'canceled' | 'failed'; message?: string; browserRequired?: boolean }
 
 const API_BASE = '/api';
+
+function notifyTrackAnalysisChange(songId: string): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('library_updated', { detail: { source: 'analysis', songId } }));
+  }
+}
 
 /**
  * Standard error response from backend
@@ -580,22 +588,35 @@ export const api = {
   // Used for direct streaming of Spotify tracks without downloading
   // Quality parameter: 'high' (320kbps), 'medium' (160kbps), 'low' (96kbps)
   getSpotifyStreamUrl(spotifyId: string, quality?: 'high' | 'medium' | 'low'): string {
-    const qualityParam = quality ? `?quality=${quality}` : '';
-    return `${API_BASE}/spotify/stream/${spotifyId}${qualityParam}`;
+    const params = new URLSearchParams();
+    if (quality) params.set('quality', quality);
+    if (needsSpotifyMP3()) params.set('format', 'mp3');
+    const query = params.toString();
+    return `${API_BASE}/spotify/stream/${spotifyId}${query ? '?' + query : ''}`;
   },
 
+  /** Uses the desktop loopback transport for native audio and relative URLs in browser builds. */
   async resolveSpotifyStreamUrl(spotifyId: string, quality?: 'high' | 'medium' | 'low'): Promise<string> {
-    // Wails' Windows asset response buffers audio until EOF. Use the same
-    // direct loopback transport as SSE, retaining ordinary browser URLs.
     return getEventStreamURL(api.getSpotifyStreamUrl(spotifyId, quality));
   },
 
+  /** Starts a Web Player capture in a supported browser on the backend device. */
   async startSpotifyBrowserLogin(): Promise<SpotifyBrowserLoginStatus> {
     return handleResponse<SpotifyBrowserLoginStatus>(await fetch(API_BASE + '/spotify/auth/browser-login', { method: 'POST', headers: { 'Content-Type': 'application/json' } }));
   },
+  /** Creates a desktop PKCE attempt and returns the URL to open in the system browser. */
+  async startSpotifyOAuthLogin(clientId: string): Promise<SpotifyBrowserLoginStatus & { authUrl: string }> {
+    return handleResponse<SpotifyBrowserLoginStatus & { authUrl: string }>(await fetch(API_BASE + '/spotify/auth/oauth-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId }),
+    }));
+  },
+  /** Polls a Web Player or desktop OAuth attempt by its operation ID. */
   async getSpotifyBrowserLogin(id: string): Promise<SpotifyBrowserLoginStatus> {
     return handleResponse<SpotifyBrowserLoginStatus>(await fetch(API_BASE + '/spotify/auth/browser-login/' + encodeURIComponent(id)));
   },
+  /** Cancels the specified attempt if it is still pending. */
   async cancelSpotifyBrowserLogin(id: string): Promise<SpotifyBrowserLoginStatus> {
     return handleResponse<SpotifyBrowserLoginStatus>(await fetch(API_BASE + '/spotify/auth/browser-login/' + encodeURIComponent(id), { method: 'DELETE', headers: { 'Content-Type': 'application/json' } }));
   },
@@ -611,14 +632,7 @@ export const api = {
 
   // Spotify Credentials
 
-  /**
-   * Saves Spotify OAuth credentials to backend database.
-   * Credentials are stored in the spotify_credentials setting as JSON.
-   * The access token is used for both Web API calls and librespot downloads.
-   * 
-   * @param creds - OAuth credentials from Spotify authorization flow
-   * @returns Promise resolving to success response
-   */
+  /** Saves credentials through the legacy OAuth compatibility route. Desktop PKCE saves on the backend. */
   async saveSpotifyCredentials(creds: { clientId: string; clientSecret: string; accessToken: string; refreshToken: string; expiry: number; codeVerifier?: string; oauthState?: string; oauthError?: string; redirectUri?: string }) {
     const response = await fetch(`${API_BASE}/spotify/credentials`, {
       method: 'POST',
@@ -628,12 +642,7 @@ export const api = {
     return handleResponse(response);
   },
 
-  /**
-   * Retrieves stored Spotify OAuth credentials from backend.
-   * Used for checking if user is authenticated and for token refresh.
-   * 
-   * @returns Promise resolving to credentials or empty object if not set
-   */
+  /** Reads legacy credentials, public desktop OAuth settings, or an empty object. Use auth status for session checks. */
   async getSpotifyCredentials() {
     const response = await fetch(`${API_BASE}/spotify/credentials`);
     return handleResponse<{ clientId: string; clientSecret: string; accessToken: string; refreshToken: string; expiry: number; codeVerifier?: string; oauthState?: string; oauthError?: string; redirectUri?: string }>(response);
@@ -1022,6 +1031,10 @@ export const api = {
    * 
    * @returns Promise with albums needing Spotify check
    */
+  async getNextAlbumMetadata(): Promise<ApiAlbumMetadata | null> {
+    return handleResponse(await fetch(API_BASE + "/albums/metadata/next", { cache: "no-store" }));
+  },
+
   async getUncheckedAlbumMetadata(): Promise<ApiAlbumMetadata[]> {
     const response = await fetch(`${API_BASE}/albums/metadata/unchecked`);
     return handleResponse<ApiAlbumMetadata[]>(response);
@@ -1455,8 +1468,8 @@ export const api = {
    * @param trackId - Song ID
    * @returns Waveform response with peaks array
    */
-  async getDJWaveform(trackId: string): Promise<DJWaveformResponse> {
-    const response = await fetch(`${API_BASE}/dj/waveform/${trackId}`);
+  async getDJWaveform(trackId: string, signal?: AbortSignal): Promise<DJWaveformResponse> {
+    const response = await fetch(`${API_BASE}/dj/waveform/${trackId}`, { signal });
     return handleResponse<DJWaveformResponse>(response);
   },
 
@@ -1464,8 +1477,8 @@ export const api = {
    * Get the persisted, precedence-resolved analysis for one track. A 404 is
    * expected for tracks that have not completed local analysis yet.
    */
-  async getTrackAnalysisFeature(trackId: string): Promise<TrackAnalysisFeature> {
-    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}`, { cache: 'no-store' });
+  async getTrackAnalysisFeature(trackId: string, signal?: AbortSignal): Promise<TrackAnalysisFeature> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}`, { cache: 'no-store', signal });
     return handleResponse<TrackAnalysisFeature>(response);
   },
 
@@ -1480,7 +1493,9 @@ export const api = {
       headers: { 'Content-Type': 'application/json', 'If-Match': JSON.stringify(sourceFingerprint) },
       body: JSON.stringify({ bpm }),
     });
-    return handleResponse<TrackAnalysisFeature>(response);
+    const feature = await handleResponse<TrackAnalysisFeature>(response);
+    notifyTrackAnalysisChange(trackId);
+    return feature;
   },
 
   async resetTrackBPM(trackId: string, sourceFingerprint: string): Promise<TrackAnalysisFeature> {
@@ -1488,7 +1503,9 @@ export const api = {
       method: 'DELETE',
       headers: { 'If-Match': JSON.stringify(sourceFingerprint) },
     });
-    return handleResponse<TrackAnalysisFeature>(response);
+    const feature = await handleResponse<TrackAnalysisFeature>(response);
+    notifyTrackAnalysisChange(trackId);
+    return feature;
   },
 
   async updateTrackKey(trackId: string, key: { tonic: number; mode: 'major' | 'minor' }, sourceFingerprint: string): Promise<TrackAnalysisFeature> {
@@ -1497,12 +1514,16 @@ export const api = {
       headers: { 'Content-Type': 'application/json', 'If-Match': JSON.stringify(sourceFingerprint) },
       body: JSON.stringify(key),
     });
-    return handleResponse<TrackAnalysisFeature>(response);
+    const feature = await handleResponse<TrackAnalysisFeature>(response);
+    notifyTrackAnalysisChange(trackId);
+    return feature;
   },
 
   async resetTrackKey(trackId: string, sourceFingerprint: string): Promise<TrackAnalysisFeature> {
     const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/key`, { method: 'DELETE', headers: { 'If-Match': JSON.stringify(sourceFingerprint) } });
-    return handleResponse<TrackAnalysisFeature>(response);
+    const feature = await handleResponse<TrackAnalysisFeature>(response);
+    notifyTrackAnalysisChange(trackId);
+    return feature;
   },
 
   async updateTrackMetadataField(trackId: string, field: 'time_signature' | 'local_energy_level', value: number, sourceFingerprint: string): Promise<void> {
@@ -1521,13 +1542,40 @@ export const api = {
     if (!response.ok) await handleResponse<void>(response);
   },
 
-  async getTrackAnalysisFeatures(): Promise<TrackAnalysisFeature[]> {
-    const response = await fetch(`${API_BASE}/v2/analysis`, { cache: 'no-store' });
+  async getTrackAnalysisFeatures(songIds?: string[], options?: { summary?: boolean; scalarsOnly?: boolean; projection?: 'ordering' | 'loudness'; signal?: AbortSignal }): Promise<TrackAnalysisFeature[]> {
+    if (songIds?.length === 0) return [];
+    const params = new URLSearchParams();
+    songIds?.forEach(id => params.append("id", id));
+    if (options?.summary) params.set("summary", "1");
+    if (options?.scalarsOnly) params.set("scalarsOnly", "1");
+    if (options?.projection) params.set("projection", options.projection);
+    const query = params.toString();
+    const response = await fetch(`${API_BASE}/v2/analysis${query ? "?" + query : ""}`, { cache: 'no-store', signal: options?.signal });
     return handleResponse<TrackAnalysisFeature[]>(response);
   },
 
-  async getTrackBeatGrid(trackId: string): Promise<TrackBeatGrid> {
-    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/beatgrid`, { cache: 'no-store' });
+  async getTrackAnalysisFeaturesPage(
+    cursor?: string,
+    limit = 500,
+    options?: { summary?: boolean; scalarsOnly?: boolean; projection?: 'ordering' | 'loudness'; signal?: AbortSignal },
+  ): Promise<{ items: TrackAnalysisFeature[]; nextCursor?: string; hasMore: boolean }> {
+    const params = new URLSearchParams({ paged: '1', limit: String(limit) });
+    if (cursor) params.set('after', cursor);
+    if (options?.summary) params.set('summary', '1');
+    if (options?.scalarsOnly) params.set('scalarsOnly', '1');
+    if (options?.projection) params.set('projection', options.projection);
+    const response = await fetch(`${API_BASE}/v2/analysis?${params.toString()}`, { cache: 'no-store', signal: options?.signal });
+    const payload = await handleResponse<TrackAnalysisFeature[] | { items?: TrackAnalysisFeature[]; features?: TrackAnalysisFeature[]; nextCursor?: string; hasMore?: boolean }>(response);
+    if (Array.isArray(payload)) {
+      return { items: payload, hasMore: false };
+    }
+    const items = Array.isArray(payload.items) ? payload.items : (Array.isArray(payload.features) ? payload.features : []);
+    const nextCursor = typeof payload.nextCursor === 'string' && payload.nextCursor.length > 0 ? payload.nextCursor : undefined;
+    return { items, nextCursor, hasMore: Boolean(payload.hasMore && nextCursor) };
+  },
+
+  async getTrackBeatGrid(trackId: string, signal?: AbortSignal): Promise<TrackBeatGrid> {
+    const response = await fetch(`${API_BASE}/v2/analysis/${encodeURIComponent(trackId)}/beatgrid`, { cache: 'no-store', signal });
     return handleResponse<TrackBeatGrid>(response);
   },
 
@@ -1598,8 +1646,8 @@ export const api = {
    * @param trackId - Song ID
    * @returns Hot cues response with array of cue points
    */
-  async getDJHotCues(trackId: string): Promise<DJHotCuesResponse> {
-    const response = await fetch(`${API_BASE}/dj/hotcues/${trackId}`);
+  async getDJHotCues(trackId: string, signal?: AbortSignal): Promise<DJHotCuesResponse> {
+    const response = await fetch(`${API_BASE}/dj/hotcues/${trackId}`, { signal });
     return handleResponse<DJHotCuesResponse>(response);
   },
 

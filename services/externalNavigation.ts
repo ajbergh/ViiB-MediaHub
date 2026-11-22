@@ -28,6 +28,13 @@ export function shouldUseSystemBrowser(runtime: NavigationRuntime | null = getRu
     || runtime?.hasWailsBridge === true;
 }
 
+/** Reserves a browser tab during a user gesture for an async authorization URL. */
+export function reserveExternalBrowserTab(): Window | null {
+  const tab = window.open('', '_blank');
+  if (tab) tab.opener = null;
+  return tab;
+}
+
 /**
  * Opens an external URL in the system browser for Wails, preserving the app's
  * origin and avoiding WebKit child-window/popup behavior on macOS.

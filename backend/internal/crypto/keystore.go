@@ -15,6 +15,25 @@ type KeyStore struct {
 	key []byte
 }
 
+// Reset discards this store's in-memory key and keyfile so a fresh master key
+// can be created after credentials have become unrecoverable.
+func (s *KeyStore) Reset() error {
+	s.mu.Lock()
+	s.key = nil
+	s.mu.Unlock()
+
+	keyMu.Lock()
+	defer keyMu.Unlock()
+	cachedV2Key = nil
+	cachedV2KeyDir = ""
+	if s.dir != "" {
+		if err := os.Remove(filepath.Join(s.dir, masterKeyFileName)); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
 // NewKeyStore creates an independent store. Empty directories use the user
 // configuration directory, preserving the package helpers' default location.
 func NewKeyStore(dir string) (*KeyStore, error) {

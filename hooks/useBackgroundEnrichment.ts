@@ -20,6 +20,20 @@
 import { useEffect, useRef } from 'react';
 import { useArtists, useStore } from '../store';
 import api from '../services/api';
+import { spotifyCooldownRemaining } from '../services/spotifyBackend';
+import type { Album } from '../types';
+
+type VisibleAlbum = Album & { plexBacked?: boolean };
+let visibleAlbums: readonly VisibleAlbum[] = [];
+let onVisibleAlbumsChanged: (() => void) | undefined;
+
+export function useVisibleAlbumEnrichment(albums: readonly VisibleAlbum[]) {
+    useEffect(() => {
+        visibleAlbums = albums;
+        if (albums.length) onVisibleAlbumsChanged?.();
+        return () => { visibleAlbums = []; };
+    }, [albums]);
+}
 
 /**
  * @internal Hook implementation — see module-level JSDoc above.
@@ -30,8 +44,7 @@ export function useBackgroundEnrichment() {
     const backendAvailable = useStore(state => state.backendAvailable);
     const generation = useStore(state => state.spotifySessionGeneration);
     const spotifyConnected = useStore(state => state.spotifyConnected);
-    const artists = useArtists();
-    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const artists = useArtists(backendAvailable && spotifyConnected);
     const artistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const processingRef = useRef(false);
     
@@ -42,54 +55,63 @@ export function useBackgroundEnrichment() {
         }
         
         let cancelled = false;
+        let timer: ReturnType<typeof setTimeout>;
+        let nextAllowed = 0;
+        const checkedVisible = new Set<string>();
         const current = () => !cancelled && useStore.getState().spotifyConnected && useStore.getState().spotifySessionGeneration === generation;
+        const schedule = (delay: number) => {
+            clearTimeout(timer);
+            if (current()) timer = setTimeout(processNextAlbum, delay);
+        };
         const processNextAlbum = async () => {
-            if (!current() || processingRef.current) return;
+            if (!current()) return;
+            const cooldown = spotifyCooldownRemaining();
+            if (cooldown > 0) { schedule(cooldown + 1000); return; }
+            if (processingRef.current) { schedule(1000); return; }
             processingRef.current = true;
             
             try {
-                // Get unchecked albums from backend
-                const unchecked = await api.getUncheckedAlbumMetadata();
-                const expired = await api.getExpiredAlbumMetadata();
+                const state = useStore.getState();
+                const visible = visibleAlbums.find(({ name, artist, plexBacked, coverUrl }) => {
+                    const key = `${name}::${artist}`;
+                    return !plexBacked && !coverUrl && !state.albumMetadata[key] &&
+                        !state.fetchingAlbums.has(key) && !checkedVisible.has(key);
+                });
+                if (visible) checkedVisible.add(`${visible.name}::${visible.artist}`);
+                const album = visible ? { albumName: visible.name, artistName: visible.artist } : await api.getNextAlbumMetadata();
                 if (!current()) return;
-                
-                // Combine and pick the first one
-                const albumsToProcess = [...unchecked, ...expired];
-                
-                if (albumsToProcess.length === 0) {
-                    // No albums to process, check again in 60 seconds
-                    if (current()) timerRef.current = setTimeout(processNextAlbum, 60000);
+
+                if (!album) {
+                    schedule(60000);
                     return;
                 }
                 
-                // Process one album
-                const album = albumsToProcess[0];
                 console.log(`🔄 Background enrichment: checking "${album.albumName}" by ${album.artistName}`);
                 
                 await fetchAlbumMetadata(album.albumName, album.artistName);
                 
                 // Wait 5 seconds before processing next album (rate limiting)
-                timerRef.current = setTimeout(processNextAlbum, 5000);
+                nextAllowed = Date.now() + 5000;
+                schedule(5000);
             } catch (error) {
                 console.warn('Background enrichment error:', error);
                 // On error, wait longer before retrying
-                timerRef.current = setTimeout(processNextAlbum, 30000);
+                nextAllowed = Date.now() + 30000;
+                schedule(30000);
             } finally {
                 processingRef.current = false;
             }
         };
         
-        // Start enrichment after 10 seconds of startup
-        const startupTimer = setTimeout(() => {
-            processNextAlbum();
-        }, 10000);
+        onVisibleAlbumsChanged = () => {
+            if (!processingRef.current) schedule(Math.max(300, nextAllowed - Date.now()));
+        };
+        schedule(visibleAlbums.length ? 300 : 10000);
         
         return () => {
             cancelled = true;
-            clearTimeout(startupTimer);
-            if (timerRef.current) {
-                clearTimeout(timerRef.current);
-            }
+            clearTimeout(timer);
+            onVisibleAlbumsChanged = undefined;
         };
     }, [backendAvailable, spotifyConnected, generation, fetchAlbumMetadata]);
 
@@ -116,18 +138,30 @@ export function useBackgroundEnrichment() {
                 return;
             }
 
-            const artist = artistsToProcess[currentIndex++];
+            const cooldown = spotifyCooldownRemaining();
+            if (cooldown > 0) {
+                artistTimerRef.current = setTimeout(processNextArtist, cooldown + 1000);
+                return;
+            }
+
+            const artist = artistsToProcess[currentIndex];
             console.log(`🔄 Background enrichment: checking artist "${artist.name}"`);
-            await fetchArtistMetadata(artist.name);
+            try {
+                await fetchArtistMetadata(artist.name);
+            } catch (error) {
+                console.warn('Background artist enrichment error:', error);
+            }
+            // Metadata actions may consume errors. The shared transport deadline
+            // still pauses both workers and preserves the artist for a later retry.
+            if (spotifyCooldownRemaining() === 0) currentIndex++;
 
             if (!cancelled && useStore.getState().spotifyConnected && useStore.getState().spotifySessionGeneration === generation && currentIndex < artistsToProcess.length) {
-                artistTimerRef.current = setTimeout(processNextArtist, 500);
+                artistTimerRef.current = setTimeout(processNextArtist, Math.max(10000, spotifyCooldownRemaining() + 1000));
             }
         };
 
-        // Preserve the former Artists-page startup delay while allowing this
-        // work to continue regardless of the active route.
-        artistTimerRef.current = setTimeout(processNextArtist, 2000);
+        // Leave room for initial profile and browsing requests before enrichment.
+        artistTimerRef.current = setTimeout(processNextArtist, 10000);
 
         return () => {
             cancelled = true;

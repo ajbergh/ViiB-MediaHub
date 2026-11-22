@@ -1,3 +1,5 @@
+/** Explains Spotify media availability and offers a plan recheck when applicable. */
+
 import React, { useState } from 'react';
 import { useStore } from '../store';
 import { api } from '../services/api';
@@ -6,15 +8,21 @@ import { Button } from './ui/Button';
 export const SpotifyAccountNotice: React.FC = () => {
     const connected = useStore(s => s.spotifyConnected);
     const product = useStore(s => s.spotifyAccountProduct);
+    const webAPIOnly = useStore(s => s.spotifyWebAPIOnly);
     const [busy, setBusy] = useState(false);
-    if (!connected || product === 'premium') return null;
+    if (!connected) return null;
+    if (webAPIOnly) return <p role="status" className="rounded-lg bg-surface-1 p-4 text-sm text-text-secondary mb-4">
+        Spotify Web API is connected. For streaming and downloads in ViiB, connect through Web Player in Settings.
+    </p>;
+    if (product === 'premium') return null;
     const refresh = async () => {
         const generation = useStore.getState().spotifySessionGeneration;
         setBusy(true);
         try {
             const status = await api.getSpotifyAuthStatus(true);
             if (generation === useStore.getState().spotifySessionGeneration) {
-                useStore.getState().setSpotifyAccountProduct(status.connected && !status.authRequired ? status.product : undefined);
+                const connected = status.connected && !status.authRequired;
+                useStore.getState().setSpotifyAccountProduct(connected ? status.product : undefined, connected && status.webApiOnly);
             }
         } finally { setBusy(false); }
     };

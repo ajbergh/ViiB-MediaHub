@@ -1,3 +1,4 @@
+// Resolves persisted beat grids and manual overrides for a source revision.
 package db
 
 import (
@@ -13,6 +14,7 @@ type BeatGridResolution struct {
 	Reason string
 }
 
+// ResolveBeatGrid reads the current grid for a song and reports why an artifact is unavailable.
 func (d *DB) ResolveBeatGrid(song, fp string) (BeatGridResolution, error) {
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return BeatGridResolution{}, err
@@ -25,7 +27,9 @@ func resolveBeatGrid(q preparationExecutor, song, fp string) (BeatGridResolution
 	}
 	var data []byte
 	var source, encoding, provenance string
-	err := q.QueryRow(`SELECT data,source_fingerprint,encoding,provenance FROM track_analysis_artifacts WHERE song_id=? AND kind=? AND format_version=? AND algorithm_version=?`, song, beatgrid.ArtifactKind, beatgrid.FormatVersion, beatgrid.AlgorithmVersion).Scan(&data, &source, &encoding, &provenance)
+	err := q.QueryRow(`SELECT CASE WHEN length(data) <= ? THEN data END, source_fingerprint, encoding, provenance
+		FROM track_analysis_artifacts WHERE song_id=? AND kind=? AND format_version=? AND algorithm_version=?`,
+		beatgrid.MaxEncodedBytes, song, beatgrid.ArtifactKind, beatgrid.FormatVersion, beatgrid.AlgorithmVersion).Scan(&data, &source, &encoding, &provenance)
 	if errors.Is(err, sql.ErrNoRows) {
 		return BeatGridResolution{Reason: "missing"}, nil
 	}
@@ -71,6 +75,7 @@ func lockedBeatGridCapability(q preparationExecutor, song, fp string) (*TrackCap
 	}
 	return s, nil
 }
+// LockedBeatGridCapability reports the capability of a usable locked grid for this source.
 func (d *DB) LockedBeatGridCapability(song, fp string) (*TrackCapabilityStatus, error) {
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return nil, err
@@ -80,6 +85,7 @@ func (d *DB) LockedBeatGridCapability(song, fp string) (*TrackCapabilityStatus, 
 
 // SaveManualBeatGridIfSourceCurrent writes grid, lock, optional BPM and capability
 // together. Only grid/BPM columns are updated; concurrent key edits are preserved.
+// SaveManualBeatGridIfSourceCurrent saves the grid and optional BPM override in one transaction.
 func (d *DB) SaveManualBeatGridIfSourceCurrent(a TrackAnalysisArtifact, locked bool, bpm *float64) (bool, error) {
 	if a.SourceFingerprint == "" || a.Kind != beatgrid.ArtifactKind {
 		return false, errors.New("manual grid requires source")
@@ -127,6 +133,7 @@ func (d *DB) SaveManualBeatGridIfSourceCurrent(a TrackAnalysisArtifact, locked b
 	}
 	return true, tx.Commit()
 }
+// ResetBeatGridIfSourceCurrent removes the grid and grid lock for the current source.
 func (d *DB) ResetBeatGridIfSourceCurrent(song, fp string) (bool, error) {
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
 		return false, err

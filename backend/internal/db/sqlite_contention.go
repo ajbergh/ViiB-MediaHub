@@ -1,3 +1,4 @@
+// Retries transient SQLite write contention within a bounded, cancelable window.
 package db
 
 import (
@@ -50,6 +51,10 @@ func (d *DB) execSQLiteWrite(ctx context.Context, query string, args ...any) (sq
 // Reserve the writer before any read snapshot is created, preventing deferred
 // WAL transactions from failing when another writer commits between read/write.
 func (d *DB) beginSemanticWriteTx(ctx context.Context) (*sql.Tx, error) {
+	return d.beginSQLiteWriteTx(ctx, `UPDATE semantic_index_state SET document_revision=document_revision WHERE 0`)
+}
+
+func (d *DB) beginSQLiteWriteTx(ctx context.Context, reserveWriter string) (*sql.Tx, error) {
 	var tx *sql.Tx
 	err := retrySQLiteBusy(ctx, func() error {
 		var err error
@@ -57,7 +62,7 @@ func (d *DB) beginSemanticWriteTx(ctx context.Context) (*sql.Tx, error) {
 		if err != nil {
 			return err
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE semantic_index_state SET document_revision=document_revision WHERE 0`)
+		_, err = tx.ExecContext(ctx, reserveWriter)
 		if err != nil {
 			_ = tx.Rollback()
 		}

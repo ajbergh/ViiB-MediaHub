@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -24,6 +25,7 @@ func TestIsRetriableDownloadError(t *testing.T) {
 		{fmt.Errorf("request timeout"), true},
 		{fmt.Errorf("permission denied"), false},
 		{context.Canceled, false},
+		{fmt.Errorf("copy: %w", spotify.ErrDownloadAudioTimeout), true},
 		{fmt.Errorf("candidate: %w", spotify.ErrOggIntegrity), true},
 		{errors.New("crypto/aes: invalid key size 0"), true},
 		{fmt.Errorf("pin: %w", spotify.ErrAudioKeyRejected), true},
@@ -192,6 +194,65 @@ func TestStalledDownloadAutomaticallyRestartsOnce(t *testing.T) {
 	event := <-manager.progressChan
 	if event.Status != "failed" || !strings.Contains(event.Error, "audio transfer") {
 		t.Fatalf("unexpected repeated-stall event: %#v", event)
+	}
+}
+
+func TestParallelTimeoutRequeuesStalledDownloadsForSerialDispatch(t *testing.T) {
+	database, err := db.New(filepath.Join(t.TempDir(), "downloads.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	manager := NewDownloadManager(database, t.TempDir())
+	defer manager.cancel()
+
+	ids := []string{"first", "second"}
+	for index, id := range ids {
+		download := &db.SpotifyDownload{
+			ID: id, SpotifyID: id, SpotifyURI: "spotify:track:" + id,
+			Title: id, Type: "track", Status: "queued", AddedAt: int64(index + 1),
+		}
+		if err := database.AddDownload(download); err != nil {
+			t.Fatal(err)
+		}
+		if claimed, err := database.MarkDownloadStarted(id); err != nil || !claimed {
+			t.Fatalf("mark %s started: claimed=%v err=%v", id, claimed, err)
+		}
+		database.UpdateDownloadProgress(id, 30)
+	}
+
+	atomic.StoreInt32(&manager.activeCount, 1)
+	if manager.requeueAfterParallelTimeout(t.Context(), ids[0], 0) {
+		t.Fatal("a solo timeout should stay in the normal retry loop")
+	}
+
+	atomic.StoreInt32(&manager.activeCount, 2)
+	for index, id := range ids {
+		if !manager.requeueAfterParallelTimeout(t.Context(), id, 0) {
+			t.Fatalf("did not requeue stalled transfer %s", id)
+		}
+		current, err := database.GetDownload(id)
+		if err != nil || current == nil || current.Status != "queued" || current.Progress != 0 {
+			t.Fatalf("requeued download %s = %+v, err=%v", id, current, err)
+		}
+		if event := <-manager.progressChan; event.DownloadID != id || event.Status != "queued" {
+			t.Fatalf("unexpected requeue event: %+v", event)
+		}
+		atomic.StoreInt32(&manager.activeCount, int32(2-index-1))
+	}
+
+	if got := manager.effectiveDownloadConcurrency(); got != 1 || manager.GetMaxConcurrent() != DefaultConcurrentDownloads {
+		t.Fatalf("effective concurrency=%d, configured=%d", got, manager.GetMaxConcurrent())
+	}
+	atomic.StoreInt32(&manager.activeCount, 1)
+	manager.dispatchDownloads()
+	if len(manager.workChan) != 0 {
+		t.Fatal("dispatched another transfer while a worker was active")
+	}
+	atomic.StoreInt32(&manager.activeCount, 0)
+	manager.dispatchDownloads()
+	if len(manager.workChan) != 1 {
+		t.Fatalf("dispatched %d transfers, want 1", len(manager.workChan))
 	}
 }
 

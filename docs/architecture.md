@@ -176,7 +176,9 @@ Spotify browsing and direct streaming remain a separate integration rather than 
 
 This distinction keeps the canonical catalog focused on media ViiB can identify persistently as either local filesystem content or a configured remote PMS music source.
 
-Normal sign-in captures a session from Spotify’s own page in an isolated Chrome/Chromium/Edge window. The backend owns encrypted session persistence, renewal, catalog adapters, and account retirement; public status responses omit cookies and bearer tokens. Legacy OAuth is a compatibility path. [Parity and platform gates](SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md) remain open.
+Web Player sign-in captures a session from Spotify’s page in an isolated Chrome, Chromium, or Edge window. It provides purpose-scoped tokens and access to the Web Player catalog adapters and Premium media paths. Wails desktop also supports default-browser OAuth with PKCE. The Go backend generates the verifier and state, receives Spotify's response on its loopback listener, and exchanges the authorization code. Desktop PKCE credentials are limited to Web API features. Only one connection is active, and selecting a new one retires the previous account's work.
+
+The backend owns encrypted session persistence, token renewal, and account retirement. Public status responses omit cookies and bearer tokens. Existing legacy OAuth sessions retain their compatibility path. See [Spotify setup](spotify.md), [macOS validation](SPOTIFY_MACOS_AUTH_VALIDATION.md), and the [Web Player parity audit](SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md).
 
 [Spotify BPM/key import](SPOTIFY_BPM_KEY_IMPORT.md) binds downloaded observations to final source identity and preserves manual-lock precedence and local artifact fallback. Source-bound provider metadata and three-band waveform selection are implemented; live contract/platform qualification remains limited. [Spotify behavior and limitations](spotify.md) records delivered behavior and limitations. Further local scanning/DSP improvements are [deferred to a future branch](LOCAL_ANALYSIS_FUTURE_BRANCH.md).
 

@@ -32,8 +32,9 @@ import { ListHeader, PageHeader } from '../components/ui/Page';
 import { SongColumnMenu } from '../components/SongColumnMenu';
 import { SONG_COLUMNS, SongColumnId, SONG_COLUMNS_STORAGE_KEY, loadSongColumns, songColumnValue } from '../lib/songColumns';
 import { getCamelotColor } from '../lib/camelotColors';
-import { api } from '../services/api';
-import { TrackAnalysisFeature } from '../services/trackAnalysisContracts';
+import { useAnalysisFeatures } from '../hooks/useAnalysisFeatures';
+import { coverThumbnailUrl } from '../lib/artwork';
+import { sortByTextKey } from '../lib/libraryIndex';
 
 const songGridClass = 'grid grid-cols-[36px_minmax(0,1fr)_52px_36px] md:grid-cols-[var(--song-columns)] md:min-w-[var(--song-min-width)] gap-2 md:gap-4';
 
@@ -204,7 +205,8 @@ const Footer = () => <div className="h-32 bg-transparent" />;
 
 export const Songs: React.FC = () => {
   const navigate = useNavigate();
-  const songs = useStore((state) => state.songs);
+  const preview = useStore(state => state.libraryPreviewSongs);
+  const songs = useStore((state) => state.libraryPreviewSongs ?? state.songs);
   const playSong = useStore((state) => state.playSong);
   const currentSongId = useStore((state) => state.currentSong?.id);
   const isPlaying = useStore((state) => state.isPlaying);
@@ -218,7 +220,6 @@ export const Songs: React.FC = () => {
   const [sortBy, setSortBy] = useState<SongSortOption>('recent');
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [columns, setColumns] = useState<SongColumnId[]>(loadSongColumns);
-  const [analysis, setAnalysis] = useState<Record<string, TrackAnalysisFeature>>({});
   const [scrollParent, setScrollParent] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -230,22 +231,7 @@ export const Songs: React.FC = () => {
     try { localStorage.setItem(SONG_COLUMNS_STORAGE_KEY, JSON.stringify(columns)); } catch { /* Keep the active layout when storage is unavailable. */ }
   }, [columns]);
   const needsAnalysis = columns.some(id => ['bpm', 'key', 'camelot', 'energy'].includes(id));
-  useEffect(() => {
-    if (!needsAnalysis) return;
-    let active = true;
-    let generation = 0;
-    const refresh = async () => {
-      const current = ++generation;
-      try {
-        const features = await api.getTrackAnalysisFeatures();
-        if (active && current === generation) setAnalysis(Object.fromEntries(features.map(feature => [feature.songId, feature])));
-      } catch { if (active && current === generation) setAnalysis({}); }
-    };
-    void refresh();
-    window.addEventListener('library_updated', refresh);
-    window.addEventListener('enrichment_complete', refresh);
-    return () => { active = false; window.removeEventListener('library_updated', refresh); window.removeEventListener('enrichment_complete', refresh); };
-  }, [needsAnalysis, songs.length]);
+  const [visibleRange, setVisibleRange] = useState<{ startIndex: number; endIndex: number } | null>(null);
   const visibleColumns = SONG_COLUMNS.filter(column => columns.includes(column.id));
   const gridStyle = {
     '--song-columns': ['36px', 'minmax(220px, 4fr)', ...visibleColumns.map(column => column.width), '64px', '40px'].join(' '),
@@ -254,42 +240,60 @@ export const Songs: React.FC = () => {
   } as React.CSSProperties;
 
   const sortedSongs = useMemo(() => {
-    const result = [...songs];
     switch (sortBy) {
       case 'recent':
-        return result.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+        return [...songs].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
       case 'title-asc':
-        return result.sort((a, b) => a.title.localeCompare(b.title));
+        return sortByTextKey(songs, s => s.title, 'asc');
       case 'title-desc':
-        return result.sort((a, b) => b.title.localeCompare(a.title));
+        return sortByTextKey(songs, s => s.title, 'desc');
       case 'artist-asc':
-        return result.sort((a, b) => a.artist.localeCompare(b.artist));
+        return sortByTextKey(songs, s => s.artist, 'asc');
       case 'artist-desc':
-        return result.sort((a, b) => b.artist.localeCompare(a.artist));
+        return sortByTextKey(songs, s => s.artist, 'desc');
       case 'album-asc':
-        return result.sort((a, b) => a.album.localeCompare(b.album));
+        return sortByTextKey(songs, s => s.album, 'asc');
       case 'album-desc':
-        return result.sort((a, b) => b.album.localeCompare(a.album));
+        return sortByTextKey(songs, s => s.album, 'desc');
       case 'duration-asc':
-        return result.sort((a, b) => a.duration - b.duration);
+        return [...songs].sort((a, b) => a.duration - b.duration);
       case 'duration-desc':
-        return result.sort((a, b) => b.duration - a.duration);
+        return [...songs].sort((a, b) => b.duration - a.duration);
       case 'plays-desc':
-        return result.sort((a, b) => (b.playCount || 0) - (a.playCount || 0));
+        return [...songs].sort((a, b) => (b.playCount || 0) - (a.playCount || 0));
       default:
-        return result;
+        return [...songs];
     }
   }, [songs, sortBy]);
 
+  const searchTextBySong = useMemo(() => new WeakMap<Song, string>(), [songs]);
   const sortedAndFilteredSongs = useMemo(() => {
     const normalizedFilter = deferredFilter.trim().toLowerCase();
     if (!normalizedFilter) return sortedSongs;
-    return sortedSongs.filter(
-      s => s.title.toLowerCase().includes(normalizedFilter) ||
-           s.artist.toLowerCase().includes(normalizedFilter) ||
-           s.album.toLowerCase().includes(normalizedFilter)
-    );
-  }, [sortedSongs, deferredFilter]);
+    return sortedSongs.filter(song => {
+      let text = searchTextBySong.get(song);
+      if (text === undefined) {
+        text = `${song.title}\u0000${song.artist}\u0000${song.album}`.toLowerCase();
+        searchTextBySong.set(song, text);
+      }
+      return text.includes(normalizedFilter);
+    });
+  }, [sortedSongs, deferredFilter, searchTextBySong]);
+
+  const visibleSongIds = useMemo(() => {
+    if (!needsAnalysis || isLibraryInitializing || sortedAndFilteredSongs.length === 0) return [];
+    const rawStart = visibleRange ? Math.max(0, visibleRange.startIndex - 30) : 0;
+    const rawEnd = visibleRange ? visibleRange.endIndex + 31 : 100;
+    const start = rawStart < sortedAndFilteredSongs.length ? rawStart : 0;
+    const end = rawStart < sortedAndFilteredSongs.length ? rawEnd : 100;
+    return sortedAndFilteredSongs.slice(start, end).map(song => song.id);
+  }, [needsAnalysis, isLibraryInitializing, sortedAndFilteredSongs, visibleRange]);
+
+  const { rows: analysis } = useAnalysisFeatures({
+    enabled: needsAnalysis && !isLibraryInitializing,
+    scalarsOnly: true,
+    songIds: visibleSongIds,
+  });
 
   // Memoize components to prevent re-renders of the list structure
   const components: Components<any, any> = useMemo(() => ({
@@ -299,23 +303,25 @@ export const Songs: React.FC = () => {
 
   return (
     <div className="h-full min-w-0 animate-fade-in" style={gridStyle}>
+        {preview && <p role="status" className="px-4 py-2 text-sm text-text-secondary">Loading the rest of your library. Playback is available when loading finishes.</p>}
         <Virtuoso
             useWindowScroll={false}
             customScrollParent={scrollParent ?? undefined}
             data={sortedAndFilteredSongs}
+            rangeChanged={setVisibleRange}
             context={{ filter, setFilter, sortBy, setSortBy, showSortMenu, setShowSortMenu, columns, setColumns }}
             components={components}
             itemContent={(index, song) => {
                const isCurrent = currentSongId === song.id;
-               const displayCover = song.coverUrl || albumCovers[song.album];
+               const displayCover = coverThumbnailUrl(song.coverUrl || albumCovers[song.album], 96);
                
                return (
                 <div className="bg-surface-1 px-4 sm:px-6 lg:px-7">
                     <div 
-                        className={`${songGridClass} rounded-md px-4 py-2 items-center hover:bg-surface-hover group transition-colors cursor-pointer ${isCurrent ? 'bg-surface-hover' : 'bg-transparent'}`}
+                        className={`${songGridClass} rounded-md px-4 py-2 items-center group transition-colors ${preview ? '' : 'hover:bg-surface-hover cursor-pointer'} ${isCurrent ? 'bg-surface-hover' : 'bg-transparent'}`}
                         data-song-id={song.id}
-                        onClick={() => playSong(song, sortedAndFilteredSongs, undefined, index)}
-                        onContextMenu={(e) => openContextMenu(e, ContextMenuType.SONG, song)}
+                        onClick={preview ? undefined : () => playSong(song, sortedAndFilteredSongs, undefined, index)}
+                        onContextMenu={preview ? undefined : (e) => openContextMenu(e, ContextMenuType.SONG, song)}
                     >
                         <div className="text-center text-text-subtle tabular-nums text-sm relative h-full flex items-center justify-center">
                         <span className="group-hover:hidden">{isCurrent && isPlaying ? <div className="w-2.5 h-2.5 bg-brand rounded-full animate-pulse"></div> : <span className={isCurrent ? 'text-brand font-semibold' : ''}>{index + 1}</span>}</span>
@@ -324,7 +330,7 @@ export const Songs: React.FC = () => {
                         <div className="flex items-center gap-3 overflow-hidden">
                             <div className="w-10 h-10 flex-shrink-0 rounded bg-surface-3 overflow-hidden relative">
                                     {displayCover ? (
-                                    <img src={displayCover} alt={song.album} loading="lazy" className="w-full h-full object-cover" />
+                                    <img src={displayCover} alt={song.album} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                                     ) : (
                                     <div className="w-full h-full" style={{ background: generateGradient(song.album) }}></div>
                                     )}
@@ -347,7 +353,7 @@ export const Songs: React.FC = () => {
                             </div>
                         </div>
                         {visibleColumns.map(column => {
-                          const value = songColumnValue(column.id, song, analysis[song.id]);
+                          const value = songColumnValue(column.id, song, analysis.get(song.id));
                           const isCentered = CENTERED_SONG_COLUMNS.has(column.id);
                           if (column.id === 'camelot') {
                             const camelotColor = getCamelotColor(value);
@@ -386,6 +392,7 @@ export const Songs: React.FC = () => {
                         <div className="hidden md:flex items-center justify-center gap-1">
                             <Button
                               variant="ghost"
+                              disabled={Boolean(preview)}
                               className="rounded-full p-1.5 opacity-0 group-hover:opacity-100 text-text-secondary hover:text-text-main"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -396,12 +403,13 @@ export const Songs: React.FC = () => {
                             >
                               <Info size={16} />
                             </Button>
-                            <LikeButton songId={song.id} size={16} className="opacity-0 group-hover:opacity-100" />
+                            {!preview && <LikeButton songId={song.id} size={16} className="opacity-0 group-hover:opacity-100" />}
                         </div>
                         
                         <div className="flex justify-center relative">
                           <Button
                             variant="ghost"
+                            disabled={Boolean(preview)}
                             className="rounded-full p-1.5 opacity-0 group-hover:opacity-100"
                             onClick={(e) => {
                               e.stopPropagation();

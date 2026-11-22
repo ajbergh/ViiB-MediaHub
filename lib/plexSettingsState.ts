@@ -1,6 +1,18 @@
 /** Defines Plex settings state, authentication checks, and reducer transitions. */
 
-import type { PlexAccountServer, PlexLibrary, PlexServer, PlexSource } from '../services/plex';
+import { PlexRequestError, plexService, type PlexAccountServer, type PlexLibrary, type PlexServer, type PlexSource } from '../services/plex';
+
+export async function connectPlexWithConfirmation(connect: (replaceSourceId?: string) => Promise<PlexServer>): Promise<PlexServer | null> {
+  try {
+    return await connect();
+  } catch (error) {
+    if (!(error instanceof PlexRequestError && error.code === 'plex_replace_confirmation_required')) throw error;
+    const { source } = await plexService.getConfig();
+    if (!source) return connect();
+    const confirmed = window.confirm(`Replace ${source.name || 'the current Plex server'}? ViiB will remove its synced tracks from your library. Your files on Plex stay in place.`);
+    return confirmed ? connect(source.id) : null;
+  }
+}
 
 export interface PlexSettingsState {
   source: PlexSource | null;
@@ -10,7 +22,7 @@ export interface PlexSettingsState {
   libraries: PlexLibrary[];
   selectedLibraryId: string;
   manualUrl: string;
-  busy: 'loading' | 'discovering' | 'account_servers' | 'connecting' | 'authenticating' | 'libraries' | 'saving' | 'syncing' | 'disconnecting' | null;
+  busy: 'loading' | 'discovering' | 'account_servers' | 'connecting' | 'authenticating' | 'libraries' | 'saving' | 'saving_schedule' | 'syncing' | 'canceling_sync' | 'disconnecting' | null;
   message: string;
   error: string;
 }
@@ -48,7 +60,7 @@ export type PlexSettingsAction =
 // says authentication/reconnect is required.
 export function plexSourceNeedsAuthentication(source: PlexSource | null, error: string): boolean {
   if (!source) return false;
-  if (source.lastSyncStatus === 'auth_required') return true;
+  if (!source.available && source.lastSyncStatus === 'auth_required') return true;
   return /authentication|sign[ -]?in|reconnect/i.test(error);
 }
 

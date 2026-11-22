@@ -24,6 +24,7 @@ import { LibraryListHeader, LibraryListRow } from '../components/ui/LibraryList'
 import { api } from '../services/api';
 import { PlaylistArtwork } from '../components/PlaylistArtwork';
 import { getPlaylistArtwork } from '../lib/playlistArtwork';
+import { indexPlaylistSongs } from '../lib/playlistContents';
 
 export const Playlists: React.FC = () => {
   const navigate = useNavigate();
@@ -34,7 +35,7 @@ export const Playlists: React.FC = () => {
   const showToast = useStore(state => state.showToast);
   const songs = useStore(state => state.songs);
   const albumCovers = useAlbumCovers();
-  const songsById = useMemo(() => new Map(songs.map(song => [song.id, song])), [songs]);
+  const songsById = indexPlaylistSongs(songs);
   const thumbnails = useMemo(() => new Map(playlists.map(playlist => [
     playlist.id, getPlaylistArtwork(playlist.songIds, songsById, albumCovers),
   ])), [playlists, songsById, albumCovers]);

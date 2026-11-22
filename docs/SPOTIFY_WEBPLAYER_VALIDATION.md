@@ -4,9 +4,9 @@
 
 **Record started:** 2026-10-02
 
-**Evidence through:** 2026-10-04
+**Historical evidence through:** 2026-10-15. See the [parity audit](SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md) for later Web Player Recents evidence.
 
-**Implementation checkpoint:** `8187104`
+**Original implementation checkpoint:** `8187104`
 
 **Branch:** spotify/webplayer-auth-analysis-provider
 

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SpotifySearchOptions } from '../services/spotifyService';
 import { useStore } from '../store';
 import { Spotify } from './Spotify';
+import { SpotifyRateLimitError, SpotifyApiError } from '../lib/spotifyErrors';
 
 const mocks = vi.hoisted(() => ({
     search: vi.fn(), profile: vi.fn(), status: vi.fn(), songs: vi.fn(),
@@ -134,6 +135,22 @@ async function tab(label: string) {
     expect(button).toBeDefined();
     await act(async () => button!.click());
 }
+
+it.each([false, true])('offers account views according to OAuth capability %s', async oauthViews => {
+    const requests = vi.fn(async (url: string) => new Response(JSON.stringify(
+        url === '/api/spotify/account' ? {oauthViews} : {items: []},
+    )));
+    vi.stubGlobal('fetch', requests);
+    await mount();
+    await tab('Spotify Account');
+    const views = host.querySelector<HTMLSelectElement>('select')!;
+    expect(views.querySelector<HTMLOptionElement>('option[value="liked"]')!.disabled).toBe(false);
+    expect([...views.options].slice(1).every(option => option.disabled === !oauthViews)).toBe(true);
+    expect(requests.mock.calls.map(([url]) => url)).toEqual([
+        '/api/spotify/account', '/api/spotify/account/liked?offset=0&path=me%2Ftracks',
+    ]);
+    if (!oauthViews) expect(host.textContent).toContain('require an OAuth connection');
+});
 
 it.each(['free', 'unknown'])('keeps %s metadata search and library available while disabling media', async product => {
     const play = vi.fn(), queue = vi.fn();
@@ -329,6 +346,83 @@ it('shows a provider failure instead of claiming an empty recent history', async
     expect(host.textContent).toContain('No recently played tracks');
 });
 
+it('counts down a library cooldown and only enables retry after it expires', async () => {
+    mocks.recent.mockRejectedValueOnce(new SpotifyRateLimitError('limited', 2)).mockResolvedValueOnce({items:[]});
+    await mount(); await tab('Recently Played');
+    const retry = () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Retry library request')!;
+    expect(retry().disabled).toBe(true);
+    await tab('Retry library request');
+    expect(mocks.recent).toHaveBeenCalledTimes(1);
+    await advance(1000);
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('1 second.');
+    await advance(1000);
+    expect(retry().disabled).toBe(false);
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('cooldown has ended');
+    await tab('Retry library request');
+    expect(mocks.recent).toHaveBeenCalledTimes(2);
+});
+
+it('explains unavailable browser history without offering a retry loop', async () => {
+    mocks.recent.mockRejectedValue(new SpotifyApiError('Unavailable', 501));
+    await mount(); await tab('Recently Played');
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('unavailable with Spotify browser sign-in');
+    expect(host.textContent).not.toContain('Retry library request');
+});
+
+it('renders dated Web App groups, preserves repeated tracks and appends history pages', async () => {
+    const track = results('Repeated track').tracks.items[0];
+    const group = {uri:'',name:'',type:'group',date:'2026-11-15',subtitle:'',images:[],group_id:'0',children_group_id:'5',group_count:2};
+    const item = {uri:'spotify:track:fixture',name:track.name,type:'song',date:group.date,subtitle:'Fixture Artist',images:[],group_id:'5',children_group_id:'',group_count:0,track};
+    mocks.recent.mockResolvedValueOnce({source:'webplayer_recents',items:[group,item,item],limit:50,offset:0,next_offset:3,total:4})
+        .mockResolvedValueOnce({source:'webplayer_recents',items:[{...item,name:'Older track',track:{...track,name:'Older track'},group_id:'0',date:'2026-11-14'}],limit:50,offset:3,next_offset:null,total:4});
+    await mount(); await tab('Recently Played');
+    expect(host.querySelector('[aria-label="Recently played on 2026-11-15"]')).not.toBeNull();
+    expect(host.textContent).toContain('2 songs played');
+    expect(host.textContent).not.toContain('Repeated track');
+    const expand = host.querySelector<HTMLButtonElement>('[aria-label="Expand 2 songs played"]')!;
+    await act(async () => expand.click());
+    const play = vi.fn();
+    await act(async () => useStore.setState({spotifyAccountProduct: 'premium', playSong: play}));
+    const playButtons = host.querySelectorAll<HTMLButtonElement>('[aria-label="Play Repeated track"]');
+    expect(playButtons).toHaveLength(2);
+    await act(async () => playButtons[1].click());
+    expect(play.mock.calls[0]?.[3]).toBe(1);
+    await tab('Load more history');
+    expect(mocks.recent).toHaveBeenLastCalledWith(50,3);
+    expect(host.textContent).toContain('Older track');
+    expect(host.textContent).not.toContain('Load more history');
+    expect(host.querySelectorAll('[aria-label="Play Repeated track"]')).toHaveLength(2);
+});
+
+
+it('preserves loaded history and offers refresh when the next page total changes', async () => {
+    const track = results('Cached song').tracks.items[0];
+    const item = {uri: 'spotify:track:fixture', name: track.name, type: 'song', date: '2026-11-15',
+        subtitle: '', images: [], group_id: '0', children_group_id: '', group_count: 0, track};
+    const first = {source: 'webplayer_recents', items: [item], limit: 50, offset: 0, next_offset: 1, total: 2};
+    mocks.recent.mockResolvedValueOnce(first)
+        .mockResolvedValueOnce({...first, offset: 1, total: 3})
+        .mockResolvedValueOnce({...first, next_offset: null, total: 1});
+    await mount(); await tab('Recently Played');
+    await tab('Load more history');
+    expect(host.textContent).toContain('Cached song');
+    expect(host.textContent).toContain('Refresh history to continue');
+    expect(host.textContent).not.toContain('Load more history');
+    await tab('Refresh history');
+    expect(mocks.recent).toHaveBeenLastCalledWith(50);
+    expect(host.textContent).not.toContain('Refresh history to continue');
+});
+
+it('resolves a direct Spotify link without sending a text search', async () => {
+    const id = 'TTTTTTTTTTTTTTTTTTTTTT';
+    const track = {...results('Linked song').tracks.items[0], id};
+    const fetchResource = vi.fn(async () => new Response(JSON.stringify(track)));
+    vi.stubGlobal('fetch', fetchResource);
+    await mount(); await typeQuery(`https://open.spotify.com/intl-us/track/${id}?si=fixture`); await enter();
+    expect(requests).toHaveLength(0);
+    expect(fetchResource.mock.calls).toHaveLength(1);
+    expect(host.textContent).toContain('Linked song');
+});
 
 it('shows a current search failure, clears old results, and retries the same query', async () => {
     await mount(); await typeQuery('previous'); await enter();

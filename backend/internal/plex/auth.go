@@ -29,14 +29,27 @@ type AuthClient struct {
 }
 
 func NewAuthClient() *AuthClient {
-	return &AuthClient{httpClient: &http.Client{Timeout: 20 * time.Second}, baseURL: plexClientsBaseURL}
+	return NewAuthClientWithHTTP(plexClientsBaseURL, nil)
 }
 
 func NewAuthClientWithHTTP(baseURL string, client *http.Client) *AuthClient {
 	if client == nil {
 		client = &http.Client{Timeout: 20 * time.Second}
 	}
-	return &AuthClient{httpClient: client, baseURL: strings.TrimRight(baseURL, "/")}
+	guarded := *client
+	guarded.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) > 0 && (!strings.EqualFold(req.URL.Scheme, via[0].URL.Scheme) || !strings.EqualFold(req.URL.Host, via[0].URL.Host)) {
+			return http.ErrUseLastResponse
+		}
+		if client.CheckRedirect != nil {
+			return client.CheckRedirect(req, via)
+		}
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
+	}
+	return &AuthClient{httpClient: &guarded, baseURL: strings.TrimRight(baseURL, "/")}
 }
 
 func randomHex(bytes int) (string, error) {
@@ -48,7 +61,8 @@ func randomHex(bytes int) (string, error) {
 }
 
 func ensureDeviceCredentials(credentials *Credentials) error {
-	if credentials.ClientIdentifier != "" && credentials.KeyID != "" && credentials.PrivateKey != "" {
+	_, keyErr := privateKey(*credentials)
+	if credentials.ClientIdentifier != "" && credentials.KeyID != "" && keyErr == nil {
 		if credentials.ServerTokens == nil {
 			credentials.ServerTokens = map[string]string{}
 		}
@@ -345,43 +359,6 @@ type resource struct {
 	SourceTitle      string               `json:"sourceTitle"`
 }
 
-func preferredResourceConnection(connections []resourceConnection) (resourceConnection, bool) {
-	for _, connection := range connections {
-		if connection.Local && !connection.Relay && connection.URI != "" {
-			return connection, true
-		}
-	}
-	for _, connection := range connections {
-		if !connection.Relay && connection.URI != "" {
-			return connection, true
-		}
-	}
-	for _, connection := range connections {
-		if connection.URI != "" {
-			return connection, true
-		}
-	}
-	return resourceConnection{}, false
-}
-
-// preferredRemoteResourceConnection is used for account-discovered servers.
-// A resource often advertises its LAN address first; that address is not useful
-// for a shared server outside the user's network. Prefer Plex's non-local
-// direct route, then its relay, while retaining LAN as a last-resort fallback.
-func preferredRemoteResourceConnection(connections []resourceConnection) (resourceConnection, bool) {
-	for _, connection := range connections {
-		if !connection.Local && !connection.Relay && connection.URI != "" {
-			return connection, true
-		}
-	}
-	for _, connection := range connections {
-		if !connection.Local && connection.Relay && connection.URI != "" {
-			return connection, true
-		}
-	}
-	return preferredResourceConnection(connections)
-}
-
 func (a *AuthClient) listResources(ctx context.Context, credentials *Credentials) ([]resource, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.baseURL+"/api/v2/resources?includeHttps=1&includeRelay=1&includeIPv6=1", nil)
 	if err != nil {
@@ -409,15 +386,27 @@ func (a *AuthClient) listResources(ctx context.Context, credentials *Credentials
 	return resources, nil
 }
 
-// ListServers returns every reachable PMS resource the account can access,
-// including servers shared with the user. It intentionally omits resources
-// without an access token or usable connection because those cannot be added
-// or played through ViiB.
-func (a *AuthClient) ListServers(ctx context.Context, credentials *Credentials) ([]AccountServer, error) {
+func (a *AuthClient) authorizedResources(ctx context.Context, credentials *Credentials) ([]resource, error) {
+	previousToken := credentials.AccountToken
 	if err := a.EnsureFreshToken(ctx, credentials); err != nil {
 		return nil, err
 	}
 	resources, err := a.listResources(ctx, credentials)
+	if !errors.Is(err, ErrInvalidToken) || credentials.AccountToken != previousToken {
+		return resources, err
+	}
+	if err := a.Refresh(ctx, credentials); err != nil {
+		return nil, err
+	}
+	return a.listResources(ctx, credentials)
+}
+
+// ListServers returns every advertised PMS resource the account can access,
+// including servers shared with the user. It intentionally omits resources
+// without an access token or usable connection because those cannot be added
+// or played through ViiB.
+func (a *AuthClient) ListServers(ctx context.Context, credentials *Credentials) ([]AccountServer, error) {
+	resources, err := a.authorizedResources(ctx, credentials)
 	if err != nil {
 		return nil, err
 	}
@@ -426,16 +415,13 @@ func (a *AuthClient) ListServers(ctx context.Context, credentials *Credentials) 
 		if candidate.ClientIdentifier == "" || candidate.AccessToken == "" || !strings.Contains(candidate.Provides, "server") {
 			continue
 		}
-		connection, ok := preferredRemoteResourceConnection(candidate.Connections)
-		if !ok {
+		connections := orderedResourceConnections(candidate)
+		if len(connections) == 0 {
 			continue
 		}
-		endpoint, err := NormalizeServerURL(connection.URI)
-		if err != nil {
-			continue
-		}
+		connection := connections[0]
 		servers = append(servers, AccountServer{
-			Name: candidate.Name, URL: endpoint, MachineIdentifier: candidate.ClientIdentifier, Version: candidate.ProductVersion,
+			Name: candidate.Name, URL: connection.URI, MachineIdentifier: candidate.ClientIdentifier, Version: candidate.ProductVersion,
 			Owned: candidate.Owned, Owner: firstNonEmptyResourceValue(candidate.Owner, candidate.SourceTitle), Local: connection.Local, Relay: connection.Relay,
 		})
 	}
@@ -457,47 +443,65 @@ func firstNonEmptyResourceValue(values ...string) string {
 	return ""
 }
 
-// ResolveServerToken follows Plex's documented resources endpoint to obtain the
-// PMS-specific access token for a machine. It prefers local non-relay URLs.
-func (a *AuthClient) resolveServerToken(ctx context.Context, credentials *Credentials, machineIdentifier string, connectionPicker func([]resourceConnection) (resourceConnection, bool)) (token, preferredURL string, err error) {
-	if credentials.ServerTokens == nil {
-		credentials.ServerTokens = map[string]string{}
-	}
-	if err := a.EnsureFreshToken(ctx, credentials); err != nil {
-		return "", "", err
-	}
-	resources, err := a.listResources(ctx, credentials)
+func (a *AuthClient) serverResource(ctx context.Context, credentials *Credentials, machineIdentifier string) (resource, error) {
+	resources, err := a.authorizedResources(ctx, credentials)
 	if err != nil {
-		return "", "", err
+		return resource{}, err
 	}
 	for _, candidate := range resources {
 		if candidate.ClientIdentifier != machineIdentifier || !strings.Contains(candidate.Provides, "server") {
 			continue
 		}
 		if candidate.AccessToken == "" {
-			return "", "", errors.New("plex server resource did not provide an access token")
+			return resource{}, errors.New("plex server resource did not provide an access token")
 		}
-		credentials.ServerTokens[machineIdentifier] = candidate.AccessToken
-		if connection, ok := connectionPicker(candidate.Connections); ok {
-			return candidate.AccessToken, connection.URI, nil
-		}
-		return candidate.AccessToken, "", nil
+		return candidate, nil
 	}
-	return "", "", errors.New("authenticated Plex account cannot access this server")
+	return resource{}, errors.New("authenticated Plex account cannot access this server")
 }
 
-// ResolveServerToken follows Plex's documented resources endpoint to obtain the
-// PMS-specific access token for a machine. It prefers local non-relay URLs for
-// a previously configured local source.
-func (a *AuthClient) ResolveServerToken(ctx context.Context, credentials *Credentials, machineIdentifier string) (token, preferredURL string, err error) {
-	return a.resolveServerToken(ctx, credentials, machineIdentifier, preferredResourceConnection)
+// ResolveServerRoutes returns the resource token and all candidate addresses.
+// A local address is useful for owned servers, while shared servers normally
+// need their remote or relay routes.
+func (a *AuthClient) ResolveServerRoutes(ctx context.Context, credentials *Credentials, machineIdentifier string) (string, []string, error) {
+	server, err := a.serverResource(ctx, credentials, machineIdentifier)
+	if err != nil {
+		return "", nil, err
+	}
+	connections := orderedResourceConnections(server)
+	routes := make([]string, 0, len(connections))
+	for _, connection := range connections {
+		routes = append(routes, connection.URI)
+	}
+	return server.AccessToken, routes, nil
 }
 
-// ResolveAccountServerToken uses the remote route that was shown in account
-// discovery, so choosing a shared server does not unexpectedly attempt its
-// private LAN address.
-func (a *AuthClient) ResolveAccountServerToken(ctx context.Context, credentials *Credentials, machineIdentifier string) (token, preferredURL string, err error) {
-	return a.resolveServerToken(ctx, credentials, machineIdentifier, preferredRemoteResourceConnection)
+func orderedResourceConnections(server resource) []resourceConnection {
+	preferences := [][2]bool{{false, false}, {false, true}, {true, false}, {true, true}}
+	if server.Owned {
+		preferences = [][2]bool{{true, false}, {false, false}, {false, true}, {true, true}}
+	}
+	var routes []resourceConnection
+	seen := make(map[string]bool)
+	for _, preference := range preferences {
+		start := len(routes)
+		for _, connection := range server.Connections {
+			if connection.Local != preference[0] || connection.Relay != preference[1] || connection.URI == "" {
+				continue
+			}
+			normalized, err := NormalizeServerURL(connection.URI)
+			if err == nil && !seen[normalized] {
+				connection.URI = normalized
+				routes = append(routes, connection)
+				seen[normalized] = true
+			}
+		}
+		tier := routes[start:]
+		sort.SliceStable(tier, func(i, j int) bool {
+			return strings.HasPrefix(tier[i].URI, "https://") && !strings.HasPrefix(tier[j].URI, "https://")
+		})
+	}
+	return routes
 }
 
 // RedactError removes credential-like values from errors before they reach logs

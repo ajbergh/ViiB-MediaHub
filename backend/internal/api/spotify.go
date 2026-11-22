@@ -1,6 +1,5 @@
-// Package api provides REST API handlers for ViiB MediaHub.
-// This file serves legacy credential routes, catalog proxy requests, downloads, and audio streams.
-// Cookie sessions, browser sign-in, token routing, and fixed catalog adapters are composed in companion files.
+// Serves Spotify credential compatibility, catalog proxy, download, and audio routes.
+// Companion files own Web Player and desktop OAuth sign-in, token routing, and catalog adapters.
 package api
 
 import (
@@ -26,13 +25,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// SpotifyCredentials represents OAuth 2.0 credentials for Spotify Web API.
-// These credentials are stored in the database and used for:
-//   - Web API calls (search, metadata, user profile)
-//   - librespot authentication for downloads and streaming
-//
-// The backend refreshes and persists these credentials for the legacy OAuth path.
-// Cookie-mode requests instead obtain purpose-scoped tokens from the auth runtime.
+// SpotifyCredentials stores OAuth tokens and client settings in an encrypted database setting.
+// Desktop PKCE credentials are scoped to Web API features. Legacy OAuth records
+// retain the compatibility path, and Web Player uses a separate encrypted session.
 type SpotifyCredentials struct {
 	ClientId     string `json:"clientId"`     // OAuth public client ID
 	ClientSecret string `json:"clientSecret"` // Legacy field; never returned to the renderer
@@ -43,6 +38,7 @@ type SpotifyCredentials struct {
 	OAuthState   string `json:"oauthState,omitempty"`
 	OAuthError   string `json:"oauthError,omitempty"`
 	RedirectURI  string `json:"redirectUri,omitempty"`
+	DesktopPKCE  bool   `json:"desktopPkce,omitempty"`
 }
 
 // DownloadResponse extends SpotifyDownload with extracted metadata fields.
@@ -70,13 +66,8 @@ type downloadMetadata struct {
 	ImageURL string `json:"imageUrl,omitempty"`
 }
 
-// saveSpotifyCredentials saves OAuth credentials to the database.
-// Called by the frontend after successful OAuth authorization.
-// Credentials are stored as JSON in the "spotify_credentials" setting.
-//
-// The access token is used for:
-//   - Spotify Web API calls (proxied through this backend)
-//   - librespot-go authentication for direct downloads and streaming
+// saveSpotifyCredentials accepts credentials from legacy OAuth clients and replaces
+// the active account. Desktop PKCE saves credentials directly from its backend callback.
 //
 // POST /api/spotify/credentials
 // Request body: SpotifyCredentials JSON
@@ -106,12 +97,12 @@ func (a *API) saveSpotifyCredentials(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, map[string]string{"status": "ok"})
 }
 
-// getSpotifyCredentials retrieves stored OAuth credentials.
-// Returns empty object if credentials are not configured.
-// Used by frontend to check authentication status and for token refresh.
+// getSpotifyCredentials serves the legacy OAuth compatibility response. Desktop PKCE
+// returns only the public client ID and redirect URI. Web Player and unavailable
+// credentials return an empty object.
 //
 // GET /api/spotify/credentials
-// Response: SpotifyCredentials JSON or {}
+// Response: redacted OAuth settings, legacy credentials without the client secret, or {}.
 func (a *API) getSpotifyCredentials(w http.ResponseWriter, r *http.Request) {
 	if a.spotifyTokens().status().Provider == "webplayer" {
 		respondJSON(w, map[string]interface{}{})
@@ -145,6 +136,10 @@ func (a *API) getSpotifyCredentials(w http.ResponseWriter, r *http.Request) {
 	}
 
 	creds.ClientSecret = ""
+	if creds.DesktopPKCE {
+		respondJSON(w, map[string]string{"clientId": creds.ClientId, "redirectUri": creds.RedirectURI})
+		return
+	}
 	respondJSON(w, creds)
 }
 
@@ -1370,22 +1365,21 @@ func (a *API) forceRestartDownload(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, map[string]string{"status": "queued"})
 }
 
-// getSpotifyAuthStatus returns the current Spotify authentication status.
-// This is used to check if re-authentication is required (e.g., token expired/revoked).
+// getSpotifyAuthStatus returns connection and media capabilities without credentials.
+// Desktop PKCE skips the account-plan probe and reports Web API access only.
 //
 // GET /api/spotify/auth/status
-// Response: {"authRequired": true/false, "message": "..."}
 func (a *API) getSpotifyAuthStatus(w http.ResponseWriter, r *http.Request) {
 	status := a.spotifyTokens().status()
 	if a.downloadManager != nil && a.downloadManager.IsAuthRequired() {
 		status.AuthRequired = true
 	}
 	product := "unknown"
-	if status.Connected && !status.AuthRequired {
+	if status.Connected && !status.AuthRequired && !status.WebAPIOnly {
 		product = a.spotifyAccountProduct(r.Context(), r.URL.Query().Get("refreshProduct") == "true")
 	}
 	status = a.spotifyTokens().status()
-	if !status.Connected || status.AuthRequired {
+	if !status.Connected || status.AuthRequired || status.WebAPIOnly {
 		product = "unknown"
 	}
 	respondJSON(w, struct {
@@ -1959,12 +1953,12 @@ func (a *API) fetchPlaylistTracksByScraping(ctx context.Context, playlistID stri
 // This enables real-time playback of Spotify tracks within the player.
 //
 // The endpoint supports HTTP Range requests for seeking within the stream.
-// Audio is streamed as OGG Vorbis format (320kbps when available).
+// Audio is streamed as Ogg Vorbis by default, or MP3 with format=mp3.
 //
 // GET /api/spotify/stream/{id}
 //
 // Response Headers:
-//   - Content-Type: audio/ogg
+//   - Content-Type: audio/ogg or audio/mpeg
 //   - Accept-Ranges: bytes
 //   - Content-Range: bytes start-end/total (for 206 responses)
 //
@@ -2018,7 +2012,12 @@ func (a *API) streamSpotifyTrack(w http.ResponseWriter, r *http.Request) {
 	requestID := uuid.New().String()
 
 	// Stream the track with specified quality
-	stream, err := streamer.StreamTrackWithQuality(r.Context(), spotifyID, requestID, quality)
+	prepareStarted := time.Now()
+	openStream := streamer.StreamTrackWithQuality
+	if r.URL.Query().Get("format") == "mp3" {
+		openStream = streamer.StreamTrackAsMP3
+	}
+	stream, err := openStream(r.Context(), spotifyID, requestID, quality)
 	if err != nil {
 		logger.SpotifyStreamer("Failed to start stream: %v", err)
 		if strings.Contains(err.Error(), "premium") {
@@ -2029,6 +2028,9 @@ func (a *API) streamSpotifyTrack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer stream.Close()
+	if stream.Info().ContentType == "audio/mpeg" {
+		logger.SpotifyStreamer("MP3 response ready after %s (method: %s, range: %t)", time.Since(prepareStarted).Round(time.Millisecond), r.Method, r.Header.Get("Range") != "")
+	}
 
 	// Get stream size for Range request support
 	// Seek to end to get total size

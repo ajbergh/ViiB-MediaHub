@@ -16,7 +16,14 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/audio"
 	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
+	"github.com/ajbergh/viib-mediahub/internal/scanner"
 	"github.com/go-chi/chi/v5"
+)
+
+const (
+	libraryChangeRetainCount    = int64(100000)
+	libraryChangePruneThreshold = int64(1000)
+	libraryRevisionFallbackPoll = 5 * time.Second
 )
 
 // V2Routes returns the additive library synchronization, search, and analysis routes.
@@ -182,9 +189,41 @@ func (a *API) getLibraryChangesV2(w http.ResponseWriter, r *http.Request) {
 	}
 	transformLibrarySongsForAPI(page.Songs)
 	if !page.HasMore {
-		_ = a.db.PruneLibraryChanges(100000)
+		a.schedulePruneLibraryChanges(page.ToRevision)
 	}
 	respondJSON(w, page)
+}
+
+func (a *API) schedulePruneLibraryChanges(revision int64) {
+	a.schedulePruneLibraryChangesWithRetain(libraryChangeRetainCount, libraryChangePruneThreshold, revision)
+}
+
+func (a *API) schedulePruneLibraryChangesWithRetain(retain, threshold, revision int64) {
+	if revision <= retain+threshold {
+		return
+	}
+	a.libraryPruneMu.Lock()
+	if a.libraryPruneRunning || revision-a.libraryLastPrunedRev < threshold {
+		a.libraryPruneMu.Unlock()
+		return
+	}
+	a.libraryPruneRunning = true
+	a.libraryPruneMu.Unlock()
+
+	go func() {
+		defer func() {
+			a.libraryPruneMu.Lock()
+			a.libraryPruneRunning = false
+			a.libraryPruneMu.Unlock()
+		}()
+		if err := a.db.PruneLibraryChanges(retain); err == nil {
+			a.libraryPruneMu.Lock()
+			if revision > a.libraryLastPrunedRev {
+				a.libraryLastPrunedRev = revision
+			}
+			a.libraryPruneMu.Unlock()
+		}
+	}()
 }
 func (a *API) getLibraryRevisionV2(w http.ResponseWriter, r *http.Request) {
 	if err := a.db.EnsureLibrarySyncSchema(); err != nil {
@@ -220,7 +259,7 @@ func (a *API) searchLibraryV2(w http.ResponseWriter, r *http.Request) {
 		respondError(w, 400, "search query is too long")
 		return
 	}
-	result, err := a.db.SearchLibrary(query, parseBoundedInt(r.URL.Query().Get("limit"), 50, 200))
+	result, err := a.db.SearchLibraryContext(r.Context(), query, parseBoundedInt(r.URL.Query().Get("limit"), 50, 200))
 	if err != nil {
 		respondError(w, 500, err.Error())
 		return
@@ -279,32 +318,59 @@ func (a *API) libraryRevisionEventsV2(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
+
+	revCh, unsubRev := a.db.SubscribeLibraryRevision()
+	defer unsubRev()
+	var scanCh chan scanner.LibraryEvent
+	if a.scanner != nil {
+		scanCh = a.scanner.Subscribe()
+		defer a.scanner.Unsubscribe(scanCh)
+	}
+
 	lastSent := parseLastEventRevision(r)
-	if current, err := a.db.LibraryRevision(); err == nil && current > lastSent {
+	sendLatest := func() bool {
+		current, err := a.db.LibraryRevision()
+		if err != nil || current <= lastSent {
+			return true
+		}
 		if err := writeRevisionEvent(w, current); err != nil {
-			return
+			return false
 		}
 		lastSent = current
 		flusher.Flush()
+		return true
 	}
-	revisionTicker := time.NewTicker(500 * time.Millisecond)
+	if !sendLatest() {
+		return
+	}
+	flusher.Flush()
+
+	fallbackTicker := time.NewTicker(libraryRevisionFallbackPoll)
 	heartbeatTicker := time.NewTicker(15 * time.Second)
-	defer revisionTicker.Stop()
+	defer fallbackTicker.Stop()
 	defer heartbeatTicker.Stop()
 	for {
 		select {
 		case <-r.Context().Done():
 			return
-		case <-revisionTicker.C:
-			current, err := a.db.LibraryRevision()
-			if err != nil || current <= lastSent {
-				continue
-			}
-			if err := writeRevisionEvent(w, current); err != nil {
+		case <-revCh:
+			if !sendLatest() {
 				return
 			}
-			lastSent = current
-			flusher.Flush()
+		case event, ok := <-scanCh:
+			if !ok {
+				scanCh = nil
+				continue
+			}
+			if event.Type == "scan_complete" || event.Type == "library_updated" {
+				if !sendLatest() {
+					return
+				}
+			}
+		case <-fallbackTicker.C:
+			if !sendLatest() {
+				return
+			}
 		case <-heartbeatTicker.C:
 			if _, err := fmt.Fprint(w, ": heartbeat\n\n"); err != nil {
 				return

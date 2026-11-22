@@ -1,18 +1,24 @@
 // @vitest-environment jsdom
+/** Tests DJ library navigation, analysis freshness, and viewport loading. */
+
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ load: vi.fn(), loadTrack: vi.fn(), scroll: vi.fn(), state: { spotifySessionGeneration: 0, songs: [{ id: 'a', title: 'Track', artist: 'Artist', album: 'Album', duration: 60, genre: [], addedAt: 1 }], playlists: [], djDeckA: { track: null, key: null, isPlaying: false }, djDeckB: { track: null, key: null, isPlaying: false } } }));
 vi.mock('../../../store', () => { const useStore = (select: any) => select(mocks.state); Object.assign(useStore, { getState: () => mocks.state }); return { useStore }; });
 vi.mock('../../../services/api', () => ({ api: { getTrackAnalysisFeatures: mocks.load } }));
 vi.mock('../../../hooks/useDJAudioEngine', () => ({ useDJAudioEngineActions: () => ({ loadTrack: mocks.loadTrack }) }));
-vi.mock('react-virtuoso', () => ({ TableVirtuoso: React.forwardRef(function Table({ data, itemContent, context, components }: any, ref) {
+vi.mock('react-virtuoso', () => ({ TableVirtuoso: React.forwardRef(function Table({ data, itemContent, fixedHeaderContent, context, components }: any, ref) {
  React.useImperativeHandle(ref, () => ({ scrollIntoView: mocks.scroll }), []);
  const Row = components.TableRow;
- return <table><tbody>{data.map((item: any, index: number) => <Row key={item.id} item={item} context={context}>{itemContent(index, item)}</Row>)}</tbody></table>;
+ return <table><thead>{fixedHeaderContent?.()}</thead><tbody>{data.map((item: any, index: number) => <Row key={item.id} item={item} context={context}>{itemContent(index, item)}</Row>)}</tbody></table>;
 }) }));
 import { DJLibraryBrowserV2 } from './DJLibraryBrowserV2';
 import { browseDJMidiLibrary, loadDJMidiLibrary } from '../../../lib/djMidiLibrary';
+
+beforeEach(() => { vi.useFakeTimers(); mocks.state.spotifySessionGeneration++; });
+afterEach(() => vi.useRealTimers());
+const flushAnalysis = () => act(async () => vi.advanceTimersByTimeAsync(100));
 
 it('highlights and scrolls the dial selection, loading that same track to either deck', async () => {
  (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -27,6 +33,7 @@ it('highlights and scrolls the dial selection, loading that same track to either
  const selected = () => host.querySelector('tr[aria-selected="true"]');
  try {
   await act(async () => root.render(<DJLibraryBrowserV2 />));
+  await flushAnalysis();
   await act(async () => { browseDJMidiLibrary(1); browseDJMidiLibrary(1); });
   expect(selected()?.textContent).toContain('Bravo');
   expect(selected()?.className).toContain('outline-[var(--dj-info)]');
@@ -65,10 +72,12 @@ it('refreshes mounted library energy and ignores responses captured before a man
  const host = document.createElement('div'); const root = createRoot(host);
  try {
   await act(async () => root.render(<DJLibraryBrowserV2 />));
+  await flushAnalysis();
   await act(async () => {
    window.dispatchEvent(new CustomEvent('library_updated', { detail: { source: 'manual_audio_metadata', songId: 'a', sourceFingerprint: 'fp', field: 'local_energy_level' } }));
    settle([{ songId: 'a', energyLevel: 3 }]);
   });
+  await flushAnalysis();
   expect(mocks.load).toHaveBeenCalledTimes(2);
   expect(host.querySelector('[title="Energy Level 9/10 · Manual override"]')).not.toBeNull();
   expect(host.querySelector('[title^="Energy Level 3/10"]')).toBeNull();
@@ -77,36 +86,41 @@ it('refreshes mounted library energy and ignores responses captured before a man
 
 it('keeps usable rows during a failed refresh and clears them on account change', async () => {
  (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
- mocks.load.mockReset(); mocks.state.spotifySessionGeneration=0;
+ mocks.load.mockReset();
  let reject!: (error: Error) => void;
  mocks.load.mockResolvedValueOnce([{songId:'a',energyLevel:9,energyLevelSource:'manual'}]).mockImplementationOnce(()=>new Promise((_resolve,fail)=>{reject=fail;})).mockImplementation(()=>new Promise(()=>{}));
  const host=document.createElement('div');const root=createRoot(host);
  try {
   await act(async()=>root.render(<DJLibraryBrowserV2/>));
+  await flushAnalysis();
   const manual=()=>host.querySelector('[title="Energy Level 9/10 · Manual override"]');
   expect(manual()).not.toBeNull();
   await act(async()=>window.dispatchEvent(new CustomEvent('library_updated',{detail:{source:'manual_audio_metadata',songId:'a',sourceFingerprint:'fp',field:'local_energy_level'}})));
   expect(manual()).not.toBeNull();
+  await flushAnalysis();
   await act(async()=>reject(new Error('temporary')));
   expect(manual()).not.toBeNull();
-  mocks.state.spotifySessionGeneration=1;
+  mocks.state.spotifySessionGeneration++;
   await act(async()=>root.render(<DJLibraryBrowserV2/>));
+  await flushAnalysis();
   expect(manual()).toBeNull();
- }finally{await act(async()=>root.unmount());mocks.state.spotifySessionGeneration=0;}
+ }finally{await act(async()=>root.unmount());}
 });
 
 
 it('retries failed initial analysis without reloading the library', async () => {
  (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
- mocks.load.mockReset(); mocks.state.spotifySessionGeneration=0;
+ mocks.load.mockReset();
  mocks.load.mockRejectedValueOnce(new Error('temporary')).mockResolvedValueOnce([{songId:'a',energyLevel:9,energyLevelSource:'manual'}]);
  const host=document.createElement('div');const root=createRoot(host);
  try {
   await act(async()=>root.render(<DJLibraryBrowserV2/>));
+  await flushAnalysis();
   const retry=Array.from(host.querySelectorAll('button')).find(button=>button.textContent==='Retry analysis');
   expect(retry).toBeDefined();
   expect(host.textContent).toContain('Track');
   await act(async()=>retry!.click());
+  await flushAnalysis();
   expect(mocks.load).toHaveBeenCalledTimes(2);
   expect(host.querySelector('[title="Energy Level 9/10 · Manual override"]')).not.toBeNull();
   expect(host.textContent).not.toContain('Analysis could not be refreshed');
@@ -117,7 +131,7 @@ it('shows only current effective meter with its provenance and no beat-grid side
  (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
  localStorage.clear();
  localStorage.setItem('viib.dj.library.columnVisibility', JSON.stringify({ meter: true }));
- mocks.state.spotifySessionGeneration=0;
+
  mocks.state.songs = [
   { id: 'provider', title: 'Provider meter', artist: 'Artist', album: 'Album', duration: 60, genre: [], addedAt: 1 },
   { id: 'manual', title: 'Manual meter', artist: 'Artist', album: 'Album', duration: 60, genre: [], addedAt: 2 },
@@ -131,6 +145,7 @@ it('shows only current effective meter with its provenance and no beat-grid side
  const host=document.createElement('div');const root=createRoot(host);
  try {
   await act(async()=>root.render(<DJLibraryBrowserV2/>));
+  await flushAnalysis();
   const providerRow = host.querySelector('[aria-label="Meter: 4 beats per bar"]')?.closest('tr');
   const manualRow = host.querySelector('[aria-label="Meter: 3 beats per bar"]')?.closest('tr');
   const staleRow = Array.from(host.querySelectorAll('tr')).find(row => row.textContent?.includes('Stale meter'));
@@ -142,5 +157,38 @@ it('shows only current effective meter with its provenance and no beat-grid side
   await act(async()=>root.unmount());
   localStorage.clear();
   mocks.state.songs = [{ id: 'a', title: 'Track', artist: 'Artist', album: 'Album', duration: 60, genre: [], addedAt: 1 }];
+ }
+});
+
+it('fetches only the initial viewport window on open and loads full analysis when sorting by BPM', async () => {
+ (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+ localStorage.clear();
+ const originalSongs = mocks.state.songs;
+ mocks.state.songs = Array.from({ length: 150 }, (_, index) => ({
+  id: `track-${String(index).padStart(3, '0')}`,
+  title: `Track ${String(index).padStart(3, '0')}`,
+  artist: 'Artist',
+  album: 'Album',
+  duration: 60,
+  genre: [],
+  addedAt: index,
+ }));
+ mocks.load.mockReset().mockResolvedValue([]);
+ const host = document.createElement('div');
+ const root = createRoot(host);
+ try {
+  await act(async () => root.render(<DJLibraryBrowserV2 />));
+  await flushAnalysis();
+  expect(mocks.load).toHaveBeenCalledTimes(1);
+  expect(mocks.load.mock.calls[0][0]).toHaveLength(100);
+
+  const bpmHeader = Array.from(host.querySelectorAll('th')).find(th => th.textContent?.includes('BPM'))!;
+  await act(async () => bpmHeader.click());
+  await flushAnalysis();
+  expect(mocks.load).toHaveBeenCalledTimes(2);
+  expect(mocks.load.mock.calls[1][0]).toBeUndefined();
+ } finally {
+  await act(async () => root.unmount());
+  mocks.state.songs = originalSongs;
  }
 });

@@ -2,7 +2,7 @@
 
 ![Downloads page](../assets/screenshots/downloads.png)
 
-The Downloads page manages the Spotify download queue and shows real-time progress for each download. Downloads require a connected, confirmed Spotify Premium account; Free or unknown-plan sessions can browse Spotify but cannot start downloads.
+The Downloads page manages the Spotify download queue and shows real-time progress. To start a download, use a [Web Player connection](spotify.md#web-player-sign-in) with verified Spotify Premium. The default-browser desktop connection provides Web API features such as browsing and account views.
 
 ---
 
@@ -68,7 +68,7 @@ Click **Direct Download** (link icon) to enter a Spotify track URL and queue it 
 
 ## Auth Expiry
 
-If your Spotify session expires mid-queue, downloads stop and the page shows an **Auth Required** banner. Click the banner to navigate to the [Spotify](spotify.md) page and re-authenticate.
+If your Spotify session expires mid-queue, downloads stop and the page shows an **Auth Required** banner. Click the banner to open the [Spotify](spotify.md) page and reconnect through Web Player.
 
 ---
 

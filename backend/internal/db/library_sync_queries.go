@@ -6,8 +6,77 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
+
+type changeBroker struct {
+	seq  atomic.Uint64
+	mu   sync.Mutex
+	subs map[chan struct{}]struct{}
+}
+
+func (b *changeBroker) notify() {
+	b.seq.Add(1)
+	b.mu.Lock()
+	for ch := range b.subs {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+	b.mu.Unlock()
+}
+
+func (b *changeBroker) subscribe() (<-chan struct{}, func()) {
+	ch := make(chan struct{}, 1)
+	b.mu.Lock()
+	if b.subs == nil {
+		b.subs = make(map[chan struct{}]struct{})
+	}
+	b.subs[ch] = struct{}{}
+	b.mu.Unlock()
+	return ch, func() {
+		b.mu.Lock()
+		delete(b.subs, ch)
+		b.mu.Unlock()
+	}
+}
+
+func (b *changeBroker) sequence() uint64 {
+	return b.seq.Load()
+}
+
+var libraryRevisionBrokers sync.Map // map[*DB]*changeBroker
+
+func (d *DB) libraryRevisionBroker() *changeBroker {
+	if d == nil {
+		return nil
+	}
+	if value, ok := libraryRevisionBrokers.Load(d); ok {
+		return value.(*changeBroker)
+	}
+	broker := &changeBroker{}
+	actual, _ := libraryRevisionBrokers.LoadOrStore(d, broker)
+	return actual.(*changeBroker)
+}
+
+// NotifyLibraryRevision wakes in-process library revision SSE subscribers.
+func (d *DB) NotifyLibraryRevision() {
+	if broker := d.libraryRevisionBroker(); broker != nil {
+		broker.notify()
+	}
+}
+
+// SubscribeLibraryRevision returns a channel signaled on in-process library revision changes.
+func (d *DB) SubscribeLibraryRevision() (<-chan struct{}, func()) {
+	broker := d.libraryRevisionBroker()
+	if broker == nil {
+		return nil, func() {}
+	}
+	return broker.subscribe()
+}
 
 // LibraryRevision returns the latest monotonic song-change revision.
 func (d *DB) LibraryRevision() (int64, error) {
@@ -31,6 +100,17 @@ func (d *DB) RecordSongLibraryChange(songID string) error {
 		return err
 	}
 	defer tx.Rollback()
+	if err := recordSongLibraryChangeTx(tx, songID); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	d.NotifyLibraryRevision()
+	return nil
+}
+
+func recordSongLibraryChangeTx(tx *sql.Tx, songID string) error {
 	if _, err := tx.Exec(`UPDATE library_state SET revision = revision + 1 WHERE id = 1`); err != nil {
 		return err
 	}
@@ -38,7 +118,7 @@ func (d *DB) RecordSongLibraryChange(songID string) error {
 		SELECT revision, ?, 'upsert', ? FROM library_state WHERE id = 1`, songID, time.Now().UnixMilli()); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return nil
 }
 
 func clampPageLimit(limit, fallback, maximum int) int {
@@ -111,7 +191,7 @@ func (d *DB) GetLibraryChanges(since int64, limit int) (LibraryChangePage, error
 		return LibraryChangePage{}, ErrLibraryResnapshotRequired
 	}
 	rows, err := tx.Query(`
-		SELECT revision, song_id, operation, changed_at
+		SELECT revision, song_id, operation, changed_at, analysis_changed
 		FROM library_changes WHERE revision > ?
 		ORDER BY revision LIMIT ?`, since, limit+1)
 	if err != nil {
@@ -122,7 +202,7 @@ func (d *DB) GetLibraryChanges(since int64, limit int) (LibraryChangePage, error
 	changes := make([]LibraryChange, 0, limit+1)
 	for rows.Next() {
 		var change LibraryChange
-		if err := rows.Scan(&change.Revision, &change.SongID, &change.Operation, &change.ChangedAt); err != nil {
+		if err := rows.Scan(&change.Revision, &change.SongID, &change.Operation, &change.ChangedAt, &change.AnalysisChanged); err != nil {
 			return LibraryChangePage{}, err
 		}
 		changes = append(changes, change)
@@ -223,8 +303,24 @@ func (d *DB) PruneLibraryChanges(retain int64) error {
 	if cutoff <= 0 {
 		return nil
 	}
-	_, err = d.conn.Exec(`DELETE FROM library_changes WHERE revision < ?`, cutoff)
-	return err
+	const batchSize = 5000
+	for {
+		res, err := d.conn.Exec(`
+			DELETE FROM library_changes
+			WHERE revision IN (
+				SELECT revision FROM library_changes
+				WHERE revision < ?
+				ORDER BY revision
+				LIMIT ?
+			)`, cutoff, batchSize)
+		if err != nil {
+			return err
+		}
+		affected, err := res.RowsAffected()
+		if err != nil || affected < batchSize {
+			return err
+		}
+	}
 }
 
 func (d *DB) LibrarySyncStats() (revision, retainedChanges int64, err error) {

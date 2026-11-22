@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createLibrarySlice } from './librarySlice';
 import { backendService } from '../services/backendService';
-import { libraryIndex } from '../lib/libraryIndex';
+import { libraryV2 } from '../services/libraryV2';
 import { Song } from '../types';
 import { libraryOperationsV2 } from '../services/libraryOperationsV2';
 import { libraryService } from '../services/libraryService';
@@ -33,7 +33,7 @@ function createTestLibraryState() {
   };
   const get = () => state;
   const slice = createLibrarySlice(set as never, get as never, {} as never);
-  state = { ...state, ...slice, backendAvailable: true, isScanning: true };
+  state = { ...state, ...slice, backendAvailable: true, isScanning: true, isLibraryInitializing: false };
   return state as unknown as typeof slice;
 }
 
@@ -59,51 +59,51 @@ describe('library scan polling', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
-    libraryIndex.initialize([]);
   });
 
-  it('refreshes visible songs every few seconds while a scan is active', async () => {
+  it('uses one snapshot and catches up via deltas while scanning', async () => {
     vi.useFakeTimers();
     let statusReads = 0;
     vi.spyOn(backendService, 'getScanStatus').mockImplementation(async () => ({
       scanning: statusReads++ < 4,
       progress: 'Indexing local music',
     }));
-    vi.spyOn(backendService, 'getAllSongs')
-      .mockResolvedValueOnce(songs(50))
-      .mockResolvedValueOnce(songs(100))
-      .mockResolvedValueOnce(songs(200));
-    vi.spyOn(backendService, 'getFolders').mockResolvedValue([]);
-
+    const snapshot = vi.spyOn(libraryV2, "getSnapshot").mockResolvedValue({ songs: songs(50), revision: 1 });
+    const oldRead = vi.spyOn(backendService, "getAllSongs");
+    const catchup = vi.spyOn(libraryV2, "getChanges");
+    const batch = (from: number, end: number, revision: number) => ({
+      revision, songs: songs(end).slice(from),
+      changes: songs(end).slice(from).map(song => ({ songId: song.id, revision, operation: "upsert" as const, changedAt: 1 })),
+    });
+    catchup.mockResolvedValueOnce(batch(50, 100, 2)).mockResolvedValueOnce(batch(100, 200, 3));
     const state = createTestLibraryState();
     await state.pollScanStatus();
     await vi.advanceTimersByTimeAsync(0);
     expect(state.songs).toHaveLength(50);
-
     await vi.advanceTimersByTimeAsync(3100);
     expect(state.songs).toHaveLength(100);
-
     await vi.advanceTimersByTimeAsync(1000);
     expect(state.songs).toHaveLength(200);
     expect(state.isScanning).toBe(false);
-    expect(backendService.getAllSongs).toHaveBeenCalledTimes(3);
+    expect(snapshot).toHaveBeenCalledTimes(1);
+    expect(oldRead).not.toHaveBeenCalled();
+    expect(catchup.mock.calls.map(([revision]) => revision)).toEqual([1, 2]);
   });
   it('keeps scanning visible until the final catalog response arrives', async () => {
     vi.useFakeTimers();
     vi.spyOn(backendService, 'getScanStatus')
       .mockResolvedValueOnce({ scanning: true, progress: 'Scanning' })
       .mockResolvedValue({ scanning: false, progress: '' });
-    let finish!: (value: Song[]) => void;
-    vi.spyOn(backendService, 'getAllSongs')
-      .mockResolvedValueOnce([])
-      .mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    vi.spyOn(libraryV2, 'getSnapshot').mockResolvedValue({ songs: [], revision: 1 });
+    let finish!: (value: Awaited<ReturnType<typeof libraryV2.getChanges>>) => void;
+    vi.spyOn(libraryV2, 'getChanges').mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
     vi.spyOn(backendService, 'getFolders').mockResolvedValue([]);
     const state = createTestLibraryState();
     await state.pollScanStatus();
     await vi.advanceTimersByTimeAsync(1000);
     expect(state.songs).toHaveLength(0);
     expect(state.isScanning).toBe(true);
-    finish(songs(1));
+    finish({ revision: 2, songs: songs(1), changes: [{ revision: 2, songId: "song-0", operation: "upsert", changedAt: 1 }] });
     await vi.advanceTimersByTimeAsync(0);
     expect(state.songs).toHaveLength(1);
     expect(state.isScanning).toBe(false);

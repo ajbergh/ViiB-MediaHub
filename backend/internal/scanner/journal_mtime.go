@@ -3,7 +3,7 @@
 package scanner
 
 import (
-	"os"
+	"io/fs"
 	"path/filepath"
 	"strings"
 	"time"
@@ -43,27 +43,34 @@ func (m *MtimeChangeDetector) GetChangesSince(since time.Time, watchPaths []stri
 	_ = since // Comparison uses the metadata cache rather than a timestamp cutoff
 
 	// Load metadata cache for comparison
-	metadataCache, err := m.scanner.db.GetFileMetadataCacheMap()
+	metadataCache, err := m.scanner.db.GetFileCheckpoints()
 	if err != nil {
 		logger.Scanner("Cannot load metadata cache: %v", err)
-		metadataCache = make(map[string]db.FileMetadataCache)
+		metadataCache = make(map[string]db.FileCheckpoint)
 	}
 
 	// Track seen files to detect deletions
-	seenFiles := make(map[string]bool)
+	seenFiles := make(map[string]struct{}, len(metadataCache))
 	failedRoots := make(map[string]bool)
 
-	for _, watchPath := range watchPaths {
-		err := filepath.Walk(watchPath, func(path string, info os.FileInfo, err error) error {
+	resolvedRoots := make(map[string]string, len(watchPaths))
+	for _, configuredPath := range watchPaths {
+		watchPath, err := resolveScanRoot(configuredPath)
+		if err != nil {
+			logger.Scanner("Cannot resolve scan folder %s: %v", configuredPath, err)
+			continue
+		}
+		resolvedRoots[configuredPath] = watchPath
+		err = filepath.WalkDir(watchPath, func(path string, entry fs.DirEntry, err error) error {
 			if err != nil {
 				failedRoots[watchPath] = true
 				logger.Scanner("Source unavailable at %s: %v; suppressing deletions for %s", path, err, watchPath)
 				return nil
 			}
 
-			if info.IsDir() {
+			if entry.IsDir() {
 				// Check if this directory should be skipped
-				dirName := info.Name()
+				dirName := entry.Name()
 				if shouldSkipDirectory(dirName) {
 					return filepath.SkipDir
 				}
@@ -76,10 +83,25 @@ func (m *MtimeChangeDetector) GetChangesSince(since time.Time, watchPaths []stri
 				return nil
 			}
 
-			seenFiles[path] = true
-
-			// Get cached metadata
+			seenFiles[path] = struct{}{}
 			cached, hasCached := metadataCache[path]
+			if configuredPath != watchPath {
+				// Older scans may have stored paths through the configured alias.
+				relative, relErr := filepath.Rel(watchPath, path)
+				if relErr == nil {
+					alias := filepath.Join(configuredPath, relative)
+					seenFiles[alias] = struct{}{}
+					if previous, exists := metadataCache[alias]; !hasCached && exists {
+						path, cached, hasCached = alias, previous, true
+					}
+				}
+			}
+			info, err := entry.Info()
+			if err != nil {
+				failedRoots[watchPath] = true
+				logger.Scanner("Source unavailable at %s: %v; suppressing deletions for %s", path, err, watchPath)
+				return nil
+			}
 			mtime := info.ModTime().UnixMilli()
 			size := info.Size()
 
@@ -114,10 +136,12 @@ func (m *MtimeChangeDetector) GetChangesSince(since time.Time, watchPaths []stri
 
 	// Detect deleted files - files in cache but not seen during walk
 	for path := range metadataCache {
-		if !seenFiles[path] {
+		if _, seen := seenFiles[path]; !seen {
 			// Check if the path is within our watch paths
-			for _, watchPath := range watchPaths {
-				if !failedRoots[watchPath] && db.PathWithinRoot(watchPath, path) && m.scanner.db.ConfirmMissingLocalMedia(path) {
+			for configuredPath, watchPath := range resolvedRoots {
+				if !failedRoots[watchPath] &&
+					(db.PathWithinRoot(watchPath, path) || (configuredPath != watchPath && db.PathWithinRoot(configuredPath, path))) &&
+					m.scanner.db.ConfirmMissingLocalMedia(path) {
 					cached := metadataCache[path]
 					changes = append(changes, FileChange{
 						Path:       path,

@@ -23,6 +23,8 @@ type SavedAlbum struct {
 
 func LibraryPath(path string) (kind string, ok bool) {
 	switch path {
+	case "/v1/me/tracks":
+		return "track", true
 	case "/v1/me/albums":
 		return "album", true
 	case "/v1/me/playlists":
@@ -48,7 +50,7 @@ func ParseLibraryQuery(kind string, v url.Values) (LibraryQuery, error) {
 	return q, q.validate()
 }
 func (q LibraryQuery) validate() error {
-	if (q.Kind != "album" && q.Kind != "playlist") || q.Limit < 1 || q.Limit > 50 || q.Offset < 0 || q.Offset > 100000 {
+	if (q.Kind != "album" && q.Kind != "playlist" && q.Kind != "track") || q.Limit < 1 || q.Limit > 50 || q.Offset < 0 || q.Offset > 100000 {
 		return ErrInvalidQuery
 	}
 	return nil
@@ -84,6 +86,9 @@ func (c *Client) Library(ctx context.Context, token auth.Token, q LibraryQuery) 
 	ct, err := c.clientContext(ctx, token)
 	if err != nil {
 		return nil, err
+	}
+	if q.Kind == "track" {
+		return c.likedTracks(ctx, token, ct, q)
 	}
 	filter := "Albums"
 	if q.Kind == "playlist" {

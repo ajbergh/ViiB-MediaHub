@@ -79,3 +79,8 @@ export const buildAlbumCoverIndex = (albums: AlbumArtworkIndexEntry[]): Record<s
 
   return covers;
 };
+/** Request a bounded thumbnail from the local artwork endpoint. */
+export function coverThumbnailUrl(url: string | undefined, size: 96 | 256 | 512) {
+  if (!url?.startsWith('/api/cover/')) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}size=${size}`;
+}

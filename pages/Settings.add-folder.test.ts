@@ -9,6 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   browseFolder: vi.fn(),
   addScanFolder: vi.fn(),
+  addLog: vi.fn(),
+  setSetting: vi.fn(),
   loadScanFolders: vi.fn(),
   getStemLibraryLocations: vi.fn(),
   setStemLibraryLocations: vi.fn(),
@@ -28,7 +30,9 @@ vi.mock('../store', () => ({
     isScanning: false,
     scanProgress: '',
     addScanFolder: mocks.addScanFolder,
+    addLog: mocks.addLog,
     loadScanFolders: mocks.loadScanFolders,
+    streamingStats: { totalStreams: 0, failedStreams: 0, bufferingEvents: 0, averageBufferingDuration: 0 },
   }),
 }));
 
@@ -43,6 +47,7 @@ vi.mock('../services/api', () => ({
     getLastFMSettings: vi.fn().mockResolvedValue({ apiKey: '', enabled: false, username: '' }),
     getLastFMStatus: vi.fn().mockResolvedValue({ connected: false, canScrobble: false }),
     getSetting: vi.fn().mockResolvedValue(''),
+    setSetting: mocks.setSetting,
     getStemLibraryLocations: mocks.getStemLibraryLocations,
     setStemLibraryLocations: mocks.setStemLibraryLocations,
     scanStemLibraries: mocks.scanStemLibraries,
@@ -68,6 +73,7 @@ describe('Settings Add Folder browser', () => {
     mocks.updateLLMSettings.mockReset().mockResolvedValue({ status: 'ok' });
     mocks.updateSemanticSettings.mockReset();
     mocks.browseFolder.mockReset();
+    mocks.setSetting.mockReset().mockResolvedValue(undefined);
     mocks.addScanFolder.mockReset().mockResolvedValue(undefined);
     mocks.loadScanFolders.mockReset();
     mocks.getStemLibraryLocations.mockReset().mockResolvedValue([]);
@@ -178,6 +184,41 @@ describe('Settings Add Folder browser', () => {
     expect(container.querySelector('[role="dialog"]')?.textContent).not.toContain('C:\\Music');
     consoleError.mockRestore();
     expect(mocks.addScanFolder).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the Spotify folder browser on macOS and keeps the chosen folder available through a save failure', async () => {
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' });
+    const volumes = [{ name: 'Media SSD', path: '/Volumes/Media SSD', isDir: true }];
+    mocks.browseFolder.mockReset()
+      .mockResolvedValueOnce({ currentPath: '/Volumes', entries: volumes })
+      .mockResolvedValueOnce({ currentPath: volumes[0].path, entries: null });
+    mocks.setSetting.mockRejectedValueOnce(new Error('Permission denied'));
+
+    await act(async () => root.render(React.createElement(Settings)));
+    await click(buttonNamed('Integrations & Spotify'));
+    await click(buttonNamed('Browse folders'));
+    const dialog = container.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain('Select Download Folder');
+    expect(mocks.browseFolder).toHaveBeenCalledWith(undefined);
+
+    await click(buttonNamed('Media SSD'));
+    expect(mocks.browseFolder).toHaveBeenLastCalledWith('/Volumes/Media SSD');
+    expect(dialog?.textContent).toContain('No subfolders found');
+    const input = container.querySelector<HTMLInputElement>('#spotify-download-path')!;
+    await click(buttonNamed('Select This Folder'));
+    expect(dialog?.querySelector('[role="alert"]')?.textContent).toBe('Permission denied');
+    expect(input.value).toBe('');
+
+    await click(buttonNamed('Select This Folder'));
+    expect(mocks.setSetting).toHaveBeenLastCalledWith('spotify_download_path', '/Volumes/Media SSD');
+    expect(input.value).toBe('/Volumes/Media SSD');
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+
+    mocks.browseFolder.mockResolvedValueOnce({ currentPath: volumes[0].path, entries: [] });
+    await click(buttonNamed('Browse folders'));
+    expect(mocks.browseFolder).toHaveBeenLastCalledWith('/Volumes/Media SSD');
+    await click(buttonNamed('Cancel'));
+    expect(mocks.setSetting).toHaveBeenCalledTimes(2);
   });
 
   it('stores Stem Library roots separately and starts an independent scan job', async () => {

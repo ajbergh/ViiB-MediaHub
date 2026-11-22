@@ -133,7 +133,7 @@ The Plex integration deliberately extends the existing catalog/playback abstract
 
 Application data is stored under the OS user configuration directory in `ViiB-MediaHub/`, including the SQLite database, artwork cache, logs, and downloaded Spotify media.
 
-Sensitive settings are encrypted before persistence using ViiB's machine-bound AES-256-GCM settings mechanism. This includes Plex account/server tokens, Plex device private-key material, and Spotify cookie sessions. Normal Spotify requests use backend-owned authentication; session cookies and bearer tokens are omitted from public status responses.
+ViiB encrypts sensitive settings before persistence using its machine-bound AES-256-GCM settings mechanism. This covers Plex account and server tokens, Plex device keys, Spotify Web Player sessions, and desktop or legacy OAuth credentials. The backend authenticates normal Spotify requests, and public status responses omit cookies and bearer tokens.
 
 Plex security properties:
 
@@ -186,6 +186,8 @@ The core versioned contract is [docs/openapi-v2.yaml](openapi-v2.yaml).
 ## Build targets
 
 Repository build scripts cover Windows, macOS, and Linux browser/Wails targets. See the scripts under `scripts/` and the CI workflows under `.github/workflows/` for the exact supported build commands and toolchain used by automation.
+
+For a desktop build with one-click Spotify Web API sign-in, set `VITE_SPOTIFY_CLIENT_ID` before building the frontend. The release workflow reads the public ID from the GitHub Actions repository variable `SPOTIFY_CLIENT_ID` when it builds the shared frontend bundle. Register the desktop loopback callback in the Developer Dashboard before testing the flow. [Spotify setup](spotify.md#default-browser-sign-in-on-desktop)
 
 Every pull request and `main` push packages native Wails desktop builds for Linux x64,
 macOS Apple Silicon, macOS Intel, and Windows x64. Successful CI runs expose the Linux

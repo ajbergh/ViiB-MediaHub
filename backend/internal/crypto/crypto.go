@@ -1,7 +1,7 @@
 // Package crypto provides versioned encryption utilities for ViiB MediaHub.
 //
 // This package implements AES-256-GCM encryption for sensitive settings such as:
-//   - Spotify session cookies and legacy OAuth credentials
+//   - Spotify Web Player sessions and desktop or legacy OAuth credentials
 //   - Plex Media Server tokens and device private keys
 //   - Configured LLM, semantic embedding, and Last.FM API keys and secrets
 //   - Values explicitly passed through the encryption helpers

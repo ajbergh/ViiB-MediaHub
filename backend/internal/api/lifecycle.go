@@ -12,6 +12,7 @@ func (a *API) Close() {
 }
 
 func (a *API) close() {
+	a.closePlexSync()
 	a.closeEnrichment()
 	a.spotifyTokens().close()
 	a.spotifyAnalysisMu.Lock()

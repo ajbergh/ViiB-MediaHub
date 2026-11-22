@@ -1,6 +1,6 @@
 # Fixed Web Player catalog protocol sources
 
-**Documentation reviewed:** 2026-10-04. Implementation checkpoint: `8187104`. The pinned revisions below are retained; this documentation review did not fetch new hashes or rerun provider calls.
+The original source review was recorded on 2026-10-04 at `8187104`. The Web App Recents contract was captured on 2026-11-20. The references below preserve the recorded protocol sources and revisions.
 
 These sources identify protocol contracts used by the adapter. They do not prove universal account/market availability or completed OAuth parity. Current application coverage and unresolved Recent/profile fields are recorded in the [parity audit](../../../../docs/SPOTIFY_COOKIE_AUTH_PARITY_AUDIT.md).
 
@@ -18,11 +18,15 @@ Playlist detail/content use fetchPlaylist with uri/offset/limit and enableWatchF
 
 Saved album/playlist pages use libraryV3 from the same pinned Spotui revision, with filters Albums/Playlists, offset/limit, flattened folders, and an empty optional-feature list. Root identities are checked before the already verified album/playlist adapters resolve artwork, owners and track counts. Live checks passed two limit-1 pages and normal limit-20 pages for both kinds. Page positions and duplicate occurrences are preserved; incomplete pages fail conversion.
 
+Liked Songs uses the fixed fetchLibraryTracks operation and offset/limit variables listed in [Spotui’s hash provider](https://github.com/Spotui/Spotui/blob/main/spotify/src/main/kotlin/com/metrolist/spotify/SpotifyHashProvider.kt). It returns only validated track identities and names for the account view, including unavailable positions. The response is kept in session memory.
+
 Individual track metadata uses fixed getTrack, uri and trackUnion from [Islom4ik/SpotdlRip 5120b890ee0a8d8ed4599fe32ed10bca7cd795c3 spotdlrip.py](https://github.com/Islom4ik/SpotdlRip/blob/5120b890ee0a8d8ed4599fe32ed10bca7cd795c3/spotdlrip.py). Only protocol facts are incorporated; no upstream implementation is copied. Its documented request uses Pathfinder v1; consenting-account checks here verified the fixed hash on the existing bounded v2 transport. Full parent artwork/release dates come from the verified getAlbum operation. Arbitrary-ID batches are bounded compositions of this single-track operation, with per-request track/album reuse and preserved input positions.
 
 ## History and profile limits
 
-Recent context history is not an individual play-event contract: it does not establish repeated plays, `played_at` timestamps or the application's before/after cursor semantics. The public Recent endpoint returned 429 in the recorded cookie context, and an experimental listening-history root returned 404. No guessed history adapter is enabled.
+The production Recents adapter uses the operation captured from the authenticated [Spotify Web App Recents page](https://open.spotify.com/recents) on 2026-11-20: POST to Pathfinder v2, operation `recents`, persisted hash `94be830be40f0f3759ef83a4ea6e4dd1bef1f6108f7502c11ee1fa7fb1bb1658`, variables `uris: ["spotify:list:recents:page"]`, `offset`, and `limit` (the Web App requests 100). The response is `data.lists[].items`, with `items`, `pagingInfo`, and `totalCount`. Each item has a calendar `addedAt` date, an optional generic entity (identity, consumption and visual traits), and `formatListAttributes` identifying parent/child groups. Null parent entities represent groups of songs. The first varint field in their base64 protobuf `group_metadata` is the displayed group size; other metadata stays opaque. The independent implementation preserves order, repeats, dates and groups, and reads track metadata from the same response without hydration requests. It does not invent `played_at` times or OAuth before/after cursors. Live production checks returned HTTP 200 for the initial page and terminal offset 1200 (two entries, `nextOffset: null`, total 1202).
+
+The older `/recently-played/v3` context probe and the experimental listening-history root are separate from this verified Web App operation. The public Web API endpoint remains available only through the OAuth path; browser sessions route directly to the catalog adapter.
 
 The profile operation supplies identity/name/artwork in tested samples. Email/product/country/followers were absent from the inspected fixed response at both checked levels. Preserve unavailable fields as null; neither protocol pinning nor successful authentication justifies inventing their values. Other platform runtime and market variants remain separate verification work.
 

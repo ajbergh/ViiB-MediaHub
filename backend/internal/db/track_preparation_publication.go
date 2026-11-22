@@ -1,3 +1,4 @@
+// Publishes track preparation records and artifacts under the current claim.
 package db
 
 import (
@@ -34,6 +35,9 @@ type TrackPreparationPublication struct {
 // cue ownership and deletion suppressions are resolved inside the transaction.
 func (d *DB) PublishTrackPreparation(p TrackPreparationPublication) error {
 	if err := d.EnsureTrackAnalysisSchema(); err != nil {
+		return err
+	}
+	if err := d.EnsureLibrarySyncSchema(); err != nil {
 		return err
 	}
 	if len(p.Artifacts) > 16 || len(p.Capabilities) > 64 {
@@ -154,6 +158,9 @@ func (d *DB) PublishTrackPreparation(p TrackPreparationPublication) error {
 		}
 	}
 	if err := putTrackCapabilityStatusesTx(tx, p.Capabilities); err != nil {
+		return err
+	}
+	if err := recordSongLibraryChangeTx(tx, p.Analysis.SongID); err != nil {
 		return err
 	}
 	return tx.Commit()

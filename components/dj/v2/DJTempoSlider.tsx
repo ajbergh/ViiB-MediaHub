@@ -25,6 +25,7 @@ interface DJTempoSliderProps {
 // Tempo range presets
 const TEMPO_RANGES = [8, 16, 24, 50] as const;
 type TempoRange = typeof TEMPO_RANGES[number];
+const MAX_DRAG_UPDATE_DELAY_MS = 16;
 
 export const DJTempoSlider: React.FC<DJTempoSliderProps> = ({
   deck,
@@ -38,6 +39,9 @@ export const DJTempoSlider: React.FC<DJTempoSliderProps> = ({
 }) => {
   const trackRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const moveFrame = useRef<number | null>(null);
+  const moveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingY = useRef<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [tempoRange, setTempoRange] = useState<TempoRange>(16);
   const [computedHeight, setComputedHeight] = useState(height > 0 ? height : 140);
@@ -83,35 +87,29 @@ export const DJTempoSlider: React.FC<DJTempoSliderProps> = ({
   const clampedPercent = Math.max(-maxChange, Math.min(maxChange, tempoPercent / 100));
   const position = 0.5 - (clampedPercent / maxChange) * 0.5;
   
+  const setTempoAtY = useCallback((clientY: number) => {
+    const rect = trackRef.current?.getBoundingClientRect();
+    if (!rect?.height) return;
+    const position = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+    onChange(1 + (1 - position * 2) * maxChange);
+  }, [maxChange, onChange]);
+
+  const cancelMove = useCallback(() => {
+    if (moveFrame.current !== null) cancelAnimationFrame(moveFrame.current);
+    if (moveTimer.current !== null) clearTimeout(moveTimer.current);
+    moveFrame.current = null;
+    moveTimer.current = null;
+    pendingY.current = null;
+  }, []);
+
   const handleMouseDown = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    if (disabled) return;
+    if (disabled || ('button' in e && e.button !== 0)) return;
+    const y = 'touches' in e ? e.touches[0]?.clientY : e.clientY;
+    if (y === undefined) return;
     e.preventDefault();
     setIsDragging(true);
-    handleMove(e);
-  }, [disabled]);
-
-  const handleMove = useCallback((e: MouseEvent | TouchEvent | React.MouseEvent | React.TouchEvent) => {
-    if (!trackRef.current) return;
-    
-    const rect = trackRef.current.getBoundingClientRect();
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-    
-    // Calculate position from top (0 = top, 1 = bottom)
-    const relativeY = (clientY - rect.top) / rect.height;
-    const clampedY = Math.max(0, Math.min(1, relativeY));
-    
-    // Convert to tempo: top = +range%, center = 0%, bottom = -range%
-    const rangePercent = (0.5 - clampedY) * 2 * tempoRange; // -range to +range
-    const newTempo = 1 + (rangePercent / 100);
-    
-    // Clamp to valid range
-    const clampedTempo = Math.max(0.5, Math.min(1.5, newTempo));
-    onChange(clampedTempo);
-  }, [onChange, tempoRange]);
-
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-  }, []);
+    setTempoAtY(y);
+  }, [disabled, setTempoAtY]);
 
   // Double-click to reset to center (1.0)
   const handleDoubleClick = useCallback(() => {
@@ -162,22 +160,48 @@ export const DJTempoSlider: React.FC<DJTempoSliderProps> = ({
   // Global mouse/touch events
   useEffect(() => {
     if (!isDragging) return;
-    
-    const onMove = (e: MouseEvent | TouchEvent) => handleMove(e);
-    const onUp = () => handleMouseUp();
-    
+    if (disabled) {
+      setIsDragging(false);
+      return;
+    }
+
+    const applyLatest = () => {
+      const y = pendingY.current;
+      cancelMove();
+      if (y !== null) setTempoAtY(y);
+    };
+    const onMove = (e: MouseEvent | TouchEvent) => {
+      const y = 'touches' in e ? e.touches[0]?.clientY : e.clientY;
+      if (y === undefined) return;
+      pendingY.current = y;
+      if (moveFrame.current === null) {
+        moveFrame.current = requestAnimationFrame(applyLatest);
+        // Keep the audio control responsive if WebKit delays painting a frame.
+        moveTimer.current = setTimeout(applyLatest, MAX_DRAG_UPDATE_DELAY_MS);
+      }
+    };
+    const onUp = () => {
+      applyLatest();
+      setIsDragging(false);
+    };
+
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-    window.addEventListener('touchmove', onMove);
+    window.addEventListener('touchmove', onMove, { passive: true });
     window.addEventListener('touchend', onUp);
-    
+    window.addEventListener('touchcancel', onUp);
+    window.addEventListener('blur', onUp);
+
     return () => {
+      cancelMove();
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
       window.removeEventListener('touchmove', onMove);
       window.removeEventListener('touchend', onUp);
+      window.removeEventListener('touchcancel', onUp);
+      window.removeEventListener('blur', onUp);
     };
-  }, [isDragging, handleMove, handleMouseUp]);
+  }, [isDragging, disabled, cancelMove, setTempoAtY]);
 
   // Deck identity from tokens (Plan §10A.11): dark track, silver cap, deck-colored deviation fill.
   const accentColor = deck === 'A' ? 'var(--dj-deck-a-bright)' : 'var(--dj-deck-b-bright)';
@@ -204,7 +228,7 @@ export const DJTempoSlider: React.FC<DJTempoSliderProps> = ({
         ref={trackRef}
         className={`dj-fader-track ${disabled ? 'cursor-not-allowed' : 'cursor-ns-resize'}`}
         data-disabled={disabled}
-        style={{ height: computedHeight }}
+        style={{ height: computedHeight, touchAction: 'none' }}
         role="slider"
         tabIndex={disabled ? -1 : 0}
         aria-label={`Deck ${deck} tempo`}

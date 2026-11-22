@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const state = {
+  djActiveDeck: 'A' as 'A' | 'B',
   djDeckA: { tempo: 1, loop: { start: 2, end: 4, enabled: true, pendingIn: null }, beatGrid: [0, 0.5, 1], beatGridOffset: 0, beatGridSource: 'manual', beatGridLocked: true, effectiveBpm: 120, originalBpm: 120 },
   djDeckB: { tempo: 1, loop: { start: 0, end: 0, enabled: false, pendingIn: null }, beatGrid: [0, 0.5, 1], beatGridOffset: 0, beatGridSource: 'manual', beatGridLocked: true, effectiveBpm: 120, originalBpm: 120 },
   djMixer: { quantize: false, slipModeA: false, slipModeB: false, crossfaderCurve: 'constant-power' },
@@ -32,6 +33,77 @@ function fakeSource(position = 3.9) {
 
 describe('DJAudioEngine DeckSource integration', () => {
   afterEach(() => { vi.restoreAllMocks(); });
+
+  it('prepares scratch audio one deck at a time and starts with the active deck', async () => {
+    vi.useFakeTimers();
+    const engine = new DJAudioEngine();
+    Object.assign(engine, { audioContext: { audioWorklet: {} }, deckAudioUrls: { A: '/a', B: '/b' } });
+    const previous = state.djActiveDeck;
+    state.djActiveDeck = 'B';
+    let finish!: () => void;
+    const prepare = vi.spyOn(engine as unknown as {
+      prepareScratchAudio: (deck: 'A' | 'B', url: string, generation: number) => Promise<void>;
+    }, 'prepareScratchAudio').mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }))
+      .mockResolvedValue(undefined);
+    try {
+      engine.prioritizeScratch('A');
+      engine.prioritizeScratch('B');
+      await vi.advanceTimersByTimeAsync(100);
+      expect(prepare.mock.calls.map(([deck]) => deck)).toEqual(['B']);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(prepare).toHaveBeenCalledTimes(1);
+      finish();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(prepare.mock.calls.map(([deck]) => deck)).toEqual(['B', 'A']);
+    } finally {
+      state.djActiveDeck = previous;
+      vi.useRealTimers();
+    }
+  });
+
+  it('prepares buffered playback from the resolved Plex deck URL', async () => {
+    const engine = new DJAudioEngine();
+    const { source } = fakeSource();
+    const audioURL = 'http://127.0.0.1:34115/api/audio/plex_song';
+    source.load.mockResolvedValue(audioURL);
+    Object.assign(engine, { deckSourceA: source });
+    const queue = vi.spyOn(engine as unknown as {
+      queueScratchAudio: (deck: 'A' | 'B', url: string, generation: number) => void;
+    }, 'queueScratchAudio').mockImplementation(() => {});
+
+    await engine.loadTrack('A', { id: 'plex_song', source: 'plex', title: 'Plex', url: '/api/audio/plex_song' } as never);
+    expect(queue).toHaveBeenCalledWith('A', audioURL, engine.getDeckLoadGeneration('A'));
+  });
+
+  it.each(['A', 'B'] as const)('scratches and resumes Deck %s independently of the other deck', async deck => {
+    const engine = new DJAudioEngine();
+    const decks = { A: fakeSource(5), B: fakeSource(8) };
+    const ports = { A: { postMessage: vi.fn() }, B: { postMessage: vi.fn() } };
+    const selected = decks[deck];
+    const other = deck === 'A' ? 'B' : 'A';
+    const initialPosition = selected.state.position;
+    Object.assign(engine, {
+      audioContext: { resume: vi.fn().mockResolvedValue(undefined) },
+      deckSourceA: decks.A.source,
+      deckSourceB: decks.B.source,
+      scratchReady: { A: true, B: true },
+      scratchNodes: { A: { port: ports.A }, B: { port: ports.B } },
+    });
+
+    expect(engine.startScratch(deck)).toBe(true);
+    expect(selected.source.pause).toHaveBeenCalledOnce();
+    engine.updateScratch(deck, -0.25, -1);
+    expect(engine.getPosition(deck)).toBe(initialPosition - 0.25);
+    engine.endScratch(deck);
+    await Promise.resolve();
+
+    expect(ports[deck].postMessage.mock.calls.map(([message]) => message.type)).toEqual(['start', 'move', 'stop']);
+    expect(selected.source.seek).toHaveBeenCalledWith(initialPosition - 0.25);
+    expect(selected.source.play).toHaveBeenCalledOnce();
+    expect(ports[other].postMessage).not.toHaveBeenCalled();
+    expect(decks[other].source.pause).not.toHaveBeenCalled();
+    expect(engine.isPlaying(other)).toBe(true);
+  });
 
   it('applies the selected curve to the actual crossfader gain nodes at the current position', () => {
     const engine = new DJAudioEngine();
@@ -92,6 +164,24 @@ describe('DJAudioEngine DeckSource integration', () => {
       expect(state.setLoop).toHaveBeenLastCalledWith('A', 19.8, 20, true, 8);
     } finally {
       Object.assign(state.djDeckA, previousA); Object.assign(state.djDeckB, previousB);
+      state.djMixer.quantize = previousQuantize;
+    }
+  });
+
+  it('keeps a quarter-beat loop valid at the final grid marker', () => {
+    const engine = new DJAudioEngine();
+    Object.assign(engine, { deckSourceA: fakeSource(1.4).source });
+    const previous = { ...state.djDeckA };
+    const previousQuantize = state.djMixer.quantize;
+    try {
+      state.djMixer.quantize = true;
+      Object.assign(state.djDeckA, { beatGrid: [0, 0.6, 1.4], beatGridSource: 'manual', beatGridLocked: true });
+      engine.setLoopBeats('A', 0.25);
+      const [deck, start, end, enabled, beats] = state.setLoop.mock.lastCall!;
+      expect([deck, start, enabled, beats]).toEqual(['A', 1.4, true, 0.25]);
+      expect(end).toBeCloseTo(1.6);
+    } finally {
+      Object.assign(state.djDeckA, previous);
       state.djMixer.quantize = previousQuantize;
     }
   });

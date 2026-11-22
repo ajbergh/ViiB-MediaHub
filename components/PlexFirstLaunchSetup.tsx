@@ -2,9 +2,10 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, ArrowLeft, Check, ExternalLink, FileMusic, Library, Loader2, Music, RefreshCw, Search, Server } from 'lucide-react';
-import { plexService, type PlexAccountServer, type PlexLibrary, type PlexServer, type PlexSource } from '../services/plex';
-import { openExternalURL, shouldUseSystemBrowser } from '../services/externalNavigation';
+import { PlexRequestError, plexService, type PlexAccountServer, type PlexLibrary, type PlexServer, type PlexSource } from '../services/plex';
+import { openExternalURL, reserveExternalBrowserTab, shouldUseSystemBrowser } from '../services/externalNavigation';
 import { useStore } from '../store';
+import { connectPlexWithConfirmation } from '../lib/plexSettingsState';
 import { Button } from './ui/Button';
 import { TextInput } from './ui/TextInput';
 
@@ -65,9 +66,11 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
   const [selectedLibraryId, setSelectedLibraryId] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [authUrl, setAuthUrl] = useState('');
   const authTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const disposed = useRef(false);
+  const syncPollFailures = useRef(0);
   const refreshLibrary = useStore(store => store.refreshLibrary);
   const addLog = useStore(store => store.addLog);
 
@@ -113,7 +116,7 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
       setStatus('idle');
       setMessage(result.length > 0
         ? 'Choose one of your Plex servers or a server with a library shared with you.'
-        : 'Your Plex account has no reachable media servers or shared servers right now.');
+        : 'Your Plex account has no media servers to choose from.');
     } catch (cause) {
       if (disposed.current) return;
       setStatus('idle');
@@ -136,40 +139,10 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
     } catch (cause) {
       if (disposed.current) return;
       setStatus('idle');
-      setNeedsAuth(true);
-      setError(cause instanceof Error ? cause.message : 'Sign in to Plex to load its music libraries.');
+      setNeedsAuth(cause instanceof PlexRequestError && cause.status === 401);
+      setError(cause instanceof Error ? cause.message : 'Unable to load Plex music libraries.');
     }
   }, []);
-
-  const loadConfig = useCallback(async () => {
-    try {
-      const config = await plexService.getConfig();
-      if (disposed.current) return;
-      setSource(config.source);
-      setAuthenticated(config.authenticated);
-      setSelectedLibraryId(config.source?.libraryId || '');
-      if (config.source) {
-        await loadLibraries();
-      } else if (config.authenticated) {
-        await loadAccountServers();
-      } else {
-        await discover(true);
-      }
-    } catch (cause) {
-      if (disposed.current) return;
-      setError(cause instanceof Error ? cause.message : 'Unable to load Plex configuration.');
-      await discover(true);
-    }
-  }, [discover, loadAccountServers, loadLibraries]);
-
-  useEffect(() => {
-    disposed.current = false;
-    void loadConfig();
-    return () => {
-      disposed.current = true;
-      clearTimers();
-    };
-  }, [clearTimers, loadConfig]);
 
   const connect = async (url: string) => {
     if (!url.trim()) return;
@@ -177,7 +150,13 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
     setError('');
     setMessage('Validating Plex Media Server…');
     try {
-      const server = await plexService.connect(url.trim());
+      const server = await connectPlexWithConfirmation(replace => plexService.connect(url.trim(), replace));
+      if (disposed.current) return;
+      if (!server) {
+        setStatus('idle');
+        setMessage('');
+        return;
+      }
       const config = await plexService.getConfig();
       if (disposed.current) return;
       setSource(config.source);
@@ -198,7 +177,13 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
     setError('');
     setMessage(`Connecting to ${server.name || 'Plex Media Server'}…`);
     try {
-      const connected = await plexService.connectAccountServer(server.machineIdentifier);
+      const connected = await connectPlexWithConfirmation(replace => plexService.connectAccountServer(server.machineIdentifier, replace));
+      if (disposed.current) return;
+      if (!connected) {
+        setStatus('idle');
+        setMessage('');
+        return;
+      }
       const config = await plexService.getConfig();
       if (disposed.current) return;
       setSource(config.source);
@@ -218,7 +203,9 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
     if (disposed.current) return;
     try {
       const result = await plexService.getAuthStatus();
+      if (disposed.current) return;
       if (result.authenticated) {
+        setAuthUrl('');
         setAuthenticated(true);
         setNeedsAuth(false);
         setStatus('idle');
@@ -240,6 +227,7 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
         return;
       }
       if (!result.pending || Date.now() >= expiresAt * 1000) {
+        setAuthUrl('');
         setStatus('idle');
         setError(result.message || 'Plex sign-in expired. Choose Sign in to Plex to try again.');
         return;
@@ -247,6 +235,11 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
       authTimer.current = setTimeout(() => void pollAuthentication(expiresAt), 2000);
     } catch (cause) {
       if (disposed.current) return;
+      if (Date.now() < expiresAt * 1000 && (!(cause instanceof PlexRequestError) || cause.status >= 500)) {
+        authTimer.current = setTimeout(() => void pollAuthentication(expiresAt), 2000);
+        return;
+      }
+      setAuthUrl('');
       setStatus('idle');
       setError(cause instanceof Error ? cause.message : 'Unable to check Plex sign-in status.');
     }
@@ -257,7 +250,8 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
     setError('');
     setMessage('Opening the official Plex sign-in page…');
     const useSystemBrowser = shouldUseSystemBrowser();
-    const authWindow = useSystemBrowser ? null : window.open('', '_blank', 'noopener,noreferrer');
+    setAuthUrl('');
+    const authWindow = useSystemBrowser ? null : reserveExternalBrowserTab();
     try {
       const start = await plexService.startAuth();
       if (useSystemBrowser) {
@@ -265,15 +259,7 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
       } else if (authWindow) {
         authWindow.location.href = start.authUrl;
       } else {
-        const secondAttempt = window.open(start.authUrl, '_blank', 'noopener,noreferrer');
-        if (!secondAttempt) {
-          try {
-            await navigator.clipboard.writeText(start.authUrl);
-            setMessage('The sign-in popup was blocked. The Plex sign-in URL was copied to your clipboard.');
-          } catch {
-            setMessage('The sign-in popup was blocked. Allow popups and choose Sign in to Plex again.');
-          }
-        }
+        setAuthUrl(start.authUrl);
       }
       authTimer.current = setTimeout(() => void pollAuthentication(start.expiresAt), 1500);
     } catch (cause) {
@@ -287,6 +273,8 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
     if (disposed.current) return;
     try {
       const current = await plexService.getSyncStatus();
+      if (disposed.current) return;
+      syncPollFailures.current = 0;
       if (!current) {
         setStatus('idle');
         setError('The Plex source was removed while importing.');
@@ -313,6 +301,10 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
       }
     } catch (cause) {
       if (disposed.current) return;
+      if (++syncPollFailures.current <= 3) {
+        syncTimer.current = setTimeout(() => void pollSync(), 1500);
+        return;
+      }
       setStatus('idle');
       setError(cause instanceof Error ? cause.message : 'Unable to check Plex import status.');
     }
@@ -324,7 +316,11 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
     setError('');
     setMessage('Importing your Plex catalog. Keep ViiB open until this finishes.');
     try {
-      await plexService.sync();
+      await plexService.sync().catch(error => {
+        if (!(error instanceof PlexRequestError && error.code === 'plex_sync_running')) throw error;
+      });
+      if (disposed.current) return;
+      syncPollFailures.current = 0;
       syncTimer.current = setTimeout(() => void pollSync(), 750);
     } catch (cause) {
       if (disposed.current) return;
@@ -332,6 +328,41 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
       setError(cause instanceof Error ? cause.message : 'Unable to start the Plex import.');
     }
   }, [pollSync]);
+
+  const loadConfig = useCallback(async () => {
+    try {
+      const config = await plexService.getConfig();
+      if (disposed.current) return;
+      setSource(config.source);
+      setAuthenticated(config.authenticated);
+      setSelectedLibraryId(config.source?.libraryId || '');
+      if (config.source?.lastSyncStatus === 'running') {
+        setStep('syncing');
+        setStatus('syncing');
+        setMessage('Importing your Plex catalog.');
+        void pollSync();
+      } else if (config.source) {
+        await loadLibraries();
+      } else if (config.authenticated) {
+        await loadAccountServers();
+      } else {
+        await discover(true);
+      }
+    } catch (cause) {
+      if (disposed.current) return;
+      setError(cause instanceof Error ? cause.message : 'Unable to load Plex configuration.');
+      await discover(true);
+    }
+  }, [discover, loadAccountServers, loadLibraries, pollSync]);
+
+  useEffect(() => {
+    disposed.current = false;
+    void loadConfig();
+    return () => {
+      disposed.current = true;
+      clearTimers();
+    };
+  }, [clearTimers, loadConfig]);
 
   const selectLibrary = async (library: PlexLibrary) => {
     setStatus('connecting');
@@ -375,6 +406,13 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
       </div>
 
       <StatusNotice status={status} message={message} error={error} />
+
+
+      {authUrl && (
+        <a href={authUrl} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block text-sm font-semibold text-brand underline">
+          Open Plex sign-in
+        </a>
+      )}
 
       {step === 'discovery' && (
         <div className="mt-5 space-y-4">
@@ -443,7 +481,7 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
               <div className="mt-1 truncate font-mono text-xs text-text-secondary">{source.baseUrl}</div>
             </div>
           )}
-          {(needsAuth || (!authenticated && libraries.length === 0 && error)) && (
+          {needsAuth && (
             <Button variant="primary" accent="brand" disabled={busy} onClick={() => void signIn()} leftIcon={<ExternalLink size={16} />}>Sign in to Plex</Button>
           )}
           {!needsAuth && libraries.length > 0 && (
@@ -473,6 +511,7 @@ export const PlexFirstLaunchSetup: React.FC<PlexFirstLaunchSetupProps> = ({ onBa
         <div className="mt-6 rounded-xl border border-brand/25 bg-brand/5 p-5">
           <div className="flex items-center gap-3 text-text-main"><FileMusic size={20} className="text-brand" /><span className="font-medium">{source?.libraryTitle || 'Plex music library'}</span></div>
           <p className="mt-3 text-sm leading-6 text-text-secondary">ViiB imports your music metadata and artwork references without changing anything in Plex. This window will continue as soon as the import completes.</p>
+          {source?.syncTracks ? <p className="mt-3 text-sm text-text-secondary">Read {source.syncTracks.toLocaleString()}{source.syncTotal ? ` of ${source.syncTotal.toLocaleString()}` : ''} Plex tracks</p> : null}
           {error && <Button variant="primary" accent="brand" className="mt-4" onClick={() => void startInitialSync()} leftIcon={<RefreshCw size={16} />}>Try import again</Button>}
         </div>
       )}

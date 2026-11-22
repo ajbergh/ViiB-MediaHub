@@ -24,7 +24,7 @@ var (
 	supportLineGrammar      = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{6}) \[(FE WARN|API|Analysis)\] (.*)$`)
 	supportReferenceGrammar = regexp.MustCompile(`^support reference issued token="([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})" status=([45][0-9]{2})$`)
 	supportAudioGrammar     = regexp.MustCompile(`^\[AudioRead\] Audio read failed \| Data: (\{.*\})$`)
-	supportCatalogGrammar   = regexp.MustCompile(`^Spotify catalog failure: code=(unknown|upstream_http|cancelled|deadline|schema_incompatible|invalid_query|authentication_required|provider_changed|temporarily_unavailable) stage=(catalog|client_token|profile|search|album|artist|playlist|library|track) upstream_status=([0-9]{1,3})$`)
+	supportCatalogGrammar   = regexp.MustCompile(`^Spotify catalog failure: code=(unknown|upstream_http|cancelled|deadline|schema_incompatible|invalid_query|authentication_required|provider_changed|temporarily_unavailable) stage=(catalog|client_token|profile|search|album|artist|playlist|library|track|recents|liked_tracks) upstream_status=([0-9]{1,3})$`)
 	supportJobIdentity      = `job_id="([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})" mode="(all|missing|stale|ids|playlist)"`
 	supportJobStarted       = regexp.MustCompile(`^job started ` + supportJobIdentity + ` tracks=([0-9]{1,7}) algorithm=` + regexp.QuoteMeta(strconv.Quote(track.AlgorithmVersion)) + `$`)
 	supportJobCanceled      = regexp.MustCompile(`^job canceled ` + supportJobIdentity + ` processed=([0-9]{1,7}) total=([0-9]{1,7})$`)

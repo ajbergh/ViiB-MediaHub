@@ -29,7 +29,7 @@ func TestCookieWebAPICooldownSurvivesAccountAndRestart(t *testing.T) {
 		h.Set("Retry-After", "120")
 		return &http.Response{StatusCode: 429, Header: h, Body: io.NopCloser(strings.NewReader("{}"))}, nil
 	})}
-	response, err := a.doSpotifyRequest(context.Background(), "GET", "https://api.spotify.com/v1/me/player/recently-played?limit=1", nil, "")
+	response, err := a.doSpotifyRequest(context.Background(), "GET", "https://api.spotify.com/v1/me/player", nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestCookieWebAPIStatusDistinguishesRejection(t *testing.T) {
 				calls.Add(1)
 				return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("{}"))}, nil
 			})}
-			resp, err := a.doSpotifyRequest(context.Background(), "GET", "https://api.spotify.com/v1/me/player/recently-played?limit=1", nil, "")
+			resp, err := a.doSpotifyRequest(context.Background(), "GET", "https://api.spotify.com/v1/me/player", nil, "")
 			if resp != nil {
 				resp.Body.Close()
 			}
@@ -141,7 +141,7 @@ func TestCookieWebAPIQueuedRequestHonorsNewCooldown(t *testing.T) {
 	})}
 	first := make(chan error, 1)
 	go func() {
-		resp, err := a.doSpotifyRequest(context.Background(), "GET", "https://api.spotify.com/v1/me/player/recently-played?limit=1", nil, "")
+		resp, err := a.doSpotifyRequest(context.Background(), "GET", "https://api.spotify.com/v1/me/player", nil, "")
 		if resp != nil {
 			resp.Body.Close()
 		}
@@ -150,7 +150,7 @@ func TestCookieWebAPIQueuedRequestHonorsNewCooldown(t *testing.T) {
 	<-entered
 	second := make(chan error, 1)
 	go func() {
-		_, err := a.doSpotifyRequest(context.Background(), "GET", "https://api.spotify.com/v1/me/player/recently-played?limit=1", nil, "")
+		_, err := a.doSpotifyRequest(context.Background(), "GET", "https://api.spotify.com/v1/me/player", nil, "")
 		second <- err
 	}()
 	close(finish)

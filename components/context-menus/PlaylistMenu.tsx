@@ -9,7 +9,7 @@ import { useStore } from '../../store';
 import { MenuItem } from './MenuShared';
 import { Playlist } from '../../types';
 import { useNavigate } from 'react-router';
-import { resolvePlaylistSongs } from '../../lib/playlistContents';
+import { indexPlaylistSongs, resolvePlaylistSongs } from '../../lib/playlistContents';
 
 /**
  * PlaylistMenu props:
@@ -19,7 +19,7 @@ import { resolvePlaylistSongs } from '../../lib/playlistContents';
 export const PlaylistMenu: React.FC<{ playlist: Playlist; onClose: () => void }> = ({ playlist, onClose }) => {
     const { songs, playSong, playNext, addToQueue, deletePlaylist, showConfirmDialog, closeConfirmDialog } = useStore();
     const navigate = useNavigate();
-    const playlistSongs = resolvePlaylistSongs(playlist.songIds, new Map(songs.map(song => [song.id, song])));
+    const playlistSongs = React.useMemo(() => resolvePlaylistSongs(playlist.songIds, indexPlaylistSongs(songs)), [playlist.songIds, songs]);
 
     const handleAction = (action: () => void) => {
         action();

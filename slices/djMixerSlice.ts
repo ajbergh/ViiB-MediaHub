@@ -293,6 +293,7 @@ export interface DJMixerSlice {
   // Position updates (called from audio engine)
   updateDeckPosition: (deck: DeckId, position: number) => void;
   setDeckPosition: (deck: DeckId, position: number) => void; // Alias for updateDeckPosition
+  setDeckPositions: (positionA?: number, positionB?: number) => void;
   setDeckDuration: (deck: DeckId, duration: number) => void;
   setDeckPlaying: (deck: DeckId, isPlaying: boolean) => void;
   
@@ -589,6 +590,16 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
       [deckKey]: { ...state[deckKey], position }
     }));
   },
+
+  setDeckPositions: (positionA, positionB) => set(state => {
+    const updateA = positionA !== undefined && positionA !== state.djDeckA.position;
+    const updateB = positionB !== undefined && positionB !== state.djDeckB.position;
+    if (!updateA && !updateB) return state;
+    return {
+      djDeckA: updateA ? { ...state.djDeckA, position: positionA } : state.djDeckA,
+      djDeckB: updateB ? { ...state.djDeckB, position: positionB } : state.djDeckB,
+    };
+  }),
   
   setDeckDuration: (deck, duration) => {
     const deckKey = deck === 'A' ? 'djDeckA' : 'djDeckB';
@@ -687,17 +698,12 @@ export const createDJMixerSlice: StateCreator<DJMixerSlice, [], [], DJMixerSlice
   // Tempo
   setDeckTempo: (deck, tempo) => {
     const deckKey = deck === 'A' ? 'djDeckA' : 'djDeckB';
+    if (!Number.isFinite(tempo)) return;
     const clampedTempo = Math.max(0.5, Math.min(1.5, tempo));
-    set((state) => {
-      const originalBpm = state[deckKey].originalBpm;
-      return {
-        [deckKey]: { 
-          ...state[deckKey], 
-          tempo: clampedTempo,
-          effectiveBpm: originalBpm ? Math.round(originalBpm * clampedTempo * 10) / 10 : null
-        }
-      };
-    });
+    const current = get()[deckKey];
+    const effectiveBpm = current.originalBpm ? Math.round(current.originalBpm * clampedTempo * 10) / 10 : null;
+    if (current.tempo === clampedTempo && current.effectiveBpm === effectiveBpm) return;
+    set({ [deckKey]: { ...current, tempo: clampedTempo, effectiveBpm } });
   },
   
   syncDeck: (deck) => {

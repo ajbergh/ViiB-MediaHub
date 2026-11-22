@@ -1,4 +1,3 @@
-import { useAudioMetadataRevision } from '../../../hooks/useAudioMetadataRevision';
 /**
  * ViiB MediaHub - DJ Library Browser V2 Component
  *
@@ -12,7 +11,8 @@ import { useAudioMetadataRevision } from '../../../hooks/useAudioMetadataRevisio
  * @module components/dj/v2/DJLibraryBrowserV2
  */
 
-import React, { useState, useMemo, useCallback, useEffect, useRef, memo } from 'react';
+import { useAnalysisFeatures, type AnalysisOrderingField } from '../../../hooks/useAnalysisFeatures';
+import React, { useState, useMemo, useCallback, useEffect, useRef, useDeferredValue, memo } from 'react';
 import { TableVirtuoso, type TableComponents, type TableVirtuosoHandle } from 'react-virtuoso';
 import { useStore } from '../../../store';
 import { useDJAudioEngineActions } from '../../../hooks/useDJAudioEngine';
@@ -25,7 +25,8 @@ import { PROVIDER_SCORE_OPTIONS, usableProviderScore, providerScoreMatches, comp
 import { DJSaveResultsPlaylist } from './DJSaveResultsPlaylist';
 import { registerDJMidiLibrary } from '../../../lib/djMidiLibrary';
 import { CamelotChip } from './CamelotChip';
-import { api, type TrackAnalysisFeature } from '../../../services/api';
+import { sortByTextKey } from '../../../lib/libraryIndex';
+import type { TrackAnalysisFeature } from '../../../services/api';
 import type { DeckId } from '../../../slices/djMixerSlice';
 import type { Song } from '../../../types';
 import {
@@ -46,6 +47,16 @@ type SortDirection = 'asc' | 'desc';
 const DJ_TRACK_DRAG_MIME = 'application/x-viib-dj-track';
 
 type SortKey = 'title' | 'artist' | 'album' | 'duration' | 'bpm' | 'key' | 'genre' | 'energy' | 'lufs' | 'truePeak' | 'stemStatus' | 'analysis' | 'dateAnalyzed';
+const analysisSortFields: Partial<Record<SortKey, AnalysisOrderingField[]>> = {
+  bpm: ['bpm'],
+  key: ['camelotKey', 'key'],
+  energy: ['energyLevel'],
+  lufs: ['integratedLufsBs1770'],
+  truePeak: ['truePeakDbtp'],
+  analysis: ['status'],
+  dateAnalyzed: ['analyzedAt'],
+};
+const providerFields: AnalysisOrderingField[] = ['providerScores', 'providerScoresUnverified'];
 type OptionalColumn = 'bpm' | 'key' | 'energy' | 'meter' | 'lufs' | 'truePeak' | 'album' | 'time' | 'genre' | 'stemStatus' | 'analysis' | 'dateAnalyzed' | 'analysisConfidence' | 'structureStatus';
 type ResizableColumn = 'title' | 'artist' | 'album';
 
@@ -533,7 +544,6 @@ const SortHeader: React.FC<{
 
 export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocusSearch = false }) => {
   const songs = useStore(state => state.songs);
-  const spotifySession = useStore(state => state.spotifySessionGeneration);
   const playlists = useStore(state => state.playlists);
   const djDeckATrack = useStore(state => state.djDeckA.track);
   const djDeckBTrack = useStore(state => state.djDeckB.track);
@@ -553,6 +563,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
   } | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [scoreMetric,setScoreMetric] = useState('');
   const [scoreMin,setScoreMin] = useState('');
   const [scoreMax,setScoreMax] = useState('');
@@ -565,25 +576,8 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
   const [columnVisibility, setColumnVisibility] = useState<Record<OptionalColumn, boolean>>(loadColumnVisibility);
   const [columnWidths, setColumnWidths] = useState<Record<ResizableColumn, number>>(loadColumnWidths);
-  const [storedAnalysis, setAnalysisBySongID] = useState<Record<string, TrackAnalysisFeature>>({});
-  const [analysisSession, setAnalysisSession] = useState(spotifySession);
-  const analysisBySongID = analysisSession === spotifySession ? storedAnalysis : {};
-  const analysisSessionRef = useRef(spotifySession);
-  const [scoreNow,setScoreNow] = useState(Date.now);
-  const [analysisListState, setAnalysisListState] = useState<AnalysisListLoadState>('loading');
-  const [analysisRetry, setAnalysisRetry] = useState(0);
-
-  // Re-evaluate cached score eligibility at the nearest expiry without fetching.
-  useEffect(() => {
-    let next = Infinity;
-    for (const feature of Object.values(analysisBySongID)) for (const score of Object.values(feature.providerScores ?? {})) {
-      const expiry = Date.parse(score.expiresAt);
-      if (Number.isFinite(expiry) && expiry > scoreNow) next = Math.min(next,expiry);
-    }
-    if (!Number.isFinite(next)) return;
-    const timer = window.setTimeout(() => setScoreNow(Date.now()),Math.max(1,Math.min(2147483647,next-Date.now()+1)));
-    return () => window.clearTimeout(timer);
-  }, [analysisBySongID,scoreNow]);
+  const [visibleRange, setVisibleRange] = useState<{ startIndex: number; endIndex: number }>({ startIndex: 0, endIndex: 99 });
+  const [scoreNow, setScoreNow] = useState(() => Date.now());
 
   // Determine active deck key for harmonic compatibility
   // Prefer playing deck, fall back to whichever has a track loaded
@@ -598,34 +592,6 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
     if (!activeKey || !songKey) return null;
     return getKeyCompatibility(activeKey, songKey);
   }, [activeKey]);
-
-  const { revision: metadataRevision, generation: metadataGeneration } = useAudioMetadataRevision();
-
-  // Library key/BPM data is durable and available before any deck is loaded;
-  // do not rebuild it from session-only deck state.
-  useEffect(() => {
-    let active = true;
-    const sessionChanged = analysisSessionRef.current !== spotifySession;
-    analysisSessionRef.current = spotifySession;
-    if (sessionChanged) { setAnalysisBySongID({}); setAnalysisSession(spotifySession); }
-    if (sessionChanged || metadataRevision === 0 || analysisRetry > 0) setAnalysisListState('loading');
-    const generation = spotifySession;
-    const requestGeneration = metadataGeneration.current;
-    api.getTrackAnalysisFeatures()
-      .then(features => {
-        if (!active || requestGeneration !== metadataGeneration.current || useStore.getState().spotifySessionGeneration !== generation) return;
-        setAnalysisBySongID(Object.fromEntries(features.map(feature => [feature.songId, feature])));
-        setAnalysisListState('loaded');
-      })
-      .catch(() => {
-        // Analysis is additive; legacy library rendering remains available.
-        if (active && requestGeneration === metadataGeneration.current && useStore.getState().spotifySessionGeneration === generation) {
-          // Keep the previous session-qualified display on a refresh failure.
-          setAnalysisListState('failed');
-        }
-      });
-    return () => { active = false; };
-  }, [spotifySession, metadataRevision, metadataGeneration, analysisRetry]);
 
   useEffect(() => {
     if (!autoFocusSearch) { resizeCleanupRef.current?.(); return; }
@@ -752,98 +718,174 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
   }, [songs, playlists, selectedCategory]);
 
   // Filter and sort songs
-  const filteredSongs = useMemo(() => {
-    let result = [...categoryFilteredSongs];
+  const energyFiltered = energyMin !== '' || energyMax !== '';
+  const needsFullAnalysis = Boolean(analysisSortFields[sortKey]) || energyFiltered || Boolean(scoreMetric);
+  const searchTextBySong = useMemo(() => new WeakMap<Song, string>(), [categoryFilteredSongs]);
 
-    // Filter by search query
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(song =>
-        song.title.toLowerCase().includes(query) ||
-        song.artist.toLowerCase().includes(query) ||
-        song.album.toLowerCase().includes(query) ||
-        (song.genre && song.genre.some(g => g.toLowerCase().includes(query)))
-        || stemStatusLabel(song.stemStatus).toLowerCase().includes(query)
-      );
+  const textFilteredSongs = useMemo(() => {
+    if (!deferredSearchQuery) return categoryFilteredSongs;
+    const query = deferredSearchQuery.toLowerCase();
+    return categoryFilteredSongs.filter(song => {
+      let text = searchTextBySong.get(song);
+      if (text === undefined) {
+        text = `${song.title}\u0000${song.artist}\u0000${song.album}\u0000${song.genre?.join('\u0000') ?? ''}\u0000${stemStatusLabel(song.stemStatus)}`.toLowerCase();
+        searchTextBySong.set(song, text);
+      }
+      return text.includes(query);
+    });
+  }, [categoryFilteredSongs, deferredSearchQuery, searchTextBySong]);
+
+  const nonAnalysisSortedSongs = useMemo(() => {
+    if (needsFullAnalysis) return textFilteredSongs;
+    switch (sortKey) {
+      case 'title':
+        return sortByTextKey(textFilteredSongs, s => s.title, sortDirection);
+      case 'artist':
+        return sortByTextKey(textFilteredSongs, s => s.artist, sortDirection);
+      case 'album':
+        return sortByTextKey(textFilteredSongs, s => s.album, sortDirection);
+      case 'genre':
+        return sortByTextKey(textFilteredSongs, s => s.genre?.[0] || '', sortDirection);
+      case 'stemStatus':
+        return sortByTextKey(textFilteredSongs, s => stemStatusLabel(s.stemStatus), sortDirection);
+      case 'duration': {
+        const result = [...textFilteredSongs];
+        result.sort((a, b) => {
+          const cmp = (a.duration || 0) - (b.duration || 0);
+          return sortDirection === 'asc' ? cmp : -cmp;
+        });
+        return result;
+      }
+      default:
+        return textFilteredSongs;
     }
+  }, [textFilteredSongs, needsFullAnalysis, sortKey, sortDirection]);
 
+  const catalogProjection = sortKey === 'lufs' || sortKey === 'truePeak' ? 'loudness' : 'ordering';
+  const { rows: analysisBySongID, status: catalogAnalysisStatus, retry: retryAnalysis } = useAnalysisFeatures({
+    enabled: needsFullAnalysis,
+    projection: catalogProjection,
+    paged: true,
+  });
+
+  const providerRevision = scoreMetric ? analysisBySongID.revisionFor(providerFields) : 0;
+  const providerAnalysis = useMemo(() => providerRevision ? analysisBySongID : undefined, [providerRevision]);
+
+  // Re-evaluate cached score eligibility at the nearest expiry without fetching.
+  useEffect(() => {
+    if (!scoreMetric || !providerAnalysis) return;
+    let next = Infinity;
+    for (const feature of providerAnalysis.values()) {
+      const score = feature.providerScores?.[`spotify_${scoreMetric}_score`];
+      if (!score) continue;
+      const expiry = Date.parse(score.expiresAt);
+      if (Number.isFinite(expiry) && expiry > scoreNow) next = Math.min(next,expiry);
+    }
+    if (!Number.isFinite(next)) return;
+    const timer = window.setTimeout(() => setScoreNow(Date.now()),Math.max(1,Math.min(2147483647,next-Date.now()+1)));
+    return () => window.clearTimeout(timer);
+  }, [providerAnalysis, scoreMetric, scoreNow]);
+
+  const sortRevision = analysisBySongID.revisionFor([
+    ...(analysisSortFields[sortKey] ?? []),
+    ...(energyFiltered ? ['energyLevel'] as const : []),
+    ...(scoreMetric ? providerFields : []),
+  ]);
+  // A previously published snapshot is safe for ordering while the fields it reads match.
+  const sortAnalysis = useMemo(() => sortRevision ? analysisBySongID : undefined, [sortRevision, sortKey, energyFiltered, scoreMetric]);
+  const sortAnalysisStatus = sortKey === 'analysis' ? catalogAnalysisStatus : 'loaded';
+
+  const filteredSongs = useMemo(() => {
+    if (!needsFullAnalysis) return nonAnalysisSortedSongs;
+
+    let result = textFilteredSongs;
     const minEnergy = energyMin === '' ? undefined : Number(energyMin);
     const maxEnergy = energyMax === '' ? undefined : Number(energyMax);
     if (minEnergy !== undefined || maxEnergy !== undefined) {
       result = result.filter(song => {
-        const value = analysisBySongID[song.id]?.energyLevel;
+        const value = sortAnalysis?.get(song.id)?.energyLevel;
         return value !== undefined && (minEnergy === undefined || value >= minEnergy) && (maxEnergy === undefined || value <= maxEnergy);
       });
     }
 
-    if (scoreMetric) result = result.filter(song => providerScoreMatches(usableProviderScore(analysisBySongID[song.id],scoreMetric,scoreNow),scoreMin,scoreMax));
-    // Sort
-    result.sort((a, b) => {
-      if (scoreMetric && scoreOrder !== 'none') return compareProviderScores(usableProviderScore(analysisBySongID[a.id],scoreMetric,scoreNow),usableProviderScore(analysisBySongID[b.id],scoreMetric,scoreNow),scoreOrder);
-      let comparison = 0;
+    if (scoreMetric) {
+      result = result.filter(song => providerScoreMatches(usableProviderScore(sortAnalysis?.get(song.id), scoreMetric, scoreNow), scoreMin, scoreMax));
+    }
 
-      switch (sortKey) {
-        case 'title':
-          comparison = a.title.localeCompare(b.title);
-          break;
-        case 'artist':
-          comparison = a.artist.localeCompare(b.artist);
-          break;
-        case 'album':
-          comparison = a.album.localeCompare(b.album);
-          break;
-        case 'duration':
-          comparison = (a.duration || 0) - (b.duration || 0);
-          break;
-        case 'bpm':
-          comparison = (analysisBySongID[a.id]?.bpm ?? a.bpm ?? 0) - (analysisBySongID[b.id]?.bpm ?? b.bpm ?? 0);
-          break;
-        case 'key':
-          comparison = (analysisBySongID[a.id]?.camelotKey || analysisBySongID[a.id]?.key || '').localeCompare(analysisBySongID[b.id]?.camelotKey || analysisBySongID[b.id]?.key || '');
-          break;
-        case 'genre':
-          comparison = (a.genre?.[0] || '').localeCompare(b.genre?.[0] || '');
-          break;
-        case 'energy':
-          comparison = (analysisBySongID[a.id]?.energyLevel ?? 0) - (analysisBySongID[b.id]?.energyLevel ?? 0);
-          break;
-        case 'stemStatus':
-          comparison = stemStatusLabel(a.stemStatus).localeCompare(stemStatusLabel(b.stemStatus));
-          break;
-        case 'analysis':
-          comparison = compareAnalysisReadiness(analysisBySongID[a.id]?.status, analysisBySongID[b.id]?.status, analysisListState);
-          break;
-        case 'dateAnalyzed': {
-          const aDate = analysisBySongID[a.id]?.analyzedAt;
-          const bDate = analysisBySongID[b.id]?.analyzedAt;
-          comparison = (hasAnalysisTimestamp(aDate) ? aDate : 0) - (hasAnalysisTimestamp(bDate) ? bDate : 0);
-          break;
-        }
-      }
+    if (scoreMetric && scoreOrder !== 'none') {
+      return [...result].sort((a, b) => compareProviderScores(
+        usableProviderScore(sortAnalysis?.get(a.id), scoreMetric, scoreNow),
+        usableProviderScore(sortAnalysis?.get(b.id), scoreMetric, scoreNow),
+        scoreOrder,
+      ));
+    }
 
-      if (sortKey === 'lufs') {
-        return compareIntegratedLUFS(analysisBySongID[a.id]?.integratedLufsBs1770, analysisBySongID[b.id]?.integratedLufsBs1770, sortDirection);
-      }
-      if (sortKey === 'truePeak') {
-        return compareTruePeakDBTP(analysisBySongID[a.id]?.truePeakDbtp, analysisBySongID[b.id]?.truePeakDbtp, sortDirection);
-      }
+    switch (sortKey) {
+      case 'title':
+        return sortByTextKey(result, s => s.title, sortDirection);
+      case 'artist':
+        return sortByTextKey(result, s => s.artist, sortDirection);
+      case 'album':
+        return sortByTextKey(result, s => s.album, sortDirection);
+      case 'genre':
+        return sortByTextKey(result, s => s.genre?.[0] || '', sortDirection);
+      case 'stemStatus':
+        return sortByTextKey(result, s => stemStatusLabel(s.stemStatus), sortDirection);
+      case 'key':
+        return sortByTextKey(result, s => sortAnalysis?.get(s.id)?.camelotKey || sortAnalysis?.get(s.id)?.key || '', sortDirection);
+      case 'lufs':
+        return [...result].sort((a, b) => compareIntegratedLUFS(sortAnalysis?.get(a.id)?.integratedLufsBs1770, sortAnalysis?.get(b.id)?.integratedLufsBs1770, sortDirection));
+      case 'truePeak':
+        return [...result].sort((a, b) => compareTruePeakDBTP(sortAnalysis?.get(a.id)?.truePeakDbtp, sortAnalysis?.get(b.id)?.truePeakDbtp, sortDirection));
+      default:
+        return [...result].sort((a, b) => {
+          let comparison = 0;
+          switch (sortKey) {
+            case 'duration':
+              comparison = (a.duration || 0) - (b.duration || 0);
+              break;
+            case 'bpm':
+              comparison = (sortAnalysis?.get(a.id)?.bpm ?? a.bpm ?? 0) - (sortAnalysis?.get(b.id)?.bpm ?? b.bpm ?? 0);
+              break;
+            case 'energy': {
+              const aUnknown = sortAnalysis?.get(a.id)?.energyLevel === undefined;
+              const bUnknown = sortAnalysis?.get(b.id)?.energyLevel === undefined;
+              if (aUnknown !== bUnknown) return aUnknown ? 1 : -1;
+              comparison = (sortAnalysis?.get(a.id)?.energyLevel ?? 0) - (sortAnalysis?.get(b.id)?.energyLevel ?? 0);
+              break;
+            }
+            case 'analysis':
+              comparison = compareAnalysisReadiness(sortAnalysis?.get(a.id)?.status, sortAnalysis?.get(b.id)?.status, sortAnalysisStatus);
+              break;
+            case 'dateAnalyzed': {
+              const aDate = sortAnalysis?.get(a.id)?.analyzedAt;
+              const bDate = sortAnalysis?.get(b.id)?.analyzedAt;
+              const aUnknown = !hasAnalysisTimestamp(aDate);
+              const bUnknown = !hasAnalysisTimestamp(bDate);
+              if (aUnknown !== bUnknown) return aUnknown ? 1 : -1;
+              comparison = (hasAnalysisTimestamp(aDate) ? aDate : 0) - (hasAnalysisTimestamp(bDate) ? bDate : 0);
+              break;
+            }
+          }
+          return sortDirection === 'asc' ? comparison : -comparison;
+        });
+    }
+  }, [needsFullAnalysis, nonAnalysisSortedSongs, textFilteredSongs, sortKey, sortDirection, sortAnalysis, sortAnalysisStatus, energyMin, energyMax, scoreMetric, scoreMin, scoreMax, scoreOrder, scoreNow]);
 
-      if (sortKey === 'energy') {
-        const aUnknown = analysisBySongID[a.id]?.energyLevel === undefined;
-        const bUnknown = analysisBySongID[b.id]?.energyLevel === undefined;
-        if (aUnknown !== bUnknown) return aUnknown ? 1 : -1;
-      }
-      if (sortKey === 'dateAnalyzed') {
-        const aUnknown = !hasAnalysisTimestamp(analysisBySongID[a.id]?.analyzedAt);
-        const bUnknown = !hasAnalysisTimestamp(analysisBySongID[b.id]?.analyzedAt);
-        if (aUnknown !== bUnknown) return aUnknown ? 1 : -1;
-      }
-
-      return sortDirection === 'asc' ? comparison : -comparison;
-    });
-
-    return result;
-  }, [categoryFilteredSongs, searchQuery, sortKey, sortDirection, analysisBySongID, analysisListState, energyMin, energyMax, scoreMetric, scoreMin, scoreMax, scoreOrder, scoreNow]);
+  const viewportProjection = columnVisibility.structureStatus ? undefined :
+    columnVisibility.lufs || columnVisibility.truePeak ? 'loudness' : 'ordering';
+  const fetchViewport = !needsFullAnalysis || viewportProjection === undefined ||
+    (viewportProjection === 'loudness' && catalogProjection === 'ordering');
+  const visibleSongIds = useMemo(() => {
+    if (!fetchViewport || !filteredSongs.length) return [];
+    const initial = visibleRange.startIndex === 0 && visibleRange.endIndex === 99;
+    const start = initial ? 0 : Math.max(0, visibleRange.startIndex - 30);
+    const end = initial ? 100 : visibleRange.endIndex + 31;
+    return (start < filteredSongs.length ? filteredSongs.slice(start, end) : filteredSongs.slice(0, 100)).map(song => song.id);
+  }, [fetchViewport, filteredSongs, visibleRange]);
+  const { rows: viewportAnalysis, status: viewportAnalysisStatus } = useAnalysisFeatures({ enabled: fetchViewport, songIds: visibleSongIds, projection: viewportProjection });
+  const rowAnalysis = fetchViewport ? viewportAnalysis : analysisBySongID;
+  const analysisListState = needsFullAnalysis ? catalogAnalysisStatus : viewportAnalysisStatus;
 
   const handleSort = useCallback((key: SortKey) => {
     if (sortKey === key) {
@@ -1000,7 +1042,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
         {analysisListState === 'failed' && (
           <div role="status" className="flex items-center gap-2 px-3 py-2 text-xs text-[var(--dj-text-secondary)]">
             Analysis could not be refreshed.
-            <button type="button" onClick={() => setAnalysisRetry(value => value + 1)} className="rounded border border-white/10 px-2 py-1 text-[var(--dj-text-primary)]">Retry analysis</button>
+            <button type="button" onClick={retryAnalysis} className="rounded border border-white/10 px-2 py-1 text-[var(--dj-text-primary)]">Retry analysis</button>
           </div>
         )}
         {/* Search header */}
@@ -1078,7 +1120,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
         </div>
 
         <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-xs text-[var(--dj-text-secondary)] border-b border-white/10">
-          <label>Spotify score (0–1) <select aria-label="Spotify score metric" value={scoreMetric} onChange={e => { setScoreMetric(e.target.value); setScoreMin(''); setScoreMax(''); setScoreOrder('none'); }} className="bg-surface-2 rounded p-1"><option value="">Off</option>{PROVIDER_SCORE_OPTIONS.map(metric => <option key={metric} value={metric}>{metric}</option>)}</select></label>
+          <label>Spotify score (0–1) <select aria-label="Spotify score metric" value={scoreMetric} onChange={e => { setScoreMetric(e.target.value); setScoreNow(Date.now()); setScoreMin(''); setScoreMax(''); setScoreOrder('none'); }} className="bg-surface-2 rounded p-1"><option value="">Off</option>{PROVIDER_SCORE_OPTIONS.map(metric => <option key={metric} value={metric}>{metric}</option>)}</select></label>
           {scoreMetric && <>
             <input aria-label="Minimum Spotify score" type="number" min={0} max={1} step={0.05} value={scoreMin} onChange={e => setScoreMin(e.target.value)} placeholder="0" className="w-14 bg-surface-2 rounded p-1" />
             <input aria-label="Maximum Spotify score" type="number" min={0} max={1} step={0.05} value={scoreMax} onChange={e => setScoreMax(e.target.value)} placeholder="1" className="w-14 bg-surface-2 rounded p-1" />
@@ -1099,6 +1141,7 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
               ref={tableRef}
               data={filteredSongs}
               className="h-full"
+              rangeChanged={setVisibleRange}
               computeItemKey={(_idx, song) => song.id}
               fixedHeaderContent={() => (
                 <tr className="border-b border-white/10 bg-[var(--dj-surface-2)]">
@@ -1131,10 +1174,10 @@ export const DJLibraryBrowserV2: React.FC<DJLibraryBrowserV2Props> = ({ autoFocu
                   onLoadToDeck={handleLoadToDeck}
                   trackColor={trackColorMap.get(song.id)}
                   onSetTrackColor={handleSetTrackColor}
-                  analysis={analysisBySongID[song.id]}
+                  analysis={rowAnalysis.get(song.id)}
                   analysisListState={analysisListState}
                   stemStatus={song.stemStatus}
-                  keyCompatibility={computeKeyCompat(analysisBySongID[song.id]?.key)}
+                  keyCompatibility={computeKeyCompat(rowAnalysis.get(song.id)?.key)}
                   columnVisibility={columnVisibility}
                   columnWidths={columnWidths}
                   scoreMetric={scoreMetric}

@@ -37,15 +37,9 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
-	"net"
-	"net/http"
-	"net/http/httputil"
-	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
-	"time"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -54,10 +48,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
-	"github.com/ajbergh/viib-mediahub/internal/api"
-	"github.com/ajbergh/viib-mediahub/internal/db"
 	"github.com/ajbergh/viib-mediahub/internal/logger"
-	"github.com/ajbergh/viib-mediahub/internal/server"
 )
 
 // frontendFS embeds the built React frontend assets.
@@ -75,31 +66,29 @@ var (
 // App struct holds the application state and provides methods
 // that can be called from the frontend via Wails bindings.
 type App struct {
-	ctx       context.Context
-	serverURL string
-	dataDir   string
-	database  *db.DB
-	api       *api.API
-	quitChan  chan struct{} // Channel to signal app quit from systray
+	windowMu      sync.Mutex
+	ctx           context.Context
+	showOnStartup bool
+	dataDir       string
+	backend       *desktopBackend
+	quitChan      chan struct{} // Channel to signal app quit from systray
 }
 
-// NewApp creates a new App instance with the given configuration.
-func NewApp(serverURL, dataDir string, database *db.DB, apiHandler *api.API, quitChan chan struct{}) *App {
-	return &App{
-		serverURL: serverURL,
-		dataDir:   dataDir,
-		database:  database,
-		api:       apiHandler,
-		quitChan:  quitChan,
-	}
+func newApp(dataDir string, backend *desktopBackend, quitChan chan struct{}) *App {
+	return &App{dataDir: dataDir, backend: backend, quitChan: quitChan}
 }
 
-// startup is called when the Wails app starts.
-// It receives the runtime context for Wails operations.
+// startup receives the runtime context for Wails window operations.
 func (a *App) startup(ctx context.Context) {
+	a.windowMu.Lock()
 	a.ctx = ctx
+	show := a.showOnStartup
+	a.showOnStartup = false
+	a.windowMu.Unlock()
 	logger.Main("Wails application started")
-	logger.Main("API server available at %s", a.serverURL)
+	if show {
+		a.ShowWindow()
+	}
 
 	if a.quitChan != nil {
 		// Start listening for quit signals on platforms with an external tray.
@@ -114,25 +103,33 @@ func (a *App) startup(ctx context.Context) {
 	}
 }
 
-// ShowWindow shows and brings the application window to front.
-// This is called from the system tray.
-func (a *App) ShowWindow() {
-	if a.ctx != nil {
-		runtime.WindowShow(a.ctx)
-		runtime.WindowUnminimise(a.ctx)
-	}
-}
-
-// shutdown is called when the Wails app is closing.
-// Use this for cleanup operations.
-func (a *App) shutdown(ctx context.Context) {
+func (a *App) shutdown(_ context.Context) {
 	logger.Main("Wails application shutting down")
 }
 
-// GetServerURL returns the localhost URL for the API server.
-// This can be called from the frontend if needed for direct API access.
-func (a *App) GetServerURL() string {
-	return a.serverURL
+// ShowWindow shows and brings the application window to front.
+// This is called from the system tray.
+func (a *App) ShowWindow() {
+	a.windowMu.Lock()
+	ctx := a.ctx
+	if ctx == nil {
+		a.showOnStartup = true
+	}
+	a.windowMu.Unlock()
+	if ctx != nil {
+		runtime.Show(ctx)
+		runtime.WindowUnminimise(ctx)
+		runtime.WindowShow(ctx)
+	}
+}
+
+// GetServerURL returns the loopback origin for audio, event streams, and the Spotify callback URI.
+func (a *App) GetServerURL() (string, error) {
+	backend, err := a.backend.get()
+	if err != nil {
+		return "", err
+	}
+	return backend.serverURL, nil
 }
 
 // GenerateSpotifyCodeChallenge hashes a PKCE verifier in the native process.
@@ -162,11 +159,21 @@ func (a *App) SetWindowCloseAction(action string) error {
 // SaveSupportBundle prompts for a destination and writes a sanitized support
 // archive there. An empty path means the user cancelled the save dialog.
 func (a *App) SaveSupportBundle() (string, error) {
-	data, filename, err := a.api.CreateSupportBundle()
+	backend, err := a.backend.get()
 	if err != nil {
 		return "", err
 	}
-	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+	data, filename, err := backend.api.CreateSupportBundle()
+	if err != nil {
+		return "", err
+	}
+	a.windowMu.Lock()
+	ctx := a.ctx
+	a.windowMu.Unlock()
+	if ctx == nil {
+		return "", fmt.Errorf("application window is still starting")
+	}
+	path, err := runtime.SaveFileDialog(ctx, runtime.SaveDialogOptions{
 		Title:           "Save ViiB Support Bundle",
 		DefaultFilename: filename,
 		Filters: []runtime.FileFilter{{
@@ -183,39 +190,13 @@ func (a *App) SaveSupportBundle() (string, error) {
 	return path, nil
 }
 
-// createAPIProxyHandler creates an http.Handler that proxies /api requests
-// to the internal HTTP server. This allows the Wails AssetServer to handle
-// frontend assets while routing API calls to the Go backend.
-//
-// Supports SSE (Server-Sent Events) by setting FlushInterval to stream
-// events immediately to the client.
-func createAPIProxyHandler(serverURL string) http.Handler {
-	targetURL, _ := url.Parse(serverURL)
-	proxy := httputil.NewSingleHostReverseProxy(targetURL)
-
-	// Enable immediate flushing for SSE support
-	// This ensures Server-Sent Events are streamed in real-time
-	proxy.FlushInterval = -1 // Flush immediately for every write
-
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Handle /api requests by proxying to the internal server
-		if strings.HasPrefix(r.URL.Path, "/api") {
-			logger.MainDebug("Proxying request: %s %s", r.Method, r.URL.Path)
-			proxy.ServeHTTP(w, r)
-			return
-		}
-
-		// Return 404 for other non-API requests (assets will be handled by Assets fs)
-		http.NotFound(w, r)
-	})
-}
-
 func main() {
 	// Parse command-line flags
 	dataDir := flag.String("data", "", "Data directory (default: user config dir)")
 	// Spotify requires an OAuth redirect URI that exactly matches a URI registered
 	// in the user's Developer Dashboard. Keep the desktop API server on a stable
-	// loopback port so its /callback route can be registered once.
+	// loopback port so its /callback route can be registered once. A different
+	// port requires registering its exact callback URI.
 	port := flag.Int("port", 34115, "Port for API server (required for Spotify OAuth callback)")
 	debug := flag.Bool("debug", false, "Enable debug mode")
 	flag.Parse()
@@ -248,25 +229,6 @@ func main() {
 	logger.Main("Data directory: %s", *dataDir)
 	logger.Main("Debug mode: %v", *debug)
 
-	// Initialize database
-	dbPath := filepath.Join(*dataDir, "library.db")
-	database, err := db.New(dbPath)
-	if err != nil {
-		logger.Main("Failed to initialize database: %v", err)
-		fmt.Fprintf(os.Stderr, "Failed to initialize database: %v\n", err)
-		os.Exit(1)
-	}
-	defer database.Close()
-	logger.Main("Database initialized: %s", dbPath)
-
-	// Create API handler
-	apiHandler := api.New(database, *dataDir)
-	var closeAPIOnce sync.Once
-	closeAPI := func() { closeAPIOnce.Do(apiHandler.Close) }
-	defer closeAPI()
-	logger.Main("API handler created")
-
-	// Get embedded frontend filesystem
 	distFS, err := fs.Sub(frontendFS, "frontend/dist")
 	if err != nil {
 		logger.Main("Failed to access embedded frontend: %v", err)
@@ -274,28 +236,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Start HTTP server on specified or random available port
-	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *port))
-	if err != nil {
-		logger.Main("Failed to bind to port: %v", err)
-		fmt.Fprintf(os.Stderr, "Failed to bind to port: %v\n", err)
-		os.Exit(1)
-	}
-
-	actualPort := listener.Addr().(*net.TCPAddr).Port
-	serverURL := fmt.Sprintf("http://127.0.0.1:%d", actualPort)
-	logger.Main("API server starting on %s", serverURL)
-
-	httpServer, cancelRequests := newHTTPServer(server.New(apiHandler, distFS))
-	defer cancelRequests()
-
-	// Start HTTP server in background goroutine
-	go func() {
-		logger.Main("HTTP server goroutine starting")
-		if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
-			logger.Main("HTTP server error: %v", err)
-		}
-	}()
+	backend := &desktopBackend{start: func() (*runningDesktopBackend, error) {
+		return startDesktopBackend(*port, *dataDir, distFS)
+	}}
 
 	// macOS does not use the external tray because it conflicts with Wails v2's
 	// native AppDelegate. A nil channel keeps its app lifecycle fully native.
@@ -304,13 +247,7 @@ func main() {
 		quitChan = make(chan struct{})
 	}
 
-	// Create app instance for Wails bindings
-	app := NewApp(serverURL, *dataDir, database, apiHandler, quitChan)
-
-	// Create API proxy handler for Wails AssetServer
-	// This routes /api/* requests to the HTTP server while letting
-	// the embedded distFS handle all other requests (frontend assets)
-	apiProxyHandler := createAPIProxyHandler(serverURL)
+	app := newApp(*dataDir, backend, quitChan)
 
 	// getlantern/systray and Wails v2 both define the macOS AppDelegate, so the
 	// external tray is compiled only on Windows/Linux. macOS uses the normal app
@@ -336,10 +273,24 @@ func main() {
 		},
 		AssetServer: &assetserver.Options{
 			Assets:  distFS,
-			Handler: apiProxyHandler,
+			Handler: backend,
 		},
 		OnStartup:  app.startup,
 		OnShutdown: app.shutdown,
+		OnDomReady: func(ctx context.Context) {
+			// Native navigation and binding calls occur after Wails' single-instance check.
+			if _, err := backend.get(); err != nil {
+				backend.reportStartFailure.Do(func() {
+					go func() {
+						logger.Main("Failed to start API server: %v", err)
+						_, _ = runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
+							Type: runtime.ErrorDialog, Title: "ViiB MediaHub startup failed", Message: err.Error(),
+						})
+						runtime.Quit(ctx)
+					}()
+				})
+			}
+		},
 		Bind: []interface{}{
 			app,
 		},
@@ -348,6 +299,10 @@ func main() {
 			Appearance:           mac.NSAppearanceNameDarkAqua,
 			WebviewIsTransparent: false,
 			WindowIsTranslucent:  false,
+			Preferences: &mac.Preferences{
+				// Spotify resolves its stream asynchronously before invoking play().
+				EnableAutoplayWithoutUserAction: mac.Enabled,
+			},
 		},
 		Windows: &windows.Options{
 			WebviewIsTransparent:              false,
@@ -364,27 +319,15 @@ func main() {
 		},
 	})
 
-	if err != nil {
+	stopSystemTray()
+	startErr := backend.close()
+	if err != nil || startErr != nil {
+		if err == nil {
+			err = startErr
+		}
 		logger.Main("Wails application error: %v", err)
 		fmt.Fprintf(os.Stderr, "Wails application error: %v\n", err)
 		os.Exit(1)
 	}
-
-	stopSystemTray()
-
-	// Cancel long-lived streams before waiting for graceful server shutdown.
-	cancelRequests()
-	closeAPI()
-
-	// Graceful shutdown of HTTP server
-	logger.Main("Shutting down HTTP server...")
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		logger.Main("HTTP server shutdown error: %v", err)
-	} else {
-		logger.Main("HTTP server shutdown complete")
-	}
-
 	logger.Main("=== ViiB MediaHub (Wails) Stopped ===")
 }

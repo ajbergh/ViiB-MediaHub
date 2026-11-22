@@ -106,6 +106,7 @@ type DownloadManager struct {
 	downloadProgress    map[string]downloadTracker    // Tracks last progress update time for stall detection
 	activeCount         int32                         // Atomic counter for active downloads
 	maxConcurrent       int32                         // Maximum concurrent downloads (configurable)
+	serialDownloads     atomic.Bool                   // One transfer at a time after a shared session stalls
 	authRequired        bool                          // Whether Spotify re-authentication is needed
 	authRequiredMu      sync.RWMutex                  // Protects authRequired
 	mu                  sync.RWMutex                  // Protects activeDownloads and isRunning
@@ -850,7 +851,7 @@ func (dm *DownloadManager) processQueue() {
 		case <-statusTicker.C:
 			// Periodic status logging for diagnostics
 			activeCount := atomic.LoadInt32(&dm.activeCount)
-			maxConcurrent := atomic.LoadInt32(&dm.maxConcurrent)
+			maxConcurrent := dm.effectiveDownloadConcurrency()
 			dm.mu.RLock()
 			activeMapLen := len(dm.activeDownloads)
 			progressMapLen := len(dm.downloadProgress)
@@ -945,15 +946,21 @@ func (dm *DownloadManager) checkForStalledDownloads() {
 	}
 }
 
-// dispatchDownloads fetches queued downloads and dispatches them to workers
-// up to the configured concurrency limit.
+func (dm *DownloadManager) effectiveDownloadConcurrency() int32 {
+	if dm.serialDownloads.Load() {
+		return 1
+	}
+	return atomic.LoadInt32(&dm.maxConcurrent)
+}
+
+// dispatchDownloads fetches queued downloads and dispatches them to available workers.
 func (dm *DownloadManager) dispatchDownloads() {
 	if dm.IsAuthRequired() {
 		return
 	}
 	// Check how many slots are available
 	currentActive := atomic.LoadInt32(&dm.activeCount)
-	maxConcurrent := atomic.LoadInt32(&dm.maxConcurrent)
+	maxConcurrent := dm.effectiveDownloadConcurrency()
 	available := maxConcurrent - currentActive
 
 	if available <= 0 {
@@ -987,7 +994,7 @@ func (dm *DownloadManager) dispatchDownloads() {
 	// Dispatch up to 'available' downloads
 	dispatched := 0
 	for _, download := range toDispatch {
-		if int32(dispatched) >= available {
+		if int32(dispatched) >= available || atomic.LoadInt32(&dm.activeCount) >= dm.effectiveDownloadConcurrency() {
 			break
 		}
 
@@ -1213,8 +1220,13 @@ func (dm *DownloadManager) processDownload(workerID int, job downloadJob) {
 	var lastErr error
 	attempts := 0
 	audioKeySessionResetAttempted := false
+	startedBeforeSerialFallback := !dm.serialDownloads.Load()
 retryLoop:
 	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if attempt > 1 && startedBeforeSerialFallback && dm.serialDownloads.Load() &&
+			dm.requeueDownload(ctx, download.ID) {
+			return
+		}
 		attempts = attempt
 		dm.recordDownloadActivity(download.ID, spotify.DownloadPhasePreparing)
 		sessionGeneration := dm.sessionManager.Generation()
@@ -1222,6 +1234,12 @@ retryLoop:
 		if lastErr == nil {
 			// Success - exit retry loop
 			break
+		}
+
+		transferTimedOut := errors.Is(lastErr, spotify.ErrDownloadAudioTimeout)
+		if transferTimedOut && startedBeforeSerialFallback &&
+			dm.requeueAfterParallelTimeout(ctx, download.ID, sessionGeneration) {
+			return
 		}
 
 		isRetriable := isRetriableDownloadError(lastErr)
@@ -1238,13 +1256,13 @@ retryLoop:
 		audioKeyRejected := spotify.IsAudioKeyRejected(lastErr)
 		resetForAudioKey := audioKeyRejected && !audioKeySessionResetAttempted
 		resetForRepeatedFailure := !audioKeyRejected && attempt >= 2
-		if resetForAudioKey || resetForRepeatedFailure {
+		if resetForAudioKey || transferTimedOut || resetForRepeatedFailure {
 			if resetForAudioKey {
 				audioKeySessionResetAttempted = true
 			}
 			dm.recordDownloadActivity(download.ID, spotify.DownloadPhaseSession)
 			if dm.sessionManager.ResetSessionIfGeneration(sessionGeneration) {
-				dmLog("Worker %d: refreshed Spotify session after %s", workerID, downloadRetryReason(audioKeyRejected))
+				dmLog("Worker %d: refreshed Spotify session after %v", workerID, lastErr)
 			} else {
 				dmLog("Worker %d: Spotify session was already refreshed by another worker", workerID)
 			}
@@ -1289,11 +1307,38 @@ retryLoop:
 	}
 }
 
-func downloadRetryReason(audioKeyRejected bool) string {
-	if audioKeyRejected {
-		return "an audio-key rejection"
+// The download workers share one Spotify connection. When transfers stall
+// together, retrying in the same parallel arrangement can stall the replacement
+// connection too. Let healthy transfers drain and put stalled workers back in
+// the queue so the dispatcher can retry them one at a time.
+func (dm *DownloadManager) requeueAfterParallelTimeout(ctx context.Context, id string, generation uint64) bool {
+	if ctx.Err() != nil {
+		return false
 	}
-	return "repeated transient failures"
+	if !dm.serialDownloads.Load() && atomic.LoadInt32(&dm.activeCount) <= 1 {
+		return false
+	}
+	if dm.serialDownloads.CompareAndSwap(false, true) {
+		dmLog("Spotify downloads stalled on a shared session. Retrying one download at a time.")
+	}
+	dm.recordDownloadActivity(id, spotify.DownloadPhaseSession)
+	dm.sessionManager.ResetSessionIfGeneration(generation)
+	return dm.requeueDownload(ctx, id)
+}
+
+func (dm *DownloadManager) requeueDownload(ctx context.Context, id string) bool {
+	if ctx.Err() != nil {
+		return true
+	}
+	requeued, err := dm.db.RequeueDownloading(id)
+	if err != nil {
+		dmLog("Failed to requeue download %s after transfer timeout: %v", id, err)
+		return false
+	}
+	if requeued {
+		dm.progressChan <- DownloadProgress{DownloadID: id, Status: "queued", Progress: 0}
+	}
+	return true
 }
 
 // Keep ownership/status unchanged while making a new transfer attempt explicit.
@@ -1322,7 +1367,7 @@ func isRetriableDownloadError(err error) bool {
 	if err == nil || errors.Is(err, context.Canceled) {
 		return false
 	}
-	if spotify.IsAudioKeyRejected(err) || spotify.IsOggIntegrityError(err) {
+	if errors.Is(err, spotify.ErrDownloadAudioTimeout) || spotify.IsAudioKeyRejected(err) || spotify.IsOggIntegrityError(err) {
 		return true
 	}
 	message := strings.ToLower(err.Error())

@@ -23,55 +23,51 @@ interface Props {
   mode: VisualizerMode;
   className?: string;
   barColor?: string;
+  active?: boolean;
+  lowPower?: boolean;
 }
 
-export const Visualizer: React.FC<Props> = ({ mode, className = '', barColor = VIIB_COLOR_VALUES.playbackGreen }) => {
+export const Visualizer: React.FC<Props> = ({ mode, className = '', barColor = VIIB_COLOR_VALUES.playbackGreen, active = true, lowPower = false }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || mode === 'OFF') return;
+    if (!canvas || mode === 'OFF' || !active) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Handle Resize
+    let width = 0;
+    let height = 0;
+    let lastDraw = -Infinity;
     const updateSize = () => {
-       const dpr = window.devicePixelRatio || 1;
-       // We use clientWidth/Height to get the CSS pixel size of the element
-       const width = canvas.clientWidth;
-       const height = canvas.clientHeight;
-       
-       if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
-         canvas.width = width * dpr;
-         canvas.height = height * dpr;
-         ctx.scale(dpr, dpr);
-       }
+      width = canvas.clientWidth;
+      height = canvas.clientHeight;
+      const dpr = lowPower ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+      const pixelsWide = Math.round(width * dpr);
+      const pixelsHigh = Math.round(height * dpr);
+      if (canvas.width !== pixelsWide || canvas.height !== pixelsHigh) {
+        canvas.width = pixelsWide;
+        canvas.height = pixelsHigh;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      if (width && height && !animationRef.current) animationRef.current = requestAnimationFrame(draw);
     };
-
-    // Initial size
-    updateSize();
-
-    // ResizeObserver is more robust than window.resize
-    const resizeObserver = new ResizeObserver(() => {
-        updateSize();
-    });
-    resizeObserver.observe(canvas);
 
     // Data buffer
     // Analyser frequencyBinCount is typically 1024
     const bufferLength = 1024; 
     const dataArray = new Uint8Array(bufferLength);
 
-    const draw = () => {
+    const draw = (time: number) => {
+      animationRef.current = 0;
+      if (!width || !height) return;
       animationRef.current = requestAnimationFrame(draw);
-      
+      if (lowPower && time - lastDraw < 1000 / 30 - 1) return;
+      lastDraw = time;
       const analyser = audioEngine.getAnalyser();
-      
-      const width = canvas.clientWidth;
-      const height = canvas.clientHeight;
-      
+
       ctx.clearRect(0, 0, width, height);
 
       // If no analyser yet (audio engine not init) or not running, just clear and wait
@@ -145,13 +141,16 @@ export const Visualizer: React.FC<Props> = ({ mode, className = '', barColor = V
       }
     };
 
-    draw();
+    const resizeObserver = new ResizeObserver(updateSize);
+    resizeObserver.observe(canvas);
+    updateSize();
 
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      animationRef.current = 0;
       resizeObserver.disconnect();
     };
-  }, [mode, barColor]);
+  }, [mode, barColor, active, lowPower]);
 
   if (mode === 'OFF') return null;
 

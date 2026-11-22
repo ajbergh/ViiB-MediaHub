@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 )
 
 func openPlexTestDB(t *testing.T) *DB {
@@ -30,6 +31,43 @@ func plexFixture(sourceID, libraryID, machineID, ratingKey, title string, update
 		ArtworkKey: "/library/metadata/" + ratingKey + "/thumb/1", Container: "flac", AudioCodec: "flac", UpdatedAt: updatedAt,
 		Title: title, Artist: "Artist", Album: "Album", AlbumArtist: "Artist", TrackNumber: 1, DiscNumber: 1,
 		Genres: []string{"rock"}, Year: 2025, Duration: 245, AddedAt: 1000,
+	}
+}
+
+func TestPlexSyncWaitsForConcurrentSQLiteWriter(t *testing.T) {
+	database := openPlexTestDB(t)
+	defer database.Close()
+	const sourceID, libraryID, machineID = "plexsrc_busy", "2", "machine-busy"
+	if err := database.SavePlexSource(PlexSource{ID: sourceID, MachineIdentifier: machineID, BaseURL: "http://127.0.0.1:32400", LibraryID: libraryID, Active: true, Available: true}); err != nil {
+		t.Fatal(err)
+	}
+	writer, err := database.conn.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Rollback()
+	if _, err := writer.Exec(`UPDATE plex_sources SET name='Updated' WHERE id=?`, sourceID); err != nil {
+		t.Fatal(err)
+	}
+	track := plexFixture(sourceID, libraryID, machineID, "1", "Remote", 1)
+	result := make(chan error, 1)
+	go func() {
+		_, _, _, err := database.SyncPlexLibrary(sourceID, libraryID, []PlexCatalogTrack{track})
+		result <- err
+	}()
+	select {
+	case err := <-result:
+		t.Fatalf("Plex sync returned while another writer held the lock: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if err := writer.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-result; err != nil {
+		t.Fatal(err)
+	}
+	if saved, err := database.GetPlexTrackSource(track.SongID); err != nil || saved == nil {
+		t.Fatalf("missing synced track: %+v, err=%v", saved, err)
 	}
 }
 
@@ -103,6 +141,11 @@ func TestPlexSyncAddUpdateRemoveAndOfflineRetention(t *testing.T) {
 	first, err := database.GetSongByID("plex_song_1")
 	if err != nil || first.Title != "First" || first.FilePath != "plex://machine-test/2/1" {
 		t.Fatalf("unexpected first song: %#v err=%v", first, err)
+	}
+	identities, err := database.ListAnalysisSourceIdentities([]string{"missing", first.ID})
+	if err != nil || len(identities) != 1 || identities[0].SongID != first.ID || identities[0].Plex.MachineID != machineID ||
+		identities[0].Plex.RatingKey != "1" || !identities[0].Plex.Available || identities[0].Plex.UpdatedAt != 100 {
+		t.Fatalf("unexpected scoped identities: %+v err=%v", identities, err)
 	}
 
 	updatedTrack := plexFixture(sourceID, libraryID, machineID, "1", "First (Remastered)", 200)

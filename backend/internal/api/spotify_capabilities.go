@@ -1,3 +1,4 @@
+// Resolves Spotify account plans and enforces media access for the active account.
 package api
 
 import (
@@ -20,6 +21,7 @@ type spotifyProductCache struct {
 	until    time.Time
 }
 
+// spotifyProduct normalizes the plan and treats conflicting values as unknown.
 func spotifyProduct(catalogue, product string) string {
 	known := func(value string) string {
 		switch value {
@@ -40,6 +42,8 @@ func spotifyProduct(catalogue, product string) string {
 	return tier
 }
 
+// spotifyAccountProduct probes the plan and caches it for the current account lifetime.
+// A true refresh argument bypasses the cached result.
 func (a *API) spotifyAccountProduct(parent context.Context, refresh ...bool) string {
 	parent, stop := context.WithTimeout(parent, 12*time.Second)
 	defer stop()
@@ -124,10 +128,16 @@ func (a *API) spotifyAccountProduct(parent context.Context, refresh ...bool) str
 	return product
 }
 
+// requireSpotifyMedia requires a media-capable connection and verified Premium
+// before a streaming or download handler can begin work.
 func (a *API) requireSpotifyMedia(w http.ResponseWriter, r *http.Request) bool {
 	status := a.spotifyTokens().status()
 	if !status.Connected || status.AuthRequired {
 		respondError(w, http.StatusUnauthorized, "Sign in to Spotify to continue")
+		return false
+	}
+	if status.WebAPIOnly {
+		respondError(w, http.StatusForbidden, "Connect through Spotify Web Player to stream or download in ViiB.")
 		return false
 	}
 	switch a.spotifyAccountProduct(r.Context()) {
@@ -141,7 +151,7 @@ func (a *API) requireSpotifyMedia(w http.ResponseWriter, r *http.Request) bool {
 	return false
 }
 
-// Capture the account before checking its tier and retain that lifetime through
+// spotifyMediaOnly captures the account before checking its tier and retains its lifetime through
 // queue insertion/session preparation, so replacement cannot reuse permission.
 func (a *API) spotifyMediaOnly(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

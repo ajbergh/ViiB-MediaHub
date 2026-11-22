@@ -253,6 +253,7 @@ export interface AudioSettings {
   gapless: boolean;
   normalization: boolean;
   visualizerMode: VisualizerMode;
+  lowPowerVisuals?: boolean;
   visualizerEnabled: boolean;
   /** Opacity of album artwork when visualizer is active (0-100) */
   visualizerArtworkOpacity: number;
