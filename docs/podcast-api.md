@@ -4,8 +4,7 @@ This documents **only currently implemented endpoints** in
 [`backend/internal/api/podcast_routes.go`](../backend/internal/api/podcast_routes.go).
 The full prospective API is tracked in the
 [Podcast implementation roadmap](PODCAST_CLIENT_IMPLEMENTATION_ROADMAP.md).
-No Podcast Index search, episode media streaming, offline downloads,
-paid feeds or private RSS credential support is implemented yet. OPML 2.0
+No Podcast Index search, offline downloads, paid feeds or private RSS credential support is implemented yet. Public HTTPS audio byte-range streaming is now exposed as an early-access local endpoint and show-page transport, pending cross-platform qualification. OPML 2.0
 subscription export and safe import preview are available; neither exports
 nor imports listening history.
 
@@ -21,6 +20,8 @@ RSS 2.0 feeds during initial implementation.
 | GET | `/feeds/{id}` | Read one followed show by stable ID; 404 when unknown or unfollowed |
 | GET | `/episodes/continue?limit=12` | Recently listened, uncompleted episodes on followed shows; bound 1–50, no publisher network requests |
 | GET | `/episodes/{id}/progress` | Revisioned durable progress; 404 for unknown episodes |
+| GET | `/episodes/{id}/media` | Bounded, subscription-scoped audio media proxy: 206 Partial Content with validated Content-Range, 2 MiB maximum per request; accepts one Range or first 2 MiB if absent |
+
 | PUT | `/episodes/{id}/progress` | Save position/listened/played with `expectedRevision` CAS; 409 on stale writes |
 | POST | `/import/opml/preview` | Validate raw OPML 2.0 XML (512 KiB, 100 feed outlines, max nesting 24); list public candidates, duplicate/unsupported counts, and already-followed flags without network calls |
 
@@ -200,3 +201,53 @@ episodes on currently followed podcasts. The endpoint is local-only and
 read-only; the UI links back to the show. Until the media transport/player
 milestones are implemented, **Continue Listening is a saved-position
 library view, not a functioning Resume button**.
+
+
+## Secure early-access episode streaming
+
+\`GET /api/v2/podcasts/episodes/{id}/media\` looks up an episode by its
+stable SQLite ID **and requires that its show is still followed**. Callers
+cannot supply a remote source URL. Unknown/unfollowed episodes return 404;
+unsupported private URLs, non-audio enclosures and unsafe upstream responses
+return an error, never an untrusted remote response.
+
+The backend uses the shared DNS-pinned, public-IP-only podcast fetcher.
+For this milestone, media sources are **public HTTPS**, with default TLS
+port only, no URL user credentials, no secret-bearing query parameters and
+no internal/local DNS hostnames. Redirects are revalidated on each hop;
+private destinations, mixed public/private DNS sets, protocol downgrades,
+environment HTTP proxies and non-public address literals are refused.
+Publisher audio must identify as a supported audio MIME type.
+
+A client may send one \`Range: bytes=N-M\` or \`bytes=N-\`. The server caps
+each request to **2 MiB**, reissues the bounded range to the publisher and
+requires a genuine upstream \`206 Partial Content\` with consistent
+\`Content-Range\`, total size (maximum 16 GiB), length, content type and
+identity encoding. Requests without a Range are treated as \`bytes=0-\`
+but also capped to 2 MiB. Entire upstream \`200\` bodies, multipart ranges,
+compressed replies, HTML/SVG, mismatched sizes and oversized/lying
+responses are rejected before returning any bytes.
+
+Successful responses include \`Content-Type\`, \`Content-Range\`,
+\`Content-Length\`, \`Accept-Ranges: bytes\`, \`Cache-Control:
+private, no-store\` and \`X-Content-Type-Options: nosniff\`. Publisher
+headers and upstream errors are not reflected. Malformed ranges return
+416; unsupported enclosure/metadata 422; publisher transport errors 502.
+
+The **Listen** action on a show page opens an early-access native HTML
+audio player fed only by this same-origin endpoint. Pause/play, +/- seek,
+speed changes, per-episode position recovery and revision-checked progress
+writes are implemented. Starting podcasts pauses active music; starting
+music pauses the current podcast. The Spotify/music queue is not replaced
+or serialized into podcast state. This is **not yet the final unified
+audio-session coordinator**: OS media keys, global player persistence
+across route transitions, a dedicated queue, wide publisher MIME/query
+compatibility, CDN signed URL credentials, download/retry behavior and
+cross-platform audio qualification remain pending.
+
+**Known limitations:** many real publishers issue signed/tokenized
+enclosure URLs or do not honor byte ranges. Those sources remain
+unsupported in this strict first slice. No automatic fall back to
+insecure remote fetch or whole-file buffering is permitted. A saved
+\`Continue Listening\` item links back to its show, not directly to an
+auto-starting media session.

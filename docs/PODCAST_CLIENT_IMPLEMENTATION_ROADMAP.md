@@ -442,9 +442,9 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 
 - [ ] **POD-02A:** Podcast Index adapter, server-side credential management, status and pagination; no-key fallback/direct RSS works.
 - [ ] **POD-02B:** Discover search UI, results with artwork, preview/follow, feed detail and episode filter.
-- [ ] **POD-02C:** Safe local/remote episode media handler supporting HTTP Range, content-type, source availability and cancellation.
-- [ ] **POD-02D (in progress, persistence only):** Revision-safe progress REST and SQLite persistence are implemented; audio transport, media-key coordinator, seek/pause-throttle policy and playback-triggered writes remain unstarted.
-- [ ] **POD-02E:** Podcast Now Playing shell: playback, seek, speed, +30/-15, show art and metadata, buffering/error/retry.
+- [ ] **POD-02C (in progress):** Subscription-scoped HTTPS audio proxy now handles bounded 2 MiB single-byte ranges, strict 206 Content-Range/MIME/length checks, DNS pinning, redirect/SSRF and upstream error mapping. Real publisher compatibility, alternate enclosures, local offline media and cross-platform tests remain.
+- [ ] **POD-02D (in progress):** Revision-safe progress REST/SQLite, inline HTMLAudio transport, browser↔music stop/pause handoff and throttled playback-driven progress writes implemented; global single-owner coordinator, OS/media keys, background playback and cross-platform validation remain.
+- [ ] **POD-02E (in progress):** Inline early-access show-player shell with play/pause, native timeline seek, +/-15/30s, speed selection, saved resume and guarded local stream URL; app-global Now Playing, art, error/retry/buffering/latency UX and media-key integration remain.
 - [ ] **POD-02F (in progress):** Durable Continue Listening query/API and linked library cards, plus manual played/unplayed episode controls; playback-driven resume, queue/starred operations and full CI remain.
 
 **Exit:** Discovery or RSS → subscribe → stream → pause → quit/reopen → resume at expected position; music, Spotify and DJ behavior unchanged.
@@ -782,3 +782,42 @@ Range and SSRF protections (POD-02C); implement a single-owner audio session
 and playback-driven progress (POD-02D/E); only then implement download worker
 (POD-03A–E) and queue/automation/publisher/discovery enhancements. No
 unimplemented remote-media feature should be implied by the new API state.
+
+
+### 2026-11-22 — secure public audio transport / early inline playback
+
+- **POD-02C (partial):** Dedicated \`podcast/media.go\` fetcher supports
+  HTTPS-only validated public RSS enclosures, DNS-pinned dial, safe redirect
+  policy, strict supported audio MIME values, 206-only publisher responses,
+  single ranged reads bounded to 2 MiB, validated Content-Range/byte count,
+  rejection of 200 full-body fallbacks, compressed/multipart and non-audio
+  responses. API \`GET /episodes/{id}/media\` joins active subscriptions,
+  never accepts arbitrary URLs, returns safe error envelopes and no-store
+  206 responses. Publisher signed queries and older HTTP enclosures are
+  intentionally not supported while credentials/policy remain unresolved.
+- **POD-02D/E (partial):** The show episode list exposes a **Listen** action.
+  An isolated native HTMLAudio player uses the local episode-ID route,
+  offers pause/play, native timeline, -15/+30 and speed settings, restores
+  saved position and flushes CAS-revisioned progress roughly every 10 seconds
+  and on pause/exit. Opening/closing untouched audio does not write a new
+  revision. On conflict, stale writes stop rather than rewinding newer state.
+  Music/podcast playback handoff pauses the competing source; the existing
+  Spotify/music queue remains untouched.
+- Added targeted media fetcher, DB and API tests (private/unfollowed access,
+  206 correctness, redirect and DNS policy, MIME/oversize/range errors)
+  and browser/typed-client tests for local media URLs and show-player
+  selection. Also added separate streaming security ADR.
+- **NOT COMPLETE:** Full media session ownership and OS/SMTC actions,
+  global mini-player, resilient buffering/retry, cross-page playback,
+  alternate publisher MIME/query compatibility, signed/private sources,
+  downloadable media and offline playback. Media CDN acceptance must be
+  confirmed with real public HTTPS feeds; synthetic tests alone cannot
+  certify functional playback on all desktop/browser targets.
+- CI checks are still a gate. Early test CI caught \`localhost\` passing
+  shape-only media validation; the upstream dial-time policy would have
+  rejected local IPs, and the media URL validator now also rejects localhost
+  and internal DNS suffixes before lookup.
+
+Next slice: verify full CI and cross-platform media streaming, then
+centralize single-owner media-session handling (including Windows
+SMTC/media keys) before the persistent queue and optional offline pipeline.
