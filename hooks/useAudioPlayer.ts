@@ -25,6 +25,7 @@ import { getEventStreamURL } from '../services/eventStreamURL';
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { useStore } from '../store';
 import { audioEngine } from '../lib/audio';
+import { PodcastProgressTracker } from '../lib/podcastProgressTracker';
 import { StreamingErrorType } from '../slices/types';
 import { PlaybackContext } from '../types';
 import {
@@ -76,6 +77,7 @@ export const useAudioPlayer = () => {
     const primaryRef = useRef<HTMLAudioElement>(null);
     const secondaryRef = useRef<HTMLAudioElement>(null);
     const activePlayerIndex = useRef<number>(0); // 0 or 1
+    const podcastProgressRef = useRef<PodcastProgressTracker | null>(null);
     
     // Track if we've already triggered preload for current song
     const hasTriggeredPreload = useRef<string | null>(null);
@@ -435,6 +437,8 @@ export const useAudioPlayer = () => {
         audioEngine.register(secondary);
 
         if (!currentSong) {
+            void podcastProgressRef.current?.flush();
+            podcastProgressRef.current = null;
             audioEngine.cancelCleanup(primary);
             audioEngine.cancelCleanup(secondary);
             primary.pause();
@@ -455,6 +459,15 @@ export const useAudioPlayer = () => {
         // Check if song changed by comparing src
         // Note: We use .getAttribute('src') or check exact string match to avoid resolved URL issues
         if (currentPlayer.getAttribute('src') !== currentSong.url) {
+            // One physical audio transport owns local, Plex and podcasts.
+            // Persist outgoing podcast progress before any queue handoff.
+            void podcastProgressRef.current?.flush();
+            podcastProgressRef.current = currentSong.source === 'podcast' && currentSong.podcastEpisodeId
+                ? new PodcastProgressTracker(currentSong, message =>
+                    useStore.getState().showToast({ type: 'warning', message, duration: 5500 }))
+                : null;
+            setCurrentTime(0);
+            setDuration(currentSong.duration || 0);
             // Song Changed!
             
             // Record listen event for the PREVIOUS song before switching
@@ -479,7 +492,9 @@ export const useAudioPlayer = () => {
                 currentSong.playbackContext,
                 listenTrackingRef.current?.context,
             );
-            listenTrackingRef.current = {
+            // Podcast position/played history must never go through the music
+            // AI DJ listen-event or play-count paths.
+            listenTrackingRef.current = currentSong.source === 'podcast' ? null : {
                 songId: currentSong.id,
                 songDuration: currentSong.duration || 0,
                 accumulatedPlayTime: 0,
@@ -521,7 +536,10 @@ export const useAudioPlayer = () => {
             }
 
             if (isPlaying) {
-                 const fadeDuration = normalizeCrossfadeDuration(audioSettings.crossfadeDuration, audioSettings.gapless);
+                 const involvesPodcast = currentSong.source === 'podcast' ||
+                     currentPlayer.getAttribute('src')?.includes('/api/v2/podcasts/episodes/');
+                 const fadeDuration = involvesPodcast ? 0
+                     : normalizeCrossfadeDuration(audioSettings.crossfadeDuration, audioSettings.gapless);
                  audioEngine.transition(currentPlayer, nextPlayer, fadeDuration);
             } else {
                  audioEngine.cancelCleanup(nextPlayer);
@@ -543,10 +561,33 @@ export const useAudioPlayer = () => {
                  }
             } else {
                  currentPlayer.pause();
+                 void podcastProgressRef.current?.flush();
             }
         }
 
     }, [currentSong, isPlaying, audioSettings.crossfadeDuration, audioSettings.gapless]);
+
+    // App-level Player outlives podcast show routes. Its single audio element
+    // remains mounted while navigating, and flushes on app teardown.
+    useEffect(() => () => { void podcastProgressRef.current?.flush(); }, []);
+
+    const handleLoadedMetadata = (playerIndex: number) => {
+        if (playerIndex !== activePlayerIndex.current) return;
+        const player = playerIndex === 0 ? primaryRef.current : secondaryRef.current;
+        const song = useStore.getState().currentSong;
+        if (!player || !song) return;
+        if (song.source === 'podcast' && song.podcastResumeMs) {
+            const position = song.podcastResumeMs / 1000;
+            player.currentTime = Number.isFinite(player.duration)
+                ? Math.min(Math.max(0, player.duration - 1), position) : position;
+            podcastProgressRef.current?.seek(player.currentTime);
+        }
+        if (Number.isFinite(player.duration)) setDuration(player.duration);
+    };
+
+    const handlePause = (playerIndex: number) => {
+        if (playerIndex === activePlayerIndex.current) void podcastProgressRef.current?.flush();
+    };
 
     // Handlers — use getState() for fresh state to avoid stale closures
     const handleTimeUpdate = (playerIndex: number) => {
@@ -556,6 +597,7 @@ export const useAudioPlayer = () => {
         if (player) {
             const time = player.currentTime;
             const dur = player.duration || 0;
+            podcastProgressRef.current?.observe(time, !player.paused, player.seeking);
 
             const tracking = listenTrackingRef.current;
             if (tracking && tracking.songId === useStore.getState().currentSong?.id) {
@@ -576,7 +618,7 @@ export const useAudioPlayer = () => {
             
             // Fix duration if it differs significantly from stored metadata
             // Only do this once per song, when we have a valid duration
-            if (dur > 0 && currentSong && hasFixedDuration.current !== currentSong.id) {
+            if (dur > 0 && currentSong && currentSong.source !== 'podcast' && hasFixedDuration.current !== currentSong.id) {
                 hasFixedDuration.current = currentSong.id;
                 // Check if stored duration differs by more than 5%
                 const diff = Math.abs(currentSong.duration - dur) / Math.max(currentSong.duration, dur);
@@ -588,7 +630,7 @@ export const useAudioPlayer = () => {
             // Gapless preload uses the inactive player that will perform the handoff,
             // rather than a disposable Audio element whose buffer cannot be reused.
             const state = useStore.getState();
-            if (state.audioSettings.gapless && dur > 0 && (dur - time) <= PRELOAD_THRESHOLD_SECONDS) {
+            if (currentSong?.source !== 'podcast' && state.audioSettings.gapless && dur > 0 && (dur - time) <= PRELOAD_THRESHOLD_SECONDS) {
                 const nextTrack = state.queue[state.currentSongIndex + 1];
                 const inactivePlayer = activePlayerIndex.current === 0 ? secondaryRef.current : primaryRef.current;
                 if (nextTrack?.url && inactivePlayer && hasTriggeredPreload.current !== currentSong?.id) {
@@ -608,7 +650,7 @@ export const useAudioPlayer = () => {
             }
 
             // Trigger pre-buffering of next track when approaching end of current track
-            if (dur > 0 && (dur - time) <= PRELOAD_THRESHOLD_SECONDS) {
+            if (currentSong?.source !== 'podcast' && dur > 0 && (dur - time) <= PRELOAD_THRESHOLD_SECONDS) {
                 // Only trigger once per song
                 if (hasTriggeredPreload.current !== currentSong?.id) {
                     hasTriggeredPreload.current = currentSong?.id || null;
@@ -624,6 +666,12 @@ export const useAudioPlayer = () => {
         
         const { currentSong, recordPlay, nextSong, recordListenEvent, recordStreamEvent } = useStore.getState();
         
+        if (currentSong?.source === 'podcast') {
+            const player = playerIndex === 0 ? primaryRef.current : secondaryRef.current;
+            podcastProgressRef.current?.finished(player?.duration || currentSong.duration || 0);
+            nextSong();
+            return;
+        }
         if (currentSong) {
             recordPlay(currentSong.id);
             
@@ -665,6 +713,7 @@ export const useAudioPlayer = () => {
         const player = activePlayerIndex.current === 0 ? primaryRef.current : secondaryRef.current;
         if (player) {
             player.currentTime = time;
+            podcastProgressRef.current?.seek(time);
             if (listenTrackingRef.current) listenTrackingRef.current.lastMediaTime = time;
             setCurrentTime(time);
         }
@@ -676,6 +725,8 @@ export const useAudioPlayer = () => {
         currentTime,
         duration,
         handleTimeUpdate,
+        handleLoadedMetadata,
+        handlePause,
         handleEnded,
         seek
     };

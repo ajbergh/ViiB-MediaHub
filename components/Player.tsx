@@ -259,7 +259,7 @@ export const Player: React.FC = () => {
   
   const { 
       primaryRef, secondaryRef,
-      currentTime, duration, handleTimeUpdate, handleEnded, seek 
+      currentTime, duration, handleTimeUpdate, handleLoadedMetadata, handlePause, handleEnded, seek 
   } = useAudioPlayer();
 
   // Windows SMTC / Media Session API integration
@@ -277,12 +277,16 @@ export const Player: React.FC = () => {
       <audio
         ref={primaryRef}
         onTimeUpdate={() => handleTimeUpdate(0)}
+        onLoadedMetadata={() => handleLoadedMetadata(0)}
+        onPause={() => handlePause(0)}
         onEnded={() => handleEnded(0)}
         crossOrigin="anonymous"
       />
       <audio
         ref={secondaryRef}
         onTimeUpdate={() => handleTimeUpdate(1)}
+        onLoadedMetadata={() => handleLoadedMetadata(1)}
+        onPause={() => handlePause(1)}
         onEnded={() => handleEnded(1)}
         crossOrigin="anonymous"
       />
