@@ -16,13 +16,13 @@ var ErrPodcastProgressConflict = errors.New("podcast progress revision conflict"
 const maxPodcastProgressMillis int64 = 30 * 24 * 60 * 60 * 1000
 
 type PodcastProgress struct{
-    EpisodeID string
-    PositionMs int64
-    ListenedMs int64
-    IsPlayed bool
-    Revision int64
-    CompletedAt int64
-    LastPlayedAt int64
+    EpisodeID string `json:"episodeId"`
+    PositionMs int64 `json:"positionMs"`
+    ListenedMs int64 `json:"listenedMs"`
+    IsPlayed bool `json:"isPlayed"`
+    Revision int64 `json:"revision"`
+    CompletedAt int64 `json:"completedAt"`
+    LastPlayedAt int64 `json:"lastPlayedAt"`
 }
 
 // GetPodcastProgress returns a zero-revision state for a known episode that
