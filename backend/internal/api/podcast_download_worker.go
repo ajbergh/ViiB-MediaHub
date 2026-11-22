@@ -8,6 +8,7 @@ import (
     "errors"
     "database/sql"
     "fmt"
+    "hash"
     "io"
     "net/http"
     "os"
@@ -203,6 +204,14 @@ func (a *API) requirePodcastDiskSpace(dir string,remaining int64)error{
 // Abandoned transfers never become playable. Sweep only old numeric os.CreateTemp
 // .part-* regular files inside the fixed private podcast directory.
 func (a *API) cleanupPodcastAbandonedParts(dir string,now time.Time){
+    // The DB is the authority for validated staged files, including
+    // checkpoints older than the ordinary four-hour orphan grace.
+    protected:=map[string]bool{}
+    if a.db!=nil {
+        var err error
+        protected,err=a.db.ActivePodcastStagedFilenames(context.Background())
+        if err!=nil{return} // fail closed: don't garbage-collect while DB is unavailable
+    }
     handle,err:=os.Open(dir)
     if err!=nil{return}
     defer handle.Close()
@@ -213,7 +222,7 @@ func (a *API) cleanupPodcastAbandonedParts(dir string,now time.Time){
         for _,entry:=range batch {
             scanned++
             name:=entry.Name()
-            if !safePodcastTempName.MatchString(name){continue}
+            if !safePodcastTempName.MatchString(name)||protected[name]{continue}
             path:=filepath.Join(dir,name)
             stat,statErr:=os.Lstat(path)
             if statErr!=nil||!stat.Mode().IsRegular()||now.Sub(stat.ModTime())<podcastAbandonedPartGrace{continue}
@@ -256,6 +265,61 @@ func (a *API) clearPodcastOfflineVerification(id string){
     a.podcastIntegrityMu.Unlock()
 }
 
+// restorePodcastDownloadCheckpoint never writes to the old file. Copying a
+// validated prefix to a fresh worker-owned temp file prevents an expired old
+// lease's still-open file descriptor from modifying the resumed download.
+// The DB checkpoint is rebound only after the copy has been fully rehashed
+// and fsynced. Any invalid or missing prefix restarts safely at byte zero.
+func (a *API) restorePodcastDownloadCheckpoint(ctx context.Context,id,owner,dir,sourceDigest string,
+    out *os.File,h hash.Hash)(db.PodcastResumeCheckpoint,bool,error){
+    checkpoint,err:=a.db.ReadPodcastDownloadResumeCheckpoint(ctx,id,owner)
+    if err!=nil{return db.PodcastResumeCheckpoint{},false,err}
+    if !safePodcastTempName.MatchString(checkpoint.TempFilename)||
+        checkpoint.Bytes<=0||checkpoint.Total<=checkpoint.Bytes||
+        checkpoint.Total>db.MaxPodcastDownloadBytes||
+        checkpoint.SourceSHA256!=sourceDigest||
+        podcast.StrongMediaETag(checkpoint.ETag)!=checkpoint.ETag||
+        len(checkpoint.SHA256)!=64||
+        podcast.SupportedPodcastAudioMIME(checkpoint.MIME)==""{
+        return db.PodcastResumeCheckpoint{},false,nil
+    }
+    path:=filepath.Join(dir,checkpoint.TempFilename)
+    st,err:=os.Lstat(path)
+    if err!=nil||!st.Mode().IsRegular()||
+        st.Size()<checkpoint.Bytes||st.Size()>db.MaxPodcastDownloadBytes{
+        return db.PodcastResumeCheckpoint{},false,nil
+    }
+    file,err:=os.Open(path)
+    if err!=nil{return db.PodcastResumeCheckpoint{},false,nil}
+    defer file.Close()
+    opened,err:=file.Stat()
+    if err!=nil||!opened.Mode().IsRegular()||!os.SameFile(st,opened)||
+        opened.Size()<checkpoint.Bytes{
+        return db.PodcastResumeCheckpoint{},false,nil
+    }
+    // The previously staged file is still on disk during the copy, so the
+    // destination must have capacity for a second complete episode.
+    if err:=a.requirePodcastDiskSpace(dir,checkpoint.Total);err!=nil{
+        return db.PodcastResumeCheckpoint{},false,err
+    }
+    n,err:=io.CopyN(io.MultiWriter(out,h),file,checkpoint.Bytes)
+    if err!=nil||n!=checkpoint.Bytes||
+        !strings.EqualFold(hex.EncodeToString(h.Sum(nil)),checkpoint.SHA256){
+        h.Reset()
+        if err:=out.Truncate(0);err!=nil{return db.PodcastResumeCheckpoint{},false,err}
+        if _,err:=out.Seek(0,io.SeekStart);err!=nil{
+            return db.PodcastResumeCheckpoint{},false,err
+        }
+        return db.PodcastResumeCheckpoint{},false,nil
+    }
+    if err:=out.Sync();err!=nil{return db.PodcastResumeCheckpoint{},false,err}
+    checkpoint.TempFilename=filepath.Base(out.Name())
+    if err:=a.db.SavePodcastDownloadCheckpoint(ctx,id,owner,checkpoint);err!=nil{
+        return db.PodcastResumeCheckpoint{},false,err
+    }
+    return checkpoint,true,nil
+}
+
 func (a *API) transferPodcastDownload(ctx context.Context,id,owner string) error {
     if !safePodcastEpisodeID.MatchString(id){return podcast.ErrInvalidMedia}
     raw,declared,err:=a.db.PodcastMediaSource(ctx,id)
@@ -293,6 +357,17 @@ func (a *API) transferPodcastDownload(ctx context.Context,id,owner string) error
     hash:=sha256.New()
     var received,total int64
     var mime,firstETag,firstLastModified string
+    sourceHash:=sha256.Sum256([]byte(raw))
+    sourceDigest:=hex.EncodeToString(sourceHash[:])
+    checkpoint,resuming,err:=a.restorePodcastDownloadCheckpoint(ctx,id,owner,dir,sourceDigest,out,hash)
+    if err!=nil{return err}
+    if resuming{
+        received,total=checkpoint.Bytes,checkpoint.Total
+        mime=checkpoint.MIME
+        firstETag=checkpoint.ETag
+        firstLastModified=checkpoint.LastModified
+        requestedIfRange=firstETag
+    }
     for {
         if err:=ctx.Err();err!=nil{return err}
         header:=fmt.Sprintf("bytes=%d-%d",received,received+podcastDownloadChunkBytes-1)
@@ -392,8 +467,20 @@ func (a *API) transferPodcastDownload(ctx context.Context,id,owner string) error
         if n,err:=out.Write(seg.Data);err!=nil{return err}else if n!=len(seg.Data){return io.ErrShortWrite}
         if _,err:=hash.Write(seg.Data);err!=nil{return err}
         received+=int64(len(seg.Data))
-        // Cancel and worker lease checks happen before every next chunk.
-        if err:=a.db.UpdatePodcastDownloadBytes(ctx,id,owner,received,total);err!=nil{return err}
+        // A resumable checkpoint is durable only after fsync, and only
+        // when a strong publisher validator protects a subsequent request.
+        // Without a validator, the existing 206-only path is unchanged.
+        if received<total&&firstETag!=""{
+            if err:=out.Sync();err!=nil{return err}
+            cp:=db.PodcastResumeCheckpoint{
+                TempFilename:filepath.Base(out.Name()),Bytes:received,Total:total,
+                ETag:firstETag,LastModified:firstLastModified,MIME:mime,
+                SHA256:hex.EncodeToString(hash.Sum(nil)),SourceSHA256:sourceDigest,
+            }
+            if err:=a.db.SavePodcastDownloadCheckpoint(ctx,id,owner,cp);err!=nil{return err}
+        }else{
+            if err:=a.db.UpdatePodcastDownloadBytes(ctx,id,owner,received,total);err!=nil{return err}
+        }
         if received==total{break}
         if received>total{return podcast.ErrInvalidMedia}
     }
