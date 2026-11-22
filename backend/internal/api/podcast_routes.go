@@ -27,7 +27,6 @@ type podcastFeedRequest struct {
 // boundary. Each handler checks its own request size and safe response fields.
 func (a *API) PodcastRoutes() chi.Router {
     r := chi.NewRouter()
-    a.startPodcastRefresher()
     r.Get("/feeds", a.listPodcastFeeds)
     r.Post("/feeds/preview", a.previewPodcastFeed)
     r.Post("/feeds", a.subscribePodcastFeed)

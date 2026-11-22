@@ -182,6 +182,7 @@ func New(database *db.DB, dataDir string) *API {
 	api.releaseMusicBrainz = releasedate.NewClient()
 	api.startReleaseMetadataWorker()
 	api.startPlexSyncScheduler()
+	api.startPodcastRefresher()
 	dm.Start()
 	// Initialize Last.FM client if configured
 	api.initLastFMClient()
