@@ -2,8 +2,9 @@
 
 > **Document status:** Proposed / planning only; no podcast feature is implemented by this document.
 > **Created:** 2026-11-22
-> **Target:** ViiB MediaHub (React 19 / TypeScript / Zustand / Go / SQLite / Wails, plus local-Go browser builds)
-> **Ownership:** Podcast domain specification. Cross-project sequencing and release gates remain in [docs/ROADMAP.md](ROADMAP.md).
+> **Last reviewed:** 2026-11-22 — codebase anchors re-verified against source (see [§13 Review log](#13-review-log))
+> **Target:** ViiB MediaHub (React 19.2 / React Router 8 / TypeScript 5.8 / Zustand 5 / Go 1.26 / SQLite via `modernc.org/sqlite` / Wails v2.17, plus local-Go browser builds)
+> **Ownership:** Podcast domain specification. Cross-project sequencing and release gates remain in [docs/ROADMAP.md](ROADMAP.md); that roadmap does not yet reference podcasts, so add an entry linking here once POD-00A is accepted.
 > **Source:** Research of commercial and FOSS podcast clients, official podcast standards, and inspection of ViiB `main` on 2026-11-22.
 > **Implementation principle:** An independent podcast domain, integrated into ViiB navigation/player shell without treating episodes as songs or Spotify downloads.
 
@@ -37,7 +38,7 @@ Feature descriptions below are based on current official product pages and open-
 |---|---|---|---|
 | [Pocket Casts](https://pocketcasts.com/podcast-player) — commercial; [App Store](https://apps.apple.com/us/app/pocket-casts-podcast-player/id414834813) | Cross-device position/subscription syncing, smart playlists, queue, speeds, silence trim, chapters, per-podcast settings | Polished subscriptions grid, Up Next, multi-rule playlists, accessible rich player, progressive enhancement | Hosted account/sync is not an MVP dependency |
 | [Overcast](https://apps.apple.com/us/app/overcast-podcast-app/id888422857) — commercial | Smart Speed, Voice Boost, offline files, smart playlists, sleep timer and per-show priorities | Long-form-first controls; optional later DSP, never require DSP for baseline | Voice/silence processing needs measurable CPU, pitch and quality tests |
-| [Apple Podcasts](https://www.apple.com/newsroom/2026/02/apple-introduces-a-new-video-podcast-experience-on-apple-podcasts/) — commercial | Large discovery surface, chapters, transcripts, improved dialogue and modern video capabilities | Legible detail pages, chapter navigation, show/episode search, transcript-first exploration | Apple-generated transcripts and Apple video entitlements are not portable RSS features |
+| [Apple Podcasts](https://www.apple.com/newsroom/2026/02/apple-introduces-a-new-video-podcast-experience-on-apple-podcasts/) — commercial | Large discovery surface, chapters, transcripts, dialogue enhancement and (from 2026) an HLS-based video experience that switches between watching and listening | Legible detail pages, chapter navigation, show/episode search, transcript-first exploration | Apple-generated transcripts and Apple's HLS video/dynamic-ad delivery are not portable RSS features; video/HLS stays post-1.0 (PLAY-16) |
 | [Podcast Addict](https://podcastaddict.com/intro.php) — commercial/freemium | Per-feed automatic download, intro/outro skip, fine-grained speed, playlists, bookmarks and cleanup | Powerful expert settings with simple defaults; auto-download/retention | Keep rules understandable; avoid an overwhelming initial Settings page |
 | [Castro](https://apps.apple.com/us/app/castro-podcast-app-player/id1080840241) — commercial | Inbox triage: accept, queue or dismiss newly arrived episodes | Optional triage inbox with explicit behavior by show | No auto-play/auto-download just because a feed is subscribed |
 | [Spotify Podcasts](https://support.spotify.com/ws/article/podcasts-and-shows/) — commercial | Easy discovery, following, listening and downloads in a broad media app | Cohesive sidebar and global shell; bridge between music and spoken content | Spotify catalog playback/access rights are a distinct integration |
@@ -50,21 +51,23 @@ Feature descriptions below are based on current official product pages and open-
 
 ## 2. Baseline: actual ViiB integration points
 
-Verified against source and repo documentation at the time of writing:
+Verified against source and repo documentation on 2026-11-22 (no podcast code exists yet anywhere in the frontend or backend):
 
 | Area | Existing ViiB component | Podcast approach |
 |---|---|---|
-| Routes and shell | [App.tsx](../App.tsx), [components/Layout.tsx](../components/Layout.tsx), [components/Sidebar.tsx](../components/Sidebar.tsx) | Add lazy `/podcasts`, `/podcasts/discover`, `/podcasts/show/:id`, `/podcasts/episode/:id`; add Podcasts navigation/badges and responsive views |
-| Frontend state | [store.ts](../store.ts), [slices/playerSlice.ts](../slices/playerSlice.ts), [slices/types.ts](../slices/types.ts) | Separate `podcastSlice` for *ephemeral* UI/player state, backend authoritative for subscriptions/progress; avoid overloading `Song` or music queue |
-| Audio | [hooks/useAudioPlayer.ts](../hooks/useAudioPlayer.ts), [components/Player.tsx](../components/Player.tsx), [docs/player.md](player.md) | Implement podcast transport and audio-session arbitration; adapt shared chrome and OS media session; avoid music crossfade and DJ/song analytics |
-| API | [services/api.ts](../services/api.ts), [backend/internal/api/api.go](../backend/internal/api/api.go), [docs/openapi-v2.yaml](openapi-v2.yaml) | Add typed `services/podcasts.ts` client and dedicated `PodcastRoutes` under versioned REST endpoints |
-| Database | [backend/internal/db/db.go](../backend/internal/db/db.go) | Additive dedicated tables/migrations in `backend/internal/db/podcast_*.go`; maintain existing library integrity |
-| Durable work | [backend/internal/api/v2_jobs.go](../backend/internal/api/v2_jobs.go), [backend/internal/db/jobs_schema.go](../backend/internal/db/jobs_schema.go) | Extend scheduler only after verifying job-type allowlist, restart/cancellation and priority isolation; separate download transfer state required |
-| Downloads | [backend/internal/api/download_manager.go](../backend/internal/api/download_manager.go), [docs/downloads.md](downloads.md) | **Do not reuse Spotify-specific DownloadManager semantics**; create a podcast download worker, reuse proven patterns (SQLite, SSE, retries, cancellation) |
-| Remote image safety | [backend/internal/mediafetch/mediafetch.go](../backend/internal/mediafetch/mediafetch.go) | Reuse principles (public IP/DNS/redirect limits), but implement format-specific safe feed/enclosure/transcript fetching with HTTPS/HTTP policy |
-| Media serving | [backend/internal/api/media_routes.go](../backend/internal/api/media_routes.go), [docs/architecture.md](architecture.md) | Add a distinct podcast media route, local-file range support, secure upstream streaming; do not rewrite music `/api/audio/{songId}` |
-| Automation/QA | [package.json](../package.json), [e2e](../e2e), [backend/internal/api](../backend/internal/api), [docs/development.md](development.md) | Vitest + Go unit/integration + Playwright fixtures; CI across Windows/macOS/Linux and local-Go browser shell |
-| Security boundary | [docs/architecture.md](architecture.md), [docs/ROADMAP.md](ROADMAP.md) | Existing Host/Origin/SSE protection must remain effective. Feed URL import and HTTP redirects create a **new SSRF surface** |
+| Routes and shell | [App.tsx](../App.tsx) (`BrowserRouter` from `react-router`, pages loaded with `React.lazy`), [components/Layout.tsx](../components/Layout.tsx), [components/Sidebar.tsx](../components/Sidebar.tsx) | Add lazy `/podcasts`, `/podcasts/discover`, `/podcasts/show/:id`, `/podcasts/episode/:id` (matches existing `/spotify/artist/:id` style; the Go SPA fallback already serves `index.html` for extensionless paths); add Podcasts navigation/badges and responsive views |
+| Frontend state | [store.ts](../store.ts) (Zustand `persist` to `localStorage` with an explicit `partialize` allowlist), [slices/playerSlice.ts](../slices/playerSlice.ts), [slices/types.ts](../slices/types.ts); the music `Song` type lives in root [types.ts](../types.ts) | Separate `podcastSlice` for *ephemeral* UI/player state, backend authoritative for subscriptions/progress; keep podcast state out of `partialize` except harmless UI preferences; avoid overloading `Song` or the music queue |
+| Audio | [hooks/useAudioPlayer.ts](../hooks/useAudioPlayer.ts) (music crossfade/prebuffer), [hooks/useMediaSession.ts](../hooks/useMediaSession.ts) (Media Session metadata and play/pause/next/prev/seek handlers bound to the music store), [components/Player.tsx](../components/Player.tsx), [docs/player.md](player.md) | Implement podcast transport and audio-session arbitration; adapt shared chrome; make exactly one owner register Media Session handlers at a time (generalize `useMediaSession` or hand ownership to the coordinator) instead of two competing hooks; avoid music crossfade and DJ/song analytics |
+| API | [services/api.ts](../services/api.ts), [backend/internal/api/api.go](../backend/internal/api/api.go), route mounting in [backend/internal/server/server.go](../backend/internal/server/server.go), [docs/openapi-v2.yaml](openapi-v2.yaml) | Add typed `services/podcasts.ts` client and a dedicated `PodcastRoutes()` chi router mounted at `/api/v2/podcasts` in `server.go` (same pattern as `PlexRoutes`/`V2JobRoutes`), **before** the catch-all `/api/v2` mount; reuse `respondV2JSON`/`respondV2Error` shapes |
+| Database | [backend/internal/db/db.go](../backend/internal/db/db.go) plus per-domain `*_schema.go` files (e.g. [jobs_schema.go](../backend/internal/db/jobs_schema.go)) | There is no migration-version table: domains use idempotent `CREATE TABLE/INDEX IF NOT EXISTS` plus tolerant `ALTER TABLE … ADD COLUMN` inside an `Ensure…Schema()` call. Follow that pattern in `backend/internal/db/podcast_*.go`; maintain existing library integrity |
+| Durable work | [backend/internal/api/v2_jobs.go](../backend/internal/api/v2_jobs.go), [backend/internal/db/jobs_schema.go](../backend/internal/db/jobs_schema.go) | Existing `operation_jobs` scheduler has a `supportedJobTypes` allowlist (scans, genre stats, track analysis, stem jobs), priority −100..100, cancel/retry, SSE snapshots at `/api/v2/jobs/events`, and only 1–2 workers (`NumCPU/4`, capped at 2). On restart, running jobs become `interrupted` (except `analyze_tracks`, which requeues). Feed refresh would share those workers with library scans/analysis, so prove it cannot starve or be starved before adopting it; media transfers need their own state and workers |
+| Downloads | [backend/internal/api/download_manager.go](../backend/internal/api/download_manager.go), [docs/downloads.md](downloads.md) | Spotify-specific: `spotify_downloads` table, `librespot-go`, Ogg/Vorbis output with optional MP3 conversion, default `<dataDir>/spotify_downloads` overridable by the `spotify_download_path` setting. **Do not reuse its semantics**; create a podcast download worker that reuses proven patterns (SQLite queue, SSE progress, retries/backoff, cancellation, configurable directory setting) |
+| Remote image safety | [backend/internal/mediafetch/mediafetch.go](../backend/internal/mediafetch/mediafetch.go) | Image-only `FetchImage`: HTTPS-only, rejects userinfo, resolves and checks every IP before the request and again at dial time, revalidates up to 4 redirects, 12 MiB cap, image decode/dimension checks. Reuse the principles, but implement format-specific feed/enclosure/transcript fetching with its own scheme policy and a broader blocklist (see §6.4) |
+| Media serving | `/api/audio/*` registered in [server.go](../backend/internal/server/server.go) → `ServeLocalAudio` in [media_routes.go](../backend/internal/api/media_routes.go) (thin wrapper around `serveAudio` in `api.go`, which uses `http.ServeFile` for ranges) or Plex `ServeAudioSourceAware` for `plex_` IDs; [docs/architecture.md](architecture.md) | Add a distinct podcast media route; local files via `http.ServeContent` (precedent: `v2_stem_preview.go`), secure upstream streaming for remote; do not rewrite music `/api/audio/*`. CORS already allows `Range` and exposes `Content-Range`/`Accept-Ranges`/`Content-Length` |
+| Media capabilities | [services/mediaCapabilities.ts](../services/mediaCapabilities.ts) backed by [backend/internal/audio/media-capabilities.json](../backend/internal/audio/media-capabilities.json); [AUDIO_FORMAT_SUPPORT_GAPS.md](AUDIO_FORMAT_SUPPORT_GAPS.md) | Use the canonical matrix and its error codes for enclosure codec support decisions; add a podcast source entry instead of inferring support from file extensions |
+| Backup and diagnostics | [backend/internal/db/backup_primitives.go](../backend/internal/db/backup_primitives.go) (`VACUUM INTO` copy), [docs/support-bundles.md](support-bundles.md), credential encryption in [backend/internal/crypto](../backend/internal/crypto) (`enc:v2:`) | Podcast tables are automatically included in DB backups, so anything secret in them (private feed URLs/tokens) must be encrypted with the existing crypto package. Extend the support-bundle allowlist; do not create a second exporter |
+| Automation/QA | [package.json](../package.json) (Vitest 4, Playwright 1.59), [e2e](../e2e), [backend/internal/api](../backend/internal/api), [.github/workflows/ci.yml](../.github/workflows/ci.yml), [docs/development.md](development.md) | Vitest + Go unit/integration + Playwright fixtures. CI already runs `go test -race` and an ubuntu/windows/macos matrix; add podcast suites to the existing jobs, including the local-Go browser shell |
+| Security boundary | `loopbackTrustBoundary`, `IsTrustedHost` and `IsTrustedOrigin` in [server.go](../backend/internal/server/server.go); [docs/architecture.md](architecture.md) | Existing Host/Origin/`Sec-Fetch-Site` and SSE protection applies to everything mounted on the router and must remain effective. Feed URL import and HTTP redirects create a **new outbound SSRF surface** that this inbound boundary does not cover |
 
 **Important asymmetry:** ViiB's browser *release* runs against a local Go executable, so backend-managed podcast downloads are feasible there. A purely static/frontend-only deployment or IndexedDB fallback is **not** an offline podcast download target in v1; show an explicit backend-required state rather than falsely reporting offline readiness.
 
@@ -88,8 +91,11 @@ Verified against source and repo documentation at the time of writing:
 
 ```text
 Sidebar
-  Music / Library / DJ / Spotify           (existing; unchanged)
-  Podcasts
+  Home / Search / DJ Mode                  (existing; unchanged)
+  Songs / Albums / Artists / Genres / Playlists
+  Liked Songs / Liked Albums / AI Smart Mix
+  Spotify / Downloads / Stats / Duplicates / Settings
+  Podcasts                                 (new group)
     Home            Continue, Up Next, New, Followed, Downloads
     Discover        Search, featured/category results (provider-dependent)
     Following       Subscribed shows and collections
@@ -119,7 +125,7 @@ Legend: **P0** is mandatory for first useful podcast MVP; **P1** full v1 release
 | DISC-05 | P1 | Search within an individual show's episode titles/descriptions and across locally indexed episodes |
 | DISC-06 | P1 | Search episode catalog when licensed provider supports it; gracefully distinguish remote show search from local episode search |
 | DISC-07 | P1 | Browse curated categories/trending from chosen directory with optional categories cache and age/explicit-content filters |
-| DISC-08 | P1 | OPML 2.0 import/export, preview counts, duplicate resolution, partial-failure report, feeds kept independently |
+| DISC-08 | P0 (export) / P1 (import) | OPML 2.0 export is part of the MVP (POD-03F). Import adds preview counts, duplicate resolution, a partial-failure report, and keeps feeds independent (POD-04E) |
 | DISC-09 | P1 | Recognize `podcast:guid`, feed move/redirects, enclosure changes and feed image changes without duplicating follows/history |
 | DISC-10 | P2 | Search suggestions, discovery from current subscriptions, share/import deep links, extensible alternate providers |
 | DISC-11 | P2 | Private authenticated feeds (Basic/Bearer or publisher-supported custom scheme) with secrets backend-only and per-feed access state |
@@ -146,7 +152,7 @@ Legend: **P0** is mandatory for first useful podcast MVP; **P1** full v1 release
 | ID | Priority | Requirement / acceptance behavior |
 |---|---|---|
 | PLAY-01 | P0 | Stream supported RSS enclosure without downloading; Go-mediated source or validated local origin, seeking via HTTP Range where supported |
-| PLAY-02 | P0 | Play/pause, adjustable 0.5x–3x in 0.1 or sensible increments, native pitch-preserving rate where supported, 15s back/30s forward defaults |
+| PLAY-02 | P0 | Play/pause, adjustable 0.5x–3x in 0.1 or sensible increments, native pitch-preserving rate (`HTMLMediaElement.preservesPitch`) where supported, 15s back/30s forward defaults |
 | PLAY-03 | P0 | Resume per episode on reload/app restart and after switching music/podcasts; coalesced progress updates and final pause/close flush |
 | PLAY-04 | P0 | Podcast session interrupts/stops music; music interrupts/stops podcast; never play concurrently; DJ behavior remains isolated |
 | PLAY-05 | P0 | Explicit streaming vs downloaded source selection; completed, verified local file takes priority offline; clear offline/unavailable errors |
@@ -202,7 +208,7 @@ Legend: **P0** is mandatory for first useful podcast MVP; **P1** full v1 release
 
 ### 5.1 Directory adapter
 
-**Initial choice:** [Podcast Index API](https://github.com/Podcastindex-org/docs-api), using its documented `/search/byterm`, `/podcasts/byfeedid`, `/podcasts/trending` where supported. Register application credentials and verify the current [terms](https://api.podcastindex.org/tos_v1.1.pdf) and attribution/rate limits **before deployment**. The Go backend owns API key/secret and request signing. Never ship a static shared private secret inside public source, desktop binary or TypeScript bundle. Allow user-configured personal credentials or an approved deployable backend approach; define UX when no directory credentials are configured.
+**Initial choice:** [Podcast Index API](https://github.com/Podcastindex-org/docs-api), using its documented `/api/1.0/search/byterm`, `/api/1.0/podcasts/byfeedid` and `/api/1.0/podcasts/trending` endpoints. Requests are authenticated with `X-Auth-Key`, `X-Auth-Date` and an `Authorization` header holding the SHA-1 of key + secret + date, plus an identifying `User-Agent`. Register application credentials and verify the current [terms](https://api.podcastindex.org/tos_v1.1.pdf) and attribution/rate limits **before deployment**. The Go backend owns API key/secret and request signing. Never ship a static shared private secret inside public source, desktop binary or TypeScript bundle. Allow user-configured personal credentials or an approved deployable backend approach; define UX when no directory credentials are configured.
 
 **Fallback:** Manual RSS URL and OPML must always work without Podcast Index credentials. A secondary provider such as [Apple iTunes Search API](https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/) requires separate review of permitted promotion, attribution, caching and artwork terms; do **not** assume arbitrary Apple metadata may be repurposed for independent players. Avoid hard dependencies on commercial paid APIs.
 
@@ -275,7 +281,8 @@ services/
 slices/
   podcastSlice.ts
 hooks/
-  usePodcastPlayer.ts, usePodcastMediaSession.ts
+  usePodcastPlayer.ts   (Media Session: generalize existing useMediaSession.ts
+                         rather than adding a second competing hook)
 pages/
   Podcasts.tsx, PodcastDiscover.tsx, PodcastShow.tsx,
   PodcastEpisode.tsx, PodcastDownloads.tsx
@@ -348,16 +355,16 @@ podcast_bookmarks(
 
 Schema notes:
 
-- Use additive, idempotent migrations with indexes on `(feed_id,published_at)`, state status, refresh deadlines, queue order and download state. Document foreign-key cascade vs retain-history semantics before implementation.
+- Follow the existing `Ensure…Schema()` convention (no migration-version table): `CREATE … IF NOT EXISTS` plus `ALTER TABLE … ADD COLUMN` that tolerates "duplicate column", with indexes created only after column migrations succeed. Add indexes on `(feed_id,published_at)`, state status, refresh deadlines, queue order and download state. Document foreign-key cascade vs retain-history semantics before implementation.
 - Subscription removal should allow **keep downloads/history** vs **delete content and state**; do not accidentally cascade user progress or media files.
 - Store durable state in SQLite, not localStorage. Frontend may cache transient display data only. Progress writes must be throttled yet flush at pause/seek/visibility/lifecycle boundaries and use a revision/timestamp to prevent stale overwrites.
-- Store **relative** file paths beneath a managed root, plus verified metadata; validate resolution against that root on access. Do not persist arbitrary URL-auth tokens in plaintext or expose secrets via backup, SSE, error logs or OPML.
+- Store **relative** file paths beneath a managed root, plus verified metadata; validate resolution against that root on access. Do not persist arbitrary URL-auth tokens in plaintext or expose secrets via backup, SSE, error logs or OPML. The existing `VACUUM INTO` backup copies every table, so encrypt secret columns with `backend/internal/crypto` (`enc:v2:`) instead of relying on backup exclusion.
 - Feed fetch metadata and directory cache may need separate tables from subscriptions; avoid conflating discovered result with followed show.
 - Never treat filesystem deletion and database state transition as one unguarded operation: use a recovery/reconciliation state machine.
 
 ### 6.2 REST/API contracts (proposal)
 
-Under `/api/v2/podcasts` with existing ViiB response/error and Host/Origin controls:
+Under `/api/v2/podcasts` (mounted in `backend/internal/server/server.go` ahead of the generic `/api/v2` mount) with existing ViiB `respondV2JSON`/`respondV2Error` shapes and the router-wide `loopbackTrustBoundary` Host/Origin controls:
 
 | Method/route | Contract |
 |---|---|
@@ -375,9 +382,9 @@ Under `/api/v2/podcasts` with existing ViiB response/error and Host/Origin contr
 | `GET /downloads` / `POST /downloads/{id}/{pause,resume,cancel,retry}` | List durable transfers and control state |
 | `DELETE /downloads/{id}` | Delete verified local episode bytes, retain episode/history |
 | `GET /episodes/{id}/media` | Prefer verified local; otherwise safe remote streaming with supported HTTP ranges |
-| `GET /episodes/{id}/artwork` | Bounded cached proxy |
+| `GET /feeds/{id}/artwork` / `GET /episodes/{id}/artwork` | Bounded cached proxy for show and episode art (episode falls back to show art) |
 | `GET /episodes/{id}/chapters` / `GET /episodes/{id}/transcript` | Validated metadata/transcript format with cache |
-| `GET /events` | SSE for refresh/download changes with reconnect and eventual snapshot refetch |
+| `GET /events` | SSE for refresh/download changes with reconnect and snapshot refetch (follow the `/api/v2/jobs/events` pattern: initial snapshot, change-driven snapshots, fallback poll, 15 s heartbeat) |
 | `GET /opml` / `POST /opml/import` | Portable export / bounded import job + result report |
 | `GET /settings` / `PATCH /settings` | Policies, destination and directory status; secrets redacted |
 
@@ -390,14 +397,14 @@ All mutating endpoints must enforce existing trusted-origin policy and request-s
 - Podcast source resolver: `verified-local-file > safe-HTTP-RSS-enclosure > unavailable`. For local, use `http.ServeContent`/range-compatible serving; for remote, propagate accurate `206`, `416`, `Accept-Ranges`, `Content-Range`, `Content-Type`, and cancel when client disconnects. Strip cross-origin upstream credentials/unsafe hop-by-hop headers.
 - Configure `preload='metadata'` initially; never pre-download the whole next podcast episode. Handle media seek after metadata available and reconnect to original position on transient source changes.
 - Podcast playback does not count as music listens, change music shuffle/repeat, enter DJ queue, trigger music analysis, or activate music crossfade.
-- Media Session API needs podcast-specific title/show/art, seek-back/seek-forward/seekto actions and platform fallback. Respect current [Player](player.md) and [DJ](dj-mode.md) behavior.
+- Media Session API needs podcast-specific title/show/art, seek-back/seek-forward/seekto actions and platform fallback. The existing `hooks/useMediaSession.ts` already registers these actions but reads the music store directly (`currentSong`, `nextSong`, `prevSong`). Route handler registration through the coordinator so only the active source owns the session. Respect current [Player](player.md) and [DJ](dj-mode.md) behavior.
 
 ### 6.4 Secure remote media and parser requirements (P0 gate)
 
 Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted remote URLs**. A malicious feed can point to `127.0.0.1`, private LAN, IPv6 link-local, cloud metadata endpoints or DNS-rebinding targets.
 
-- Default **public web only**: explicit HTTP/HTTPS scheme policy (allow HTTP for legacy podcast feeds when opted-in or as documented), reject userinfo/unsupported ports/schemes, resolve and pin remote public IP per dial, check *every* redirect hop and DNS resolution, bound redirect count and response bytes, protect IPv4/IPv6/private/loopback/link-local/multicast/reserved addresses. Never trust `Host` or a redirect target merely because initial URL was public.
-- Do **not** assume `backend/internal/mediafetch` directly secures audio/XML; it is image-specific and enforces HTTPS. Extract vetted request-policy primitives or build tested equivalents for each media class.
+- Default **public web only**: explicit HTTP/HTTPS scheme policy (HTTPS by default; legacy HTTP feeds/enclosures only under the POD-00C policy, never an HTTPS→HTTP redirect downgrade when credentials are attached), reject userinfo/unsupported ports/schemes, resolve and pin remote public IP per dial, check *every* redirect hop and DNS resolution, bound redirect count and response bytes, protect IPv4/IPv6/private/loopback/link-local/multicast/reserved addresses. Never trust `Host` or a redirect target merely because initial URL was public.
+- Do **not** assume `backend/internal/mediafetch` directly secures audio/XML; it is image-specific, HTTPS-only, buffers the whole body (12 MiB cap) and requires a decodable image. Its `isPublicIP` check covers loopback, RFC 1918/ULA private, unspecified, multicast and link-local (including `169.254.169.254` metadata) but **not** CGNAT `100.64.0.0/10`, benchmark `198.18.0.0/15`, documentation/reserved ranges, `0.0.0.0/8` or NAT64/IPv4-mapped forms. Extract vetted request-policy primitives with an extended blocklist, or build tested equivalents for each media class; enclosures must stream, not buffer.
 - Enforce compressed/uncompressed XML caps, parse time budgets, prevent entity expansion/DTD/network entity fetch, strip unsafe markup/scripts, cap episode count, title/body lengths and feed redirects.
 - Handle private-feed auth via backend-only encrypted secrets; redact query tokens, Authorization, private URLs and exception traces from logs, support bundles, frontend, analytics and shared links.
 - Use TLS verification, timeouts, maximum concurrent per-host connections and bandwidth controls. Preserve podcast CDN range requests but never forward arbitrary client-supplied sensitive headers.
@@ -417,7 +424,7 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 - [ ] **POD-00D:** Build a deterministic fixture corpus (ordinary RSS, malformed feeds, 304/redirect, GUID changes, chapter/transcript, 206/416 media, OPML).
 - [ ] **POD-00E:** Define player switching lifecycle, media-session semantics, progress completion threshold and API error shapes.
 - [ ] **POD-00F:** Design review of podcast home/show/episode/player and responsive accessibility; identify key design tokens.
-- [ ] **POD-00G:** Add podcast capability/feature-flag placeholder, frontend/API contracts and test harness; guard incomplete navigation.
+- [ ] **POD-00G:** Choose a feature-flag mechanism (ViiB has no general feature-flag framework today; for example, a backend setting exposed through the settings API), then add the podcast flag, frontend/API contracts and test harness; guard incomplete navigation.
 
 **Exit gate:** Approved ADR(s), fixture corpus, threat model, API schema draft, observable end-to-end test plan; no feature shipped as functional before integration tests exist.
 
@@ -479,9 +486,9 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 ### Phase 6 — Reliability, documentation and v1 release qualification
 
 - [ ] **POD-06A:** Deep offline-first behavior: startup unavailable network, feed retry, download repair, deleted/corrupt-file reconciliation.
-- [ ] **POD-06B:** Feed and download observability: structured redacted errors, job status, support bundle and user-accessible diagnostics.
+- [ ] **POD-06B:** Feed and download observability: structured redacted errors, job status, podcast entries in the existing support-bundle allowlist ([support-bundles.md](support-bundles.md)) and user-accessible diagnostics.
 - [ ] **POD-06C:** Migrate/restore DB fixtures, OPML round-trip, export privacy/backup behavior and unsubscribe choices.
-- [ ] **POD-06D:** CI hardening: Go race tests, formatter/vet/static checks, TS strict check, Playwright desktop/browser smoke and package tests.
+- [ ] **POD-06D:** CI hardening: add podcast suites to the existing `ci.yml` jobs (which already run `go test -race` and an ubuntu/windows/macos matrix), plus formatter/vet/static checks, TS strict check, Playwright desktop/browser smoke and package tests.
 - [ ] **POD-06E:** Test at scale (1k subscriptions/100k cached episodes where feasible), bound memory, query latency, initial refresh storm and disk behavior.
 - [ ] **POD-06F:** Documentation `docs/podcasts.md`, troubleshooting, security/privacy and full screenshots; update README/docs index and main roadmap.
 - [ ] **POD-06G:** Cross-platform release checklist, versioning/rollback and issue triage; stage rollout behind feature flag until gates clear.
@@ -517,9 +524,10 @@ Feeds, episode enclosures, artwork, chapters and transcripts are all **untrusted
 | PR-G | PR-D/F | Podcast player + position + music arbitration | No double audio; restart/resume and DJ checks |
 | PR-H | PR-A/F | Persistent download worker + atomic files | Crash/retry/quota/corrupt/host-security tests |
 | PR-I | PR-G/H | Downloads UI and true offline playback | Disconnected restart E2E |
-| PR-J | PR-C | OPML, policies and auto-download/retention | Round-trip, limit, no unintended delete |
+| PR-J | PR-C | OPML export (MVP, POD-03F) and import (POD-04E) | Round-trip, duplicates, partial failure, no secret export |
 | PR-K | PR-G | Chapters/transcripts/bookmarks + advanced controls | Timed cues, sanitized content, accessibility |
 | PR-L | All MVP | Docs/telemetry redaction/cross-platform gate | Full CI and release smoke |
+| PR-M | PR-H/I | Post-MVP auto-download policies, quotas and retention (POD-04A/04C) | Limits respected, no unintended delete, pinned/current protection |
 
 Branch strategy: short-lived `feature/podcasts-*` work branches from updated `main`; do not build all phases in a single stacked mega-PR. Rebase or merge current main at controlled intervals; gate each PR with automated tests. Keep this Markdown plan updated with PR links, completion states and decisions.
 
@@ -533,7 +541,7 @@ Branch strategy: short-lived `feature/podcasts-*` work branches from updated `ma
 - HTTP 200, 206 single range, 416, unknown length/chunked, ETag changed mid-transfer, disconnected midway, wrong declared size, .part file left after abrupt exit.
 - Enclosure URL to private IP/localhost/IPv6, public→private redirect, DNS rebinding, image/transcript secondary fetch and path traversal/symlink exploit.
 - OPML nested outlines/duplicates/large import; private token in URL; malformed XML; non-feed HTML page; multiple namespaces.
-- Real safe small audio fixtures for MP3/M4A/Ogg/Opus as actually supported per desktop WebView; use [media capability matrix](AUDIO_FORMAT_SUPPORT_GAPS.md) to avoid unsupported claims.
+- Real safe small audio fixtures for MP3/M4A/Ogg/Opus as actually supported per desktop WebView; use the canonical capability matrix (`backend/internal/audio/media-capabilities.json` via `services/mediaCapabilities.ts`) and [format support gaps](AUDIO_FORMAT_SUPPORT_GAPS.md) to avoid unsupported claims.
 
 ### Test ownership
 
@@ -579,12 +587,12 @@ Branch strategy: short-lived `feature/podcasts-*` work branches from updated `ma
 1. **Discover key model:** user-supplied Podcast Index credentials or approved permitted backend arrangement; default direct RSS if none.
 2. **Private RSS feeds:** defer to P2 until secrets and signed-URL privacy design is proven; public RSS is full v1.
 3. **Unsupported formats:** show explicit unavailable/unsupported codec rather than transparently transcoding without a qualified backend.
-4. **Download destination:** default `<dataDir>/podcast_downloads`, optional managed custom folder; require space validation and path safeguards.
+4. **Download destination:** default `<dataDir>/podcast_downloads` (mirrors the existing `<dataDir>/spotify_downloads` default and its `spotify_download_path` setting override), optional managed custom folder via a `podcast_download_path` setting; require space validation and path safeguards.
 5. **Listen completion:** consider end-of-media or threshold near final 2–5%; configurable and tested, never simply "started".
 6. **History on unsubscribe:** prompt Keep History & Downloads vs Remove All; no implicit destructive cascade.
 7. **Podcast queue isolation:** yes for v1; one audio coordinator, two independent queues.
-8. **RSS HTTP scheme:** allow HTTPS by default; legacy HTTP only under explicitly documented restricted policy and no automatic credential downgrade.
-9. **Scheduler ownership:** use existing durable operation scheduler for refresh only after proving type/restart behavior; use independent transfer leases/state for media bytes.
+8. **RSS HTTP scheme:** allow HTTPS by default; legacy HTTP only under explicitly documented restricted policy and no automatic credential downgrade. Plain-HTTP enclosures are still common in public feeds, so measure how often the fixture corpus and popular feeds need HTTP before fixing the MVP default, so that DISC-02 does not reject ordinary feeds.
+9. **Scheduler ownership:** use the existing durable operation scheduler for refresh only after proving allowlist, restart (`interrupted`) and worker-contention behavior, because it runs only 1–2 workers shared with scans and analysis. A dedicated, low-cost refresh ticker may be simpler. Use independent transfer leases/state for media bytes.
 10. **UI location:** primary Podcast hub in sidebar; optionally expose a Podcasts filter in consolidated Downloads, but keep download-source types clearly distinct.
 
 ## 11. Definition of done for each implementation PR
@@ -621,7 +629,21 @@ Branch strategy: short-lived `feature/podcasts-*` work branches from updated `ma
 - [Podcasting 2.0 namespace](https://podcasting2.org/docs/podcast-namespace/1.0), [chapters](https://podcasting2.org/docs/podcast-namespace/tags/chapters), [transcript](https://podcasting2.org/docs/podcast-namespace/tags/transcript), [feed GUID](https://podcasting2.org/docs/podcast-namespace/tags/guid)
 
 **ViiB source anchors**
-- [Architecture and media model](architecture.md), [Player](player.md), [Downloads](downloads.md), [Development](development.md), [Product roadmap](ROADMAP.md), [format capability gaps](AUDIO_FORMAT_SUPPORT_GAPS.md)
+- [Architecture and media model](architecture.md), [Player](player.md), [Downloads](downloads.md), [Development](development.md), [Support bundles](support-bundles.md), [Product roadmap](ROADMAP.md), [format capability gaps](AUDIO_FORMAT_SUPPORT_GAPS.md)
+- Code: [server.go](../backend/internal/server/server.go) (route mounting, trust boundary), [v2_jobs.go](../backend/internal/api/v2_jobs.go), [mediafetch.go](../backend/internal/mediafetch/mediafetch.go), [media_routes.go](../backend/internal/api/media_routes.go), [useMediaSession.ts](../hooks/useMediaSession.ts), [mediaCapabilities.ts](../services/mediaCapabilities.ts)
+
+## 13. Review log
+
+**2026-11-22 accuracy review.** All file links in §2 resolve. Corrections made in this revision:
+
+- Pinned stack versions from `package.json`/`backend/go.mod`; noted that `docs/ROADMAP.md` does not yet reference this plan.
+- §2: v2 routes are mounted in `backend/internal/server/server.go`, not `api.go`; `/api/audio/*` is dispatched there (local → `media_routes.go`/`serveAudio` with `http.ServeFile`, Plex → `ServeAudioSourceAware`); Host/Origin enforcement is `loopbackTrustBoundary`; `Song` lives in root `types.ts`; `hooks/useMediaSession.ts` already exists; migrations use `Ensure…Schema()` with no version table; recorded the scheduler's allowlist, worker cap and restart semantics; added backup (`VACUUM INTO`), support-bundle, crypto and media-capability anchors.
+- Sidebar IA updated to the actual navigation items.
+- DISC-08 split so OPML export is P0, consistent with the MVP definition and POD-03F.
+- §6.4: documented `mediafetch` IP-blocklist gaps (CGNAT, benchmark, reserved, NAT64/IPv4-mapped).
+- PR table: auto-download/retention moved out of PR-J (it depends on the download worker) into new PR-M.
+- POD-00G/06B/06D reworded to reflect that no feature-flag framework exists, while support bundles and race-enabled multi-OS CI already do.
+- Podcast Index endpoints given their `/api/1.0/` prefix and auth header scheme; Apple row updated to reflect the HLS-based 2026 video launch.
 
 ---
 
