@@ -71,7 +71,7 @@ describe('podcastsAPI', () => {
 
   it('looks up a single followed show by ID', async () => {
     const record = { id: 'id/one', title: 'Following', url: 'https://example.org/rss' };
-    const fetchMock = vi.fn(async () => ({
+    const fetchMock = vi.fn(async (_url: string, _options?: RequestInit) => ({
       ok: true, status: 200, json: async () => ({ feed: record }),
     }));
     vi.stubGlobal('fetch', fetchMock);
