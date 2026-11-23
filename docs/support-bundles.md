@@ -7,7 +7,10 @@ Review it before sharing. Browser download and native save use the same exporter
 
 - `manifest.json`: bundle schema, app/Go versions, platform and creation time.
 - `diagnostics.json`: debug-logging state, database/log existence and sizes,
-  integration-configured booleans, projected byte count and omission statistics.
+  integration-configured booleans (including `podcast_index`), redacted `podcast`
+  aggregate diagnostics (subscription, episode, queue, bookmark, and byte counts
+  plus status/error-code histograms with zero URLs, titles, IDs, or paths),
+  projected byte count and omission statistics.
 - `logs/diagnostics.jsonl`: allowlisted diagnostic records described below.
 - `README.txt`: scope and privacy information.
 

@@ -41,6 +41,7 @@ import (
 	"github.com/ajbergh/viib-mediahub/internal/logger"
 	"github.com/ajbergh/viib-mediahub/internal/mediafetch"
 	"github.com/ajbergh/viib-mediahub/internal/plex"
+	"github.com/ajbergh/viib-mediahub/internal/podcast"
 	"github.com/ajbergh/viib-mediahub/internal/releasedate"
 	"github.com/ajbergh/viib-mediahub/internal/scanner"
 	"github.com/ajbergh/viib-mediahub/internal/semantic"
@@ -94,6 +95,29 @@ type API struct {
 	semanticWorkers        sync.WaitGroup
 	semanticInitializing   bool
 	semanticWake           chan struct{}
+	podcastArtworkFetch    func(context.Context,string)(podcast.Artwork,error)
+	podcastMediaFetch      func(context.Context,string,string)(podcast.MediaSegment,error)
+	podcastMediaStream     func(context.Context,string,string,http.ResponseWriter)error
+	podcastRefreshMu      sync.Mutex
+	podcastRefreshOn      bool
+	podcastRefreshClosed  bool
+	podcastRefreshCancel  context.CancelFunc
+	podcastRefreshWG      sync.WaitGroup
+	podcastRefreshWake    chan struct{}
+	podcastFetcher        podcastFeedFetcher
+	podcastDownloadMu     sync.Mutex
+	podcastDownloadOn     bool
+	podcastDownloadClosed bool
+	podcastDownloadCancel context.CancelFunc
+	podcastDownloadWG     sync.WaitGroup
+	podcastDownloadWake   chan struct{}
+	podcastDownloadOwner  string
+	podcastDownloadFileMu sync.RWMutex
+	podcastIntegrityMu    sync.Mutex
+	podcastIntegrityCache map[string]podcastFileVerification
+	podcastDownloadFetch  func(context.Context,string,string,string)(podcast.MediaSegment,error)
+	podcastDownloadFullFetch func(context.Context,string,string,io.Writer,int64)(podcast.FullMedia,error)
+	podcastDiskFreeBytes func(string)(uint64,error)
 	jobSchedulerMu         sync.Mutex
 	jobSchedulerOn         bool
 	jobWake                chan struct{}
@@ -175,6 +199,8 @@ func New(database *db.DB, dataDir string) *API {
 	api.releaseMusicBrainz = releasedate.NewClient()
 	api.startReleaseMetadataWorker()
 	api.startPlexSyncScheduler()
+	api.startPodcastRefresher()
+	api.startPodcastDownloader()
 	dm.Start()
 	// Initialize Last.FM client if configured
 	api.initLastFMClient()

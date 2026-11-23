@@ -200,6 +200,10 @@ echo "  ✓ Frontend copied to $DIST_DEST"
 echo ""
 echo "🔨 [3/3] Building Wails application ($ARCH)..."
 
+# shellcheck source=podcast-index-ldflags.sh
+source "$SCRIPT_DIR/podcast-index-ldflags.sh"
+PODCAST_LDFLAGS="$(podcast_index_ldflags "$PROJECT_ROOT")"
+
 pushd "$WAILS_DIR" > /dev/null
 
 export CGO_ENABLED=1
@@ -210,11 +214,18 @@ rm -rf build/bin/ViiB-MediaHub.app \
     build/bin/ViiB-MediaHub-amd64.app \
     build/bin/ViiB-MediaHub-arm64.app
 
+WAILS_MODE=()
+LDFLAGS_STR=""
 if [[ "$DEBUG" == "true" ]]; then
-    WAILS_MODE=(-debug)
+    WAILS_MODE+=(-debug)
 else
-    WAILS_MODE=(-ldflags "-s -w")
+    LDFLAGS_STR="-s -w"
 fi
+if [[ -n "$PODCAST_LDFLAGS" ]]; then
+    echo "  Embedding Podcast Index API credentials from build environment"
+    LDFLAGS_STR="${LDFLAGS_STR:+$LDFLAGS_STR }${PODCAST_LDFLAGS}"
+fi
+[[ -n "$LDFLAGS_STR" ]] && WAILS_MODE+=(-ldflags "$LDFLAGS_STR")
 
 # Universal builds: build amd64 + arm64 then lipo-combine
 if [[ "$ARCH" == "universal" ]]; then

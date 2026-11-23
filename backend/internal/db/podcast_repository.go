@@ -1,0 +1,374 @@
+// podcast_repository.go persists publisher feed snapshots and subscribed
+// episodes without mutating any music/Spotify objects or user listening state.
+package db
+
+import (
+    "context"
+    "crypto/sha256"
+    "database/sql"
+    "encoding/hex"
+    "errors"
+    "fmt"
+    "strings"
+    "time"
+
+    "github.com/ajbergh/viib-mediahub/internal/podcast"
+)
+
+// PodcastFeedRecord describes a subscribed podcast show and its playback defaults.
+type PodcastFeedRecord struct {
+    ID string `json:"id"`
+    URL string `json:"url"`
+    Title string `json:"title"`
+    Author string `json:"author"`
+    Description string `json:"description"`
+    ImageURL string `json:"imageUrl"`
+    Language string `json:"language"`
+    EpisodeCount int64 `json:"episodeCount"`
+    DefaultSpeed float64 `json:"defaultSpeed"`
+    SkipIntroSeconds int `json:"skipIntroSeconds"`
+    SkipOutroSeconds int `json:"skipOutroSeconds"`
+}
+
+type PodcastEpisodeRecord struct {
+    ID string `json:"id"`
+    FeedID string `json:"feedId"`
+    GUID string `json:"guid"`
+    Title string `json:"title"`
+    Description string `json:"description"`
+    EnclosureURL string `json:"-"`
+    HasAudio bool `json:"hasAudio"`
+    EnclosureType string `json:"enclosureType"`
+    EnclosureBytes int64 `json:"enclosureBytes,omitempty"`
+    WebsiteURL string `json:"websiteUrl,omitempty"`
+    EpisodeNumber int `json:"episodeNumber,omitempty"`
+    SeasonNumber int `json:"seasonNumber,omitempty"`
+    HasChapters bool `json:"hasChapters"`
+    HasTranscript bool `json:"hasTranscript"`
+    PublishedAt int64 `json:"publishedAt"`
+    DurationMs int64 `json:"durationMs"`
+    IsPlayed bool `json:"isPlayed"`
+    PositionMs int64 `json:"positionMs"`
+    ListenedMs int64 `json:"listenedMs"`
+    ProgressRevision int64 `json:"progressRevision"`
+    Starred bool `json:"starred"`
+    Archived bool `json:"archived"`
+}
+
+func podcastStableID(parts ...string) string {
+    sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+    return hex.EncodeToString(sum[:20])
+}
+
+// SavePodcastFeedSnapshot atomically reconciles RSS metadata; idempotent
+// upserts deliberately do NOT clear user progress, bookmarks or downloaded
+// files. Subscription is optional so preview/import use cases can differ.
+// SavePodcastFeedSnapshot preserves the existing API for locally supplied
+// snapshots. Network subscriptions should use SavePodcastSubscriptionFromFetch
+// to retain redirect aliases and HTTP validators in the same transaction.
+func (d *DB) SavePodcastFeedSnapshot(ctx context.Context, feed podcast.Feed, subscribe bool) (string, error) {
+    return d.savePodcastFeed(ctx, feed.URL, feed, subscribe, "", "", false)
+}
+
+// SavePodcastSubscriptionFromFetch retains the original requested URL as an
+// alias of the final public redirect destination. If the publisher redirects
+// again later, a subscribed show's stable identity and episode progress are
+// retained instead of producing a duplicate show.
+func (d *DB) SavePodcastSubscriptionFromFetch(ctx context.Context, requestedURL string, fetched podcast.FetchResult) (string, error) {
+    if fetched.NotModified { return "", podcast.ErrInvalidFeed }
+    return d.savePodcastFeed(ctx, requestedURL, fetched.Feed, true, fetched.ETag, fetched.LastModified, true)
+}
+
+func (d *DB) savePodcastFeed(ctx context.Context, requestedURL string, feed podcast.Feed, subscribe bool, etag, lastModified string, schedule bool) (string, error) {
+    if err := d.EnsurePodcastSchema(); err != nil { return "", err }
+    source, err := podcast.ValidatePublicURL(requestedURL, false)
+    if err != nil { return "", err }
+    target, err := podcast.ValidatePublicURL(feed.URL, false)
+    if err != nil { return "", err }
+    requestedURL = source.String()
+    feed.URL = target.String()
+    if strings.TrimSpace(feed.Title) == "" { return "", podcast.ErrInvalidFeed }
+    feed.ImageURL = podcast.SafeArtworkURL(feed.ImageURL)
+
+    now := time.Now().UnixMilli()
+    tx, err := d.conn.BeginTx(ctx, nil)
+    if err != nil { return "", err }
+    defer tx.Rollback()
+
+    // Prefer the current canonical destination, then the original user's
+    // alias, then historical canonical/alias entries. This also deduplicates
+    // different subscription URLs that resolve to the same public feed.
+    choices := []struct{ query, value string }{
+        {`SELECT id,canonical_url FROM podcast_feeds WHERE canonical_url=?`, feed.URL},
+        {`SELECT f.id,f.canonical_url FROM podcast_feed_aliases a JOIN podcast_feeds f ON f.id=a.feed_id WHERE a.original_url=?`, requestedURL},
+        {`SELECT id,canonical_url FROM podcast_feeds WHERE canonical_url=?`, requestedURL},
+        {`SELECT f.id,f.canonical_url FROM podcast_feed_aliases a JOIN podcast_feeds f ON f.id=a.feed_id WHERE a.original_url=?`, feed.URL},
+    }
+    var feedID,oldCanonical string
+    for _, choice := range choices {
+        err=tx.QueryRowContext(ctx,choice.query,choice.value).Scan(&feedID,&oldCanonical)
+        if err==nil{break}
+        if !errors.Is(err,sql.ErrNoRows){return "",fmt.Errorf("resolve podcast alias: %w",err)}
+        feedID=""
+    }
+    if feedID==""{ feedID=podcastStableID(feed.URL) }
+
+    // Never reassign an existing user's original feed URL to an unrelated
+    // canonical show just because a publisher's redirect changed. Distinct
+    // histories must be resolved explicitly, not silently merged.
+    var requestedOwner string
+    ownerErr:=tx.QueryRowContext(ctx,
+        "SELECT f.id FROM podcast_feed_aliases a JOIN podcast_feeds f ON f.id=a.feed_id WHERE a.original_url=?",
+        requestedURL).Scan(&requestedOwner)
+    if ownerErr!=nil && !errors.Is(ownerErr,sql.ErrNoRows){return "",ownerErr}
+    if ownerErr==nil && requestedOwner!=feedID{return "",fmt.Errorf("podcast redirect identity conflict")}
+    ownerErr=tx.QueryRowContext(ctx,"SELECT id FROM podcast_feeds WHERE canonical_url=?",requestedURL).Scan(&requestedOwner)
+    if ownerErr!=nil && !errors.Is(ownerErr,sql.ErrNoRows){return "",ownerErr}
+    if ownerErr==nil && requestedOwner!=feedID{return "",fmt.Errorf("podcast canonical identity conflict")}
+
+    _,err=tx.ExecContext(ctx,`
+INSERT INTO podcast_feeds (
+ id,canonical_url,title,author,description,image_url,language,
+ created_at,updated_at,last_checked_at,last_success_at
+) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+ON CONFLICT(id) DO UPDATE SET
+ canonical_url=excluded.canonical_url,title=excluded.title,
+ author=excluded.author,description=excluded.description,
+ image_url=excluded.image_url,language=excluded.language,
+ last_checked_at=excluded.last_checked_at,
+ last_success_at=excluded.last_success_at,updated_at=excluded.updated_at
+`,feedID,feed.URL,feed.Title,feed.Author,feed.Description,feed.ImageURL,
+        feed.Language,now,now,now,now)
+    if err != nil { return "", fmt.Errorf("save podcast feed: %w",err) }
+
+    // Persist both the URL the user entered and the previous redirect target
+    // when a publisher changes addresses. Never store unvalidated private
+    // feed URLs or authentication query parameters in the alias table.
+    aliases:=[]string{requestedURL}
+    if oldCanonical!="" && oldCanonical!=feed.URL {
+        aliases=append(aliases,oldCanonical)
+    }
+    for _, alias:=range aliases {
+        if alias==feed.URL{continue}
+        if _,err=podcast.ValidatePublicURL(alias,false);err!=nil{return "",err}
+        var aliasOwner string
+        lookupErr:=tx.QueryRowContext(ctx,"SELECT feed_id FROM podcast_feed_aliases WHERE original_url=?",alias).Scan(&aliasOwner)
+        if lookupErr!=nil && !errors.Is(lookupErr,sql.ErrNoRows){return "",lookupErr}
+        if lookupErr==nil && aliasOwner!=feedID{return "",fmt.Errorf("podcast alias identity conflict")}
+        _,err=tx.ExecContext(ctx,`
+INSERT INTO podcast_feed_aliases(original_url,feed_id) VALUES (?,?)
+ON CONFLICT(original_url) DO NOTHING
+`,alias,feedID)
+        if err!=nil{return "",fmt.Errorf("save podcast redirect alias: %w",err)}
+    }
+
+    if subscribe {
+        _, err = tx.ExecContext(ctx,`
+INSERT INTO podcast_subscriptions(feed_id,subscribed_at) VALUES (?,?)
+ON CONFLICT(feed_id) DO NOTHING`,feedID,now)
+        if err != nil { return "", fmt.Errorf("subscribe podcast feed: %w",err) }
+    }
+
+    if err=upsertPodcastEpisodes(ctx,tx,feedID,feed.Episodes,now);err!=nil{return "",err}
+
+    if schedule {
+        // Never overwrite a queued manual refresh (next_refresh_at=0).
+        // Retain validators on repeats until this successful fetch supersedes
+        // them. The requested and redirected URL updates happen atomically.
+        _,err=tx.ExecContext(ctx,`
+UPDATE podcast_feeds SET etag=?,last_modified=?,
+ next_refresh_at=CASE WHEN next_refresh_at IS NULL THEN ? ELSE next_refresh_at END
+WHERE id=?`,etag,lastModified,nextPodcastRefreshAt(feedID,time.Now()),feedID)
+        if err!=nil{return "",fmt.Errorf("schedule podcast feed: %w",err)}
+    }
+    if err := tx.Commit(); err != nil { return "", err }
+    return feedID,nil
+}
+
+func (d *DB) ListSubscribedPodcasts(ctx context.Context) ([]PodcastFeedRecord,error) {
+    if err:=d.EnsurePodcastSchema();err!=nil{return nil,err}
+    rows,err:=d.conn.QueryContext(ctx,`
+SELECT f.id,f.canonical_url,f.title,f.author,f.description,f.image_url,f.language,
+ (SELECT COUNT(*) FROM podcast_episodes e WHERE e.feed_id=f.id),
+ s.playback_speed_custom,s.default_speed,s.skip_intro_seconds,s.skip_outro_seconds
+FROM podcast_subscriptions s JOIN podcast_feeds f ON f.id=s.feed_id
+ORDER BY s.subscribed_at DESC,f.id`)
+    if err!=nil{return nil,err}
+    defer rows.Close()
+    result:=make([]PodcastFeedRecord,0)
+    for rows.Next(){
+        var record PodcastFeedRecord
+        var customSpeed int
+        var rawSpeed float64
+        if err:=rows.Scan(&record.ID,&record.URL,&record.Title,&record.Author,
+            &record.Description,&record.ImageURL,&record.Language,&record.EpisodeCount,
+            &customSpeed,&rawSpeed,&record.SkipIntroSeconds,&record.SkipOutroSeconds);err!=nil{
+            return nil,err
+        }
+        record.DefaultSpeed=normalizePodcastShowSpeed(customSpeed,rawSpeed)
+        record.SkipIntroSeconds=clampSkipTrim(record.SkipIntroSeconds)
+        record.SkipOutroSeconds=clampSkipTrim(record.SkipOutroSeconds)
+        result=append(result,record)
+    }
+    return result,rows.Err()
+}
+
+// GetSubscribedPodcast returns exactly one followed show, without scanning
+// the user's entire Following collection or exposing unfollowed metadata.
+func (d *DB) GetSubscribedPodcast(ctx context.Context,feedID string) (PodcastFeedRecord,error) {
+    var record PodcastFeedRecord
+    if err:=d.EnsurePodcastSchema();err!=nil{return record,err}
+    var customSpeed int
+    var rawSpeed float64
+    err:=d.conn.QueryRowContext(ctx,`
+SELECT f.id,f.canonical_url,f.title,f.author,f.description,f.image_url,f.language,
+ (SELECT COUNT(*) FROM podcast_episodes e WHERE e.feed_id=f.id),
+ s.playback_speed_custom,s.default_speed,s.skip_intro_seconds,s.skip_outro_seconds
+FROM podcast_subscriptions s JOIN podcast_feeds f ON f.id=s.feed_id
+WHERE f.id=?
+`,feedID).Scan(&record.ID,&record.URL,&record.Title,&record.Author,
+        &record.Description,&record.ImageURL,&record.Language,&record.EpisodeCount,
+        &customSpeed,&rawSpeed,&record.SkipIntroSeconds,&record.SkipOutroSeconds)
+    if err==nil {
+        record.DefaultSpeed=normalizePodcastShowSpeed(customSpeed,rawSpeed)
+        record.SkipIntroSeconds=clampSkipTrim(record.SkipIntroSeconds)
+        record.SkipOutroSeconds=clampSkipTrim(record.SkipOutroSeconds)
+    }
+    return record,err
+}
+
+// ListPodcastEpisodes keeps legacy in-process callers working while page
+// requests expose a stable, bounded response shape to the public API.
+func (d *DB) ListPodcastEpisodes(ctx context.Context,feedID string,limit int) ([]PodcastEpisodeRecord,error) {
+    episodes,_,err:=d.ListPodcastEpisodesPage(ctx,feedID,limit,0)
+    return episodes,err
+}
+
+// ListPodcastEpisodesPage reads at most limit+1 rows to detect additional
+// episodes without a second COUNT query. Sort order is explicit and stable
+// for unchanged publisher snapshots. Callers should reset pagination after
+// refresh because newly published episodes can shift offsets.
+func (d *DB) ListPodcastEpisodesPage(ctx context.Context,feedID string,limit,offset int) ([]PodcastEpisodeRecord,bool,error) {
+    if err:=d.EnsurePodcastSchema();err!=nil{return nil,false,err}
+    if limit<=0 || limit>100 {limit=50}
+    if offset<0 {offset=0}
+    rows,err:=d.conn.QueryContext(ctx,`
+SELECT e.id,e.feed_id,e.guid,e.title,e.description,e.enclosure_url,e.enclosure_mime,
+ e.enclosure_bytes,e.website_url,e.episode_number,e.season_number,
+ e.chapters_url,e.transcript_url,
+ COALESCE(e.published_at,0),e.duration_ms,
+ COALESCE(s.is_played,0),COALESCE(s.position_ms,0),COALESCE(s.listened_ms,0),
+ COALESCE(s.revision,0),COALESCE(s.starred,0),COALESCE(s.archived,0)
+FROM podcast_episodes e
+LEFT JOIN podcast_episode_state s ON s.episode_id=e.id
+WHERE e.feed_id=?
+ORDER BY COALESCE(e.published_at,0) DESC,e.id ASC LIMIT ? OFFSET ?
+`,feedID,limit+1,offset)
+    if err!=nil{return nil,false,err}
+    defer rows.Close()
+    result:=make([]PodcastEpisodeRecord,0,limit+1)
+    for rows.Next(){
+        var e PodcastEpisodeRecord
+        var chaptersURL,transcriptURL string
+        var played,starred,archived int64
+        if err:=rows.Scan(&e.ID,&e.FeedID,&e.GUID,&e.Title,&e.Description,
+            &e.EnclosureURL,&e.EnclosureType,
+            &e.EnclosureBytes,&e.WebsiteURL,&e.EpisodeNumber,&e.SeasonNumber,
+            &chaptersURL,&transcriptURL,
+            &e.PublishedAt,&e.DurationMs,
+            &played,&e.PositionMs,&e.ListenedMs,&e.ProgressRevision,&starred,&archived);err!=nil{
+            return nil,false,err
+        }
+        e.IsPlayed=played==1
+        e.Starred=starred==1
+        e.Archived=archived==1
+        e.HasAudio=e.EnclosureURL!=""
+        e.HasChapters=chaptersURL!=""
+        e.HasTranscript=transcriptURL!=""
+        result=append(result,e)
+    }
+    if err=rows.Err();err!=nil{return nil,false,err}
+    more:=len(result)>limit
+    if more{result=result[:limit]}
+    return result,more,nil
+}
+
+// PodcastArtworkURL resolves only artwork for an active subscription.
+func (d *DB) PodcastArtworkURL(ctx context.Context,feedID string)(string,error){
+    if err:=d.EnsurePodcastSchema();err!=nil{return "",err}
+    var raw string
+    err:=d.conn.QueryRowContext(ctx,"SELECT f.image_url FROM podcast_feeds f JOIN podcast_subscriptions s ON s.feed_id=f.id WHERE f.id=?",feedID).Scan(&raw)
+    if err!=nil{return "",err}
+    return podcast.SafeArtworkURL(raw),nil
+}
+
+// PodcastFeedArtworkTarget resolves the canonical feed URL, title, and safe
+// artwork URL for an actively subscribed show.
+func (d *DB) PodcastFeedArtworkTarget(ctx context.Context, feedID string) (feedURL, title, imageURL string, err error) {
+    if err = d.EnsurePodcastSchema(); err != nil {
+        return "", "", "", err
+    }
+    var rawImage string
+    err = d.conn.QueryRowContext(ctx, `
+SELECT f.canonical_url, f.title, f.image_url
+FROM podcast_feeds f
+JOIN podcast_subscriptions s ON s.feed_id = f.id
+WHERE f.id = ?`, feedID).Scan(&feedURL, &title, &rawImage)
+    if err != nil {
+        return "", "", "", err
+    }
+    return feedURL, title, podcast.SafeArtworkURL(rawImage), nil
+}
+
+// UpdatePodcastFeedImageURL validates and caches a recovered public artwork URL
+// for an actively subscribed feed.
+func (d *DB) UpdatePodcastFeedImageURL(ctx context.Context, feedID, imageURL string) error {
+    if err := d.EnsurePodcastSchema(); err != nil {
+        return err
+    }
+    safe := podcast.SafeArtworkURL(imageURL)
+    if safe == "" {
+        return podcast.ErrBlockedURL
+    }
+    _, err := d.conn.ExecContext(ctx, `
+UPDATE podcast_feeds
+SET image_url = ?, updated_at = ?
+WHERE id = ? AND EXISTS (SELECT 1 FROM podcast_subscriptions s WHERE s.feed_id = podcast_feeds.id)`,
+        safe, time.Now().UnixMilli(), feedID)
+    return err
+}
+
+func (d *DB) UnsubscribePodcast(ctx context.Context,feedID string) error {
+    if err:=d.EnsurePodcastSchema();err!=nil{return err}
+    tx,err:=d.conn.BeginTx(ctx,nil)
+    if err!=nil{return err}
+    defer tx.Rollback()
+    res,err:=tx.ExecContext(ctx,`DELETE FROM podcast_subscriptions WHERE feed_id=?`,feedID)
+    if err!=nil{return err}
+    affected,err:=res.RowsAffected()
+    if err!=nil{return err}
+    if affected==0{return sql.ErrNoRows}
+    // Revoke in-flight download leases in the same transaction as unfollow.
+    // Publisher requests may finish, but no stale worker may publish bytes.
+    _,err=tx.ExecContext(ctx,`
+UPDATE podcast_downloads SET status='canceled',lease_owner=NULL,
+ lease_expires_at=NULL,bytes_received=0,expected_bytes=NULL,
+ temp_relative_path=NULL,staged_sha256=NULL,source_sha256=NULL,
+ etag=NULL,last_modified=NULL,mime='',retry_after=NULL,
+ error_code=NULL,updated_at=?
+WHERE status IN ('queued','downloading','paused') AND episode_id IN (
+ SELECT id FROM podcast_episodes WHERE feed_id=?)`,
+ time.Now().UnixMilli(),feedID)
+    if err!=nil{return err}
+    return tx.Commit()
+}
+
+// PodcastSubscribed reports whether the feed is subscribed, rather than merely
+// cached. It does not expose untrusted metadata to the API.
+func (d *DB) PodcastSubscribed(ctx context.Context,feedID string) (bool,error){
+    if err:=d.EnsurePodcastSchema();err!=nil{return false,err}
+    var id string
+    err:=d.conn.QueryRowContext(ctx,`SELECT feed_id FROM podcast_subscriptions WHERE feed_id=?`,feedID).Scan(&id)
+    if errors.Is(err,sql.ErrNoRows){return false,nil}
+    return err==nil,err
+}

@@ -50,8 +50,10 @@ func TestGetMediaCapabilitiesV2AndDJWaveformCapabilityError(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 
-	apiHandler := New(database, dir)
-	t.Cleanup(apiHandler.Close)
+	// These handlers require only the DB. Avoid starting the full API's
+	// background scanner, schedulers and metadata jobs: they can race
+	// unrelated SaveSong writes and produce intermittent SQLITE_BUSY in CI.
+	apiHandler := &API{db: database, dataDir: dir}
 
 	// 1. Verify GET /api/v2/capabilities/media
 	v2Router := apiHandler.V2Routes()

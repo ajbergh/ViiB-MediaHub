@@ -25,10 +25,11 @@
  * @module Player
  */
 
-import React, { lazy, Suspense, useState } from 'react';
+import React, { lazy, Suspense, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
-import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, ListMusic, Maximize2, Minimize2, Pin, PinOff, SlidersHorizontal, Loader2, AlertCircle, RefreshCw, Wifi, Moon, Info } from 'lucide-react';
+import { podcastsAPI, type PodcastGlobalPlaybackSettings, type PodcastShowPlaybackSettings } from '../services/podcasts';
+import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, ListMusic, Maximize2, Minimize2, Pin, PinOff, SlidersHorizontal, Loader2, AlertCircle, RefreshCw, Wifi, Moon, Info, Bookmark } from 'lucide-react';
 import { formatTime, generateGradient, getAudioFormatInfo } from '../utils';
 import { ContextMenuType, Song } from '../types';
 import { Visualizer } from './Visualizer';
@@ -54,6 +55,8 @@ type SkinnyPlayerProps = {
   isVisualizerEnabled: boolean;
   lowPowerVisuals?: boolean;
   isAlwaysOnTop: boolean;
+  skipBackSeconds: number;
+  skipForwardSeconds: number;
   onPrevious: () => void;
   onTogglePlay: () => void;
   onNext: () => void;
@@ -74,6 +77,8 @@ const SkinnyPlayer: React.FC<SkinnyPlayerProps> = ({
   isVisualizerEnabled,
   lowPowerVisuals,
   isAlwaysOnTop,
+  skipBackSeconds,
+  skipForwardSeconds,
   onPrevious,
   onTogglePlay,
   onNext,
@@ -122,6 +127,14 @@ const SkinnyPlayer: React.FC<SkinnyPlayerProps> = ({
           >
             <SkipBack size={19} className="fill-current" />
           </Button>
+          {currentSong?.source === 'podcast' && <Button
+            onClick={() => onSeek(Math.max(0, currentTime - skipBackSeconds))}
+            disabled={!duration}
+            variant="ghost"
+            className="h-9 rounded-full px-1 text-xs font-semibold"
+            aria-label={`Back ${skipBackSeconds} seconds`}
+            title={`Back ${skipBackSeconds} seconds`}
+          >−{skipBackSeconds}s</Button>}
           <Button
             onClick={onTogglePlay}
             disabled={!hasSong}
@@ -139,6 +152,14 @@ const SkinnyPlayer: React.FC<SkinnyPlayerProps> = ({
               <Play size={19} className="ml-0.5 fill-current" />
             )}
           </Button>
+          {currentSong?.source === 'podcast' && <Button
+            onClick={() => onSeek(Math.min(duration, currentTime + skipForwardSeconds))}
+            disabled={!duration}
+            variant="ghost"
+            className="h-9 rounded-full px-1 text-xs font-semibold"
+            aria-label={`Forward ${skipForwardSeconds} seconds`}
+            title={`Forward ${skipForwardSeconds} seconds`}
+          >+{skipForwardSeconds}s</Button>}
           <Button
             onClick={onNext}
             disabled={!hasSong}
@@ -257,18 +278,127 @@ export const Player: React.FC = () => {
   const setSkinnyMode = useStore(state => state.setSkinnyMode);
   const setSkinnyAlwaysOnTop = useStore(state => state.setSkinnyAlwaysOnTop);
   
-  const { 
-      primaryRef, secondaryRef,
-      currentTime, duration, handleTimeUpdate, handleEnded, seek 
-  } = useAudioPlayer();
-
-  // Windows SMTC / Media Session API integration
-  // Provides media key support and Windows media overlay controls
-  useMediaSession(currentTime, duration, seek);
-
   // Sleep timer state
   const [isSleepTimerOpen, setIsSleepTimerOpen] = useState(false);
   const sleepTimer = useSleepTimer();
+  const sleepOnEndRef = useRef(sleepTimer.onSongEnd);
+  sleepOnEndRef.current = sleepTimer.onSongEnd;
+
+  const { 
+      primaryRef, secondaryRef,
+      currentTime, duration, handleTimeUpdate, handleLoadedMetadata, handlePause, handleEnded, seek 
+  } = useAudioPlayer({
+      onBeforeAdvance: () => sleepOnEndRef.current(),
+  });
+
+  // Podcast long-form controls share the existing dual HTMLAudio transport.
+  // Music/Plex return to 1x while each show can override the global podcast speed.
+  const isPodcast = currentSong?.source === 'podcast';
+  const [isBookmarking, setIsBookmarking] = useState(false);
+  const [globalPodcastSettings, setGlobalPodcastSettings] = useState<PodcastGlobalPlaybackSettings>({
+    defaultSpeed: 1,
+    skipBackSeconds: 15,
+    skipForwardSeconds: 30,
+  });
+  const [podcastPlaybackRate, setPodcastPlaybackRate] = useState(1);
+  const manualRateOverrideRef = useRef(false);
+
+  React.useEffect(() => {
+    const onPodcastSeek = (event: Event) => {
+      const detail = (event as CustomEvent<{ episodeId?: string; seconds?: number }>).detail;
+      if (!detail || typeof detail.seconds !== 'number' || !Number.isFinite(detail.seconds)) return;
+      const active = useStore.getState().currentSong;
+      if (active?.source !== 'podcast' || !active.podcastEpisodeId) return;
+      if (detail.episodeId && detail.episodeId !== active.podcastEpisodeId) return;
+      seek(Math.max(0, detail.seconds));
+    };
+    window.addEventListener('viib:podcast-seek', onPodcastSeek);
+    return () => window.removeEventListener('viib:podcast-seek', onPodcastSeek);
+  }, [seek]);
+
+  const handleQuickBookmark = async () => {
+    const active = useStore.getState().currentSong;
+    if (active?.source !== 'podcast' || !active.podcastEpisodeId || isBookmarking) return;
+    setIsBookmarking(true);
+    const positionMs = Math.max(0, Math.round(currentTime * 1000));
+    try {
+      const { bookmark } = await podcastsAPI.createBookmark(active.podcastEpisodeId, positionMs, '');
+      window.dispatchEvent(new CustomEvent('viib:podcast-bookmark-created', {
+        detail: { episodeId: active.podcastEpisodeId, bookmark },
+      }));
+      useStore.getState().showToast({
+        type: 'success',
+        message: `Bookmarked at ${formatTime(positionMs / 1000)}`,
+        duration: 2500,
+      });
+    } catch {
+      useStore.getState().showToast({
+        type: 'error',
+        message: 'Failed to save bookmark',
+      });
+    } finally {
+      setIsBookmarking(false);
+    }
+  };
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void podcastsAPI.getGlobalSettings(controller.signal)
+      .then(({ playback }) => {
+        if (!controller.signal.aborted) setGlobalPodcastSettings(playback);
+      })
+      .catch(() => { /* Keep default podcast intervals when backend settings are unavailable. */ });
+    const onGlobalChanged = (event: Event) => {
+      const detail = (event as CustomEvent<PodcastGlobalPlaybackSettings>).detail;
+      if (detail) setGlobalPodcastSettings(detail);
+    };
+    const onShowChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ feedId: string; settings: PodcastShowPlaybackSettings }>).detail;
+      if (!detail) return;
+      const active = useStore.getState().currentSong;
+      if (active?.source === 'podcast' && active.podcastFeedId === detail.feedId && !manualRateOverrideRef.current) {
+        setPodcastPlaybackRate(detail.settings.defaultSpeed > 0 ? detail.settings.defaultSpeed : globalPodcastSettings.defaultSpeed);
+      }
+    };
+    window.addEventListener('viib:podcast-playback-settings-changed', onGlobalChanged);
+    window.addEventListener('viib:podcast-show-settings-changed', onShowChanged);
+    return () => {
+      controller.abort();
+      window.removeEventListener('viib:podcast-playback-settings-changed', onGlobalChanged);
+      window.removeEventListener('viib:podcast-show-settings-changed', onShowChanged);
+    };
+  }, [globalPodcastSettings.defaultSpeed]);
+
+  React.useEffect(() => {
+    manualRateOverrideRef.current = false;
+    if (currentSong?.source !== 'podcast') return;
+    const showSpeed = currentSong.podcastDefaultSpeed;
+    setPodcastPlaybackRate(showSpeed && showSpeed > 0 ? showSpeed : globalPodcastSettings.defaultSpeed);
+  }, [currentSong?.id, currentSong?.source, currentSong?.podcastDefaultSpeed]);
+
+  React.useEffect(() => {
+    if (manualRateOverrideRef.current || currentSong?.source !== 'podcast') return;
+    if (!(currentSong.podcastDefaultSpeed && currentSong.podcastDefaultSpeed > 0)) {
+      setPodcastPlaybackRate(globalPodcastSettings.defaultSpeed);
+    }
+  }, [globalPodcastSettings.defaultSpeed, currentSong?.source, currentSong?.podcastDefaultSpeed]);
+
+  const effectivePlaybackRate = isPodcast ? podcastPlaybackRate : 1;
+  React.useEffect(() => {
+    if (primaryRef.current) primaryRef.current.playbackRate = effectivePlaybackRate;
+    if (secondaryRef.current) secondaryRef.current.playbackRate = effectivePlaybackRate;
+  }, [effectivePlaybackRate, primaryRef, secondaryRef]);
+
+  // Windows SMTC / Media Session API integration
+  // Provides media key support and Windows media overlay controls
+  useMediaSession(
+    currentTime,
+    duration,
+    seek,
+    effectivePlaybackRate,
+    isPodcast ? globalPodcastSettings.skipBackSeconds : 10,
+    isPodcast ? globalPodcastSettings.skipForwardSeconds : 10,
+  );
 
   // Keep the media elements mounted while switching layouts so playback and
   // crossfade state are not interrupted by entering or leaving skinny mode.
@@ -277,12 +407,16 @@ export const Player: React.FC = () => {
       <audio
         ref={primaryRef}
         onTimeUpdate={() => handleTimeUpdate(0)}
+        onLoadedMetadata={() => handleLoadedMetadata(0)}
+        onPause={() => handlePause(0)}
         onEnded={() => handleEnded(0)}
         crossOrigin="anonymous"
       />
       <audio
         ref={secondaryRef}
         onTimeUpdate={() => handleTimeUpdate(1)}
+        onLoadedMetadata={() => handleLoadedMetadata(1)}
+        onPause={() => handlePause(1)}
         onEnded={() => handleEnded(1)}
         crossOrigin="anonymous"
       />
@@ -303,6 +437,8 @@ export const Player: React.FC = () => {
           isVisualizerEnabled={audioSettings.visualizerEnabled}
           lowPowerVisuals={audioSettings.lowPowerVisuals}
           isAlwaysOnTop={isSkinnyAlwaysOnTop}
+          skipBackSeconds={globalPodcastSettings.skipBackSeconds}
+          skipForwardSeconds={globalPodcastSettings.skipForwardSeconds}
           onPrevious={prevSong}
           onTogglePlay={togglePlay}
           onNext={nextSong}
@@ -488,6 +624,11 @@ export const Player: React.FC = () => {
             <Button onClick={prevSong} variant="ghost" className="rounded-full p-1.5 text-text-secondary hover:text-text-main" aria-label="Previous track">
                 <SkipBack size={19} className="fill-current" />
             </Button>
+            {isPodcast && <Button onClick={() => seek(Math.max(0, currentTime - globalPodcastSettings.skipBackSeconds))}
+                disabled={!duration} variant="ghost" aria-label={`Back ${globalPodcastSettings.skipBackSeconds} seconds`}
+                title={`Back ${globalPodcastSettings.skipBackSeconds} seconds`} className="rounded-full px-1.5 py-1 text-xs font-semibold text-text-secondary hover:text-text-main">
+                −{globalPodcastSettings.skipBackSeconds}s
+            </Button>}
             
             <div className="relative">
                 {/* Buffering indicator */}
@@ -512,9 +653,30 @@ export const Player: React.FC = () => {
                 </button>
             </div>
 
+            {isPodcast && <Button onClick={() => seek(Math.min(duration, currentTime + globalPodcastSettings.skipForwardSeconds))}
+                disabled={!duration} variant="ghost" aria-label={`Forward ${globalPodcastSettings.skipForwardSeconds} seconds`}
+                title={`Forward ${globalPodcastSettings.skipForwardSeconds} seconds`} className="rounded-full px-1.5 py-1 text-xs font-semibold text-text-secondary hover:text-text-main">
+                +{globalPodcastSettings.skipForwardSeconds}s
+            </Button>}
             <Button onClick={nextSong} variant="ghost" className="rounded-full p-1.5 text-text-secondary hover:text-text-main" aria-label="Next track">
                 <SkipForward size={19} className="fill-current" />
             </Button>
+            {isPodcast && <label className="ml-1 text-xs text-text-secondary">
+                <span className="sr-only">Podcast playback speed</span>
+                <select aria-label="Podcast playback speed" value={podcastPlaybackRate}
+                    onChange={event => {
+                        manualRateOverrideRef.current = true;
+                        setPodcastPlaybackRate(Number(event.target.value));
+                    }}
+                    className="rounded-md border border-surface-3 bg-surface-2 px-1.5 py-1 text-xs text-text-main">
+                    <option value="0.75">0.75×</option>
+                    <option value="1">1×</option>
+                    <option value="1.25">1.25×</option>
+                    <option value="1.5">1.5×</option>
+                    <option value="1.75">1.75×</option>
+                    <option value="2">2×</option>
+                </select>
+            </label>}
             <Button
                 variant="ghost"
                 disabled
@@ -609,6 +771,19 @@ export const Player: React.FC = () => {
 
         {/* Volume & Extras - Hidden on mobile, shown on tablet+ */}
         <div className="hidden md:flex items-center justify-end gap-3">
+            {isPodcast && currentSong.podcastEpisodeId && (
+                <Button
+                    onClick={() => void handleQuickBookmark()}
+                    disabled={isBookmarking}
+                    title="Bookmark current moment"
+                    aria-label="Bookmark current moment"
+                    variant="ghost"
+                    className="rounded-full p-2 text-text-secondary hover:text-brand"
+                >
+                    {isBookmarking ? <Loader2 size={18} className="animate-spin" /> : <Bookmark size={18} />}
+                </Button>
+            )}
+
             {/* Song Info Properties */}
             <Button
                 onClick={() => currentSong && openSongInfoModal(currentSong)}

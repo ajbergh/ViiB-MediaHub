@@ -31,6 +31,7 @@ Spotify remains a separate integration: Free/unknown-plan sessions can browse, w
 | [Search](search.md) | Indexed search across the unified ViiB catalog |
 | [Spotify](spotify.md) | Spotify integration, streaming, browse, and downloads |
 | [Plex Music](plex-music.md) | PMS discovery, account/server selection, library sync, proxied playback, explicit metadata writeback, security, and troubleshooting |
+| [Podcasts (feature branch)](podcasts.md) | Early-access Podcast Index discovery, RSS subscriptions, shared-player listening, triage/durable queue, chapters/transcripts/bookmarks, offline downloads/retention, OPML import/export, and limitations; not released on main |
 | [DJ Mode](dj-mode.md) | Full-featured two-deck DJ interface |
 | [Downloads](downloads.md) | Spotify download queue and status |
 | [Duplicates](duplicates.md) | Duplicate-track review and ignore state |
@@ -49,6 +50,8 @@ The [October 15 documentation refresh](DOCUMENTATION_REVIEW_2026-10-15.md) recon
 | Reference | Purpose and status |
 |---|---|
 | [Product & Engineering Roadmap](ROADMAP.md) | Active overarching phases, priorities, release gates, dependencies and qualified-vs-planned status |
+| [Podcast implementation roadmap](PODCAST_CLIENT_IMPLEMENTATION_ROADMAP.md) | Living POD-00–08 implementation plan, user acceptance, CI evidence, security decisions, and remaining release gates |
+| [Podcast API reference (feature branch)](podcast-api.md) | Work-in-progress `/api/v2/podcasts/*` REST and SSE endpoint contracts for the podcast feature branch |
 | [Accessibility qualification](ACCESSIBILITY_QUALIFICATION.md) | Draft WCAG 2.2 AA workflow/host test plan, DJ alternative tasks and findings register; execution remains open |
 | [Wails v2.17 upgrade plan](WAILS_V2_17_UPGRADE_PLAN.md) | Implemented v2.11.0 → v2.17.0 framework upgrade, verification gates and v2-only follow-ups; v3 deferred |
 | [Release dependency inventories](release-dependency-inventories.md) | Implemented checksummed npm/Go release inventories, reproducibility and coverage limits |

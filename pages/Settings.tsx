@@ -41,6 +41,7 @@ import { AudioOutputSettings } from '../components/AudioOutputSettings';
 import { HomeLayoutVariant, VisualizerMode, Song } from '../types';
 import { parseSong } from '../metadata';
 import { api } from '../services/api';
+import { podcastsAPI, type PodcastDirectoryStatus, type PodcastGlobalPlaybackSettings } from '../services/podcasts';
 import { useStemLibraryScan } from '../hooks/useStemLibraryScan';
 import { Button } from '../components/ui/Button';
 import { ToggleSwitch } from '../components/ui/ToggleSwitch';
@@ -320,6 +321,119 @@ export const Settings: React.FC = () => {
   }, [backendAvailable]);
 
   // Integrations & Spotify download/conversion state
+  const [podcastsPreviewEnabled, setPodcastsPreviewEnabled] = useState(false);
+  const [podcastsPreviewSaving, setPodcastsPreviewSaving] = useState(false);
+  const [podcastsPreviewError, setPodcastsPreviewError] = useState('');
+  const [podcastPlayback, setPodcastPlayback] = useState<PodcastGlobalPlaybackSettings>({
+    defaultSpeed: 1,
+    skipBackSeconds: 15,
+    skipForwardSeconds: 30,
+  });
+  const [podcastPlaybackSaving, setPodcastPlaybackSaving] = useState(false);
+  const [podcastPlaybackStatus, setPodcastPlaybackStatus] = useState('');
+  const [podcastPlaybackError, setPodcastPlaybackError] = useState('');
+  const [discoverStatus, setDiscoverStatus] = useState<PodcastDirectoryStatus | null>(null);
+  const [discoverLoading, setDiscoverLoading] = useState(false);
+  const [discoverApiKey, setDiscoverApiKey] = useState('');
+  const [discoverApiSecret, setDiscoverApiSecret] = useState('');
+  const [discoverSaving, setDiscoverSaving] = useState(false);
+  const [discoverRemoving, setDiscoverRemoving] = useState(false);
+  const [discoverFeedback, setDiscoverFeedback] = useState('');
+  const [discoverError, setDiscoverError] = useState('');
+  useEffect(() => {
+    if (!backendAvailable) return;
+    let active = true;
+    setDiscoverLoading(true);
+    void api.getSetting('podcasts_preview_enabled')
+      .then(value => { if (active) setPodcastsPreviewEnabled(value === 'true'); })
+      .catch(() => { if (active) setPodcastsPreviewError('Unable to load podcast refresh setting'); });
+    void podcastsAPI.getGlobalSettings()
+      .then(({ playback }) => { if (active) setPodcastPlayback(playback); })
+      .catch(() => { if (active) setPodcastPlaybackError('Unable to load podcast playback defaults'); });
+    void podcastsAPI.getDiscoverStatus()
+      .then(({ status }) => { if (active) setDiscoverStatus(status); })
+      .catch(() => { if (active) setDiscoverError('Unable to load Podcast Index discovery status'); })
+      .finally(() => { if (active) setDiscoverLoading(false); });
+    return () => { active = false; };
+  }, [backendAvailable]);
+
+  const savePodcastPlayback = async (next: PodcastGlobalPlaybackSettings) => {
+    if (!backendAvailable || podcastPlaybackSaving) return;
+    const previous = podcastPlayback;
+    setPodcastPlayback(next);
+    setPodcastPlaybackSaving(true);
+    setPodcastPlaybackError('');
+    setPodcastPlaybackStatus('');
+    try {
+      const { playback } = await podcastsAPI.setGlobalSettings(next);
+      setPodcastPlayback(playback);
+      setPodcastPlaybackStatus('Podcast playback defaults saved.');
+      window.dispatchEvent(new CustomEvent('viib:podcast-playback-settings-changed', { detail: playback }));
+    } catch {
+      setPodcastPlayback(previous);
+      setPodcastPlaybackError('Unable to save podcast playback defaults');
+    } finally {
+      setPodcastPlaybackSaving(false);
+    }
+  };
+  const changePodcastsPreview = async (enabled: boolean) => {
+    setPodcastsPreviewSaving(true);
+    setPodcastsPreviewError('');
+    try {
+      await api.setSetting('podcasts_preview_enabled', enabled ? 'true' : 'false');
+      setPodcastsPreviewEnabled(enabled);
+      window.dispatchEvent(new Event('viib:podcasts-refresh-changed'));
+    } catch {
+      setPodcastsPreviewError('Unable to save podcast refresh setting');
+    } finally {
+      setPodcastsPreviewSaving(false);
+    }
+  };
+
+  const handleSaveDiscoverCredentials = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!backendAvailable || discoverSaving || discoverRemoving) return;
+    const apiKey = discoverApiKey.trim();
+    const apiSecret = discoverApiSecret.trim();
+    if (!apiKey || !apiSecret) {
+      setDiscoverError('Provide both an API Key and an API Secret.');
+      setDiscoverFeedback('');
+      return;
+    }
+    setDiscoverSaving(true);
+    setDiscoverError('');
+    setDiscoverFeedback('');
+    try {
+      const { status } = await podcastsAPI.setDiscoverCredentials(apiKey, apiSecret);
+      setDiscoverStatus(status);
+      setDiscoverApiKey('');
+      setDiscoverApiSecret('');
+      setDiscoverFeedback('Podcast Index credentials saved.');
+    } catch (error) {
+      setDiscoverError(error instanceof Error ? error.message : 'Unable to save Podcast Index credentials');
+    } finally {
+      setDiscoverSaving(false);
+    }
+  };
+
+  const handleRemoveDiscoverCredentials = async () => {
+    if (!backendAvailable || discoverSaving || discoverRemoving) return;
+    setDiscoverRemoving(true);
+    setDiscoverError('');
+    setDiscoverFeedback('');
+    try {
+      const { status } = await podcastsAPI.deleteDiscoverCredentials();
+      setDiscoverStatus(status);
+      setDiscoverApiKey('');
+      setDiscoverApiSecret('');
+      setDiscoverFeedback('Podcast Index credentials removed.');
+    } catch (error) {
+      setDiscoverError(error instanceof Error ? error.message : 'Unable to remove Podcast Index credentials');
+    } finally {
+      setDiscoverRemoving(false);
+    }
+  };
+
   const [spotifyDownloadPath, setSpotifyDownloadPath] = useState('');
   const [downloadPathSaved, setDownloadPathSaved] = useState(false);
   const [savingDownloadPath, setSavingDownloadPath] = useState(false);
@@ -1682,6 +1796,75 @@ export const Settings: React.FC = () => {
 
                 {/* DJ Audio Output Devices */}
                 <AudioOutputSettings />
+
+                {/* Global Podcast Playback Defaults */}
+                <div className="border-t border-surface-3 pt-6">
+                  <div className="mb-4 flex items-center gap-3">
+                    <div className="p-2 bg-surface-hover rounded-lg text-text-main shrink-0">
+                      <Headphones size={20} aria-hidden="true" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-semibold text-text-main">Podcast Playback Defaults</h3>
+                      <p className="text-sm text-text-subtle">Default speed and skip intervals for podcast episodes. Individual shows can override speed and intro/outro skips.</p>
+                    </div>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div>
+                      <label htmlFor="settings-podcast-default-speed" className="block text-xs font-semibold text-text-secondary mb-1.5">
+                        Default speed
+                      </label>
+                      <select id="settings-podcast-default-speed" aria-label="Global podcast default speed"
+                        value={podcastPlayback.defaultSpeed}
+                        disabled={!backendAvailable || podcastPlaybackSaving}
+                        onChange={event => void savePodcastPlayback({ ...podcastPlayback, defaultSpeed: Number(event.target.value) })}
+                        className="w-full rounded-lg border border-surface-3 bg-surface-1 px-3 py-2 text-sm text-text-main">
+                        <option value={0.75}>0.75×</option>
+                        <option value={1}>1×</option>
+                        <option value={1.25}>1.25×</option>
+                        <option value={1.5}>1.5×</option>
+                        <option value={1.75}>1.75×</option>
+                        <option value={2}>2×</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="settings-podcast-skip-back" className="block text-xs font-semibold text-text-secondary mb-1.5">
+                        Skip back interval
+                      </label>
+                      <select id="settings-podcast-skip-back" aria-label="Podcast skip back interval"
+                        value={podcastPlayback.skipBackSeconds}
+                        disabled={!backendAvailable || podcastPlaybackSaving}
+                        onChange={event => void savePodcastPlayback({ ...podcastPlayback, skipBackSeconds: Number(event.target.value) })}
+                        className="w-full rounded-lg border border-surface-3 bg-surface-1 px-3 py-2 text-sm text-text-main">
+                        <option value={5}>5 seconds</option>
+                        <option value={10}>10 seconds</option>
+                        <option value={15}>15 seconds</option>
+                        <option value={20}>20 seconds</option>
+                        <option value={30}>30 seconds</option>
+                        <option value={45}>45 seconds</option>
+                        <option value={60}>60 seconds</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="settings-podcast-skip-forward" className="block text-xs font-semibold text-text-secondary mb-1.5">
+                        Skip forward interval
+                      </label>
+                      <select id="settings-podcast-skip-forward" aria-label="Podcast skip forward interval"
+                        value={podcastPlayback.skipForwardSeconds}
+                        disabled={!backendAvailable || podcastPlaybackSaving}
+                        onChange={event => void savePodcastPlayback({ ...podcastPlayback, skipForwardSeconds: Number(event.target.value) })}
+                        className="w-full rounded-lg border border-surface-3 bg-surface-1 px-3 py-2 text-sm text-text-main">
+                        <option value={10}>10 seconds</option>
+                        <option value={15}>15 seconds</option>
+                        <option value={30}>30 seconds</option>
+                        <option value={45}>45 seconds</option>
+                        <option value={60}>60 seconds</option>
+                        <option value={90}>90 seconds</option>
+                      </select>
+                    </div>
+                  </div>
+                  {podcastPlaybackStatus && <p role="status" className="mt-3 text-sm text-brand">{podcastPlaybackStatus}</p>}
+                  {podcastPlaybackError && <p role="alert" className="mt-3 text-sm text-error">{podcastPlaybackError}</p>}
+                </div>
                 </>
               )}
             </div>
@@ -1692,6 +1875,122 @@ export const Settings: React.FC = () => {
       {/* TAB: INTEGRATIONS & SPOTIFY */}
       {activeTab === 'integrations' && (
         <div className="space-y-6 animate-in fade-in duration-200">
+
+          <section className="rounded-xl border border-surface-3 bg-surface-2 p-6">
+            <div className="mb-2 flex items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold text-text-main">Automatic Podcast Feed Refresh</h2>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-text-main">
+                <input type="checkbox" checked={podcastsPreviewEnabled} disabled={!backendAvailable || podcastsPreviewSaving}
+                  onChange={event => void changePodcastsPreview(event.target.checked)} />
+                Enable
+              </label>
+            </div>
+            <p className="text-sm text-text-secondary">Allow background RSS checks and manual feed refreshes for followed podcasts. The Podcasts sidebar and RSS follow/browse views work regardless of this setting. Off by default to avoid unsolicited background network traffic.</p>
+            {podcastsPreviewError && <p role="alert" className="mt-3 text-sm text-error">{podcastsPreviewError}</p>}
+          </section>
+
+          <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+              <div className="flex items-center gap-3 text-brand">
+                <Search size={20} aria-hidden="true" />
+                <h2 className="text-lg font-bold text-text-main">Podcast Index Discovery</h2>
+              </div>
+              <span
+                className={`inline-flex items-center gap-2 text-xs font-semibold ${
+                  discoverStatus?.configured ? 'text-success' : 'text-text-subtle'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full inline-block ${
+                    discoverStatus?.configured ? 'bg-success' : 'bg-text-subtle'
+                  }`}
+                />
+                {discoverLoading
+                  ? 'Checking status…'
+                  : discoverStatus?.configured
+                    ? discoverStatus.source === 'embedded'
+                      ? 'Enabled (Built-in)'
+                      : `Configured (${discoverStatus.keyHint})`
+                    : 'Not configured'}
+              </span>
+            </div>
+            <p className="text-sm text-text-secondary mb-4">
+              {discoverStatus?.source === 'embedded'
+                ? 'Podcast Index search and trending discovery are enabled by default in this build. You can optionally enter personal credentials from podcastindex.org below to override the built-in key (stored encrypted at rest).'
+                : 'Optional free credentials from Podcast Index (https://api.podcastindex.org) enable public podcast search and trending discovery. Stored encrypted at rest; saved secrets are never pre-filled or displayed.'}
+            </p>
+
+            <form onSubmit={handleSaveDiscoverCredentials} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="podcast-index-api-key" className="block text-xs font-bold text-text-secondary uppercase mb-2">
+                    API Key
+                  </label>
+                  <TextInput
+                    id="podcast-index-api-key"
+                    type="password"
+                    value={discoverApiKey}
+                    onChange={(event) => {
+                      setDiscoverApiKey(event.target.value);
+                      setDiscoverError('');
+                      setDiscoverFeedback('');
+                    }}
+                    placeholder={discoverStatus?.configured ? 'Enter new API key to replace' : 'Enter Podcast Index API key'}
+                    autoComplete="off"
+                    disabled={!backendAvailable || discoverSaving || discoverRemoving}
+                    inputClassName="font-mono text-sm"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="podcast-index-api-secret" className="block text-xs font-bold text-text-secondary uppercase mb-2">
+                    API Secret
+                  </label>
+                  <TextInput
+                    id="podcast-index-api-secret"
+                    type="password"
+                    value={discoverApiSecret}
+                    onChange={(event) => {
+                      setDiscoverApiSecret(event.target.value);
+                      setDiscoverError('');
+                      setDiscoverFeedback('');
+                    }}
+                    placeholder={discoverStatus?.configured ? 'Enter new API secret to replace' : 'Enter Podcast Index API secret'}
+                    autoComplete="off"
+                    disabled={!backendAvailable || discoverSaving || discoverRemoving}
+                    inputClassName="font-mono text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="md"
+                  accent="brand"
+                  disabled={!backendAvailable || discoverSaving || discoverRemoving || !discoverApiKey.trim() || !discoverApiSecret.trim()}
+                  leftIcon={discoverSaving ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : undefined}
+                >
+                  {discoverSaving ? 'Saving…' : 'Save Credentials'}
+                </Button>
+                {discoverStatus?.configured && discoverStatus.source !== 'embedded' && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="md"
+                    onClick={() => void handleRemoveDiscoverCredentials()}
+                    disabled={!backendAvailable || discoverSaving || discoverRemoving}
+                    leftIcon={discoverRemoving ? <Loader2 size={15} className="animate-spin" aria-hidden="true" /> : <Trash2 size={15} aria-hidden="true" />}
+                  >
+                    {discoverRemoving ? 'Removing…' : 'Remove Credentials'}
+                  </Button>
+                )}
+              </div>
+            </form>
+
+            {discoverFeedback && <p role="status" className="mt-3 text-sm text-success">{discoverFeedback}</p>}
+            {discoverError && <p role="alert" className="mt-3 text-sm text-error">{discoverError}</p>}
+          </section>
           {/* Downloads & Conversion */}
           <section className="bg-surface-2 rounded-xl p-6 border border-surface-3">
             <div className="flex items-center gap-3 mb-6 text-brand">

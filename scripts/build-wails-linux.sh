@@ -212,12 +212,22 @@ echo "  ✓ Frontend copied to $DIST_DEST"
 echo ""
 echo "🔨 [3/3] Building Wails application ($ARCH)..."
 
+# shellcheck source=podcast-index-ldflags.sh
+source "$SCRIPT_DIR/podcast-index-ldflags.sh"
+PODCAST_LDFLAGS="$(podcast_index_ldflags "$PROJECT_ROOT")"
+
 pushd "$WAILS_DIR" > /dev/null
 
 export CGO_ENABLED=1
 
 WAILS_ARGS=(-platform "linux/$ARCH")
-[[ "$DEBUG" == "false" ]] && WAILS_ARGS+=(-ldflags "-s -w")
+LDFLAGS_STR=""
+[[ "$DEBUG" == "false" ]] && LDFLAGS_STR="-s -w"
+if [[ -n "$PODCAST_LDFLAGS" ]]; then
+    echo "  Embedding Podcast Index API credentials from build environment"
+    LDFLAGS_STR="${LDFLAGS_STR:+$LDFLAGS_STR }${PODCAST_LDFLAGS}"
+fi
+[[ -n "$LDFLAGS_STR" ]] && WAILS_ARGS+=(-ldflags "$LDFLAGS_STR")
 
 wails build "${WAILS_ARGS[@]}"
 

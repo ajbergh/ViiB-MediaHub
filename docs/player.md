@@ -4,7 +4,7 @@
 
 ![Player — Equalizer panel](../assets/screenshots/player-equalizer.png)
 
-The Player bar stays at the bottom of normal ViiB pages and is the playback surface for normal catalog tracks regardless of whether they originate from a local file or a synchronized Plex music library. Spotify streaming uses the same visible player controls but a separate Spotify streaming route.
+The Player bar stays at the bottom of normal ViiB pages and is the playback surface for normal catalog tracks regardless of whether they originate from a local file or a synchronized Plex music library. Spotify streaming and followed podcast RSS episodes now use the **same visible and physical audio player** through distinct Go endpoints.
 
 ---
 
@@ -104,3 +104,24 @@ Use the sleep-timer control to stop playback after a selected duration or suppor
 ## Media Session / OS Integration
 
 ViiB registers current playback metadata with the browser/WebView media-session integration where available. Track title, artist, artwork, and transport controls can therefore appear in OS media surfaces and compatible headset controls.
+
+
+## Podcast playback
+
+Podcasts → a followed show → **Listen** opens that episode in the
+same persistent bottom Player used for local music, Plex and Spotify.
+Show artwork, title, queue navigation, playback, volume, output
+routing, EQ and Now Playing use the common presentation. Podcast
+episodes are transient player queue entries, not music-library songs,
+and do not contribute music/DJ listening statistics.
+
+The player's existing Media Session integration also owns podcast
+metadata and transport commands. Podcast listening position and
+completion state are saved separately to the Go podcast database.
+Leaving the Podcasts page does not unmount playback.
+
+For podcast publisher hosts ignoring HTTP byte ranges, initial streaming
+can fall back to full HTTP 200 streaming; random seek may be unavailable.
+The Go backend validates public network destinations and keeps signed
+publisher URLs out of renderer payloads. Offline downloads and
+podcast-specific speed/silence enhancement remain future work.

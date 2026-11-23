@@ -1,0 +1,436 @@
+// podcast_routes.go exposes public-RSS subscriptions, shared playback,
+// and an isolated early-access download queue under the existing local API.
+package api
+
+import (
+    "context"
+    "database/sql"
+    "encoding/json"
+    "errors"
+    "io"
+    "net/http"
+    "strconv"
+    "strings"
+    "sync"
+    "time"
+
+    "github.com/ajbergh/viib-mediahub/internal/podcast"
+    "github.com/go-chi/chi/v5"
+)
+
+const maxPodcastRequestBytes int64 = 4096
+
+type podcastFeedRequest struct {
+    URL string `json:"url"`
+}
+
+// PodcastRoutes mounts after the standard router-wide Host/Origin/CSRF
+// boundary. Each handler checks its own request size and safe response fields.
+func (a *API) PodcastRoutes() chi.Router {
+    r := chi.NewRouter()
+    r.Get("/events", a.podcastEventsSSE)
+    r.Get("/discover/status", a.getPodcastDiscoverStatus)
+    r.Put("/discover/credentials", a.putPodcastDiscoverCredentials)
+    r.Delete("/discover/credentials", a.deletePodcastDiscoverCredentials)
+    r.Get("/search", a.searchPodcastDirectory)
+    r.Get("/trending", a.trendingPodcastDirectory)
+    r.Get("/episodes", a.listPodcastEpisodesByView)
+    r.Get("/episodes/continue", a.listContinueListening)
+    r.Get("/episodes/search", a.searchPodcastEpisodes)
+    r.Get("/episodes/{id}", a.getPodcastEpisodeDetail)
+    r.Patch("/episodes/{id}/state", a.patchPodcastEpisodeState)
+    r.Get("/episodes/{id}/chapters", a.getPodcastEpisodeChapters)
+    r.Get("/episodes/{id}/transcript", a.getPodcastEpisodeTranscript)
+    r.Get("/episodes/{id}/bookmarks", a.listPodcastEpisodeBookmarks)
+    r.Post("/episodes/{id}/bookmarks", a.createPodcastEpisodeBookmark)
+    r.Delete("/episodes/{id}/bookmarks/{bookmarkId}", a.deletePodcastEpisodeBookmark)
+    r.Get("/queue", a.getPodcastQueue)
+    r.Post("/queue", a.addPodcastQueue)
+    r.Put("/queue", a.replacePodcastQueue)
+    r.Delete("/queue/{episodeId}", a.deletePodcastQueueItem)
+    r.Get("/downloads", a.listPodcastDownloads)
+    r.Get("/episodes/{id}/download", a.getPodcastDownload)
+    r.Post("/episodes/{id}/download", a.queuePodcastDownload)
+    r.Delete("/episodes/{id}/download", a.cancelPodcastDownload)
+    r.Get("/episodes/{id}/media", a.getPodcastEpisodeMedia)
+    r.Get("/episodes/{id}/progress", a.getPodcastEpisodeProgress)
+    r.Put("/episodes/{id}/progress", a.updatePodcastEpisodeProgress)
+    r.Get("/settings", a.getPodcastGlobalSettings)
+    r.Put("/settings", a.putPodcastGlobalSettings)
+    r.Get("/feeds", a.listPodcastFeeds)
+    r.Get("/export/opml", a.exportPodcastOPML)
+    r.Post("/import/opml/preview", a.previewPodcastOPMLImport)
+    r.Post("/feeds/preview", a.previewPodcastFeed)
+    r.Post("/feeds", a.subscribePodcastFeed)
+    r.Get("/feeds/{id}/artwork", a.getPodcastArtwork)
+    r.Get("/feeds/{id}", a.getPodcastFeed)
+    r.Get("/feeds/{id}/episodes", a.listPodcastEpisodes)
+    r.Get("/feeds/{id}/auto-download", a.getPodcastAutoDownloadPolicy)
+    r.Put("/feeds/{id}/auto-download", a.putPodcastAutoDownloadPolicy)
+    r.Get("/feeds/{id}/retention", a.getPodcastRetention)
+    r.Put("/feeds/{id}/retention", a.putPodcastRetention)
+    r.Get("/feeds/{id}/playback-settings", a.getPodcastShowPlaybackSettings)
+    r.Put("/feeds/{id}/playback-settings", a.putPodcastShowPlaybackSettings)
+    r.Get("/feeds/{id}/refresh", a.getPodcastRefresh)
+    r.Post("/feeds/{id}/refresh", a.schedulePodcastRefresh)
+    r.Delete("/feeds/{id}", a.unsubscribePodcastFeed)
+    return r
+}
+
+func decodePodcastFeedRequest(w http.ResponseWriter, r *http.Request) (podcastFeedRequest, error) {
+    var request podcastFeedRequest
+    if !strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "application/json") {
+        return request, errors.New("JSON content type required")
+    }
+    decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxPodcastRequestBytes))
+    decoder.DisallowUnknownFields()
+    if err := decoder.Decode(&request); err != nil { return request, err }
+    var trailing any
+    if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+        return request, errors.New("unexpected JSON content")
+    }
+    request.URL = strings.TrimSpace(request.URL)
+    if len(request.URL) == 0 || len(request.URL) > 2048 {
+        return request, errors.New("invalid URL length")
+    }
+    if _, err := podcast.ValidatePublicURL(request.URL, false); err != nil {
+        return request, err
+    }
+    return request, nil
+}
+
+func (a *API) podcastFetch(ctx context.Context, url string) (podcast.FetchResult, error) {
+    ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+    defer cancel()
+    // Public HTTPS only; private feeds and legacy HTTP are gated until
+    // credential encryption and policy decisions in POD-00C are complete.
+    fetcher:=a.podcastFetcher
+    if fetcher==nil {fetcher=podcast.NewFetcher(false)}
+    return fetcher.Fetch(ctx,url,"","")
+}
+
+func (a *API) previewPodcastFeed(w http.ResponseWriter, r *http.Request) {
+    request, err := decodePodcastFeedRequest(w,r)
+    if err != nil {
+        respondV2Error(w,r,http.StatusBadRequest,"invalid_feed_url","Provide a public HTTPS podcast RSS feed URL",false,nil)
+        return
+    }
+    result, err := a.podcastFetch(r.Context(),request.URL)
+    if err != nil {
+        podcastFetchError(w,r,err)
+        return
+    }
+    count := len(result.Feed.Episodes)
+    if count > 10 { result.Feed.Episodes = result.Feed.Episodes[:10] }
+    respondV2JSON(w,http.StatusOK,map[string]any{"feed":result.Feed,"episodeCount":count})
+}
+
+func podcastFetchError(w http.ResponseWriter,r *http.Request,err error) {
+    switch {
+    case errors.Is(err,podcast.ErrBlockedURL):
+        respondV2Error(w,r,http.StatusBadRequest,"blocked_remote_target","The feed URL is not permitted",false,nil)
+    case errors.Is(err,podcast.ErrInvalidFeed):
+        respondV2Error(w,r,http.StatusUnprocessableEntity,"feed_invalid","The feed is not a supported RSS 2.0 podcast document",false,nil)
+    default:
+        respondV2Error(w,r,http.StatusBadGateway,"feed_unavailable","The publisher feed could not be retrieved",true,nil)
+    }
+}
+
+func (a *API) subscribePodcastFeed(w http.ResponseWriter,r *http.Request) {
+    request,err:=decodePodcastFeedRequest(w,r)
+    if err!=nil {
+        respondV2Error(w,r,http.StatusBadRequest,"invalid_feed_url","Provide a public HTTPS podcast RSS feed URL",false,nil)
+        return
+    }
+    fetched,err:=a.podcastFetch(r.Context(),request.URL)
+    if err!=nil{podcastFetchError(w,r,err);return}
+    feedID,err:=a.db.SavePodcastSubscriptionFromFetch(r.Context(),request.URL,fetched)
+    if err!=nil{
+        respondV2Error(w,r,http.StatusInternalServerError,"podcast_save_failed","Unable to save the podcast subscription",true,nil)
+        return
+    }
+    a.wakePodcastRefresher()
+    respondV2JSON(w,http.StatusCreated,map[string]any{
+        "id":feedID,"title":fetched.Feed.Title,"episodeCount":len(fetched.Feed.Episodes),
+    })
+}
+
+func (a *API) listPodcastFeeds(w http.ResponseWriter,r *http.Request) {
+    feeds,err:=a.db.ListSubscribedPodcasts(r.Context())
+    if err!=nil{
+        respondV2Error(w,r,http.StatusInternalServerError,"podcast_library_unavailable","Unable to list subscribed podcasts",true,nil)
+        return
+    }
+    respondV2JSON(w,http.StatusOK,map[string]any{"feeds":feeds})
+}
+
+// getPodcastFeed is a subscription-scoped detail endpoint; ID lookups
+// don't require loading every followed show to display a single page.
+func (a *API) getPodcastFeed(w http.ResponseWriter,r *http.Request) {
+    feed,err:=a.db.GetSubscribedPodcast(r.Context(),chi.URLParam(r,"id"))
+    if errors.Is(err,sql.ErrNoRows){
+        respondV2Error(w,r,http.StatusNotFound,"podcast_not_found",
+            "Podcast subscription not found",false,nil)
+        return
+    }
+    if err!=nil{
+        respondV2Error(w,r,http.StatusInternalServerError,"podcast_library_unavailable",
+            "Unable to read podcast details",true,nil)
+        return
+    }
+    respondV2JSON(w,http.StatusOK,map[string]any{"feed":feed})
+}
+
+func (a *API) listPodcastEpisodes(w http.ResponseWriter,r *http.Request) {
+    id:=chi.URLParam(r,"id")
+    subscribed,err:=a.db.PodcastSubscribed(r.Context(),id)
+    if err!=nil{
+        respondV2Error(w,r,http.StatusInternalServerError,"podcast_library_unavailable","Unable to read the subscription",true,nil)
+        return
+    }
+    if !subscribed{
+        respondV2Error(w,r,http.StatusNotFound,"podcast_not_found","Podcast subscription not found",false,nil)
+        return
+    }
+    limit:=50
+    offset:=0
+    if raw:=r.URL.Query().Get("limit");raw!=""{
+        parsed,parseErr:=strconv.Atoi(raw)
+        if parseErr!=nil || parsed<1 || parsed>100 {
+            respondV2Error(w,r,http.StatusBadRequest,"invalid_pagination","Episode limit must be between 1 and 100",false,nil)
+            return
+        }
+        limit=parsed
+    }
+    if raw:=r.URL.Query().Get("offset");raw!=""{
+        parsed,parseErr:=strconv.Atoi(raw)
+        if parseErr!=nil || parsed<0 || parsed>100000 {
+            respondV2Error(w,r,http.StatusBadRequest,"invalid_pagination","Episode offset must be between 0 and 100000",false,nil)
+            return
+        }
+        offset=parsed
+    }
+    episodes,hasMore,err:=a.db.ListPodcastEpisodesPage(r.Context(),id,limit,offset)
+    if err!=nil{
+        respondV2Error(w,r,http.StatusInternalServerError,"podcast_library_unavailable","Unable to list episodes",true,nil)
+        return
+    }
+    var nextOffset any
+    if hasMore {nextOffset=offset+len(episodes)}
+    respondV2JSON(w,http.StatusOK,map[string]any{"episodes":episodes,"nextOffset":nextOffset})
+}
+
+func (a *API) unsubscribePodcastFeed(w http.ResponseWriter,r *http.Request) {
+    id:=chi.URLParam(r,"id")
+    err:=a.db.UnsubscribePodcast(r.Context(),id)
+    if errors.Is(err,sql.ErrNoRows){
+        respondV2Error(w,r,http.StatusNotFound,"podcast_not_found","Podcast subscription not found",false,nil)
+        return
+    }
+    if err!=nil{
+        respondV2Error(w,r,http.StatusInternalServerError,"podcast_unsubscribe_failed","Unable to remove subscription",true,nil)
+        return
+    }
+    // Reclaim completed downloaded files promptly, with asynchronous retries
+    // when the file is busy. Historical episode state is not removed.
+    a.cleanupUnsubscribedPodcastFiles(r.Context())
+    a.wakePodcastDownloader()
+    w.WriteHeader(http.StatusNoContent)
+}
+
+
+// GET refresh returns only public status metadata, never publisher credentials
+// or raw network errors.
+func (a *API) getPodcastRefresh(w http.ResponseWriter,r *http.Request){
+    status,err:=a.db.PodcastRefreshStatus(r.Context(),chi.URLParam(r,"id"))
+    if errors.Is(err,sql.ErrNoRows){
+        respondV2Error(w,r,http.StatusNotFound,"podcast_not_found","Podcast subscription not found",false,nil)
+        return
+    }
+    if err!=nil {
+        respondV2Error(w,r,http.StatusInternalServerError,"podcast_refresh_unavailable","Unable to read refresh status",true,nil)
+        return
+    }
+    respondV2JSON(w,http.StatusOK,status)
+}
+
+func (a *API) schedulePodcastRefresh(w http.ResponseWriter,r *http.Request){
+    enabled,err:=a.db.GetSetting("podcasts_preview_enabled")
+    if err!=nil || enabled!="true"{
+        respondV2Error(w,r,http.StatusForbidden,"podcast_preview_disabled","Enable Podcast Preview in Settings to refresh feeds",false,nil)
+        return
+    }
+    if err=a.db.SchedulePodcastRefresh(r.Context(),chi.URLParam(r,"id"));err!=nil{
+        if errors.Is(err,sql.ErrNoRows) {
+            respondV2Error(w,r,http.StatusNotFound,"podcast_not_found","Podcast subscription not found",false,nil)
+            return
+        }
+        respondV2Error(w,r,http.StatusInternalServerError,"podcast_refresh_unavailable","Unable to schedule feed refresh",true,nil)
+        return
+    }
+    // A durable due timestamp is written before signaling. Restart recovers
+    // queued work if this process exits immediately after returning 202.
+    a.wakePodcastRefresher()
+    respondV2JSON(w,http.StatusAccepted,map[string]any{"status":"queued"})
+}
+
+
+type podcastArtworkCooldownKey struct {
+    api    *API
+    feedID string
+}
+
+var podcastArtworkRecoveryCooldowns sync.Map // map[podcastArtworkCooldownKey]time.Time
+
+const podcastArtworkRecoveryCooldown = 10 * time.Minute
+
+// recoverPodcastArtworkURL attempts to resolve missing (or broken) show cover
+// artwork by re-checking the RSS feed first and falling back to Podcast Index
+// (LookupByFeedURL, then title Search) when directory credentials exist.
+func (a *API) recoverPodcastArtworkURL(ctx context.Context, feedID, feedURL, title, failedSource string) string {
+    if a.dataDir == "" && a.podcastFetcher == nil && !a.hasPodcastDirectoryClientForTest() {
+        return ""
+    }
+    key := podcastArtworkCooldownKey{api: a, feedID: feedID}
+    now := time.Now()
+    if last, ok := podcastArtworkRecoveryCooldowns.Load(key); ok {
+        if until, valid := last.(time.Time); valid && now.Before(until) {
+            return ""
+        }
+    }
+
+    recovered := ""
+    if (a.podcastFetcher != nil || a.dataDir != "") && strings.TrimSpace(feedURL) != "" {
+        if fetched, err := a.podcastFetch(ctx, feedURL); err == nil {
+            candidate := podcast.SafeArtworkURL(fetched.Feed.ImageURL)
+            if candidate != "" && candidate != failedSource {
+                recovered = candidate
+            }
+        }
+    }
+
+    if recovered == "" && (a.dataDir != "" || a.hasPodcastDirectoryClientForTest()) {
+        if creds, err := a.db.GetPodcastDirectoryCredentials(ctx); err == nil {
+            client := a.getPodcastDirectoryClient()
+            if show, found, lookupErr := client.LookupByFeedURL(ctx, creds, feedURL); lookupErr == nil && found {
+                candidate := podcast.SafeArtworkURL(show.ArtworkURL)
+                if candidate != "" && candidate != failedSource {
+                    recovered = candidate
+                }
+            }
+            if recovered == "" && strings.TrimSpace(title) != "" {
+                if shows, searchErr := client.Search(ctx, creds, title, 5); searchErr == nil {
+                    for _, show := range shows {
+                        if !strings.EqualFold(strings.TrimSpace(show.Title), strings.TrimSpace(title)) {
+                            continue
+                        }
+                        candidate := podcast.SafeArtworkURL(show.ArtworkURL)
+                        if candidate != "" && candidate != failedSource {
+                            recovered = candidate
+                            break
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if recovered == "" {
+        podcastArtworkRecoveryCooldowns.Store(key, now.Add(podcastArtworkRecoveryCooldown))
+        return ""
+    }
+    podcastArtworkRecoveryCooldowns.Delete(key)
+    _ = a.db.UpdatePodcastFeedImageURL(ctx, feedID, recovered)
+    return recovered
+}
+
+// Artwork is served by subscription ID only; callers cannot supply arbitrary
+// proxy URLs. Production fetcher validates all redirects and public addresses.
+func (a *API) getPodcastArtwork(w http.ResponseWriter,r *http.Request) {
+    id:=chi.URLParam(r,"id")
+    feedURL,title,source,err:=a.db.PodcastFeedArtworkTarget(r.Context(),id)
+    if errors.Is(err,sql.ErrNoRows) {
+        respondV2Error(w,r,http.StatusNotFound,"podcast_not_found","Podcast subscription not found",false,nil)
+        return
+    }
+    if err!=nil {
+        respondV2Error(w,r,http.StatusInternalServerError,"podcast_artwork_unavailable","Unable to read podcast artwork",true,nil)
+        return
+    }
+    ctx,cancel:=context.WithTimeout(r.Context(),12*time.Second)
+    defer cancel()
+    if source=="" {
+        source = a.recoverPodcastArtworkURL(ctx, id, feedURL, title, "")
+    }
+    if source=="" {
+        respondV2Error(w,r,http.StatusNotFound,"podcast_artwork_missing","This podcast has no supported public artwork",false,nil)
+        return
+    }
+    fetch:=a.podcastArtworkFetch
+    if fetch==nil {fetch=podcast.NewFetcher(false).FetchArtwork}
+    artwork,err:=fetch(ctx,source)
+    if err!=nil && !(errors.Is(err,podcast.ErrBlockedURL) || errors.Is(err,podcast.ErrInvalidFeed)) {
+        if fallback := a.recoverPodcastArtworkURL(ctx, id, feedURL, title, source); fallback != "" {
+            if altArtwork, altErr := fetch(ctx, fallback); altErr == nil {
+                artwork = altArtwork
+                err = nil
+            }
+        }
+    }
+    if err!=nil{
+        // Never leak the upstream URL, response or DNS details.
+        if errors.Is(err,podcast.ErrBlockedURL) || errors.Is(err,podcast.ErrInvalidFeed){
+            respondV2Error(w,r,http.StatusUnprocessableEntity,"podcast_artwork_invalid","Publisher artwork is not supported",false,nil)
+        }else{
+            respondV2Error(w,r,http.StatusBadGateway,"podcast_artwork_unavailable","Publisher artwork could not be retrieved",true,nil)
+        }
+        return
+    }
+    if len(artwork.Data)==0 || len(artwork.Data)>int(podcast.MaxArtworkBytes) || !podcastRasterType(artwork.MIME){
+        respondV2Error(w,r,http.StatusUnprocessableEntity,"podcast_artwork_invalid","Publisher artwork is not supported",false,nil)
+        return
+    }
+    w.Header().Set("Content-Type",artwork.MIME)
+    w.Header().Set("X-Content-Type-Options","nosniff")
+    w.Header().Set("Cache-Control","private, max-age=900")
+    w.Header().Set("Content-Security-Policy","default-src 'none'; sandbox")
+    w.Header().Set("Content-Length",strconv.Itoa(len(artwork.Data)))
+    w.WriteHeader(http.StatusOK)
+    _,_=w.Write(artwork.Data)
+}
+
+func podcastRasterType(t string) bool {
+    switch t{
+    case "image/png","image/jpeg","image/gif","image/webp":return true
+    default:return false
+    }
+}
+
+
+// exportPodcastOPML exports only currently followed public feed URLs.
+// OPML is a subscription interchange format, NOT a backup of playback state.
+func (a *API) exportPodcastOPML(w http.ResponseWriter,r *http.Request) {
+    followed,err:=a.db.ListSubscribedPodcasts(r.Context())
+    if err!=nil{
+        respondV2Error(w,r,http.StatusInternalServerError,"podcast_export_unavailable",
+            "Unable to read podcast subscriptions",true,nil)
+        return
+    }
+    subscriptions:=make([]podcast.OPMLSubscription,0,len(followed))
+    for _,feed:=range followed{
+        subscriptions=append(subscriptions,podcast.OPMLSubscription{Title:feed.Title,URL:feed.URL})
+    }
+    data,err:=podcast.ExportOPML(subscriptions)
+    if err!=nil{
+        respondV2Error(w,r,http.StatusUnprocessableEntity,"podcast_export_invalid",
+            "Subscription export includes an unsupported feed URL or exceeds limits",false,nil)
+        return
+    }
+    w.Header().Set("Content-Type","application/xml; charset=utf-8")
+    w.Header().Set("Content-Disposition",`attachment; filename="viib-podcasts.opml"`)
+    w.Header().Set("Cache-Control","no-store")
+    w.Header().Set("X-Content-Type-Options","nosniff")
+    w.Header().Set("Content-Length",strconv.Itoa(len(data)))
+    w.WriteHeader(http.StatusOK)
+    _,_=w.Write(data)
+}

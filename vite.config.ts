@@ -7,7 +7,19 @@ import tailwindcss from 'tailwindcss';
 import autoprefixer from 'autoprefixer';
 import tailwindConfig from './tailwind.config.js';
 
-export default defineConfig(() => {
+export default defineConfig(({ command }) => {
+    // Use the active Wails loopback backend when developing the browser UI
+    // alongside the desktop app: VIIB_API_PROXY_TARGET=http://127.0.0.1:34115.
+    // Keep the target backend-only (not a VITE_* browser-exposed variable).
+    const apiProxyTarget = (process.env.VIIB_API_PROXY_TARGET || 'http://127.0.0.1:8080').trim();
+    const proxyURL = new URL(apiProxyTarget);
+    if (proxyURL.protocol !== 'http:' ||
+      !['127.0.0.1', 'localhost', '[::1]'].includes(proxyURL.hostname) ||
+      proxyURL.username || proxyURL.password || proxyURL.pathname !== '/' ||
+      proxyURL.search || proxyURL.hash) {
+      throw new Error('VIIB_API_PROXY_TARGET must be a loopback HTTP origin, e.g. http://127.0.0.1:34115');
+    }
+    if (command === 'serve') console.info(`[ViiB] API proxy target: ${apiProxyTarget}`);
     return {
       css: {
         postcss: {
@@ -23,7 +35,7 @@ export default defineConfig(() => {
         // Proxy API requests to Go backend during development
         proxy: {
           '/api': {
-            target: 'http://127.0.0.1:8080',
+            target: apiProxyTarget,
             changeOrigin: true,
           },
         },

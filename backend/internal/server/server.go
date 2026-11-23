@@ -69,6 +69,8 @@ func New(apiHandler *api.API, frontendFS fs.FS) http.Handler {
 		}
 		apiHandler.ServeLocalCover(w, req)
 	})
+	// Podcast RSS subscription APIs have their own domain and never alter music.
+	r.Mount("/api/v2/podcasts", apiHandler.PodcastRoutes())
 	r.Mount("/api/v2/plex", apiHandler.PlexRoutes())
 
 	r.Mount("/api/v2/operations", apiHandler.V2LibraryOperationRoutes())

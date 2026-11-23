@@ -10,6 +10,13 @@ on:
 permissions:
   contents: read
 
+# Retain only the latest validation for a moving pull-request branch. This
+# avoids spending runner capacity on superseded roadmap commits. Main branch
+# pushes are never canceled by a later push.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   frontend:
     runs-on: ubuntu-latest
@@ -102,6 +109,27 @@ jobs:
           name: browser-e2e-failure-evidence
           path: output/playwright/
           retention-days: 7
+
+  # Narrow, fast feedback for the new podcast modules. Full backend checks
+  # continue to run independently; neither job substitutes for the other.
+  podcast-slice:
+    name: Podcast RSS and subscription smoke
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          show-progress: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.11'
+          cache-dependency-path: backend/go.sum
+      - name: Validate podcast parser, persistence and API
+        run: go test ./internal/podcast ./internal/db ./internal/api -run '^(TestPodcast|TestParseRSS|TestParseDuration|TestFetch|TestPublic)' -count=1 -timeout 8m
+      - name: Vet podcast parser and URL policy
+        run: go vet ./internal/podcast
 
   backend:
     runs-on: ubuntu-latest

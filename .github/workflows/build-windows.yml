@@ -107,11 +107,27 @@ jobs:
 
       - name: Build Wails application
         working-directory: backend/cmd/wails
+        env:
+          PODCAST_INDEX_API_KEY: ${{ secrets.PODCAST_INDEX_API_KEY }}
+          PODCAST_INDEX_API_SECRET: ${{ secrets.PODCAST_INDEX_API_SECRET }}
         run: |
-          $ldflags = "-s -w"
+          $pkg = "github.com/ajbergh/viib-mediahub/internal/podcast"
+          $hasKeys = (-not [string]::IsNullOrWhiteSpace($env:PODCAST_INDEX_API_KEY)) -and (-not [string]::IsNullOrWhiteSpace($env:PODCAST_INDEX_API_SECRET))
+          $podcastFlags = ""
+          if ($hasKeys) {
+            $k = $env:PODCAST_INDEX_API_KEY.Trim().Replace("'", "")
+            $s = $env:PODCAST_INDEX_API_SECRET.Trim().Replace("'", "")
+            $podcastFlags = "-X '${pkg}.embeddedDirectoryAPIKey=${k}' -X '${pkg}.embeddedDirectoryAPISecret=${s}'"
+          }
           if ("${{ inputs.debug }}" -eq "true") {
-            wails build -platform windows/amd64 -debug
+            if ($podcastFlags) {
+              wails build -platform windows/amd64 -debug -ldflags $podcastFlags
+            } else {
+              wails build -platform windows/amd64 -debug
+            }
           } else {
+            $ldflags = "-s -w"
+            if ($podcastFlags) { $ldflags = "$ldflags $podcastFlags" }
             wails build -platform windows/amd64 -ldflags "$ldflags"
           }
 

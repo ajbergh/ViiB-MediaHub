@@ -13,7 +13,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router';
 import {
   Home, Music, Disc, Mic2, ListMusic, Tags,
-  Download, Search, Settings, Library, Sparkles, Loader2,
+  Download, Search, Settings, Library, Sparkles, Loader2, Headphones,
   ChevronLeft, ChevronRight, BarChart3, Heart, Disc3, Copy, X, Gauge
 } from 'lucide-react';
 import { useStore } from '../store';
@@ -233,6 +233,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onMobileCl
             )}
             {effectiveCollapsed && <div className="my-1 border-t border-surface-border mx-2" role="separator" />}
             <SidebarItem to="/spotify" icon={SpotifyIcon} label="Spotify" collapsed={effectiveCollapsed} onNavigate={onMobileClose} />
+            <SidebarItem to="/podcasts" icon={Headphones} label="Podcasts" collapsed={effectiveCollapsed} onNavigate={onMobileClose} />
             <SidebarItem to="/downloads" icon={Download} label="Downloads" badge={downloadCount} collapsed={effectiveCollapsed} onNavigate={onMobileClose} />
             <SidebarItem to="/stats" icon={BarChart3} label="Stats" collapsed={effectiveCollapsed} onNavigate={onMobileClose} />
             <SidebarItem to="/duplicates" icon={Copy} label="Duplicates" collapsed={effectiveCollapsed} onNavigate={onMobileClose} />

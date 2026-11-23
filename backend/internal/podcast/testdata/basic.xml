@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Example &amp; Friends</title>
+    <description><![CDATA[<p>Test <strong>description</strong>.</p><script>bad()</script>]]></description>
+    <language>en-US</language>
+    <itunes:author>A. Producer</itunes:author>
+    <itunes:image href="https://cdn.example.org/show.jpg"/>
+    <item>
+      <guid isPermaLink="false">episode-001</guid>
+      <title>Welcome to the Show</title>
+      <description><![CDATA[<p>Episode <b>one</b> &amp; more.</p>]]></description>
+      <pubDate>Sun, 22 Nov 2026 12:00:00 +0000</pubDate>
+      <itunes:duration>01:02:03</itunes:duration>
+      <enclosure url="https://cdn.example.org/episode-1.mp3" length="12345" type="audio/mpeg"/>
+    </item>
+    <item>
+      <guid>episode-002</guid>
+      <title>Second Episode</title>
+      <itunes:duration>312</itunes:duration>
+      <enclosure url="https://cdn.example.org/episode-2.m4a" type="audio/mp4"/>
+    </item>
+  </channel>
+</rss>
