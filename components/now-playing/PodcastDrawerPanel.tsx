@@ -7,12 +7,19 @@ import {
     BookOpen,
     ChevronLeft,
     ChevronRight,
+    Crosshair,
     ExternalLink,
+    FastForward,
     FileText,
     ListOrdered,
     Loader2,
     LocateFixed,
     MessageSquareText,
+    Minus,
+    Pause,
+    Play,
+    Plus,
+    RotateCcw,
     Search,
     Trash2,
     X,
@@ -241,8 +248,46 @@ function renderSafeRichDescription(richHtml: string | undefined, plainText: stri
     return <p className="text-xs text-text-subtle">No episode notes available.</p>;
 }
 
+function readSavedTranscriptOffsetMs(episodeId?: string): number {
+    if (!episodeId || typeof localStorage === 'undefined') return 0;
+    try {
+        const raw = localStorage.getItem(`viib:podcast-transcript-offset:${episodeId}`);
+        if (!raw) return 0;
+        const parsed = Number(raw);
+        return Number.isFinite(parsed) ? Math.round(parsed) : 0;
+    } catch {
+        return 0;
+    }
+}
+
+function saveTranscriptOffsetMs(episodeId: string | undefined, offsetMs: number): void {
+    if (!episodeId) return;
+    try {
+        if (offsetMs === 0) {
+            localStorage.removeItem(`viib:podcast-transcript-offset:${episodeId}`);
+        } else {
+            localStorage.setItem(`viib:podcast-transcript-offset:${episodeId}`, String(Math.round(offsetMs)));
+        }
+    } catch {
+        // Ignore restricted browser storage environments.
+    }
+    window.dispatchEvent(
+        new CustomEvent('viib:podcast-transcript-offset-changed', {
+            detail: { episodeId, offsetMs: Math.round(offsetMs) },
+        }),
+    );
+}
+
+function formatOffsetLabel(offsetMs: number): string {
+    const secs = Math.round(offsetMs / 1000);
+    if (secs === 0) return '0s';
+    return `${secs > 0 ? '+' : '−'}${Math.abs(secs)}s`;
+}
+
 interface PodcastTranscriptLyricsProps {
+    episodeId?: string;
     cues: PodcastTranscriptCue[];
+    chapters?: PodcastChapter[];
     currentTime: number;
     onSeek: (time: number) => void;
     isVisible: boolean;
@@ -253,10 +298,13 @@ interface PodcastTranscriptLyricsProps {
 
 /**
  * Renders podcast transcript cues with ViiB's centered, blurred-inactive
- * scrolling-lyrics presentation and auto-centering active-cue tracking.
+ * scrolling-lyrics presentation, auto-centering tracking, and DAI sponsor-break
+ * pause/sync controls.
  */
 export const PodcastTranscriptLyrics: React.FC<PodcastTranscriptLyricsProps> = ({
+    episodeId,
     cues,
+    chapters = [],
     currentTime,
     onSeek,
     isVisible,
@@ -269,9 +317,46 @@ export const PodcastTranscriptLyrics: React.FC<PodcastTranscriptLyricsProps> = (
     const activeLineRef = useRef<HTMLDivElement>(null);
     const resumeTimerRef = useRef<number | null>(null);
     const [autoFollow, setAutoFollow] = useState(true);
+    const [offsetMs, setOffsetMs] = useState<number>(() => readSavedTranscriptOffsetMs(episodeId));
+    const [pausedAtSec, setPausedAtSec] = useState<number | null>(null);
+    const [alignMode, setAlignMode] = useState(false);
+
+    useEffect(() => {
+        setOffsetMs(readSavedTranscriptOffsetMs(episodeId));
+        setPausedAtSec(null);
+        setAlignMode(false);
+    }, [episodeId]);
+
+    useEffect(() => {
+        if (!episodeId) return;
+        const onSyncChanged = (event: Event) => {
+            const custom = event as CustomEvent<{ episodeId?: string; offsetMs?: number }>;
+            if (custom.detail?.episodeId === episodeId && typeof custom.detail.offsetMs === 'number') {
+                setOffsetMs(custom.detail.offsetMs);
+            }
+        };
+        window.addEventListener('viib:podcast-transcript-offset-changed', onSyncChanged);
+        return () => window.removeEventListener('viib:podcast-transcript-offset-changed', onSyncChanged);
+    }, [episodeId]);
+
+    const updateOffsetMs = (nextMs: number) => {
+        const clamped = Math.max(-3600_000, Math.min(3600_000, Math.round(nextMs)));
+        setOffsetMs(clamped);
+        saveTranscriptOffsetMs(episodeId, clamped);
+    };
+
+    const nonContentChapter = useMemo(() => {
+        return chapters.find(
+            (ch) =>
+                ch.toc === false &&
+                currentTime >= ch.startTime &&
+                (ch.endTime === undefined || currentTime < ch.endTime),
+        );
+    }, [chapters, currentTime]);
 
     const trimmedQuery = query.trim().toLowerCase();
-    const currentTimeMs = currentTime * 1000;
+    const effectivePlaybackSec = pausedAtSec !== null ? pausedAtSec : currentTime;
+    const currentTimeMs = Math.max(0, Math.round(effectivePlaybackSec * 1000) - offsetMs);
 
     const activeCueIndex = useMemo(() => {
         return cues.reduce((best, cue, idx) => {
@@ -330,9 +415,34 @@ export const PodcastTranscriptLyrics: React.FC<PodcastTranscriptLyricsProps> = (
     };
 
     useEffect(() => {
-        if (!isVisible || trimmedQuery || !autoFollow || activeCueIndex < 0) return;
+        if (!isVisible || trimmedQuery || !autoFollow || pausedAtSec !== null || activeCueIndex < 0) return;
         centerActiveLine(false);
-    }, [activeCueIndex, isVisible, presentation, trimmedQuery, autoFollow, cues.length]);
+    }, [activeCueIndex, isVisible, presentation, trimmedQuery, autoFollow, pausedAtSec, cues.length]);
+
+    const handleToggleBreakPause = () => {
+        if (pausedAtSec === null) {
+            setPausedAtSec(currentTime);
+            setAlignMode(false);
+            return;
+        }
+        const elapsedBreakMs = Math.max(0, Math.round((currentTime - pausedAtSec) * 1000));
+        setPausedAtSec(null);
+        updateOffsetMs(offsetMs + elapsedBreakMs);
+        setAutoFollow(true);
+    };
+
+    const handleCueAction = (cue: PodcastTranscriptCue) => {
+        if (alignMode) {
+            const nextOffset = Math.round(currentTime * 1000) - cue.startMs;
+            setPausedAtSec(null);
+            setAlignMode(false);
+            setAutoFollow(true);
+            updateOffsetMs(nextOffset);
+            return;
+        }
+        setAutoFollow(true);
+        onSeek(Math.max(0, (cue.startMs + offsetMs) / 1000));
+    };
 
     if (cues.length === 0) {
         return (
@@ -343,53 +453,177 @@ export const PodcastTranscriptLyrics: React.FC<PodcastTranscriptLyricsProps> = (
         );
     }
 
-    if (trimmedQuery) {
-        if (filteredCues.length === 0) {
-            return (
-                <div className="rounded-xl bg-surface-2/60 border border-surface-border p-6 text-center text-xs text-text-subtle">
-                    No transcript lines match &ldquo;{query.trim()}&rdquo;.
-                </div>
-            );
-        }
-        return (
-            <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1" aria-label="Transcript search results">
-                {filteredCues.map((cue, idx) => {
-                    const isActive = cue === activeCue;
-                    const startSeconds = cue.startMs / 1000;
-                    return (
-                        <button
-                            key={`${cue.startMs}-${idx}`}
-                            type="button"
-                            onClick={() => onSeek(startSeconds)}
-                            aria-current={isActive ? 'true' : undefined}
-                            className={`w-full flex items-start gap-2.5 p-2.5 rounded-xl border text-left transition-colors ${
-                                isActive
-                                    ? 'bg-brand/15 border-brand/40 text-text-main'
-                                    : 'bg-surface-2/70 border-surface-border text-text-secondary hover:bg-surface-hover hover:text-text-main'
-                            }`}
-                        >
-                            <span className={`text-[11px] font-mono shrink-0 pt-0.5 ${isActive ? 'text-brand font-semibold' : 'text-text-subtle'}`}>
-                                {formatTimestamp(startSeconds)}
+    const syncToolbar = (
+        <div
+            className={`flex flex-wrap items-center justify-between gap-1.5 rounded-xl bg-surface-2/80 border border-surface-border px-2.5 py-1.5 text-[11px] shrink-0 ${
+                onStage ? 'mx-auto w-full max-w-2xl mt-3' : ''
+            }`}
+        >
+            <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                    type="button"
+                    onClick={handleToggleBreakPause}
+                    aria-pressed={pausedAtSec !== null}
+                    title={
+                        pausedAtSec !== null
+                            ? 'Resume transcript and shift timing by the sponsor break duration'
+                            : 'Freeze transcript during a sponsor break; resuming shifts timing automatically'
+                    }
+                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-semibold transition-colors ${
+                        pausedAtSec !== null
+                            ? 'bg-brand text-surface-0'
+                            : 'bg-surface-3 text-text-main hover:bg-surface-highlight'
+                    }`}
+                >
+                    {pausedAtSec !== null ? (
+                        <>
+                            <Play size={11} aria-hidden="true" />
+                            <span>
+                                Resume (+{formatTimestamp(Math.max(0, currentTime - pausedAtSec))})
                             </span>
-                            <div className="flex-1 min-w-0 text-xs leading-relaxed">
-                                {cue.speaker && (
-                                    <span className="font-semibold text-text-main mr-1.5">
-                                        {cue.speaker}:
+                        </>
+                    ) : (
+                        <>
+                            <Pause size={11} aria-hidden="true" />
+                            <span>Pause for break</span>
+                        </>
+                    )}
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => setAlignMode((v) => !v)}
+                    aria-pressed={alignMode}
+                    title="Click any transcript line to align it to the current audio position"
+                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-semibold transition-colors ${
+                        alignMode
+                            ? 'bg-brand text-surface-0'
+                            : 'bg-surface-3 text-text-secondary hover:text-text-main hover:bg-surface-highlight'
+                    }`}
+                >
+                    <Crosshair size={11} aria-hidden="true" />
+                    <span>{alignMode ? 'Click spoken line…' : 'Align line'}</span>
+                </button>
+
+                {nonContentChapter && nonContentChapter.endTime !== undefined && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (nonContentChapter.endTime !== undefined) {
+                                onSeek(nonContentChapter.endTime);
+                            }
+                        }}
+                        className="inline-flex items-center gap-1 rounded-full bg-warning/15 text-warning px-2.5 py-1 font-semibold hover:bg-warning/25 transition-colors"
+                    >
+                        <FastForward size={11} aria-hidden="true" />
+                        <span>Skip break</span>
+                    </button>
+                )}
+            </div>
+
+            <div className="flex items-center gap-1 font-mono">
+                <button
+                    type="button"
+                    onClick={() => updateOffsetMs(offsetMs - 5000)}
+                    aria-label="Shift transcript earlier by 5 seconds"
+                    className="rounded px-1.5 py-0.5 bg-surface-3 text-text-secondary hover:text-text-main hover:bg-surface-highlight"
+                >
+                    −5s
+                </button>
+                <button
+                    type="button"
+                    onClick={() => updateOffsetMs(offsetMs - 1000)}
+                    aria-label="Shift transcript earlier by 1 second"
+                    className="rounded p-1 bg-surface-3 text-text-secondary hover:text-text-main hover:bg-surface-highlight"
+                >
+                    <Minus size={10} aria-hidden="true" />
+                </button>
+                <button
+                    type="button"
+                    onClick={() => updateOffsetMs(0)}
+                    disabled={offsetMs === 0}
+                    title="Transcript sync offset (click to reset to 0s)"
+                    aria-label={`Transcript offset ${formatOffsetLabel(offsetMs)}, click to reset`}
+                    className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-semibold ${
+                        offsetMs !== 0
+                            ? 'bg-brand/15 text-brand hover:bg-brand/25'
+                            : 'text-text-subtle'
+                    }`}
+                >
+                    <span>{formatOffsetLabel(offsetMs)}</span>
+                    {offsetMs !== 0 && <RotateCcw size={10} aria-hidden="true" />}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => updateOffsetMs(offsetMs + 1000)}
+                    aria-label="Shift transcript later by 1 second"
+                    className="rounded p-1 bg-surface-3 text-text-secondary hover:text-text-main hover:bg-surface-highlight"
+                >
+                    <Plus size={10} aria-hidden="true" />
+                </button>
+                <button
+                    type="button"
+                    onClick={() => updateOffsetMs(offsetMs + 5000)}
+                    aria-label="Shift transcript later by 5 seconds"
+                    className="rounded px-1.5 py-0.5 bg-surface-3 text-text-secondary hover:text-text-main hover:bg-surface-highlight"
+                >
+                    +5s
+                </button>
+            </div>
+        </div>
+    );
+
+    if (trimmedQuery) {
+        return (
+            <div className="flex-1 min-h-0 flex flex-col gap-2">
+                {syncToolbar}
+                {filteredCues.length === 0 ? (
+                    <div className="rounded-xl bg-surface-2/60 border border-surface-border p-6 text-center text-xs text-text-subtle">
+                        No transcript lines match &ldquo;{query.trim()}&rdquo;.
+                    </div>
+                ) : (
+                    <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1" aria-label="Transcript search results">
+                        {filteredCues.map((cue, idx) => {
+                            const isActive = cue === activeCue;
+                            const displaySeconds = Math.max(0, (cue.startMs + offsetMs) / 1000);
+                            return (
+                                <button
+                                    key={`${cue.startMs}-${idx}`}
+                                    type="button"
+                                    onClick={() => handleCueAction(cue)}
+                                    aria-current={isActive ? 'true' : undefined}
+                                    className={`w-full flex items-start gap-2.5 p-2.5 rounded-xl border text-left transition-colors ${
+                                        isActive
+                                            ? 'bg-brand/15 border-brand/40 text-text-main'
+                                            : 'bg-surface-2/70 border-surface-border text-text-secondary hover:bg-surface-hover hover:text-text-main'
+                                    }`}
+                                >
+                                    <span className={`text-[11px] font-mono shrink-0 pt-0.5 ${isActive ? 'text-brand font-semibold' : 'text-text-subtle'}`}>
+                                        {formatTimestamp(displaySeconds)}
                                     </span>
-                                )}
-                                <span className={isActive ? 'text-text-main' : 'text-text-secondary'}>
-                                    {cue.text}
-                                </span>
-                            </div>
-                        </button>
-                    );
-                })}
+                                    <div className="flex-1 min-w-0 text-xs leading-relaxed">
+                                        {cue.speaker && (
+                                            <span className="font-semibold text-text-main mr-1.5">
+                                                {cue.speaker}:
+                                            </span>
+                                        )}
+                                        <span className={isActive ? 'text-text-main' : 'text-text-secondary'}>
+                                            {cue.text}
+                                        </span>
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
         );
     }
 
     return (
-        <div className="relative flex-1 min-h-0 flex flex-col">
+        <div className="relative flex-1 min-h-0 flex flex-col gap-2">
+            {syncToolbar}
+
             <div
                 ref={viewportRef}
                 data-transcript-scroll
@@ -403,7 +637,7 @@ export const PodcastTranscriptLyrics: React.FC<PodcastTranscriptLyricsProps> = (
                         const isActive = idx === activeCueIndex;
                         const prevSpeaker = idx > 0 ? cues[idx - 1]?.speaker : '';
                         const showSpeaker = Boolean(cue.speaker && cue.speaker !== prevSpeaker);
-                        const startSeconds = cue.startMs / 1000;
+                        const startSeconds = Math.max(0, (cue.startMs + offsetMs) / 1000);
                         return (
                             <div
                                 key={`${cue.startMs}-${idx}`}
@@ -411,7 +645,11 @@ export const PodcastTranscriptLyrics: React.FC<PodcastTranscriptLyricsProps> = (
                                 role="button"
                                 tabIndex={0}
                                 aria-current={isActive ? 'true' : undefined}
-                                title={`Jump to ${formatTimestamp(startSeconds)}`}
+                                title={
+                                    alignMode
+                                        ? 'Align transcript to this line'
+                                        : `Jump to ${formatTimestamp(startSeconds)}`
+                                }
                                 className={`cursor-pointer transition-all duration-500 font-bold leading-snug px-4 motion-reduce:transition-none ${
                                     onStage
                                         ? 'text-[clamp(1.35rem,4vw,3.5rem)] tracking-tight'
@@ -423,18 +661,16 @@ export const PodcastTranscriptLyrics: React.FC<PodcastTranscriptLyricsProps> = (
                                                   ? 'bg-gradient-to-r from-text-main via-text-main to-brand bg-clip-text text-transparent'
                                                   : 'text-text-main'
                                           }`
-                                        : 'text-text-main opacity-30 blur-[1px] hover:opacity-60 hover:blur-0'
+                                        : alignMode
+                                          ? 'text-text-main opacity-65 hover:opacity-100 hover:text-brand'
+                                          : 'text-text-main opacity-30 blur-[1px] hover:opacity-60 hover:blur-0'
                                 }`}
-                                onClick={() => {
-                                    setAutoFollow(true);
-                                    onSeek(startSeconds);
-                                }}
+                                onClick={() => handleCueAction(cue)}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter' || e.key === ' ') {
                                         e.preventDefault();
                                         e.stopPropagation();
-                                        setAutoFollow(true);
-                                        onSeek(startSeconds);
+                                        handleCueAction(cue);
                                     }
                                 }}
                             >
@@ -486,26 +722,32 @@ export const PodcastTranscriptStage: React.FC<{
 }> = ({ song, currentTime, onSeek, isVisible }) => {
     const episodeId = song.podcastEpisodeId;
     const [cues, setCues] = useState<PodcastTranscriptCue[]>([]);
+    const [chapters, setChapters] = useState<PodcastChapter[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         setCues([]);
+        setChapters([]);
         setError(null);
         if (!episodeId) return;
         const controller = new AbortController();
         setLoading(true);
-        void podcastsAPI
-            .getEpisodeTranscript(episodeId, controller.signal)
-            .then((res) => {
-                if (!controller.signal.aborted) setCues(res.cues ?? []);
-            })
-            .catch(() => {
-                if (!controller.signal.aborted) setError('Transcript not available for this episode.');
-            })
-            .finally(() => {
-                if (!controller.signal.aborted) setLoading(false);
-            });
+        void Promise.allSettled([
+            podcastsAPI.getEpisodeTranscript(episodeId, controller.signal),
+            podcastsAPI.getEpisodeChapters(episodeId, controller.signal),
+        ]).then(([transcriptRes, chaptersRes]) => {
+            if (controller.signal.aborted) return;
+            if (transcriptRes.status === 'fulfilled') {
+                setCues(transcriptRes.value.cues ?? []);
+            } else {
+                setError('Transcript not available for this episode.');
+            }
+            if (chaptersRes.status === 'fulfilled') {
+                setChapters(chaptersRes.value.chapters ?? []);
+            }
+            setLoading(false);
+        });
         return () => controller.abort();
     }, [episodeId]);
 
@@ -519,7 +761,9 @@ export const PodcastTranscriptStage: React.FC<{
 
     return (
         <PodcastTranscriptLyrics
+            episodeId={episodeId}
             cues={cues}
+            chapters={chapters}
             currentTime={currentTime}
             onSeek={onSeek}
             isVisible={isVisible}
@@ -924,7 +1168,9 @@ export const PodcastDrawerPanel: React.FC<PodcastDrawerPanelProps> = ({
                         )}
 
                         <PodcastTranscriptLyrics
+                            episodeId={episodeId}
                             cues={cues}
+                            chapters={chapters}
                             currentTime={currentTime}
                             onSeek={onSeek}
                             isVisible={isVisible && subTab === 'transcript'}

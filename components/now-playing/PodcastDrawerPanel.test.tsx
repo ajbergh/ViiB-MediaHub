@@ -80,7 +80,7 @@ describe('PodcastTranscriptLyrics', () => {
       );
     });
 
-    const match = container.querySelector('button');
+    const match = container.querySelector<HTMLElement>('[aria-label="Transcript search results"] button');
     expect(match?.textContent).toContain('0:09');
     expect(match?.textContent).toContain('Yes, that happened last week.');
     expect(container.textContent).not.toContain('Have you ever tried');
@@ -89,5 +89,120 @@ describe('PodcastTranscriptLyrics', () => {
       match?.click();
     });
     expect(onSeek).toHaveBeenCalledWith(9);
+  });
+
+  it('freezes transcript during sponsor break and shifts timing on Resume', () => {
+    Element.prototype.scrollTo = vi.fn();
+    localStorage.clear();
+    const onSeek = vi.fn();
+
+    act(() => {
+      root.render(
+        <PodcastTranscriptLyrics
+          episodeId="ep-break-1"
+          cues={cues}
+          currentTime={6}
+          onSeek={onSeek}
+          isVisible
+        />,
+      );
+    });
+
+    const pauseBtn = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Pause for break'),
+    );
+    expect(pauseBtn).toBeDefined();
+
+    act(() => {
+      pauseBtn?.click();
+    });
+
+    // Audio advances 30s through sponsor break (6s -> 36s), transcript stays frozen at 6s (cue[1]).
+    act(() => {
+      root.render(
+        <PodcastTranscriptLyrics
+          episodeId="ep-break-1"
+          cues={cues}
+          currentTime={36}
+          onSeek={onSeek}
+          isVisible
+        />,
+      );
+    });
+
+    const cueLinesPaused = Array.from(container.querySelectorAll<HTMLElement>('[role="button"]'));
+    expect(cueLinesPaused[1].getAttribute('aria-current')).toBe('true');
+
+    const resumeBtn = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Resume (+0:30)'),
+    );
+    expect(resumeBtn).toBeDefined();
+
+    act(() => {
+      resumeBtn?.click();
+    });
+
+    // Offset is now +30s; at 40s audio time, effective transcript time is 10s (cue[2]).
+    act(() => {
+      root.render(
+        <PodcastTranscriptLyrics
+          episodeId="ep-break-1"
+          cues={cues}
+          currentTime={40}
+          onSeek={onSeek}
+          isVisible
+        />,
+      );
+    });
+
+    const cueLinesAfter = Array.from(container.querySelectorAll<HTMLElement>('[role="button"]'));
+    expect(cueLinesAfter[2].getAttribute('aria-current')).toBe('true');
+    expect(container.textContent).toContain('+30s');
+    expect(onSeek).not.toHaveBeenCalled();
+  });
+
+  it('aligns any line to current audio time without seeking and surfaces Skip break for toc=false chapters', () => {
+    Element.prototype.scrollTo = vi.fn();
+    localStorage.clear();
+    const onSeek = vi.fn();
+
+    act(() => {
+      root.render(
+        <PodcastTranscriptLyrics
+          episodeId="ep-align-1"
+          cues={cues}
+          chapters={[{ startTime: 20, endTime: 50, title: 'Sponsor', toc: false }]}
+          currentTime={24}
+          onSeek={onSeek}
+          isVisible
+        />,
+      );
+    });
+
+    const skipBreakBtn = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Skip break'),
+    );
+    expect(skipBreakBtn).toBeDefined();
+    act(() => {
+      skipBreakBtn?.click();
+    });
+    expect(onSeek).toHaveBeenCalledWith(50);
+
+    onSeek.mockClear();
+    const alignBtn = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Align line'),
+    );
+    act(() => {
+      alignBtn?.click();
+    });
+
+    // Align cue[1] (4s) to currentTime=24s => +20s offset, without seeking.
+    const cueLines = Array.from(container.querySelectorAll<HTMLElement>('[role="button"]'));
+    act(() => {
+      cueLines[1].click();
+    });
+    expect(onSeek).not.toHaveBeenCalled();
+    expect(cueLines[1].getAttribute('aria-current')).toBe('true');
+    expect(container.textContent).toContain('+20s');
   });
 });
