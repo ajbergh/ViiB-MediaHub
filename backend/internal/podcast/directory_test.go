@@ -3,6 +3,7 @@ package podcast
 import (
 	"context"
 	"crypto/sha1"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -276,5 +277,43 @@ func TestEmbeddedDirectoryCredentialsResolution(t *testing.T) {
 	t.Setenv("PODCAST_INDEX_API_SECRET", "")
 	if _, ok := EmbeddedDirectoryCredentials(); ok {
 		t.Fatal("expected control-character credential to be rejected")
+	}
+}
+
+func TestDirectoryLookupByFeedURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/1.0/podcasts/byfeedurl" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		if r.URL.Query().Get("url") != "https://feeds.simplecast.com/Y8lFbOT4" {
+			t.Fatalf("unexpected url param %q", r.URL.Query().Get("url"))
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "true",
+			"feed": map[string]any{
+				"id":      555,
+				"title":   "Freakonomics Radio",
+				"url":     "https://feeds.simplecast.com/Y8lFbOT4",
+				"artwork": "https://image.simplecastcdn.com/images/freak/image.jpg?aid=rss_feed",
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := &DirectoryClient{
+		fetcher: testFetcher(t, server),
+		baseURL: "http://public.example/api/1.0",
+	}
+	show, found, err := client.LookupByFeedURL(
+		context.Background(),
+		DirectoryCredentials{APIKey: "k", APISecret: "s"},
+		"https://feeds.simplecast.com/Y8lFbOT4",
+	)
+	if err != nil || !found {
+		t.Fatalf("LookupByFeedURL failed: found=%v err=%v", found, err)
+	}
+	if show.Title != "Freakonomics Radio" ||
+		show.ArtworkURL != "https://image.simplecastcdn.com/images/freak/image.jpg?aid=rss_feed" {
+		t.Fatalf("unexpected show: %+v", show)
 	}
 }

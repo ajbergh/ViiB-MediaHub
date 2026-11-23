@@ -302,6 +302,42 @@ func (d *DB) PodcastArtworkURL(ctx context.Context,feedID string)(string,error){
     return podcast.SafeArtworkURL(raw),nil
 }
 
+// PodcastFeedArtworkTarget resolves the canonical feed URL, title, and safe
+// artwork URL for an actively subscribed show.
+func (d *DB) PodcastFeedArtworkTarget(ctx context.Context, feedID string) (feedURL, title, imageURL string, err error) {
+    if err = d.EnsurePodcastSchema(); err != nil {
+        return "", "", "", err
+    }
+    var rawImage string
+    err = d.conn.QueryRowContext(ctx, `
+SELECT f.canonical_url, f.title, f.image_url
+FROM podcast_feeds f
+JOIN podcast_subscriptions s ON s.feed_id = f.id
+WHERE f.id = ?`, feedID).Scan(&feedURL, &title, &rawImage)
+    if err != nil {
+        return "", "", "", err
+    }
+    return feedURL, title, podcast.SafeArtworkURL(rawImage), nil
+}
+
+// UpdatePodcastFeedImageURL validates and caches a recovered public artwork URL
+// for an actively subscribed feed.
+func (d *DB) UpdatePodcastFeedImageURL(ctx context.Context, feedID, imageURL string) error {
+    if err := d.EnsurePodcastSchema(); err != nil {
+        return err
+    }
+    safe := podcast.SafeArtworkURL(imageURL)
+    if safe == "" {
+        return podcast.ErrBlockedURL
+    }
+    _, err := d.conn.ExecContext(ctx, `
+UPDATE podcast_feeds
+SET image_url = ?, updated_at = ?
+WHERE id = ? AND EXISTS (SELECT 1 FROM podcast_subscriptions s WHERE s.feed_id = podcast_feeds.id)`,
+        safe, time.Now().UnixMilli(), feedID)
+    return err
+}
+
 func (d *DB) UnsubscribePodcast(ctx context.Context,feedID string) error {
     if err:=d.EnsurePodcastSchema();err!=nil{return err}
     tx,err:=d.conn.BeginTx(ctx,nil)

@@ -195,7 +195,7 @@ const PodcastArtwork: React.FC<{ feedId: string; title: string; imageURL?: strin
       }`}
     >
       <Headphones size={large ? 40 : 25} aria-hidden="true" />
-      {imageURL && !failed && (
+      {feedId && !failed && (
         <img
           src={'/api/v2/podcasts/feeds/' + encodeURIComponent(feedId) + '/artwork'}
           alt={title + ' cover art'}

@@ -11,6 +11,7 @@ import (
     "net/http"
     "strconv"
     "strings"
+    "sync"
     "time"
 
     "github.com/ajbergh/viib-mediahub/internal/podcast"
@@ -274,11 +275,80 @@ func (a *API) schedulePodcastRefresh(w http.ResponseWriter,r *http.Request){
 }
 
 
+type podcastArtworkCooldownKey struct {
+    api    *API
+    feedID string
+}
+
+var podcastArtworkRecoveryCooldowns sync.Map // map[podcastArtworkCooldownKey]time.Time
+
+const podcastArtworkRecoveryCooldown = 10 * time.Minute
+
+// recoverPodcastArtworkURL attempts to resolve missing (or broken) show cover
+// artwork by re-checking the RSS feed first and falling back to Podcast Index
+// (LookupByFeedURL, then title Search) when directory credentials exist.
+func (a *API) recoverPodcastArtworkURL(ctx context.Context, feedID, feedURL, title, failedSource string) string {
+    if a.dataDir == "" && a.podcastFetcher == nil && !a.hasPodcastDirectoryClientForTest() {
+        return ""
+    }
+    key := podcastArtworkCooldownKey{api: a, feedID: feedID}
+    now := time.Now()
+    if last, ok := podcastArtworkRecoveryCooldowns.Load(key); ok {
+        if until, valid := last.(time.Time); valid && now.Before(until) {
+            return ""
+        }
+    }
+
+    recovered := ""
+    if (a.podcastFetcher != nil || a.dataDir != "") && strings.TrimSpace(feedURL) != "" {
+        if fetched, err := a.podcastFetch(ctx, feedURL); err == nil {
+            candidate := podcast.SafeArtworkURL(fetched.Feed.ImageURL)
+            if candidate != "" && candidate != failedSource {
+                recovered = candidate
+            }
+        }
+    }
+
+    if recovered == "" && (a.dataDir != "" || a.hasPodcastDirectoryClientForTest()) {
+        if creds, err := a.db.GetPodcastDirectoryCredentials(ctx); err == nil {
+            client := a.getPodcastDirectoryClient()
+            if show, found, lookupErr := client.LookupByFeedURL(ctx, creds, feedURL); lookupErr == nil && found {
+                candidate := podcast.SafeArtworkURL(show.ArtworkURL)
+                if candidate != "" && candidate != failedSource {
+                    recovered = candidate
+                }
+            }
+            if recovered == "" && strings.TrimSpace(title) != "" {
+                if shows, searchErr := client.Search(ctx, creds, title, 5); searchErr == nil {
+                    for _, show := range shows {
+                        if !strings.EqualFold(strings.TrimSpace(show.Title), strings.TrimSpace(title)) {
+                            continue
+                        }
+                        candidate := podcast.SafeArtworkURL(show.ArtworkURL)
+                        if candidate != "" && candidate != failedSource {
+                            recovered = candidate
+                            break
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if recovered == "" {
+        podcastArtworkRecoveryCooldowns.Store(key, now.Add(podcastArtworkRecoveryCooldown))
+        return ""
+    }
+    podcastArtworkRecoveryCooldowns.Delete(key)
+    _ = a.db.UpdatePodcastFeedImageURL(ctx, feedID, recovered)
+    return recovered
+}
+
 // Artwork is served by subscription ID only; callers cannot supply arbitrary
 // proxy URLs. Production fetcher validates all redirects and public addresses.
 func (a *API) getPodcastArtwork(w http.ResponseWriter,r *http.Request) {
     id:=chi.URLParam(r,"id")
-    source,err:=a.db.PodcastArtworkURL(r.Context(),id)
+    feedURL,title,source,err:=a.db.PodcastFeedArtworkTarget(r.Context(),id)
     if errors.Is(err,sql.ErrNoRows) {
         respondV2Error(w,r,http.StatusNotFound,"podcast_not_found","Podcast subscription not found",false,nil)
         return
@@ -287,15 +357,26 @@ func (a *API) getPodcastArtwork(w http.ResponseWriter,r *http.Request) {
         respondV2Error(w,r,http.StatusInternalServerError,"podcast_artwork_unavailable","Unable to read podcast artwork",true,nil)
         return
     }
+    ctx,cancel:=context.WithTimeout(r.Context(),12*time.Second)
+    defer cancel()
+    if source=="" {
+        source = a.recoverPodcastArtworkURL(ctx, id, feedURL, title, "")
+    }
     if source=="" {
         respondV2Error(w,r,http.StatusNotFound,"podcast_artwork_missing","This podcast has no supported public artwork",false,nil)
         return
     }
-    ctx,cancel:=context.WithTimeout(r.Context(),12*time.Second)
-    defer cancel()
     fetch:=a.podcastArtworkFetch
     if fetch==nil {fetch=podcast.NewFetcher(false).FetchArtwork}
     artwork,err:=fetch(ctx,source)
+    if err!=nil && !(errors.Is(err,podcast.ErrBlockedURL) || errors.Is(err,podcast.ErrInvalidFeed)) {
+        if fallback := a.recoverPodcastArtworkURL(ctx, id, feedURL, title, source); fallback != "" {
+            if altArtwork, altErr := fetch(ctx, fallback); altErr == nil {
+                artwork = altArtwork
+                err = nil
+            }
+        }
+    }
     if err!=nil{
         // Never leak the upstream URL, response or DNS details.
         if errors.Is(err,podcast.ErrBlockedURL) || errors.Is(err,podcast.ErrInvalidFeed){

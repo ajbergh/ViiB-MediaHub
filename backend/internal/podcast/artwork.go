@@ -13,16 +13,46 @@ import (
     "time"
 )
 
-const MaxArtworkBytes int64 = 2 << 20
+// MaxArtworkBytes caps individual downloaded podcast cover images at 4 MiB.
+const MaxArtworkBytes int64 = 4 << 20
 
+// Artwork holds validated raster artwork bytes and their sniffed MIME type.
 type Artwork struct {
     Data []byte
     MIME string
 }
 
+func isSafeArtworkVersionParam(value string) bool {
+    if len(value) == 0 || len(value) > 24 {
+        return false
+    }
+    for _, r := range value {
+        if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || r == '.' || r == '_' || r == '-') {
+            return false
+        }
+    }
+    return true
+}
+
+func isSafeArtworkCropParam(value string) bool {
+    parts := strings.Split(value, ",")
+    if len(parts) == 0 || len(parts) > 4 {
+        return false
+    }
+    for _, part := range parts {
+        switch strings.TrimSpace(part) {
+        case "faces", "center", "entropy", "edges", "top", "bottom", "left", "right", "focalpoint", "smart":
+        default:
+            return false
+        }
+    }
+    return true
+}
+
 // ValidateArtworkURL reuses the RSS connector's address/scheme/port policy
-// while permitting a small allowlist of public CDN resize parameters. Tokens,
-// signatures, private URLs and unknown parameters are deliberately refused.
+// while permitting a small allowlist of public CDN resize and feed-source
+// parameters (such as Simplecast's ?aid=rss_feed). Tokens, signatures,
+// private URLs and unknown parameters are deliberately refused.
 func ValidateArtworkURL(raw string, allowHTTP bool) (*url.URL,error) {
     if len(raw)==0 || len(raw)>2048 {return nil,ErrBlockedURL}
     parsed,err:=url.Parse(strings.TrimSpace(raw))
@@ -43,10 +73,30 @@ func ValidateArtworkURL(raw string, allowHTTP bool) (*url.URL,error) {
         case "q","quality":
             n,err:=strconv.Atoi(value)
             if err!=nil||n<1||n>100{return nil,ErrBlockedURL}
-        case "format":
-            if value!="jpg"&&value!="jpeg"&&value!="png"&&value!="webp"&&value!="gif" {return nil,ErrBlockedURL}
+        case "format","fm":
+            if value!="jpg"&&value!="jpeg"&&value!="png"&&value!="webp"&&value!="gif"&&value!="auto" {return nil,ErrBlockedURL}
         case "fit":
-            if value!="crop"&&value!="cover"&&value!="contain"&&value!="max" {return nil,ErrBlockedURL}
+            switch value {
+            case "crop","cover","contain","max","clip","fill","fillmax","min","scale":
+            default:
+                return nil,ErrBlockedURL
+            }
+        case "aid":
+            if value!="rss_feed"&&value!="rss"&&value!="feed" {return nil,ErrBlockedURL}
+        case "auto":
+            for _,part:=range strings.Split(value,",") {
+                p:=strings.TrimSpace(part)
+                if p!="format"&&p!="compress" {return nil,ErrBlockedURL}
+            }
+        case "crop":
+            if !isSafeArtworkCropParam(value) {return nil,ErrBlockedURL}
+        case "dpr":
+            d,err:=strconv.ParseFloat(value,64)
+            if err!=nil||d<1||d>4 {return nil,ErrBlockedURL}
+        case "cs":
+            if value!="srgb" {return nil,ErrBlockedURL}
+        case "v","ver":
+            if !isSafeArtworkVersionParam(value) {return nil,ErrBlockedURL}
         case "size":
             parts:=strings.Split(value,"x")
             if len(parts)!=2{return nil,ErrBlockedURL}
@@ -62,6 +112,7 @@ func ValidateArtworkURL(raw string, allowHTTP bool) (*url.URL,error) {
     return normalized,nil
 }
 
+// SafeArtworkURL normalizes and validates a public HTTPS artwork URL, returning empty string if disallowed.
 func SafeArtworkURL(raw string) string {
     if strings.TrimSpace(raw)==""{return ""}
     u,err:=ValidateArtworkURL(raw,false)

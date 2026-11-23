@@ -54,6 +54,18 @@ func (c *httptestDirectoryClient) Trending(ctx context.Context, creds podcast.Di
 	return c.do(ctx, creds, u.String())
 }
 
+func (c *httptestDirectoryClient) LookupByFeedURL(ctx context.Context, creds podcast.DirectoryCredentials, feedURL string) (podcast.DirectoryShow, bool, error) {
+	u, _ := url.Parse(c.serverURL + "/podcasts/byfeedurl")
+	q := u.Query()
+	q.Set("url", feedURL)
+	u.RawQuery = q.Encode()
+	shows, err := c.do(ctx, creds, u.String())
+	if err != nil || len(shows) == 0 {
+		return podcast.DirectoryShow{}, false, err
+	}
+	return shows[0], true, nil
+}
+
 func (c *httptestDirectoryClient) do(ctx context.Context, creds podcast.DirectoryCredentials, target string) ([]podcast.DirectoryShow, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {

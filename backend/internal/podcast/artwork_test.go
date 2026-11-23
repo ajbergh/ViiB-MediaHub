@@ -35,9 +35,14 @@ func TestPodcastArtworkURLRejectsSecretsAndPrivateTargets(t *testing.T){
         if _,err:=ValidateArtworkURL(s,false);!errors.Is(err,ErrBlockedURL){t.Errorf("accepted unsafe URL %q: %v",s,err)}
         if safe:=SafeArtworkURL(s);safe!="" {t.Errorf("unsafe URL persisted: %s",safe)}
     }
-    safe:="https://images.example.com/cover.png?width=300&format=webp&quality=85"
-    if _,err:=ValidateArtworkURL(safe,false);err!=nil{t.Fatalf("safe CDN artwork rejected: %v",err)}
-    if got:=SafeArtworkURL(safe);got!=safe{t.Errorf("safe URL changed: %q",got)}
+    for _,safe:=range []string{
+        "https://images.example.com/cover.png?width=300&format=webp&quality=85",
+        "https://image.simplecastcdn.com/images/2be48404/3000x3000/image.jpg?aid=rss_feed",
+        "https://cdn.example.org/art.jpg?auto=compress,format&fm=webp&dpr=2&crop=faces,center&v=20261122",
+    }{
+        if _,err:=ValidateArtworkURL(safe,false);err!=nil{t.Fatalf("safe CDN artwork %q rejected: %v",safe,err)}
+        if got:=SafeArtworkURL(safe);got!=safe{t.Errorf("safe URL changed: %q -> %q",safe,got)}
+    }
 }
 
 func TestPodcastArtworkFetchSniffingLimitsAndBlockedRedirects(t *testing.T){

@@ -80,3 +80,115 @@ func TestPodcastArtworkProxyMissingOrUnsafeContent(t *testing.T){
     a.PodcastRoutes().ServeHTTP(r,httptest.NewRequest(http.MethodGet,"/feeds/"+safeID+"/artwork",nil))
     if r.Code!=http.StatusUnprocessableEntity{t.Fatalf("SVG proxy response not blocked: %d",r.Code)}
 }
+
+func TestPodcastArtworkRecoversMissingURLFromRSSAndPodcastIndex(t *testing.T) {
+    t.Setenv("VIIB_PODCAST_INDEX_API_KEY", "pi-key")
+    t.Setenv("VIIB_PODCAST_INDEX_API_SECRET", "pi-secret")
+    t.Setenv("PODCAST_INDEX_API_KEY", "")
+    t.Setenv("PODCAST_INDEX_API_SECRET", "")
+
+    database, err := db.New(filepath.Join(t.TempDir(), "artwork-recover.db"))
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer database.Close()
+    ctx := context.Background()
+
+    // 1. Subscribed feed with missing imageUrl recovers from RSS re-fetch (e.g. ?aid=rss_feed).
+    rssShowID, err := database.SavePodcastFeedSnapshot(ctx, podcast.Feed{
+        URL: "https://feeds.simplecast.com/freakonomics", Title: "Freakonomics Radio", ImageURL: "",
+    }, true)
+    if err != nil {
+        t.Fatal(err)
+    }
+    img := []byte{137, 80, 78, 71, 13, 10, 26, 10}
+    const simplecastArt = "https://image.simplecastcdn.com/images/freak/3000x3000/image.jpg?aid=rss_feed"
+    a := &API{
+        db: database,
+        podcastFetcher: testFeedFetcher(func(_ context.Context, _ string) (podcast.FetchResult, error) {
+            return podcast.FetchResult{
+                Feed: podcast.Feed{
+                    URL:      "https://feeds.simplecast.com/freakonomics",
+                    Title:    "Freakonomics Radio",
+                    ImageURL: simplecastArt,
+                },
+            }, nil
+        }),
+        podcastArtworkFetch: func(_ context.Context, raw string) (podcast.Artwork, error) {
+            if raw != simplecastArt {
+                t.Fatalf("unexpected recovered artwork URL: %q", raw)
+            }
+            return podcast.Artwork{Data: img, MIME: "image/png"}, nil
+        },
+    }
+    rec := httptest.NewRecorder()
+    a.PodcastRoutes().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/feeds/"+rssShowID+"/artwork", nil))
+    if rec.Code != http.StatusOK || !bytes.Equal(rec.Body.Bytes(), img) {
+        t.Fatalf("expected RSS artwork recovery 200, got %d", rec.Code)
+    }
+    persisted, err := database.PodcastArtworkURL(ctx, rssShowID)
+    if err != nil || persisted != simplecastArt {
+        t.Fatalf("expected recovered URL persisted, got %q (%v)", persisted, err)
+    }
+
+    // 2. When RSS still has no artwork, fall back to Podcast Index LookupByFeedURL.
+    dirShowID, err := database.SavePodcastFeedSnapshot(ctx, podcast.Feed{
+        URL: "https://example.org/no-art-in-rss.xml", Title: "No Art In RSS", ImageURL: "",
+    }, true)
+    if err != nil {
+        t.Fatal(err)
+    }
+    const piArt = "https://cdn.podcastindex.org/covers/recovered.png"
+    b := &API{
+        db: database,
+        podcastFetcher: testFeedFetcher(func(_ context.Context, _ string) (podcast.FetchResult, error) {
+            return podcast.FetchResult{
+                Feed: podcast.Feed{URL: "https://example.org/no-art-in-rss.xml", Title: "No Art In RSS"},
+            }, nil
+        }),
+        podcastArtworkFetch: func(_ context.Context, raw string) (podcast.Artwork, error) {
+            if raw != piArt {
+                t.Fatalf("unexpected Podcast Index artwork URL: %q", raw)
+            }
+            return podcast.Artwork{Data: img, MIME: "image/png"}, nil
+        },
+    }
+    b.setPodcastDirectoryClientForTest(&fakeLookupDirectoryClient{
+        show: podcast.DirectoryShow{
+            ID: 101, Title: "No Art In RSS", FeedURL: "https://example.org/no-art-in-rss.xml", ArtworkURL: piArt,
+        },
+        found: true,
+    })
+    defer b.setPodcastDirectoryClientForTest(nil)
+
+    rec2 := httptest.NewRecorder()
+    b.PodcastRoutes().ServeHTTP(rec2, httptest.NewRequest(http.MethodGet, "/feeds/"+dirShowID+"/artwork", nil))
+    if rec2.Code != http.StatusOK || !bytes.Equal(rec2.Body.Bytes(), img) {
+        t.Fatalf("expected Podcast Index fallback 200, got %d", rec2.Code)
+    }
+    persisted2, err := database.PodcastArtworkURL(ctx, dirShowID)
+    if err != nil || persisted2 != piArt {
+        t.Fatalf("expected Podcast Index URL persisted, got %q (%v)", persisted2, err)
+    }
+}
+
+type testFeedFetcher func(context.Context, string) (podcast.FetchResult, error)
+
+func (f testFeedFetcher) Fetch(ctx context.Context, raw, _, _ string) (podcast.FetchResult, error) {
+    return f(ctx, raw)
+}
+
+type fakeLookupDirectoryClient struct {
+    show  podcast.DirectoryShow
+    found bool
+}
+
+func (f *fakeLookupDirectoryClient) Search(context.Context, podcast.DirectoryCredentials, string, int) ([]podcast.DirectoryShow, error) {
+    return nil, nil
+}
+func (f *fakeLookupDirectoryClient) Trending(context.Context, podcast.DirectoryCredentials, string, string, int) ([]podcast.DirectoryShow, error) {
+    return nil, nil
+}
+func (f *fakeLookupDirectoryClient) LookupByFeedURL(context.Context, podcast.DirectoryCredentials, string) (podcast.DirectoryShow, bool, error) {
+    return f.show, f.found, nil
+}

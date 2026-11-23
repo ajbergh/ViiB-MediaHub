@@ -154,6 +154,34 @@ func (c *DirectoryClient) Trending(ctx context.Context, creds DirectoryCredentia
 	return c.queryShows(ctx, creds, "/podcasts/trending", params)
 }
 
+// LookupByFeedURL looks up a single podcast show on Podcast Index by its canonical RSS URL.
+func (c *DirectoryClient) LookupByFeedURL(ctx context.Context, creds DirectoryCredentials, feedURL string) (DirectoryShow, bool, error) {
+	trimmedURL := strings.TrimSpace(feedURL)
+	if trimmedURL == "" {
+		return DirectoryShow{}, false, nil
+	}
+	params := url.Values{}
+	params.Set("url", trimmedURL)
+	body, err := c.doQuery(ctx, creds, "/podcasts/byfeedurl", params)
+	if err != nil {
+		return DirectoryShow{}, false, err
+	}
+	var decoded struct {
+		Feed *podcastIndexFeed `json:"feed"`
+	}
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		return DirectoryShow{}, false, ErrDirectoryUnavailable
+	}
+	if decoded.Feed == nil || decoded.Feed.ID == 0 && strings.TrimSpace(decoded.Feed.URL) == "" && strings.TrimSpace(decoded.Feed.Title) == "" {
+		return DirectoryShow{}, false, nil
+	}
+	show, ok := normalizeDirectoryFeed(*decoded.Feed)
+	if !ok {
+		return DirectoryShow{}, false, nil
+	}
+	return show, true, nil
+}
+
 type podcastIndexFeedResponse struct {
 	Feeds []podcastIndexFeed `json:"feeds"`
 }
@@ -173,7 +201,7 @@ type podcastIndexFeed struct {
 	EpisodeCount int             `json:"episodeCount"`
 }
 
-func (c *DirectoryClient) queryShows(ctx context.Context, creds DirectoryCredentials, endpoint string, params url.Values) ([]DirectoryShow, error) {
+func (c *DirectoryClient) doQuery(ctx context.Context, creds DirectoryCredentials, endpoint string, params url.Values) ([]byte, error) {
 	apiKey := strings.TrimSpace(creds.APIKey)
 	apiSecret := strings.TrimSpace(creds.APISecret)
 	if apiKey == "" || apiSecret == "" {
@@ -250,6 +278,49 @@ func (c *DirectoryClient) queryShows(ctx context.Context, creds DirectoryCredent
 	if err != nil || int64(len(body)) > maxDirectoryResponseBytes {
 		return nil, ErrDirectoryUnavailable
 	}
+	return body, nil
+}
+
+func normalizeDirectoryFeed(item podcastIndexFeed) (DirectoryShow, bool) {
+	validatedFeedURL, err := ValidatePublicURL(item.URL, false)
+	if err != nil {
+		return DirectoryShow{}, false
+	}
+	artworkURL := SafeArtworkURL(item.Artwork)
+	if artworkURL == "" {
+		artworkURL = SafeArtworkURL(item.Image)
+	}
+	title := plainText(item.Title, 300)
+	if title == "" {
+		title = validatedFeedURL.Hostname()
+	}
+	author := plainText(item.Author, 300)
+	if author == "" {
+		author = plainText(item.OwnerName, 300)
+	}
+	episodeCount := item.EpisodeCount
+	if episodeCount < 0 {
+		episodeCount = 0
+	}
+	return DirectoryShow{
+		ID:           item.ID,
+		Title:        title,
+		Author:       author,
+		Description:  plainText(item.Description, 4096),
+		FeedURL:      validatedFeedURL.String(),
+		WebsiteURL:   safeWebsiteURL(item.Link),
+		ArtworkURL:   artworkURL,
+		Language:     plainText(item.Language, 50),
+		Categories:   parseDirectoryCategories(item.Categories),
+		EpisodeCount: episodeCount,
+	}, true
+}
+
+func (c *DirectoryClient) queryShows(ctx context.Context, creds DirectoryCredentials, endpoint string, params url.Values) ([]DirectoryShow, error) {
+	body, err := c.doQuery(ctx, creds, endpoint, params)
+	if err != nil {
+		return nil, err
+	}
 
 	var decoded podcastIndexFeedResponse
 	if err := json.Unmarshal(body, &decoded); err != nil {
@@ -258,38 +329,11 @@ func (c *DirectoryClient) queryShows(ctx context.Context, creds DirectoryCredent
 
 	shows := make([]DirectoryShow, 0, len(decoded.Feeds))
 	for _, item := range decoded.Feeds {
-		validatedFeedURL, err := ValidatePublicURL(item.URL, false)
-		if err != nil {
+		show, ok := normalizeDirectoryFeed(item)
+		if !ok {
 			continue
 		}
-		artworkURL := SafeArtworkURL(item.Artwork)
-		if artworkURL == "" {
-			artworkURL = SafeArtworkURL(item.Image)
-		}
-		title := plainText(item.Title, 300)
-		if title == "" {
-			title = validatedFeedURL.Hostname()
-		}
-		author := plainText(item.Author, 300)
-		if author == "" {
-			author = plainText(item.OwnerName, 300)
-		}
-		episodeCount := item.EpisodeCount
-		if episodeCount < 0 {
-			episodeCount = 0
-		}
-		shows = append(shows, DirectoryShow{
-			ID:           item.ID,
-			Title:        title,
-			Author:       author,
-			Description:  plainText(item.Description, 4096),
-			FeedURL:      validatedFeedURL.String(),
-			WebsiteURL:   safeWebsiteURL(item.Link),
-			ArtworkURL:   artworkURL,
-			Language:     plainText(item.Language, 50),
-			Categories:   parseDirectoryCategories(item.Categories),
-			EpisodeCount: episodeCount,
-		})
+		shows = append(shows, show)
 	}
 	return shows, nil
 }

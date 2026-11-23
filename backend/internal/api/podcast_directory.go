@@ -28,9 +28,15 @@ const (
 type podcastDirectoryClient interface {
 	Search(ctx context.Context, creds podcast.DirectoryCredentials, query string, maxResults int) ([]podcast.DirectoryShow, error)
 	Trending(ctx context.Context, creds podcast.DirectoryCredentials, category, lang string, maxResults int) ([]podcast.DirectoryShow, error)
+	LookupByFeedURL(ctx context.Context, creds podcast.DirectoryCredentials, feedURL string) (podcast.DirectoryShow, bool, error)
 }
 
 var podcastDirectoryClients sync.Map // map[*API]podcastDirectoryClient
+
+func (a *API) hasPodcastDirectoryClientForTest() bool {
+	_, ok := podcastDirectoryClients.Load(a)
+	return ok
+}
 
 func (a *API) setPodcastDirectoryClientForTest(client podcastDirectoryClient) {
 	if client == nil {

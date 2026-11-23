@@ -58,7 +58,7 @@ RSS 2.0 feeds during initial implementation.
 | GET | `/export/opml` | Download OPML 2.0 of currently followed public feeds (up to 5,000 subscriptions / 2 MiB); no listening history or private data |
 | POST | `/feeds/preview` | Validate and retrieve one public HTTPS RSS feed; return first ten episodes and total |
 | POST | `/feeds` | Fetch/feed parse + subscribe + transactional episode snapshot; returns ID/title/count |
-| GET | `/feeds/{id}/artwork` | Proxy the followed show's HTTPS public raster artwork; max 2 MiB; PNG/JPEG/WebP/GIF only; no arbitrary URL parameter |
+| GET | `/feeds/{id}/artwork` | Proxy the followed show's HTTPS public raster artwork (with automatic RSS re-fetch and Podcast Index fallback recovery when missing); max 4 MiB; PNG/JPEG/WebP/GIF only; no arbitrary URL parameter |
 | GET | `/feeds/{id}/episodes?offset=0&limit=50` | Paginate episodes, default 50, maximum 100; response includes `nextOffset` (null on last page) |
 | DELETE | `/feeds/{id}` | Atomically unfollow and revoke queued/in-progress podcast download leases; preserve episode metadata/progress. Attempt bounded cleanup of previously completed podcast offline copies, retrying busy files in background |
 | GET | `/feeds/{id}/auto-download` | Read the subscribed show's opt-in `enabled` and bounded `newestCount` (1–3); default is disabled; no media URLs or paths returned |
@@ -116,7 +116,7 @@ Example successful response:
   restricted to `feed=rss`, `feed=rss2`, `feed=podcast`, `format=rss`, or
   `format=xml`; private feeds require a separate encrypted-credential and
   export-redaction design.
-- Artwork URLs are filtered at RSS parse, save and refresh; unsafe or tokenized artwork references are not persisted. The proxy resolves only subscribed show IDs, verifies public DNS at connection and each redirect, limits response size and sniffs actual raster content (never serves HTML or SVG). Browser caching is private for up to 15 minutes.
+- Artwork URLs are filtered at RSS parse, save and refresh (permitting safe non-secret CDN parameters such as `width`, `format`, `auto`, `aid=rss_feed`, etc.); unsafe or tokenized artwork references are not persisted. When a subscribed show lacks stored artwork, the proxy resolves only subscribed show IDs and attempts bounded self-healing recovery via RSS re-fetch and Podcast Index lookup, verifying public DNS at connection and each redirect, limiting response size (4 MiB), and sniffing actual raster content (never serves HTML or SVG). Browser caching is private for up to 15 minutes.
 - Publisher enclosure URLs are backend-only and never serialized into public episode JSON. The subscription-scoped `GET /episodes/{id}/media` serves verified completed local files first via HTTP Range, otherwise guarded public 206 ranges or a bounded streaming-200 fallback. Initial download storage exists under a private fixed episode-ID path. **True disconnected restart and all-OS offline acceptance remain open**; a bounded 200-only offline fallback now exists but is not representative-provider qualified.
 - **Podcasts** is a permanent Sidebar destination. RSS preview/follow and browsing work without opting in. Background and manual feed refreshing are controlled by an optional `podcasts_preview_enabled` setting on the Podcast Show page or in **Settings → Integrations & Spotify**. Disabled by default.
 - Existing song, Spotify, DJ and music download APIs are untouched.
