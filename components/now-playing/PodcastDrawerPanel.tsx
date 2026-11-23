@@ -1,6 +1,6 @@
-/** Displays podcast chapters, searchable transcript cues, bookmarks, and show notes inside the Now Playing drawer. */
+/** Displays podcast chapters, scrolling lyrics-style transcripts, bookmarks, and show notes inside the Now Playing drawer and stage. */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useInRouterContext, useNavigate } from 'react-router';
 import {
     Bookmark,
@@ -11,6 +11,7 @@ import {
     FileText,
     ListOrdered,
     Loader2,
+    LocateFixed,
     MessageSquareText,
     Search,
     Trash2,
@@ -34,6 +35,7 @@ interface PodcastDrawerPanelProps {
     currentTime: number;
     onSeek: (time: number) => void;
     onNavigate?: () => void;
+    isVisible?: boolean;
 }
 
 interface EpisodeNavButtonProps {
@@ -239,11 +241,300 @@ function renderSafeRichDescription(richHtml: string | undefined, plainText: stri
     return <p className="text-xs text-text-subtle">No episode notes available.</p>;
 }
 
+interface PodcastTranscriptLyricsProps {
+    cues: PodcastTranscriptCue[];
+    currentTime: number;
+    onSeek: (time: number) => void;
+    isVisible: boolean;
+    presentation?: 'drawer' | 'stage';
+    query?: string;
+    errorMessage?: string | null;
+}
+
+/**
+ * Renders podcast transcript cues with ViiB's centered, blurred-inactive
+ * scrolling-lyrics presentation and auto-centering active-cue tracking.
+ */
+export const PodcastTranscriptLyrics: React.FC<PodcastTranscriptLyricsProps> = ({
+    cues,
+    currentTime,
+    onSeek,
+    isVisible,
+    presentation = 'drawer',
+    query = '',
+    errorMessage,
+}) => {
+    const onStage = presentation === 'stage';
+    const viewportRef = useRef<HTMLDivElement>(null);
+    const activeLineRef = useRef<HTMLDivElement>(null);
+    const resumeTimerRef = useRef<number | null>(null);
+    const [autoFollow, setAutoFollow] = useState(true);
+
+    const trimmedQuery = query.trim().toLowerCase();
+    const currentTimeMs = currentTime * 1000;
+
+    const activeCueIndex = useMemo(() => {
+        return cues.reduce((best, cue, idx) => {
+            if (currentTimeMs >= cue.startMs && (cue.endMs <= cue.startMs || currentTimeMs < cue.endMs)) {
+                return idx;
+            }
+            return best;
+        }, -1);
+    }, [cues, currentTimeMs]);
+
+    const activeCue = activeCueIndex >= 0 ? cues[activeCueIndex] : null;
+
+    const filteredCues = useMemo(() => {
+        if (!trimmedQuery) return cues;
+        return cues.filter(
+            (cue) =>
+                cue.text.toLowerCase().includes(trimmedQuery) ||
+                (cue.speaker ? cue.speaker.toLowerCase().includes(trimmedQuery) : false),
+        );
+    }, [cues, trimmedQuery]);
+
+    useEffect(() => {
+        return () => {
+            if (resumeTimerRef.current !== null) {
+                window.clearTimeout(resumeTimerRef.current);
+            }
+        };
+    }, []);
+
+    const pauseAutoFollowTemporarily = () => {
+        if (trimmedQuery) return;
+        setAutoFollow(false);
+        if (resumeTimerRef.current !== null) {
+            window.clearTimeout(resumeTimerRef.current);
+        }
+        resumeTimerRef.current = window.setTimeout(() => {
+            resumeTimerRef.current = null;
+            setAutoFollow(true);
+        }, 6000);
+    };
+
+    const centerActiveLine = (instant = false) => {
+        const viewport = viewportRef.current;
+        const line = activeLineRef.current;
+        if (!viewport || !line || typeof viewport.scrollTo !== 'function') return;
+        const lineRect = line.getBoundingClientRect();
+        const viewportRect = viewport.getBoundingClientRect();
+        const relativeTop = lineRect.top - viewportRect.top;
+        const reduced =
+            typeof window.matchMedia === 'function' &&
+            window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        viewport.scrollTo({
+            top: viewport.scrollTop + relativeTop - (viewport.clientHeight - lineRect.height) / 2,
+            behavior: instant || reduced ? 'instant' : 'smooth',
+        });
+    };
+
+    useEffect(() => {
+        if (!isVisible || trimmedQuery || !autoFollow || activeCueIndex < 0) return;
+        centerActiveLine(false);
+    }, [activeCueIndex, isVisible, presentation, trimmedQuery, autoFollow, cues.length]);
+
+    if (cues.length === 0) {
+        return (
+            <div className="flex-1 flex flex-col items-center justify-center text-text-subtle opacity-70 text-center py-10 px-4">
+                <MessageSquareText size={40} className="mb-3 opacity-60" aria-hidden="true" />
+                <p className="text-sm">{errorMessage || 'No transcript available for this episode.'}</p>
+            </div>
+        );
+    }
+
+    if (trimmedQuery) {
+        if (filteredCues.length === 0) {
+            return (
+                <div className="rounded-xl bg-surface-2/60 border border-surface-border p-6 text-center text-xs text-text-subtle">
+                    No transcript lines match &ldquo;{query.trim()}&rdquo;.
+                </div>
+            );
+        }
+        return (
+            <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1" aria-label="Transcript search results">
+                {filteredCues.map((cue, idx) => {
+                    const isActive = cue === activeCue;
+                    const startSeconds = cue.startMs / 1000;
+                    return (
+                        <button
+                            key={`${cue.startMs}-${idx}`}
+                            type="button"
+                            onClick={() => onSeek(startSeconds)}
+                            aria-current={isActive ? 'true' : undefined}
+                            className={`w-full flex items-start gap-2.5 p-2.5 rounded-xl border text-left transition-colors ${
+                                isActive
+                                    ? 'bg-brand/15 border-brand/40 text-text-main'
+                                    : 'bg-surface-2/70 border-surface-border text-text-secondary hover:bg-surface-hover hover:text-text-main'
+                            }`}
+                        >
+                            <span className={`text-[11px] font-mono shrink-0 pt-0.5 ${isActive ? 'text-brand font-semibold' : 'text-text-subtle'}`}>
+                                {formatTimestamp(startSeconds)}
+                            </span>
+                            <div className="flex-1 min-w-0 text-xs leading-relaxed">
+                                {cue.speaker && (
+                                    <span className="font-semibold text-text-main mr-1.5">
+                                        {cue.speaker}:
+                                    </span>
+                                )}
+                                <span className={isActive ? 'text-text-main' : 'text-text-secondary'}>
+                                    {cue.text}
+                                </span>
+                            </div>
+                        </button>
+                    );
+                })}
+            </div>
+        );
+    }
+
+    return (
+        <div className="relative flex-1 min-h-0 flex flex-col">
+            <div
+                ref={viewportRef}
+                data-transcript-scroll
+                onWheel={pauseAutoFollowTemporarily}
+                onTouchStart={pauseAutoFollowTemporarily}
+                className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain [mask-image:linear-gradient(to_bottom,transparent,black_10%,black_88%,transparent)]"
+                aria-label="Scrolling episode transcript"
+            >
+                <div className={`space-y-6 py-[42%] text-center ${onStage ? 'mx-auto w-full max-w-4xl px-3 sm:px-8' : ''}`}>
+                    {cues.map((cue, idx) => {
+                        const isActive = idx === activeCueIndex;
+                        const prevSpeaker = idx > 0 ? cues[idx - 1]?.speaker : '';
+                        const showSpeaker = Boolean(cue.speaker && cue.speaker !== prevSpeaker);
+                        const startSeconds = cue.startMs / 1000;
+                        return (
+                            <div
+                                key={`${cue.startMs}-${idx}`}
+                                ref={isActive ? activeLineRef : null}
+                                role="button"
+                                tabIndex={0}
+                                aria-current={isActive ? 'true' : undefined}
+                                title={`Jump to ${formatTimestamp(startSeconds)}`}
+                                className={`cursor-pointer transition-all duration-500 font-bold leading-snug px-4 motion-reduce:transition-none ${
+                                    onStage
+                                        ? 'text-[clamp(1.35rem,4vw,3.5rem)] tracking-tight'
+                                        : 'text-card md:text-section'
+                                } ${
+                                    isActive
+                                        ? `scale-105 origin-center motion-reduce:transform-none ${
+                                              onStage
+                                                  ? 'bg-gradient-to-r from-text-main via-text-main to-brand bg-clip-text text-transparent'
+                                                  : 'text-text-main'
+                                          }`
+                                        : 'text-text-main opacity-30 blur-[1px] hover:opacity-60 hover:blur-0'
+                                }`}
+                                onClick={() => {
+                                    setAutoFollow(true);
+                                    onSeek(startSeconds);
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setAutoFollow(true);
+                                        onSeek(startSeconds);
+                                    }
+                                }}
+                            >
+                                {showSpeaker && (
+                                    <span
+                                        className={`block text-[11px] font-bold uppercase tracking-widest mb-1 ${
+                                            isActive ? 'text-brand' : 'text-text-subtle'
+                                        }`}
+                                    >
+                                        {cue.speaker}
+                                    </span>
+                                )}
+                                <span>{cue.text}</span>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {!autoFollow && activeCueIndex >= 0 && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (resumeTimerRef.current !== null) {
+                                window.clearTimeout(resumeTimerRef.current);
+                                resumeTimerRef.current = null;
+                            }
+                            setAutoFollow(true);
+                            window.requestAnimationFrame(() => centerActiveLine(false));
+                        }}
+                        className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full bg-surface-2/95 border border-surface-border px-3 py-1.5 text-xs font-semibold text-brand shadow-lg backdrop-blur-md hover:bg-surface-3 transition-colors"
+                    >
+                        <LocateFixed size={13} aria-hidden="true" />
+                        Sync to current line
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+};
+
+/** Full-stage transcript view rendered in Now Playing Transcript Focus mode. */
+export const PodcastTranscriptStage: React.FC<{
+    song: Song;
+    currentTime: number;
+    onSeek: (time: number) => void;
+    isVisible: boolean;
+}> = ({ song, currentTime, onSeek, isVisible }) => {
+    const episodeId = song.podcastEpisodeId;
+    const [cues, setCues] = useState<PodcastTranscriptCue[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        setCues([]);
+        setError(null);
+        if (!episodeId) return;
+        const controller = new AbortController();
+        setLoading(true);
+        void podcastsAPI
+            .getEpisodeTranscript(episodeId, controller.signal)
+            .then((res) => {
+                if (!controller.signal.aborted) setCues(res.cues ?? []);
+            })
+            .catch(() => {
+                if (!controller.signal.aborted) setError('Transcript not available for this episode.');
+            })
+            .finally(() => {
+                if (!controller.signal.aborted) setLoading(false);
+            });
+        return () => controller.abort();
+    }, [episodeId]);
+
+    if (loading) {
+        return (
+            <div className="flex-1 flex items-center justify-center text-text-subtle opacity-70 animate-pulse">
+                Loading transcript...
+            </div>
+        );
+    }
+
+    return (
+        <PodcastTranscriptLyrics
+            cues={cues}
+            currentTime={currentTime}
+            onSeek={onSeek}
+            isVisible={isVisible}
+            presentation="stage"
+            errorMessage={error}
+        />
+    );
+};
+
 export const PodcastDrawerPanel: React.FC<PodcastDrawerPanelProps> = ({
     song,
     currentTime,
     onSeek,
     onNavigate,
+    isVisible = true,
 }) => {
     const episodeId = song.podcastEpisodeId;
     const showToast = useStore((state) => state.showToast);
@@ -466,14 +757,25 @@ export const PodcastDrawerPanel: React.FC<PodcastDrawerPanelProps> = ({
             >
                 {subTabs.map((tab) => {
                     const selected = subTab === tab.id;
+                    const compactCount =
+                        tab.count !== undefined && tab.count > 0
+                            ? tab.count > 99
+                                ? '99+'
+                                : String(tab.count)
+                            : null;
                     return (
                         <button
                             key={tab.id}
                             type="button"
                             role="tab"
                             aria-selected={selected}
+                            title={
+                                tab.count !== undefined && tab.count > 0
+                                    ? `${tab.label} (${tab.count.toLocaleString()})`
+                                    : tab.label
+                            }
                             onClick={() => setSubTab(tab.id)}
-                            className={`flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
+                            className={`flex items-center justify-center gap-1 rounded-lg px-1.5 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
                                 selected
                                     ? 'bg-surface-3 text-text-main shadow-sm'
                                     : 'text-text-secondary hover:text-text-main hover:bg-surface-hover'
@@ -482,10 +784,10 @@ export const PodcastDrawerPanel: React.FC<PodcastDrawerPanelProps> = ({
                             <span aria-hidden="true" className="shrink-0">
                                 {tab.icon}
                             </span>
-                            <span className="truncate">{tab.label}</span>
-                            {tab.count !== undefined && tab.count > 0 && (
-                                <span className="hidden sm:inline text-[10px] font-mono text-text-subtle">
-                                    ({tab.count})
+                            <span>{tab.label}</span>
+                            {compactCount && tab.id !== 'transcript' && (
+                                <span className="hidden xl:inline text-[10px] font-mono text-text-subtle">
+                                    ({compactCount})
                                 </span>
                             )}
                         </button>
@@ -494,7 +796,7 @@ export const PodcastDrawerPanel: React.FC<PodcastDrawerPanelProps> = ({
             </div>
 
             {/* Sub-tab Body */}
-            <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+            <div className={`flex-1 min-h-0 ${subTab === 'transcript' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto pr-1'}`}>
                 {loading && (
                     <div className="flex items-center justify-center gap-2 py-8 text-xs text-text-subtle">
                         <Loader2 size={15} className="animate-spin" aria-hidden="true" />
@@ -592,9 +894,9 @@ export const PodcastDrawerPanel: React.FC<PodcastDrawerPanelProps> = ({
                 )}
 
                 {!loading && subTab === 'transcript' && (
-                    <div className="space-y-3">
+                    <div className="flex-1 min-h-0 flex flex-col gap-3">
                         {cues.length > 0 && (
-                            <div className="relative">
+                            <div className="relative shrink-0">
                                 <Search
                                     size={14}
                                     aria-hidden="true"
@@ -604,7 +906,7 @@ export const PodcastDrawerPanel: React.FC<PodcastDrawerPanelProps> = ({
                                     type="search"
                                     value={transcriptQuery}
                                     onChange={(e) => setTranscriptQuery(e.target.value)}
-                                    placeholder="Search transcript..."
+                                    placeholder={`Search ${cues.length.toLocaleString()} transcript lines...`}
                                     aria-label="Search transcript"
                                     className="w-full rounded-xl bg-surface-2 border border-surface-border pl-8 pr-8 py-2 text-xs text-text-main placeholder:text-text-subtle outline-none focus:ring-2 focus:ring-brand"
                                 />
@@ -621,50 +923,15 @@ export const PodcastDrawerPanel: React.FC<PodcastDrawerPanelProps> = ({
                             </div>
                         )}
 
-                        {cues.length === 0 ? (
-                            <div className="rounded-xl bg-surface-2/60 border border-surface-border p-6 text-center text-xs text-text-subtle">
-                                {transcriptError || 'No transcript available for this episode.'}
-                            </div>
-                        ) : filteredCues.length === 0 ? (
-                            <div className="rounded-xl bg-surface-2/60 border border-surface-border p-6 text-center text-xs text-text-subtle">
-                                No transcript cues match &ldquo;{transcriptQuery}&rdquo;.
-                            </div>
-                        ) : (
-                            <ul className="space-y-1.5" aria-label="Transcript cues">
-                                {filteredCues.map((cue, idx) => {
-                                    const isActive = cue === activeCue;
-                                    const startSeconds = cue.startMs / 1000;
-                                    return (
-                                        <li key={`${cue.startMs}-${idx}`}>
-                                            <button
-                                                type="button"
-                                                onClick={() => onSeek(startSeconds)}
-                                                aria-current={isActive ? 'true' : undefined}
-                                                className={`w-full flex items-start gap-2.5 p-2.5 rounded-xl border text-left transition-colors ${
-                                                    isActive
-                                                        ? 'bg-brand/15 border-brand/40 text-text-main'
-                                                        : 'bg-surface-2/70 border-surface-border text-text-secondary hover:bg-surface-hover hover:text-text-main'
-                                                }`}
-                                            >
-                                                <span className={`text-[11px] font-mono shrink-0 pt-0.5 ${isActive ? 'text-brand font-semibold' : 'text-text-subtle'}`}>
-                                                    {formatTimestamp(startSeconds)}
-                                                </span>
-                                                <div className="flex-1 min-w-0 text-xs leading-relaxed">
-                                                    {cue.speaker && (
-                                                        <span className="font-semibold text-text-main mr-1.5">
-                                                            {cue.speaker}:
-                                                        </span>
-                                                    )}
-                                                    <span className={isActive ? 'text-text-main' : 'text-text-secondary'}>
-                                                        {cue.text}
-                                                    </span>
-                                                </div>
-                                            </button>
-                                        </li>
-                                    );
-                                })}
-                            </ul>
-                        )}
+                        <PodcastTranscriptLyrics
+                            cues={cues}
+                            currentTime={currentTime}
+                            onSeek={onSeek}
+                            isVisible={isVisible && subTab === 'transcript'}
+                            presentation="drawer"
+                            query={transcriptQuery}
+                            errorMessage={transcriptError}
+                        />
                     </div>
                 )}
 

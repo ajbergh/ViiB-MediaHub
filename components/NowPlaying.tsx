@@ -18,7 +18,7 @@ import { api } from '../services/api';
 import { podcastsAPI } from '../services/podcasts';
 import { Visualizer } from './Visualizer';
 import { LyricsView } from './now-playing/LyricsView';
-import { PodcastDrawerPanel, EpisodeNavButton } from './now-playing/PodcastDrawerPanel';
+import { PodcastDrawerPanel, EpisodeNavButton, PodcastTranscriptStage } from './now-playing/PodcastDrawerPanel';
 import { QueueList } from './now-playing/QueueList';
 import { WebGLVisualizer } from './now-playing/webgl';
 import { MilkdropVisualizer } from './now-playing/MilkdropVisualizer';
@@ -87,7 +87,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
     const selectorTrigger = useRef<HTMLElement | null>(null);
     const coverUrl = currentSong?.coverUrl || (currentSong && albumCovers[currentSong.album]) || undefined;
     const artwork = useTrackArtwork(currentSong?.id ?? '', coverUrl, currentSong?.album ?? '', currentSong?.title.charAt(0) ?? '');
-    const lyricsStage = !isPodcast && (isPartyMode ? partyStageLayout === 'lyrics' : lyricsFocus);
+    const lyricsStage = isPartyMode ? (!isPodcast && partyStageLayout === 'lyrics') : lyricsFocus;
     const visualizerStage = isPartyMode && partyStageLayout === 'visualizer';
 
     useEffect(() => {
@@ -405,13 +405,13 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                     >
                         <Activity size={24} />
                     </Button>
-                    {!isPartyMode && !isPodcast && (
+                    {!isPartyMode && (
                         <Button
                             onClick={() => setLyricsFocus(!lyricsFocus)}
                             variant="ghost"
                             className={`rounded-full p-1.5 sm:p-2 ${lyricsFocus ? 'bg-brand/20 text-brand' : 'bg-surface-1/40 text-text-secondary'}`}
-                            title={lyricsFocus ? 'Exit Lyrics Focus' : 'Lyrics Focus'}
-                            aria-label={lyricsFocus ? 'Exit Lyrics Focus' : 'Lyrics Focus'}
+                            title={isPodcast ? (lyricsFocus ? 'Exit Transcript Focus' : 'Transcript Focus') : (lyricsFocus ? 'Exit Lyrics Focus' : 'Lyrics Focus')}
+                            aria-label={isPodcast ? (lyricsFocus ? 'Exit Transcript Focus' : 'Transcript Focus') : (lyricsFocus ? 'Exit Lyrics Focus' : 'Lyrics Focus')}
                             aria-pressed={lyricsFocus}
                         >
                             <Mic2 size={22} />
@@ -594,9 +594,13 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                 </div>}
 
                 {lyricsStage && (
-                    <section aria-label="Lyrics stage" className="relative flex min-h-0 min-w-0 flex-col overflow-clip rounded-2xl border border-surface-border bg-surface-0/65 bg-gradient-to-br from-brand/10 to-transparent">
+                    <section aria-label={isPodcast ? 'Transcript stage' : 'Lyrics stage'} className="relative flex min-h-0 min-w-0 flex-col overflow-clip rounded-2xl border border-surface-border bg-surface-0/65 bg-gradient-to-br from-brand/10 to-transparent">
                         <div data-lyrics-scroll className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-contain [mask-image:linear-gradient(to_bottom,transparent,black_12%,black_86%,transparent)]">
-                            <LyricsView song={currentSong} currentTime={currentTime} onSeek={onSeek} isVisible presentation="stage" />
+                            {isPodcast ? (
+                                <PodcastTranscriptStage song={currentSong} currentTime={currentTime} onSeek={onSeek} isVisible />
+                            ) : (
+                                <LyricsView song={currentSong} currentTime={currentTime} onSeek={onSeek} isVisible presentation="stage" />
+                            )}
                         </div>
                     </section>
                 )}
@@ -649,7 +653,14 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                         </div>
 
                         {/* Tab Content */}
-                        <div data-lyrics-scroll className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 md:p-6 relative">
+                        <div
+                            data-lyrics-scroll
+                            className={`flex-1 min-h-0 p-4 md:p-6 relative ${
+                                activeTab === 'PODCAST'
+                                    ? 'flex flex-col overflow-hidden'
+                                    : 'overflow-y-auto overflow-x-hidden'
+                            }`}
+                        >
                             {activeTab === 'PODCAST' && isPodcast && (
                                 <div className="h-full flex flex-col">
                                     <PodcastDrawerPanel
@@ -657,6 +668,7 @@ export const NowPlaying: React.FC<Props> = ({ currentTime, duration, onSeek }) =
                                         currentTime={currentTime}
                                         onSeek={onSeek}
                                         onNavigate={() => setNowPlayingOpen(false)}
+                                        isVisible={isDrawerOpen && activeTab === 'PODCAST'}
                                     />
                                 </div>
                             )}
