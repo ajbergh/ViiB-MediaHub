@@ -1,3 +1,6 @@
+// podcast_directory.go stores user-supplied Podcast Index credentials
+// encrypted at rest (enc:v2:) and resolves effective directory status with
+// build-time embedded credential fallback.
 package db
 
 import (
@@ -15,6 +18,7 @@ const (
 	maxDirectoryCredentialLen  = 256
 )
 
+// PodcastDirectoryStatus describes redacted directory configuration state for API responses.
 type PodcastDirectoryStatus struct {
 	Configured bool   `json:"configured"`
 	Provider   string `json:"provider"`
@@ -80,6 +84,7 @@ func (d *DB) GetPodcastDirectoryCredentials(_ context.Context) (podcast.Director
 	return podcast.DirectoryCredentials{}, err
 }
 
+// GetPodcastDirectoryStatus reports whether user-override or build-time embedded Podcast Index credentials are active without exposing secrets.
 func (d *DB) GetPodcastDirectoryStatus(_ context.Context) (PodcastDirectoryStatus, error) {
 	creds, err := d.getUserPodcastDirectoryCredentials()
 	if err == nil {
@@ -114,6 +119,7 @@ func (d *DB) GetPodcastDirectoryStatus(_ context.Context) (PodcastDirectoryStatu
 	}, err
 }
 
+// SetPodcastDirectoryCredentials validates and stores encrypted user-supplied Podcast Index credentials.
 func (d *DB) SetPodcastDirectoryCredentials(_ context.Context, apiKey, apiSecret string) error {
 	cleanKey, err := validateDirectoryCredentialPart(apiKey)
 	if err != nil {
@@ -133,6 +139,7 @@ func (d *DB) SetPodcastDirectoryCredentials(_ context.Context, apiKey, apiSecret
 	return d.SetSetting(podcastIndexCredentialsKey, string(encoded))
 }
 
+// DeletePodcastDirectoryCredentials removes the user-supplied Podcast Index credentials from settings.
 func (d *DB) DeletePodcastDirectoryCredentials(ctx context.Context) error {
 	_, err := d.conn.ExecContext(ctx, "DELETE FROM settings WHERE key = ?", podcastIndexCredentialsKey)
 	return err

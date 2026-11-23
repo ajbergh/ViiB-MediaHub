@@ -1,3 +1,5 @@
+// podcast_triage_queue.go serves episode triage views, cross-show search,
+// durable queue management, and per-show download retention cleanup handlers.
 package api
 
 import (

@@ -1,3 +1,5 @@
+// transcripts.go parses and fetches Podcasting 2.0 JSON, WebVTT, SRT, and
+// plain-text episode transcripts through ViiB's public-IP DNS-pinning transport.
 package podcast
 
 import (
@@ -21,8 +23,10 @@ const (
 	MaxTranscriptCues        = 10000
 )
 
+// ErrInvalidTranscript indicates an unreadable, oversized, or unsupported transcript payload.
 var ErrInvalidTranscript = errors.New("invalid podcast transcript")
 
+// TranscriptCue represents a normalized timed caption or plain-text paragraph.
 type TranscriptCue struct {
 	StartMs int64  `json:"startMs"`
 	EndMs   int64  `json:"endMs"`

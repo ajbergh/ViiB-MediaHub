@@ -22,8 +22,10 @@ const (
     MaxFeedBytes int64 = 8 << 20
     MaxFeedEpisodes = 1000
 )
+// ErrInvalidFeed indicates a malformed, oversized, or unsupported RSS 2.0 feed document.
 var ErrInvalidFeed = errors.New("invalid podcast RSS feed")
 
+// Feed holds parsed podcast show metadata and sanitized episode entries.
 type Feed struct {
     URL string `json:"url"`
     Title string `json:"title"`

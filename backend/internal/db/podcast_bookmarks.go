@@ -1,3 +1,5 @@
+// podcast_bookmarks.go reads rich subscribed episode metadata and manages
+// timestamped episode bookmarks in SQLite.
 package db
 
 import (
@@ -18,8 +20,11 @@ const (
 	maxPodcastBookmarksPerEp    = 500
 )
 
+// ErrInvalidBookmark indicates an out-of-range position or overly long bookmark note.
 var ErrInvalidBookmark = errors.New("invalid podcast bookmark")
 
+// PodcastEpisodeDetail combines subscribed episode metadata, sanitized show notes,
+// chapter/transcript availability, download status, and bookmark count.
 type PodcastEpisodeDetail struct {
 	PodcastEpisodeRecord
 	FeedTitle        string  `json:"feedTitle"`
@@ -34,6 +39,7 @@ type PodcastEpisodeDetail struct {
 	SkipOutroSeconds int     `json:"skipOutroSeconds,omitempty"`
 }
 
+// PodcastBookmark represents one timestamped user note saved on a subscribed episode.
 type PodcastBookmark struct {
 	ID         string `json:"id"`
 	EpisodeID  string `json:"episodeId"`

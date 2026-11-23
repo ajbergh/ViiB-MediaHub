@@ -1,3 +1,13 @@
+/**
+ * ViiB MediaHub - Podcasts Hub & Show Detail Pages
+ *
+ * Provides the Podcasts workspace (`Home`, cross-show `Episodes` triage and
+ * local search, durable `Queue`, and SSE-backed `Downloads`) plus `PodcastShow`
+ * management (pagination, refresh, auto-download, retention, and per-show
+ * playback defaults).
+ *
+ * @module Podcasts
+ */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';

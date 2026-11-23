@@ -90,6 +90,10 @@ staticcheck ./...
 
 Pull-request CI also builds browser/Wails targets, runs binary `govulncheck`, packages the Windows Wails executable, and scans the packaged Windows binary.
 
+### Build-Time Podcast Index Credentials
+
+For local builds and dev runs with built-in Podcast Index directory search enabled, copy [`.env.example`](../.env.example) to gitignored `.env` (or `.env.local`) and set `PODCAST_INDEX_API_KEY` and `PODCAST_INDEX_API_SECRET` (or export them in your shell). The local dev/build scripts load them automatically via [`scripts/podcast-index-ldflags.ps1`](../scripts/podcast-index-ldflags.ps1) / [`scripts/podcast-index-ldflags.sh`](../scripts/podcast-index-ldflags.sh) and embed them into compiled binaries with Go `-ldflags`. Release workflows inject them from GitHub Actions repository secrets of the same names.
+
 ---
 
 ## Configuring music sources

@@ -1,3 +1,5 @@
+// podcast_episode_rich.go handles subscription-scoped episode details,
+// chapters, transcripts, and timestamped bookmark CRUD endpoints.
 package api
 
 import (

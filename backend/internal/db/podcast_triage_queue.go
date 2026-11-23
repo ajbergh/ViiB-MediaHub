@@ -24,6 +24,7 @@ var (
 	ErrInvalidPodcastRetention    = errors.New("invalid podcast retention policy")
 )
 
+// PodcastEpisodeState captures the persisted playback, triage, and CAS revision state for an episode.
 type PodcastEpisodeState struct {
 	EpisodeID    string `json:"episodeId"`
 	PositionMs   int64  `json:"positionMs"`
@@ -45,12 +46,14 @@ type PodcastViewEpisode struct {
 	DownloadStatus string `json:"downloadStatus"`
 }
 
+// PodcastQueueItem represents an entry in the durable podcast_queue ordered by sort_key.
 type PodcastQueueItem struct {
 	PodcastViewEpisode
 	SortKey float64 `json:"sortKey"`
 	AddedAt int64   `json:"addedAt"`
 }
 
+// PodcastRetentionPolicy configures how many newest completed downloads a show retains.
 type PodcastRetentionPolicy struct {
 	KeepLatestCount int `json:"keepLatestCount"`
 }

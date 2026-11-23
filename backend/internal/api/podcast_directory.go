@@ -1,3 +1,5 @@
+// podcast_directory.go exposes redacted Podcast Index credential status and
+// SSRF-guarded search and trending HTTP endpoints under /api/v2/podcasts.
 package api
 
 import (

@@ -1,3 +1,5 @@
+// directory.go implements the Podcast Index v1.0 directory client with
+// public-IP DNS-pinning transport and build-time/dev-env credential resolution.
 package podcast
 
 import (
@@ -41,11 +43,13 @@ var (
 	ErrDirectoryUnavailable   = errors.New("podcast directory unavailable")
 )
 
+// DirectoryCredentials holds the Podcast Index API key and secret used to sign outbound requests.
 type DirectoryCredentials struct {
 	APIKey    string `json:"apiKey"`
 	APISecret string `json:"apiSecret"`
 }
 
+// DirectoryShow represents a sanitized podcast show returned by Podcast Index search or trending queries.
 type DirectoryShow struct {
 	ID           int64    `json:"id"`
 	Title        string   `json:"title"`
@@ -100,6 +104,7 @@ type DirectoryClient struct {
 	now     func() time.Time
 }
 
+// NewDirectoryClient constructs a Podcast Index API v1.0 client using ViiB's public-IP DNS-pinning fetcher.
 func NewDirectoryClient() *DirectoryClient {
 	return &DirectoryClient{
 		fetcher: NewFetcher(false),
@@ -124,6 +129,7 @@ func clampDirectoryMaxResults(maxResults int) int {
 	return maxResults
 }
 
+// Search queries Podcast Index /search/byterm and returns sanitized DirectoryShow results.
 func (c *DirectoryClient) Search(ctx context.Context, creds DirectoryCredentials, query string, maxResults int) ([]DirectoryShow, error) {
 	trimmedQuery := strings.TrimSpace(query)
 	if trimmedQuery == "" {
@@ -135,6 +141,7 @@ func (c *DirectoryClient) Search(ctx context.Context, creds DirectoryCredentials
 	return c.queryShows(ctx, creds, "/search/byterm", params)
 }
 
+// Trending queries Podcast Index /podcasts/trending with optional category and language filters.
 func (c *DirectoryClient) Trending(ctx context.Context, creds DirectoryCredentials, category, lang string, maxResults int) ([]DirectoryShow, error) {
 	params := url.Values{}
 	params.Set("max", strconv.Itoa(clampDirectoryMaxResults(maxResults)))

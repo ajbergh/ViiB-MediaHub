@@ -15,6 +15,7 @@ import (
     "github.com/ajbergh/viib-mediahub/internal/podcast"
 )
 
+// PodcastFeedRecord describes a subscribed podcast show and its playback defaults.
 type PodcastFeedRecord struct {
     ID string `json:"id"`
     URL string `json:"url"`

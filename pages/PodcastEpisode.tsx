@@ -1,3 +1,13 @@
+/**
+ * ViiB MediaHub - Podcast Episode Detail Page
+ *
+ * Displays rich metadata for a subscribed episode including sanitized HTML show
+ * notes, interactive Podcasting 2.0 / Podlove chapters, searchable transcripts,
+ * timestamped bookmarks, triage actions, offline download state, and shared
+ * player playback controls.
+ *
+ * @module PodcastEpisode
+ */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import {

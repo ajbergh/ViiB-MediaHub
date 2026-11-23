@@ -1,8 +1,10 @@
 /**
- * First typed public-RSS Podcast API client. Subscriptions and episode
- * metadata are backend-owned; do not persist them in the music Zustand store.
- * Streaming, revisioned listening progress and the early-access offline
- * download endpoints are local Go APIs; provider URLs remain backend-only.
+ * Typed Podcast API client (`/api/v2/podcasts/*`). Subscriptions, episode
+ * triage, durable queue, chapters/transcripts/bookmarks, playback defaults,
+ * and offline downloads are backend-owned in SQLite; provider enclosure URLs
+ * and API secrets remain backend-only.
+ *
+ * @module podcastsAPI
  */
 const BASE = '/api/v2/podcasts';
 

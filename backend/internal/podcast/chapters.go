@@ -1,3 +1,5 @@
+// chapters.go parses and fetches Podcasting 2.0 JSON and Podlove Simple
+// Chapters documents through ViiB's public-IP DNS-pinning transport.
 package podcast
 
 import (
@@ -21,8 +23,10 @@ const (
 	MaxChaptersCount       = 1000
 )
 
+// ErrInvalidChapters indicates a malformed or unsupported chapters payload.
 var ErrInvalidChapters = errors.New("invalid podcast chapters")
 
+// Chapter describes one sanitized podcast chapter marker with optional link and artwork.
 type Chapter struct {
 	StartTime float64  `json:"startTime"`
 	EndTime   *float64 `json:"endTime,omitempty"`

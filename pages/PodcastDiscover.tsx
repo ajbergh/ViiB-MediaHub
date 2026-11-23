@@ -1,3 +1,12 @@
+/**
+ * ViiB MediaHub - Podcast Discover Page
+ *
+ * Searches and browses trending shows from Podcast Index (using build-time
+ * embedded credentials or an optional encrypted per-user override) and provides
+ * an unconditional direct HTTPS RSS preview/follow fallback.
+ *
+ * @module PodcastDiscover
+ */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import {

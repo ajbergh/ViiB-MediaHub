@@ -16,18 +16,21 @@ const (
     MaxPodcastStepSeconds      = 120
 )
 
+// PodcastShowPlaybackSettings configures per-show speed and intro/outro skip defaults.
 type PodcastShowPlaybackSettings struct {
     DefaultSpeed     float64 `json:"defaultSpeed"`
     SkipIntroSeconds int     `json:"skipIntroSeconds"`
     SkipOutroSeconds int     `json:"skipOutroSeconds"`
 }
 
+// PodcastGlobalPlaybackSettings configures app-wide podcast default speed and seek steps.
 type PodcastGlobalPlaybackSettings struct {
     DefaultSpeed       float64 `json:"defaultSpeed"`
     SkipBackSeconds    int     `json:"skipBackSeconds"`
     SkipForwardSeconds int     `json:"skipForwardSeconds"`
 }
 
+// DefaultPodcastGlobalPlaybackSettings returns ViiB's built-in podcast playback defaults (1x, -15s/+30s).
 func DefaultPodcastGlobalPlaybackSettings() PodcastGlobalPlaybackSettings {
     return PodcastGlobalPlaybackSettings{
         DefaultSpeed:       1,
@@ -36,6 +39,7 @@ func DefaultPodcastGlobalPlaybackSettings() PodcastGlobalPlaybackSettings {
     }
 }
 
+// IsAllowedPodcastPlaybackSpeed validates that speed is one of ViiB's supported playback rates (or 0 when global fallback is allowed).
 func IsAllowedPodcastPlaybackSpeed(speed float64, allowGlobalZero bool) bool {
     if allowGlobalZero && speed == 0 {
         return true
@@ -65,6 +69,7 @@ func clampSkipTrim(seconds int) int {
     return seconds
 }
 
+// GetPodcastShowPlaybackSettings reads a subscribed show's speed and intro/outro skip defaults.
 func (d *DB) GetPodcastShowPlaybackSettings(ctx context.Context, feedID string) (PodcastShowPlaybackSettings, error) {
     var out PodcastShowPlaybackSettings
     if err := d.EnsurePodcastSchema(); err != nil {
@@ -85,6 +90,7 @@ FROM podcast_subscriptions WHERE feed_id=?`, feedID).Scan(&custom, &speed, &intr
     return out, nil
 }
 
+// UpdatePodcastShowPlaybackSettings validates and persists per-show speed and intro/outro skip defaults.
 func (d *DB) UpdatePodcastShowPlaybackSettings(ctx context.Context, feedID string, settings PodcastShowPlaybackSettings) (PodcastShowPlaybackSettings, error) {
     if !IsAllowedPodcastPlaybackSpeed(settings.DefaultSpeed, true) {
         return PodcastShowPlaybackSettings{}, errors.New("invalid podcast playback speed")
@@ -120,6 +126,7 @@ WHERE feed_id=?`,
     return settings, nil
 }
 
+// GetPodcastGlobalPlaybackSettings returns persisted global podcast playback defaults, falling back safely on missing/corrupt data.
 func (d *DB) GetPodcastGlobalPlaybackSettings(_ context.Context) (PodcastGlobalPlaybackSettings, error) {
     defaults := DefaultPodcastGlobalPlaybackSettings()
     raw, err := d.GetSetting(podcastPlaybackSettingsKey)
@@ -145,6 +152,7 @@ func (d *DB) GetPodcastGlobalPlaybackSettings(_ context.Context) (PodcastGlobalP
     return parsed, nil
 }
 
+// UpdatePodcastGlobalPlaybackSettings validates and saves global podcast speed and skip intervals.
 func (d *DB) UpdatePodcastGlobalPlaybackSettings(_ context.Context, settings PodcastGlobalPlaybackSettings) (PodcastGlobalPlaybackSettings, error) {
     if !IsAllowedPodcastPlaybackSpeed(settings.DefaultSpeed, false) {
         return PodcastGlobalPlaybackSettings{}, errors.New("invalid podcast playback speed")

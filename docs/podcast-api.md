@@ -4,9 +4,16 @@ This documents **only currently implemented endpoints** in
 [`backend/internal/api/podcast_routes.go`](../backend/internal/api/podcast_routes.go).
 The full prospective API is tracked in the
 [Podcast implementation roadmap](PODCAST_CLIENT_IMPLEMENTATION_ROADMAP.md).
-No Podcast Index search, paid feeds or private RSS credential support is implemented yet. An early 206-range and bounded 200-only offline download job/verified-file path is implemented on the draft feature branch, not yet cross-platform qualified. Public HTTP(S) audio streams through the shared music/Plex player via a local episode-ID route. Core playback and seeking are user-verified on the tested build; native cross-platform qualification remains open. OPML 2.0
-subscription export and safe import preview are available; neither exports
-nor imports listening history.
+Podcast Index directory search/trending (via build-time `-ldflags` credentials
+or optional encrypted user overrides), rich episode detail (chapters,
+transcripts, bookmarks, sanitized show notes), cross-show triage/search, a
+durable podcast queue, per-show download retention, live SSE events, and
+206-range / bounded 200-only offline downloads are implemented on the draft
+feature branch, pending multi-OS native qualification. Private/authenticated
+RSS feeds remain deferred. Public HTTP(S) audio streams through the shared
+music/Plex player via a local episode-ID route. OPML 2.0 subscription export and
+safe import preview are available; neither exports nor imports listening
+history.
 
 The endpoints mount at `/api/v2/podcasts`, protected by ViiB's existing
 local Host/Origin/CSRF middleware. JSON errors use the standard V2
